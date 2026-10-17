@@ -1,6 +1,6 @@
 # SDK design
 
-The chain layer leaves `projects/frontend/src/lib` and becomes a versioned package, `projects/sdk` (published as `@kasakame/sdk`). SDK-first: the frontend clarity work, the escape-hatch CLI, and third-party clients all consume this package instead of reimplementing proofs. Status: in progress — stages 1–13 landed; the migration stages at the end are the build order. Related roadmap items: the SDK/CLI steps under CI & packaging, on-chain headers, and the Frontend clarity section.
+The chain layer leaves `projects/frontend/src/lib` and becomes a versioned package, `projects/sdk` (published as `@kasakame/sdk`). SDK-first: the frontend clarity work, the escape-hatch CLI, and third-party clients all consume this package instead of reimplementing proofs. Status: in progress — stages 1–14 landed; the migration stages at the end are the build order. Related roadmap items: the SDK/CLI steps under CI & packaging, on-chain headers, and the Frontend clarity section.
 
 ## Package identity and placement
 
@@ -98,7 +98,7 @@ Each stage is one commit (a stage may split further if the diff gets unwieldy), 
 5. **Frontend switch (math)** - add the `file:../sdk` dependency and build-ahead scripts, delete the local math, re-export from the SDK. This is where the file-dependency mechanics get verified (npm workspaces remain the fallback if `file:` + prebuilt `dist/` proves fragile).
 6. **Chain plumbing** - `configureSdk`, both indexer waiters, and `fetchChainTimestamp` land in `chain.ts`; the frontend `algorand.ts` shrinks to building the `AlgorandClient` and calling `configureSdk`.
 7. **Replay** - move `fetchPledges`, `fetchSpends`, `loadTree`, the consolidated `fetchMyLeaves`, and `clearTreeCache`; the frontend re-exports for its remaining consumers.
-8. **Campaign reads** - registry reads, global-state decode, `fetchMyPledge`, `listCampaigns`, `getCampaign`, the session caches, and `deriveStatus` move with their names and signatures intact. The protocol-record reshape (dropping viewer fields) rides with the headers in stage 13.
+8. **Campaign reads** - registry reads, global-state decode, `fetchMyPledge`, `listCampaigns`, `getCampaign`, the session caches, and `getCampaignStatus` (renamed from `deriveStatus`) move with their signatures intact. The protocol-record reshape (dropping viewer fields) rides with the headers in stage 13.
 9. **Codegen** - `scripts/codegen.mjs` builds the contracts (or reuses artifacts), copies the clients and `*.arc56.json` into `src/generated/`, and tags them for `tsc`.
 10. **Writes** - move call assembly, retry, vault helpers, and `WalletSession` into `transactions.ts`; `disconnectQuietly` and the error-to-message mapping stay in the frontend. The largest diff - split it by operation group if review needs it.
 11. **Drop linked clients** - remove `algokit project link`, `src/contracts`, the ts-nocheck script, and the CI `frontend-clients` artifact; `reclaim.ts` imports from the SDK.

@@ -41,7 +41,7 @@ const campaigns: CampaignViewModel[] = [
     goalMicroAlgos: 20_000_000n,
     raisedMicroAlgos: 20_000_000n,
     deadlineSeconds: nowSeconds - 1n,
-    status: 'funded',
+    status: 'successful',
   },
 ]
 

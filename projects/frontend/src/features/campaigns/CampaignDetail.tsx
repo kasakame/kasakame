@@ -41,9 +41,8 @@ const DELETE_FEE_ALGO = '≈0.005 ALGO'
 
 const badgeBg: Record<CampaignViewModel['status'], string> = {
   open: 'bg-badge-open',
-  funded: 'bg-badge-funded',
+  successful: 'bg-badge-successful',
   failed: 'bg-badge-failed',
-  claimed: 'bg-badge-claimed',
 }
 
 const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
@@ -172,7 +171,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const isCreator = connected && campaign.creator !== '' && activeAddress === campaign.creator
   const hasPledge = leaves.length > 0
   const canPledge = campaign.status === 'open' && connected && !isCreator
-  const canClaim = campaign.status === 'funded' && isCreator
+  const canClaim = campaign.status === 'successful' && isCreator
   const canRefund = campaign.status === 'failed' && connected && hasPledge
   const canCancelPledge = campaign.status === 'open' && connected && hasPledge
   const canDelete = isCreator && (campaign.status !== 'open' || campaign.raisedMicroAlgos === 0n)

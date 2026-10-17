@@ -19,7 +19,7 @@ import { fetchVaultBox } from './transactions.js'
  * - Backer pledges: live leaves in the tree (no boxes, no assets, no per-backer storage).
  */
 
-export type CampaignStatus = 'open' | 'funded' | 'failed' | 'claimed'
+export type CampaignStatus = 'open' | 'successful' | 'failed'
 
 export interface CampaignViewModel {
   /** Application id - the campaign's unique identifier. */
@@ -66,12 +66,6 @@ export interface CampaignHeader {
   deleted: boolean
 }
 
-const STATUS_UINT_TO_LABEL = {
-  0: 'open',
-  1: 'failed',
-  2: 'claimed',
-} as const
-
 // Box name prefixes: a single byte plus an 8-byte big-endian campaign app id.
 // Factory registration box: 'r' + app id. Vault per-campaign box: 'c' + app id.
 const REGISTRATION_BOX_PREFIX = 0x72
@@ -92,33 +86,6 @@ function decodeBoxAppId(name: Uint8Array, prefix: number): bigint | undefined {
     id = (id << 8n) | BigInt(name[i] ?? 0)
   }
   return id
-}
-
-/**
- * Derive the display status. `funded` and `failed` are recomputed from deadline/raised/goal - exactly the rule the contract evaluates -
- * because neither is materialised into global state until someone acts. The stored `status` uint only ever holds `0` (Open), `1` (Failed,
- * after a refund) or `2` (Claimed), and is authoritative for `failed`/`claimed` once set.
- *
- * @param goal Funding target in microAlgos.
- * @param raised Total pledged so far in microAlgos.
- * @param deadlineSeconds Deadline as a UNIX timestamp (seconds).
- * @param statusUint Stored status uint (0 open, 1 failed, 2 claimed).
- * @param nowSeconds Current UNIX timestamp (seconds).
- * @returns The derived display status.
- */
-export function deriveStatus(
-  goal: bigint,
-  raised: bigint,
-  deadlineSeconds: bigint,
-  statusUint: bigint,
-  nowSeconds: bigint,
-): CampaignStatus {
-  if (statusUint === 1n) return STATUS_UINT_TO_LABEL[1]
-  if (statusUint === 2n) return STATUS_UINT_TO_LABEL[2]
-  if (deadlineSeconds <= nowSeconds) {
-    return raised >= goal ? 'funded' : 'failed'
-  }
-  return STATUS_UINT_TO_LABEL[0]
 }
 
 /**
@@ -234,7 +201,20 @@ export function toCampaignViewModel(
     goalMicroAlgos: goal,
     raisedMicroAlgos: raised,
     deadlineSeconds: deadline,
-    status: deriveStatus(goal, raised, deadline, state.status ?? 0n, nowSeconds),
+    status: getCampaignStatus(
+      {
+        id: app.id,
+        creator: state.creator ?? '',
+        title: state.title ?? '',
+        metadataUri: state.metadataUri ?? '',
+        goalMicroAlgos: goal,
+        deadlineSeconds: deadline,
+        raisedMicroAlgos: raised,
+        status: state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open',
+        deleted: app.deleted === true,
+      },
+      nowSeconds,
+    ),
   }
   if (myPledgeMicroAlgos !== undefined) {
     viewModel.myPledgeMicroAlgos = myPledgeMicroAlgos

@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CampaignHeader } from './campaigns.js'
 import {
   decodeGlobalState,
-  deriveStatus,
   enumerateCampaigns,
   fetchCampaignHeader,
   getCampaignStatus,
@@ -191,28 +190,6 @@ describe('isCampaignApp', () => {
   })
 })
 
-describe('deriveStatus', () => {
-  it('returns claimed when status uint is 2', () => {
-    expect(deriveStatus(10n, 10n, 1_000n, 2n, 2_000n)).toBe('claimed')
-  })
-
-  it('returns failed when status uint is 1', () => {
-    expect(deriveStatus(10n, 10n, 1_000n, 1n, 2_000n)).toBe('failed')
-  })
-
-  it('returns funded when deadline passed and goal met', () => {
-    expect(deriveStatus(10n, 10n, 1_000n, 0n, 2_000n)).toBe('funded')
-  })
-
-  it('returns failed when deadline passed but goal not met (derived, pre-refund)', () => {
-    expect(deriveStatus(10n, 5n, 1_000n, 0n, 2_000n)).toBe('failed')
-  })
-
-  it('returns open while before the deadline', () => {
-    expect(deriveStatus(10n, 10n, 3_000n, 0n, 2_000n)).toBe('open')
-  })
-})
-
 describe('getCampaignStatus', () => {
   const header = (overrides: Partial<CampaignHeader> = {}): CampaignHeader => ({
     id: 42n,
@@ -258,7 +235,7 @@ describe('toCampaignViewModel', () => {
     expect(vm.goalMicroAlgos).toBe(10_000_000n)
     expect(vm.raisedMicroAlgos).toBe(10_000_000n)
     expect(vm.deadlineSeconds).toBe(2_000n)
-    expect(vm.status).toBe('funded')
+    expect(vm.status).toBe('successful')
     expect(vm.myPledgeMicroAlgos).toBe(250_000n)
   })
 
@@ -282,6 +259,34 @@ describe('toCampaignViewModel', () => {
     expect(vm.creator).toBe('')
     // deadline (0) <= now (1000) and raised < goal -> failed
     expect(vm.status).toBe('failed')
+  })
+
+  it('maps stored status 1 (failed) to failed', () => {
+    const app = new algosdk.indexerModels.Application({
+      id: 7n,
+      params: appParams([
+        kv('goal', tealUint(10n)),
+        kv('raised', tealUint(5n)),
+        kv('deadline', tealUint(500n)),
+        kv('status', tealUint(1n)),
+      ]),
+    })
+    const vm = toCampaignViewModel(app, 1_000n)
+    expect(vm.status).toBe('failed')
+  })
+
+  it('maps stored status 2 (claimed) to successful', () => {
+    const app = new algosdk.indexerModels.Application({
+      id: 7n,
+      params: appParams([
+        kv('goal', tealUint(10n)),
+        kv('raised', tealUint(5n)),
+        kv('deadline', tealUint(2_000n)),
+        kv('status', tealUint(2n)),
+      ]),
+    })
+    const vm = toCampaignViewModel(app, 1_000n)
+    expect(vm.status).toBe('successful')
   })
 
   it('defaults missing title and metadata uri to empty string', () => {

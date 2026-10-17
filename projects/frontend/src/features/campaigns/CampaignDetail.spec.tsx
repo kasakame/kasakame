@@ -260,14 +260,14 @@ describe('CampaignDetail', () => {
   })
 
   it('shows a claim button when funded and the viewer is the creator', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     expect(await screen.findByText('Claim funds')).toBeInTheDocument()
   })
 
   it('hides the claim button when the viewer is not the creator', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'SOMEONEELSE' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'SOMEONEELSE' }))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     await screen.findByText('Campaign #42')
@@ -325,7 +325,7 @@ describe('CampaignDetail', () => {
   })
 
   it('calls claim when the claim button is clicked', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockResolvedValue(undefined)
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -361,7 +361,7 @@ describe('CampaignDetail', () => {
   })
 
   it('shows an error when claim fails', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockRejectedValue(new Error('boom'))
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -371,7 +371,7 @@ describe('CampaignDetail', () => {
   })
 
   it('reports a rejection plainly and logs the failure', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockRejectedValue(new Error('Transaction rejected by user'))
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -382,7 +382,7 @@ describe('CampaignDetail', () => {
   })
 
   it('suggests reconnecting when the wallet session is dead', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockRejectedValue(new Error('PeraWalletConnect was not initialized correctly.'))
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -393,7 +393,7 @@ describe('CampaignDetail', () => {
   })
 
   it('fails fast without sending when the bridge is already dead', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     getWalletManagerMock.mockReturnValue({
       getWallet: () => ({ resumeSession: () => Promise.reject(new Error('No accounts found!')) }),
     })
@@ -488,7 +488,7 @@ describe('CampaignDetail', () => {
   })
 
   it('caps the progress bar at 100% when raised exceeds the goal', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS', goalMicroAlgos: 1_000_000n }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS', goalMicroAlgos: 1_000_000n }))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     await screen.findByText('Campaign #42')
@@ -505,7 +505,7 @@ describe('CampaignDetail', () => {
   })
 
   it('keeps old data when the campaign vanishes before refresh', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockResolvedValue({})
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -517,7 +517,7 @@ describe('CampaignDetail', () => {
   })
 
   it('keeps old data with a message when post-action refresh fails', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockResolvedValue({})
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -530,7 +530,7 @@ describe('CampaignDetail', () => {
   })
 
   it('shows a success message after a successful claim', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: 'ADDRESS' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
     claimMock.mockResolvedValue(undefined)
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -551,7 +551,7 @@ describe('CampaignDetail', () => {
   })
 
   it('does not render a claim button for an empty creator address', async () => {
-    getCampaignMock.mockResolvedValue(viewModel('funded', { creator: '' }))
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: '' }))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     await screen.findByText('Campaign #42')

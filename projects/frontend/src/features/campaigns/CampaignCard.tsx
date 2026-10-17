@@ -11,9 +11,8 @@ interface CampaignCardProps {
 
 const badgeBg: Record<CampaignViewModel['status'], string> = {
   open: 'bg-badge-open',
-  funded: 'bg-badge-funded',
+  successful: 'bg-badge-successful',
   failed: 'bg-badge-failed',
-  claimed: 'bg-badge-claimed',
 }
 
 const CampaignCard = ({ campaign, nowSeconds, onSelect }: CampaignCardProps) => {
