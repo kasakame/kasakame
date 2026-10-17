@@ -49,6 +49,28 @@ const STATUS_UINT_TO_LABEL = {
   2: 'claimed',
 } as const
 
+// Box name prefixes: a single byte plus an 8-byte big-endian campaign app id.
+// Factory registration box: 'r' + app id. Vault per-campaign box: 'c' + app id.
+const REGISTRATION_BOX_PREFIX = 0x72
+const VAULT_BOX_PREFIX = 0x63
+
+/**
+ * Decode a box name carrying an 8-byte big-endian app id after a single-byte prefix.
+ *
+ * @param name Box name bytes.
+ * @param prefix Expected first byte ('r' for registry, 'c' for vault).
+ * @returns The campaign app id, or undefined when the name doesn't match.
+ */
+function decodeBoxAppId(name: Uint8Array, prefix: number): bigint | undefined {
+  if (name.length !== 9 || name[0] !== prefix) return undefined
+  let id = 0n
+  for (let i = 1; i <= 8; i++) {
+    /* v8 ignore next */
+    id = (id << 8n) | BigInt(name[i] ?? 0)
+  }
+  return id
+}
+
 /**
  * Derive the display status. `funded` and `failed` are recomputed from deadline/raised/goal - exactly the rule the contract evaluates -
  * because neither is materialised into global state until someone acts. The stored `status` uint only ever holds `0` (Open), `1` (Failed,
@@ -210,18 +232,51 @@ export async function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set
     const response = await query.do()
     for (const box of response.boxes) {
       // Box name: 'r' (1 byte) + the campaign app id (8 bytes, big-endian).
-      const name = box.name
-      if (name.length !== 9 || name[0] !== 0x72) continue
-      let id = 0n
-      for (let i = 1; i <= 8; i++) {
-        // The length check above guarantees all eight bytes exist; the fallback satisfies noUncheckedIndexedAccess.
-        /* v8 ignore next */
-        id = (id << 8n) | BigInt(name[i] ?? 0)
-      }
-      registered.add(id)
+      const id = decodeBoxAppId(box.name, REGISTRATION_BOX_PREFIX)
+      if (id !== undefined) registered.add(id)
     }
     nextToken = response.nextToken
   } while (nextToken !== undefined)
+  return registered
+}
+
+/**
+ * Fetch every campaign that has a vault box (the box lives until the campaign settles and its box is released by
+ * `notifyDelete` or `finalize`), so deleted-but-unfinalized campaigns surface too.
+ *
+ * @param vaultId The ClaimsVault application id.
+ * @returns Campaign app ids with a vault box.
+ */
+async function fetchVaultCampaignIds(vaultId: bigint): Promise<Set<bigint>> {
+  const indexer = getSdkConfig().algorand.client.indexer
+  const vaulted = new Set<bigint>()
+  let nextToken: string | undefined
+  do {
+    let query = indexer.searchForApplicationBoxes(vaultId).limit(1000)
+    if (nextToken !== undefined) query = query.nextToken(nextToken)
+    const response = await query.do()
+    for (const box of response.boxes) {
+      // Box name: 'c' (1 byte) + the campaign app id (8 bytes, big-endian).
+      const id = decodeBoxAppId(box.name, VAULT_BOX_PREFIX)
+      if (id !== undefined) vaulted.add(id)
+    }
+    nextToken = response.nextToken
+  } while (nextToken !== undefined)
+  return vaulted
+}
+
+/**
+ * Enumerate every campaign app id worth browsing: every campaign registered with the Factory plus every campaign
+ * that has a vault box (campaigns that received at least one pledge, including deleted-but-unfinalized ones whose
+ * vault box hasn't been released yet). The union dedupes - a registered campaign with pledges appears once.
+ *
+ * @returns The campaign app ids.
+ */
+export async function enumerateCampaigns(): Promise<Set<bigint>> {
+  const { factoryAppId, vaultAppId } = getSdkConfig()
+  const registered = factoryAppId > 0n ? await fetchRegisteredCampaignIds(factoryAppId) : new Set<bigint>()
+  const vaulted = await fetchVaultCampaignIds(vaultAppId)
+  for (const id of vaulted) registered.add(id)
   return registered
 }
 

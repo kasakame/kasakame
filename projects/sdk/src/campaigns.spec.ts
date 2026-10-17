@@ -1,6 +1,62 @@
 import algosdk from 'algosdk'
-import { describe, expect, it } from 'vitest'
-import { decodeGlobalState, deriveStatus, isCampaignApp, toCampaignViewModel } from './campaigns.js'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { decodeGlobalState, deriveStatus, enumerateCampaigns, isCampaignApp, toCampaignViewModel } from './campaigns.js'
+
+vi.mock('./chain.js', () => ({
+  getSdkConfig: () => ({
+    algorand: {
+      client: {
+        indexer: {
+          searchForApplicationBoxes: (...args: unknown[]) => searchForApplicationBoxesMock(...args),
+        },
+      },
+    },
+    factoryAppId: factoryAppIdMock(),
+    vaultAppId: 2002n,
+  }),
+}))
+
+const { factoryAppIdMock, searchForApplicationBoxesMock } = vi.hoisted(() => ({
+  factoryAppIdMock: vi.fn(() => 1001n),
+  searchForApplicationBoxesMock: vi.fn(),
+}))
+
+// Indexer `searchForApplicationBoxes` returns a limit/nextToken/do chain, mocked per app id:
+// 1001n => factory registration boxes, 2002n => vault per-campaign boxes.
+let factoryBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
+let vaultBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
+const factoryLimitMock = vi.fn(() => factoryChain)
+const factoryNextTokenMock = vi.fn(() => factoryChain)
+const factoryDoMock = vi.fn(() => Promise.resolve(factoryBoxesValue))
+const factoryChain = { limit: factoryLimitMock, nextToken: factoryNextTokenMock, do: factoryDoMock }
+const vaultLimitMock = vi.fn(() => vaultChain)
+const vaultNextTokenMock = vi.fn(() => vaultChain)
+const vaultDoMock = vi.fn(() => Promise.resolve(vaultBoxesValue))
+const vaultChain = { limit: vaultLimitMock, nextToken: vaultNextTokenMock, do: vaultDoMock }
+const emptyChain = {
+  limit: () => emptyChain,
+  nextToken: () => emptyChain,
+  do: () => Promise.resolve({ boxes: [], nextToken: undefined }),
+}
+searchForApplicationBoxesMock.mockImplementation((appId: bigint) => {
+  if (appId === 1001n) return factoryChain
+  if (appId === 2002n) return vaultChain
+  return emptyChain
+})
+
+function boxName(appId: bigint, prefix: number): Uint8Array {
+  const bytes = new Uint8Array(9)
+  bytes[0] = prefix
+  let remaining = appId
+  for (let i = 8; i >= 1; i--) {
+    bytes[i] = Number(remaining & 0xffn)
+    remaining >>= 8n
+  }
+  return bytes
+}
+
+const REGISTRATION_BOX_PREFIX = 0x72
+const VAULT_BOX_PREFIX = 0x63
 
 const ZERO_ADDRESS = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'
 
@@ -180,5 +236,98 @@ describe('toCampaignViewModel', () => {
     const vm = toCampaignViewModel(app, 1_000n)
     expect(vm.title).toBe('')
     expect(vm.metadataUri).toBe('')
+  })
+})
+
+describe('enumerateCampaigns', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    factoryAppIdMock.mockReturnValue(1001n)
+    factoryBoxesValue = { boxes: [], nextToken: undefined }
+    vaultBoxesValue = { boxes: [], nextToken: undefined }
+    searchForApplicationBoxesMock.mockImplementation((appId: bigint) => {
+      if (appId === 1001n) return factoryChain
+      if (appId === 2002n) return vaultChain
+      return emptyChain
+    })
+    factoryLimitMock.mockImplementation(() => factoryChain)
+    factoryNextTokenMock.mockImplementation(() => factoryChain)
+    factoryDoMock.mockImplementation(() => Promise.resolve(factoryBoxesValue))
+    vaultLimitMock.mockImplementation(() => vaultChain)
+    vaultNextTokenMock.mockImplementation(() => vaultChain)
+    vaultDoMock.mockImplementation(() => Promise.resolve(vaultBoxesValue))
+  })
+
+  it('lists factory-registered campaign ids', async () => {
+    factoryBoxesValue = {
+      boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }, { name: boxName(42n, REGISTRATION_BOX_PREFIX) }],
+      nextToken: undefined,
+    }
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([7n, 42n]))
+    expect(searchForApplicationBoxesMock).toHaveBeenCalledWith(1001n)
+    expect(searchForApplicationBoxesMock).toHaveBeenCalledWith(2002n)
+    expect(factoryLimitMock).toHaveBeenCalledWith(1000)
+  })
+
+  it('includes vault-boxed campaigns not registered with the factory', async () => {
+    factoryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
+    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([7n, 9n]))
+  })
+
+  it('dedupes campaigns present in both the factory and the vault', async () => {
+    factoryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
+    vaultBoxesValue = { boxes: [{ name: boxName(7n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([7n]))
+  })
+
+  it('returns an empty set when neither source lists campaigns', async () => {
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set())
+  })
+
+  it('skips malformed box names from either source', async () => {
+    factoryBoxesValue = {
+      boxes: [
+        { name: boxName(7n, REGISTRATION_BOX_PREFIX) },
+        { name: new Uint8Array([0x72, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
+        { name: new Uint8Array([0x00, 0, 0, 0, 0, 0, 0, 0, 7]) }, // 9 bytes: wrong prefix
+      ],
+      nextToken: undefined,
+    }
+    vaultBoxesValue = {
+      boxes: [
+        { name: boxName(9n, VAULT_BOX_PREFIX) },
+        { name: new Uint8Array([0x63, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
+      ],
+      nextToken: undefined,
+    }
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([7n, 9n]))
+  })
+
+  it('skips the factory when no factory is configured', async () => {
+    factoryAppIdMock.mockReturnValue(0n)
+    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([9n]))
+    expect(searchForApplicationBoxesMock).not.toHaveBeenCalledWith(1001n)
+    expect(searchForApplicationBoxesMock).toHaveBeenCalledWith(2002n)
+  })
+
+  it('paginates both box searches across multiple pages', async () => {
+    factoryDoMock
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: 't' })
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(42n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined })
+    vaultDoMock
+      .mockResolvedValueOnce({ boxes: [], nextToken: 'vt' })
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined })
+    const ids = await enumerateCampaigns()
+    expect(ids).toEqual(new Set([7n, 42n, 9n]))
+    expect(factoryNextTokenMock).toHaveBeenCalledWith('t')
+    expect(vaultNextTokenMock).toHaveBeenCalledWith('vt')
   })
 })
