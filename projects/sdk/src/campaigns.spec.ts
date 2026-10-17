@@ -1,6 +1,15 @@
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { decodeGlobalState, deriveStatus, enumerateCampaigns, isCampaignApp, toCampaignViewModel } from './campaigns.js'
+import type { CampaignHeader } from './campaigns.js'
+import {
+  decodeGlobalState,
+  deriveStatus,
+  enumerateCampaigns,
+  fetchCampaignHeader,
+  getCampaignStatus,
+  isCampaignApp,
+  toCampaignViewModel,
+} from './campaigns.js'
 
 vi.mock('./chain.js', () => ({
   getSdkConfig: () => ({
@@ -8,6 +17,8 @@ vi.mock('./chain.js', () => ({
       client: {
         indexer: {
           searchForApplicationBoxes: (...args: unknown[]) => searchForApplicationBoxesMock(...args),
+          lookupApplications: (...args: unknown[]) => lookupApplicationsMock(...args),
+          lookupBlock: (...args: unknown[]) => lookupBlockMock(...args),
         },
       },
     },
@@ -16,9 +27,19 @@ vi.mock('./chain.js', () => ({
   }),
 }))
 
-const { factoryAppIdMock, searchForApplicationBoxesMock } = vi.hoisted(() => ({
+const { factoryAppIdMock, searchForApplicationBoxesMock, lookupApplicationsMock, lookupBlockMock } = vi.hoisted(() => ({
   factoryAppIdMock: vi.fn(() => 1001n),
   searchForApplicationBoxesMock: vi.fn(),
+  lookupApplicationsMock: vi.fn(),
+  lookupBlockMock: vi.fn(),
+}))
+
+vi.mock('./transactions.js', () => ({
+  fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
+}))
+
+const { fetchVaultBoxMock } = vi.hoisted(() => ({
+  fetchVaultBoxMock: vi.fn(),
 }))
 
 // Indexer `searchForApplicationBoxes` returns a limit/nextToken/do chain, mocked per app id:
@@ -192,6 +213,41 @@ describe('deriveStatus', () => {
   })
 })
 
+describe('getCampaignStatus', () => {
+  const header = (overrides: Partial<CampaignHeader> = {}): CampaignHeader => ({
+    id: 42n,
+    creator: 'SENDER',
+    title: 'T',
+    metadataUri: 'M',
+    goalMicroAlgos: 10n,
+    deadlineSeconds: 1_000n,
+    raisedMicroAlgos: 0n,
+    status: 'open',
+    deleted: false,
+    ...overrides,
+  })
+
+  it('returns open before the deadline', () => {
+    expect(getCampaignStatus(header(), 500n)).toBe('open')
+  })
+
+  it('returns failed when past deadline and goal not met', () => {
+    expect(getCampaignStatus(header({ deadlineSeconds: 500n, raisedMicroAlgos: 5n }), 1_000n)).toBe('failed')
+  })
+
+  it('returns successful when past deadline and goal met', () => {
+    expect(getCampaignStatus(header({ deadlineSeconds: 500n, raisedMicroAlgos: 10n }), 1_000n)).toBe('successful')
+  })
+
+  it('returns successful when claimed before the deadline', () => {
+    expect(getCampaignStatus(header({ status: 'claimed' }), 500n)).toBe('successful')
+  })
+
+  it('returns successful when claimed after the deadline', () => {
+    expect(getCampaignStatus(header({ status: 'claimed', deadlineSeconds: 500n }), 1_000n)).toBe('successful')
+  })
+})
+
 describe('toCampaignViewModel', () => {
   it('maps an Application to a view model', () => {
     const vm = toCampaignViewModel(campaignApp({ raised: 10_000_000n }), 3_000n, 250_000n)
@@ -256,6 +312,13 @@ describe('enumerateCampaigns', () => {
     vaultLimitMock.mockImplementation(() => vaultChain)
     vaultNextTokenMock.mockImplementation(() => vaultChain)
     vaultDoMock.mockImplementation(() => Promise.resolve(vaultBoxesValue))
+    lookupApplicationsMock.mockImplementation(() => lookupApplicationChain)
+    lookupBlockMock.mockImplementation(() => lookupBlockChain)
+    fetchVaultBoxMock.mockResolvedValue(undefined)
+    const lookupApplicationsDoMock = vi.fn(() => Promise.resolve({ application: undefined }))
+    const lookupBlockDoMock = vi.fn(() => Promise.resolve({ transactions: [] }))
+    const lookupApplicationChain = { includeAll: () => lookupApplicationChain, do: lookupApplicationsDoMock }
+    const lookupBlockChain = { do: lookupBlockDoMock }
   })
 
   it('lists factory-registered campaign ids', async () => {
@@ -329,5 +392,310 @@ describe('enumerateCampaigns', () => {
     expect(ids).toEqual(new Set([7n, 42n, 9n]))
     expect(factoryNextTokenMock).toHaveBeenCalledWith('t')
     expect(vaultNextTokenMock).toHaveBeenCalledWith('vt')
+  })
+})
+
+describe('fetchCampaignHeader', () => {
+  let lookupApplicationsDoMock: ReturnType<typeof vi.fn>
+  let lookupBlockDoMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    lookupApplicationsDoMock = vi.fn()
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: false,
+        params: {
+          creator: 'SENDER',
+          approvalProgram: new Uint8Array(),
+          clearStateProgram: new Uint8Array(),
+          globalState: [
+            kv('title', tealBytes(new TextEncoder().encode('My first novel'))),
+            kv('metadataUri', tealBytes(new TextEncoder().encode('ipfs://QmExample'))),
+            kv('goal', tealUint(10_000_000n)),
+            kv('deadline', tealUint(2_000n)),
+            kv('raised', tealUint(5_000_000n)),
+            kv('status', tealUint(0n)),
+          ],
+        },
+      },
+    })
+    lookupBlockDoMock = vi.fn()
+    lookupBlockDoMock.mockResolvedValue({ transactions: [] })
+    fetchVaultBoxMock.mockResolvedValue(undefined)
+    const lookupApplicationChain = { includeAll: () => lookupApplicationChain, do: lookupApplicationsDoMock }
+    const lookupBlockChain = { do: lookupBlockDoMock }
+    lookupApplicationsMock.mockImplementation(() => lookupApplicationChain)
+    lookupBlockMock.mockImplementation(() => lookupBlockChain)
+  })
+
+  it('reads a live campaign from global state', async () => {
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: 'My first novel',
+      metadataUri: 'ipfs://QmExample',
+      goalMicroAlgos: 10_000_000n,
+      deadlineSeconds: 2_000n,
+      raisedMicroAlgos: 5_000_000n,
+      status: 'open',
+      deleted: false,
+    })
+    expect(lookupApplicationsMock).toHaveBeenCalledWith(42n)
+  })
+
+  it('live campaign with missing global-state keys falls back to zero/empty', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: false,
+        params: { creator: 'SENDER', approvalProgram: new Uint8Array(), clearStateProgram: new Uint8Array() },
+      },
+    })
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: '',
+      metadataUri: '',
+      goalMicroAlgos: 0n,
+      deadlineSeconds: 0n,
+      raisedMicroAlgos: 0n,
+      status: 'open',
+      deleted: false,
+    })
+  })
+
+  it('live campaign with failed status maps to failed', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: false,
+        params: {
+          creator: 'SENDER',
+          approvalProgram: new Uint8Array(),
+          clearStateProgram: new Uint8Array(),
+          globalState: [kv('status', tealUint(1n))],
+        },
+      },
+    })
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual(expect.objectContaining({ status: 'failed' }))
+  })
+
+  it('live campaign with claimed status maps to claimed', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: false,
+        params: {
+          creator: 'SENDER',
+          approvalProgram: new Uint8Array(),
+          clearStateProgram: new Uint8Array(),
+          globalState: [kv('status', tealUint(2n))],
+        },
+      },
+    })
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual(expect.objectContaining({ status: 'claimed' }))
+  })
+
+  it('decodes a deleted campaign from its creation transaction and vault box', async () => {
+    const vaultBox = { paidIn: 7_000_000n, paidOut: 1_000_000n, status: 3, settledAt: 1_500n }
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: true,
+        createdAtRound: 100n,
+        params: {
+          creator: 'SENDER',
+          approvalProgram: new Uint8Array(),
+          clearStateProgram: new Uint8Array(),
+          globalState: [],
+        },
+      },
+    })
+    lookupBlockDoMock.mockResolvedValue({
+      transactions: [
+        {
+          id: 'tx-create',
+          sender: 'SENDER',
+          createdApplicationIndex: 42n,
+          applicationTransaction: {
+            applicationId: 0n,
+            applicationArgs: [
+              new Uint8Array([0, 32, ...new Uint8Array(32).fill(1)]),
+              new Uint8Array([0, 16, ...new TextEncoder().encode('Deleted campaign')]),
+              new Uint8Array([0, 8, ...new TextEncoder().encode('ipfs://x')]),
+              new Uint8Array([0, 0, 0, 0, 0, 0x98, 0x96, 0x80]),
+              new Uint8Array([0, 0, 0, 0, 0, 0, 0x07, 0xd0]),
+            ],
+          },
+        },
+      ],
+    })
+    fetchVaultBoxMock.mockResolvedValue(vaultBox)
+
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: 'Deleted campaign',
+      metadataUri: 'ipfs://x',
+      goalMicroAlgos: 10_000_000n,
+      deadlineSeconds: 2_000n,
+      raisedMicroAlgos: 6_000_000n,
+      status: 'claimed',
+      deleted: true,
+    })
+    expect(lookupBlockMock).toHaveBeenCalledWith(100n)
+    expect(fetchVaultBoxMock).toHaveBeenCalledWith(42n)
+  })
+
+  it('returns a deleted campaign with no vault box as open with zero raised', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: true,
+        createdAtRound: 100n,
+        params: {
+          creator: 'SENDER',
+          approvalProgram: new Uint8Array(),
+          clearStateProgram: new Uint8Array(),
+          globalState: [],
+        },
+      },
+    })
+    lookupBlockDoMock.mockResolvedValue({
+      transactions: [
+        {
+          id: 'tx-create',
+          sender: 'SENDER',
+          createdApplicationIndex: 42n,
+          applicationTransaction: {
+            applicationId: 0n,
+            applicationArgs: [
+              new Uint8Array([0, 32, ...new Uint8Array(32)]),
+              new Uint8Array([0, 16, ...new TextEncoder().encode('Deleted campaign')]),
+              new Uint8Array([0, 8, ...new TextEncoder().encode('ipfs://x')]),
+              new Uint8Array([0, 0, 0, 0, 0, 0x98, 0x96, 0x80]),
+              new Uint8Array([0, 0, 0, 0, 0, 0, 0x07, 0xd0]),
+            ],
+          },
+        },
+      ],
+    })
+    fetchVaultBoxMock.mockResolvedValue(undefined)
+
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: 'Deleted campaign',
+      metadataUri: 'ipfs://x',
+      goalMicroAlgos: 10_000_000n,
+      deadlineSeconds: 2_000n,
+      raisedMicroAlgos: 0n,
+      status: 'open',
+      deleted: true,
+    })
+  })
+
+  it('returns undefined for an unknown app id', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({ application: undefined })
+    const header = await fetchCampaignHeader(999n)
+    expect(header).toBeUndefined()
+  })
+
+  it('deleted campaign without a creation round falls back to indexer creator and open status', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: true,
+        params: { approvalProgram: new Uint8Array(), clearStateProgram: new Uint8Array() },
+      },
+    })
+    lookupBlockDoMock.mockResolvedValue({ transactions: [] })
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 3_000_000n, paidOut: 0n, status: 1, settledAt: 0n })
+
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: '',
+      title: '',
+      metadataUri: '',
+      goalMicroAlgos: 0n,
+      deadlineSeconds: 0n,
+      raisedMicroAlgos: 3_000_000n,
+      status: 'open',
+      deleted: true,
+    })
+    expect(lookupBlockMock).not.toHaveBeenCalled()
+    expect(fetchVaultBoxMock).toHaveBeenCalledWith(42n)
+  })
+
+  it('deleted campaign whose creation tx is missing from the block stays open with zero raised', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: true,
+        createdAtRound: 100n,
+        params: { creator: 'SENDER', approvalProgram: new Uint8Array(), clearStateProgram: new Uint8Array() },
+      },
+    })
+    lookupBlockDoMock.mockResolvedValue({})
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 5_000_000n, paidOut: 1_000_000n, status: 2, settledAt: 0n })
+
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: '',
+      metadataUri: '',
+      goalMicroAlgos: 0n,
+      deadlineSeconds: 0n,
+      raisedMicroAlgos: 4_000_000n,
+      status: 'failed',
+      deleted: true,
+    })
+    expect(lookupBlockMock).toHaveBeenCalledWith(100n)
+  })
+
+  it('deleted campaign whose creation tx has no args stays open with zero raised', async () => {
+    lookupApplicationsDoMock.mockResolvedValue({
+      application: {
+        id: 42n,
+        deleted: true,
+        createdAtRound: 100n,
+        params: { creator: 'SENDER', approvalProgram: new Uint8Array(), clearStateProgram: new Uint8Array() },
+      },
+    })
+    lookupBlockDoMock.mockResolvedValue({
+      transactions: [
+        {
+          id: 'tx-create',
+          sender: 'SENDER',
+          createdApplicationIndex: 42n,
+          applicationTransaction: { applicationId: 0n, applicationArgs: [] },
+        },
+      ],
+    })
+    fetchVaultBoxMock.mockResolvedValue(undefined)
+
+    const header = await fetchCampaignHeader(42n)
+    expect(header).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: '',
+      metadataUri: '',
+      goalMicroAlgos: 0n,
+      deadlineSeconds: 0n,
+      raisedMicroAlgos: 0n,
+      status: 'open',
+      deleted: true,
+    })
+    expect(lookupBlockMock).toHaveBeenCalledWith(100n)
+    expect(fetchVaultBoxMock).toHaveBeenCalledWith(42n)
   })
 })

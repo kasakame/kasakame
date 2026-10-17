@@ -1,7 +1,8 @@
 import type algosdk from 'algosdk'
 import { encodeAddress } from 'algosdk'
 import { fetchChainTimestamp, getSdkConfig } from './chain.js'
-import { fetchMyLeaves } from './claim-tree.js'
+import { fetchMyLeaves, u64beDecode } from './claim-tree.js'
+import { fetchVaultBox } from './transactions.js'
 
 /**
  * Campaign read model: maps indexer responses into a `CampaignViewModel` a UI can render. The contract is the source
@@ -41,6 +42,28 @@ export interface CampaignViewModel {
   myPledgeMicroAlgos?: bigint | undefined
   /** True when the application was deleted on-chain (global state is gone; only history remains). */
   deleted?: boolean
+}
+
+/** A campaign's immutable creation metadata plus its live total and raw status. */
+export interface CampaignHeader {
+  /** Application id - the campaign's unique identifier. */
+  id: bigint
+  /** Campaign creator address. */
+  creator: string
+  /** Short campaign title, stored on-chain. */
+  title: string
+  /** URI pointing to the off-chain campaign metadata (description, image, category). */
+  metadataUri: string
+  /** Funding target, in microAlgos. */
+  goalMicroAlgos: bigint
+  /** Deadline as a UNIX timestamp (seconds). */
+  deadlineSeconds: bigint
+  /** Live pledge total; from globals for live campaigns, vault `paidIn - paidOut` once deleted. */
+  raisedMicroAlgos: bigint
+  /** Raw on-chain status byte (open/failed/claimed), kept for completeness. */
+  status: 'open' | 'failed' | 'claimed'
+  /** True when the application was deleted on-chain (global state is gone; fields recovered from history). */
+  deleted: boolean
 }
 
 const STATUS_UINT_TO_LABEL = {
@@ -96,6 +119,23 @@ export function deriveStatus(
     return raised >= goal ? 'funded' : 'failed'
   }
   return STATUS_UINT_TO_LABEL[0]
+}
+
+/**
+ * Derive the three-value display word from a campaign header: `successful` when claimed or goal-reached,
+ * `failed` when past the deadline and unfunded, `open` otherwise. Raw `status`/`deleted` stay on the header
+ * for consumers that need them (creator claim reminders, audit views).
+ *
+ * @param header Campaign header from `fetchCampaignHeader`.
+ * @param nowSeconds Current UNIX timestamp (seconds).
+ * @returns The derived display status.
+ */
+export function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): 'open' | 'successful' | 'failed' {
+  if (header.status === 'claimed') return 'successful'
+  if (header.deadlineSeconds <= nowSeconds) {
+    return header.raisedMicroAlgos >= header.goalMicroAlgos ? 'successful' : 'failed'
+  }
+  return 'open'
 }
 
 /** The global-state key names this contract materialises. */
@@ -393,4 +433,124 @@ export async function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddre
     myPledge = await fetchMyPledge(app.id, viewerAddress)
   }
   return toCampaignViewModel(app, nowSeconds, myPledge)
+}
+
+/**
+ * Read a big-endian uint16 at offset.
+ *
+ * @param bytes The bytes to read from.
+ * @param offset Offset of the uint16.
+ * @returns The decoded value.
+ */
+function readU16BE(bytes: Uint8Array, offset: number): number {
+  /* v8 ignore next - offset is always 0 with 2+ byte args in practice; the fallback satisfies noUncheckedIndexedAccess */
+  return ((bytes[offset] ?? 0) << 8) | (bytes[offset + 1] ?? 0)
+}
+
+/**
+ * Decode the ARC-56 tuple arguments of the Campaign `create` method call, selector already stripped:
+ * `vault: Application, title: bytes, metadataUri: bytes, goal: uint64, deadline: uint64`.
+ *
+ * `Application` is encoded as an address (a 2-byte length prefix plus 32 bytes); `bytes` arguments carry a
+ * 2-byte length prefix; `uint64` arguments are 8 raw big-endian bytes.
+ *
+ * @param args Application call args with the 4-byte method selector already removed.
+ * @returns The decoded title, metadata URI, goal and deadline.
+ */
+function decodeCreateArgs(args: Uint8Array[]): {
+  title: string
+  metadataUri: string
+  goal: bigint
+  deadline: bigint
+} {
+  // args[0] = vault (Application → address); not needed in the header.
+  const titleArg = args[1]
+  const metadataUriArg = args[2]
+  const goalArg = args[3]
+  const deadlineArg = args[4]
+  /* v8 ignore next - args.length >= 5 is guaranteed by the caller, so the fallback is unreachable */
+  if (titleArg === undefined || metadataUriArg === undefined || goalArg === undefined || deadlineArg === undefined) {
+    return { title: '', metadataUri: '', goal: 0n, deadline: 0n }
+  }
+  const titleLen = readU16BE(titleArg, 0)
+  const uriLen = readU16BE(metadataUriArg, 0)
+  return {
+    title: utf8.decode(titleArg.slice(2, 2 + titleLen)),
+    metadataUri: utf8.decode(metadataUriArg.slice(2, 2 + uriLen)),
+    goal: u64beDecode(goalArg),
+    deadline: u64beDecode(deadlineArg),
+  }
+}
+
+/**
+ * Fetch a campaign's header: the immutable creation metadata plus its live total and raw status.
+ *
+ * For live campaigns the fields come from global state. For deleted campaigns global state is gone, so the
+ * creation transaction is decoded from the block at the app's creation round (selector stripped, tuple per the
+ * ARC-56 spec) and the live total is recovered from the vault box (`paidIn - paidOut`, or zero when the box has
+ * already been released). The raw status for deleted campaigns is best-effort: read from the vault box when it
+ * still exists, otherwise `open`.
+ *
+ * @param appId Campaign application id.
+ * @returns The campaign header, or undefined when the application is not indexed.
+ */
+export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined> {
+  const indexer = getSdkConfig().algorand.client.indexer
+  const response = await indexer.lookupApplications(appId).includeAll(true).do()
+  const application = response.application
+  if (!application) return undefined
+
+  const deleted = application.deleted === true
+  const rawCreator = application.params.creator
+  /* v8 ignore next - the indexer always returns a creator string; the Address-object branch is defensive */
+  const creator = rawCreator === undefined ? '' : typeof rawCreator === 'string' ? rawCreator : rawCreator.toString()
+
+  let title = ''
+  let metadataUri = ''
+  let goalMicroAlgos = 0n
+  let deadlineSeconds = 0n
+  let raisedMicroAlgos = 0n
+  let status: CampaignHeader['status'] = 'open'
+
+  if (!deleted) {
+    const state = decodeGlobalState(application)
+    title = state.title ?? ''
+    metadataUri = state.metadataUri ?? ''
+    goalMicroAlgos = state.goal ?? 0n
+    deadlineSeconds = state.deadline ?? 0n
+    raisedMicroAlgos = state.raised ?? 0n
+    status = state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open'
+  } else {
+    const createdAtRound = application.createdAtRound
+    if (createdAtRound !== undefined) {
+      const block = await indexer.lookupBlock(createdAtRound).do()
+      const transactions = block.transactions ?? []
+      const creation = transactions.find((tx) => tx.createdApplicationIndex !== undefined && tx.createdApplicationIndex === appId)
+      const args = creation?.applicationTransaction?.applicationArgs
+      if (args !== undefined && args.length >= 5) {
+        const decoded = decodeCreateArgs(args)
+        title = decoded.title
+        metadataUri = decoded.metadataUri
+        goalMicroAlgos = decoded.goal
+        deadlineSeconds = decoded.deadline
+      }
+    }
+    const box = await fetchVaultBox(appId)
+    if (box !== undefined) {
+      raisedMicroAlgos = box.paidIn - box.paidOut
+      status = box.status === 1 ? 'open' : box.status === 2 ? 'failed' : 'claimed'
+    }
+  }
+
+  return {
+    id: appId,
+    creator,
+    title,
+    metadataUri,
+    goalMicroAlgos,
+    deadlineSeconds,
+    raisedMicroAlgos,
+    status,
+    deleted,
+  }
 }
