@@ -15,8 +15,12 @@ export default defineConfig({
     // vite-plugin-node-polyfills injects this Buffer shim into every module
     // that uses the global - including the SDK's dist/, which sits outside
     // this package and cannot resolve the plugin's node_modules from there.
+    // Point at the ESM build: `require.resolve` would pick the CJS file,
+    // which collides with the plugin's own `optimizeDeps.exclude` entry
+    // (absolute .cjs path) and fails dep optimization ("entry cannot be
+    // external") when Vite discovers the injected import at serve time.
     alias: {
-      'vite-plugin-node-polyfills/shims/buffer': require.resolve('vite-plugin-node-polyfills/shims/buffer'),
+      'vite-plugin-node-polyfills/shims/buffer': require.resolve('vite-plugin-node-polyfills/shims/buffer').replace(/\.cjs$/, '.js'),
     },
   },
   server: {
