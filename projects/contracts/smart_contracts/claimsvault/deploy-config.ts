@@ -57,7 +57,7 @@ export async function deploy() {
 
   console.log(
     `Deployed ClaimsVault app ${appClient.appId.toString()} at ${appClient.appAddress.toString()}. ` +
-      `Set VITE_VAULT_APP_ID=${appClient.appId.toString()} in projects/frontend/.env.`,
+      `Set VITE_VAULT_APP_ID=${appClient.appId.toString()} in the frontend's .env.localnet (or .env.testnet for TestNet).`,
   )
   return appClient.appId
 }

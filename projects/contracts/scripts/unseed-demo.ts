@@ -8,9 +8,9 @@ import path from 'node:path'
  * by `unregister()`, which drops the campaign from the browse list either way. Reads `.seed-state.json` and clears
  * entries that fully unregister; anything left is reported for a later retry (e.g. after its deadline passes).
  *
- * Same environment rules as the seed script: LocalNet by default, `DOTENV_CONFIG_PATH=.env.testnet` elsewhere.
+ * Same environment rules as the seed script: `npm run unseed:localnet` loads `.env.localnet`, `npm run unseed:testnet` loads `.env.testnet`.
  *
- * Usage: `FACTORY_APP_ID=<id> VAULT_APP_ID=<id> npm run unseed`
+ * Usage: `npm run unseed:localnet` (the Factory and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
  */
 
 const STATE_PATH = path.resolve(__dirname, '.seed-state.json')

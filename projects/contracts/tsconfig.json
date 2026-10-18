@@ -27,11 +27,5 @@
     "types": ["node"]
   },
   "include": ["smart_contracts/**/*.ts"],
-  "exclude": ["node_modules", "dist", "coverage", "smart_contracts/artifacts"],
-  "ts-node": {
-    "compilerOptions": {
-      "module": "CommonJS",
-      "moduleResolution": "node"
-    }
-  }
+  "exclude": ["node_modules", "dist", "coverage", "smart_contracts/artifacts"]
 }

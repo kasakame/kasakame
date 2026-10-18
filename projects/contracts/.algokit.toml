@@ -15,14 +15,18 @@ name = 'contracts'
 artifacts = 'smart_contracts/artifacts'
 
 [project.deploy]
-command = "npm run deploy:ci"
+# Every supported network maps to an explicit, mode-named script; the general
+# command doubles as the `localnet` mapping.
+command = "npm run deploy:localnet"
 
 [project.deploy.testnet]
+command = "npm run deploy:testnet"
 environment_secrets = [
   "DEPLOYER_MNEMONIC",
 ]
 
 [project.deploy.mainnet]
+command = "npm run deploy:mainnet"
 environment_secrets = [
   "DEPLOYER_MNEMONIC",
 ]

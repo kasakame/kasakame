@@ -52,7 +52,7 @@ export async function deploy() {
 
   console.log(
     `Deployed Factory app ${appClient.appId.toString()} at ${appClient.appAddress.toString()}. ` +
-      `Set VITE_FACTORY_APP_ID=${appClient.appId.toString()} in projects/frontend/.env.`,
+      `Set VITE_FACTORY_APP_ID=${appClient.appId.toString()} in the frontend's .env.localnet (or .env.testnet for TestNet).`,
   )
   return appClient.appId
 }

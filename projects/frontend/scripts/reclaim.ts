@@ -23,13 +23,11 @@ import { appIdFromEnv } from '../src/utils/network/getAlgoClientConfigs'
  *
  * Usage (from projects/frontend):
  *   npm run reclaim -- [appId...]
- * TestNet mnemonics live in ../../contracts/.env.testnet - export them first:
+ * The npm script loads the TestNet frontend config from `.env.testnet`. Backer/creator mnemonics
+ * live in ../../contracts/.env.testnet - export them first:
  *   set -a; source ../contracts/.env.testnet; set +a
  * With no app ids, falls back to the seed state file (`npm run seed` output).
  */
-
-// Frontend config (VITE_*) lives in .env next to package.json - load it (tsx leaves import.meta.env empty).
-process.loadEnvFile()
 
 const SEED_STATE_PATH = path.resolve(process.cwd(), '../contracts/scripts/.seed-state.json')
 

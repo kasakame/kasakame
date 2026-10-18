@@ -5,7 +5,7 @@ import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
  *
  * LocalNet only - never run against TestNet/MainNet.
  *
- * Usage: `ADDRESS=<addr> [ALGO=<amount>] npx ts-node --transpile-only scripts/fund-account.ts`
+ * Usage: `ADDRESS=<addr> [ALGO=<amount>] npx tsx scripts/fund-account.ts`
  */
 void (async () => {
   const address = process.env.ADDRESS

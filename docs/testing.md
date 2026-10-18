@@ -83,7 +83,7 @@ class as it does not extend Contract or BaseContract".
   offset. `advanceTime(n)` sets the offset, produces any transaction (a self-payment
   "time bump"), then resets the offset in a `finally`.
 - Two hand-testing scripts live in `projects/contracts/scripts/` (LocalNet only,
-  run with `npx ts-node --transpile-only scripts/<name>.ts`):
+  run with `npx tsx scripts/<name>.ts`):
   `fund-account.ts` (`ADDRESS=… [ALGO=…]`, dispenser-funds any empty wallet) and
   `advance-time.ts` (`SECONDS=…`, moves the chain clock past deadlines; the
   offset persists until changed, so new campaigns use it as their baseline).
@@ -299,14 +299,14 @@ so the app signs transactions without a real wallet. This reuses the existing
 (`projects/sdk/src/transactions.ts`). The
 remaining questions to settle before implementing:
 
-- Whether to run against the `npm run dev` Vite server or a `vite build` preview
+- Whether to run against the `npm run dev:localnet` Vite server or a `vite build` preview
   (preview is closer to prod, dev is faster to iterate).
 - Playwright vs. Vitest browser mode (Playwright is the natural fit for
   click-driven flows; Vitest browser mode keeps it in the existing runner).
-- How to seed campaigns idempotently before each run (`npm run seed` / `npm run unseed` in
-  `projects/contracts`, state-tracked via `scripts/.seed-state.json`; LocalNet by default,
-  `DOTENV_CONFIG_PATH=.env.testnet` for TestNet) and reclaim afterwards (`npm run reclaim` in
-  `projects/frontend`: refunds/cancels known leaves, deletes, unregisters; unknown leaves reported).
+- How to seed campaigns idempotently before each run (`npm run seed:localnet` / `npm run unseed:localnet`
+  in `projects/contracts`, state-tracked via `scripts/.seed-state.json`; the `:testnet` variants read
+  `.env.testnet` instead) and reclaim afterwards (`npm run reclaim` in `projects/frontend`, which reads
+  its `.env.testnet`: refunds/cancels known leaves, deletes, unregisters; unknown leaves reported).
 
 ### Where it lives
 

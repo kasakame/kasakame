@@ -35,14 +35,14 @@ algokit project bootstrap all  # install deps for contracts, frontend, sdk, back
 algokit localnet start         # start algod + indexer in Docker
 
 cd projects/contracts
-npm run build                  # compile contracts + generate typed clients
-npm run deploy:ci -- factory   # deploy the Factory (prints the app id)
-FACTORY_APP_ID=<factory id> npm run deploy:ci -- claimsvault
-FACTORY_APP_ID=<factory id> VAULT_APP_ID=<vault id> npm run seed  # demo data
+npm run build          # compile contracts + generate typed clients
+npm run deploy:localnet -- factory      # deploy the Factory - save the printed app id in .env.localnet
+npm run deploy:localnet -- claimsvault  # deploy the ClaimsVault - save its app id too
+npm run seed:localnet                   # demo data
 
 cd ../frontend
-# set VITE_FACTORY_APP_ID=<factory id> and VITE_VAULT_APP_ID=<vault id> in .env
-npm run dev                    # frontend on http://localhost:5173
+# put the same two app ids in .env.localnet (see .env.template)
+npm run dev:localnet   # frontend on http://localhost:5173
 ```
 
 The backend is an optional user service (wallet-signature auth plus profiles/settings storage; pinning and catalog are planned) and runs as a separate service:

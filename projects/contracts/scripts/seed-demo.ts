@@ -12,9 +12,9 @@ import path from 'node:path'
  * runs the setup chain (create → register), and pledges to a couple of them from a backer wallet so the list shows partial progress.
  * Pledge frontiers come from the claim-tree reference oracle (`../oracle.py`), one state file per campaign.
  *
- * Runs against LocalNet by default (`AlgorandClient.defaultLocalNet()`, auto-created KMD wallets). Set `ALGOD_SERVER` (e.g. via
- * `DOTENV_CONFIG_PATH=.env.testnet`) to target another network: accounts then come from `<NAME>_MNEMONIC` env vars (`BACKER_A`,
- * `ALICE`, `BOB`, `CAROL`, `DAVE`) and must be pre-funded. TestNet amounts are smaller (faucet-friendly).
+ * `npm run seed:localnet` targets LocalNet (`AlgorandClient.defaultLocalNet()`, auto-created KMD wallets) and loads
+ * `.env.localnet`; `npm run seed:testnet` loads `.env.testnet`, where accounts come from `<NAME>_MNEMONIC` env vars
+ * (`BACKER_A`, `ALICE`, `BOB`, `CAROL`, `DAVE`) and must be pre-funded. TestNet amounts are smaller (faucet-friendly).
  *
  * Created campaigns are recorded in `.seed-state.json` (gitignored) for `unseed-demo.ts`.
  *
@@ -22,7 +22,7 @@ import path from 'node:path'
  * comma-separated) with `SEED_METADATA_URIS`, e.g. real pins from `demo-metadata/cids.json`:
  * `SEED_METADATA_URIS=ipfs://bafkreiAAA,ipfs://bafkreiBBB npm run seed`.
  *
- * Usage: `FACTORY_APP_ID=<id> VAULT_APP_ID=<id> npm run seed`
+ * Usage: `npm run seed:localnet` (the Factory and vault ids come from `.env.localnet`; `npm run seed:testnet` reads `.env.testnet`)
  */
 
 const SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/campaign/Campaign.arc56.json')

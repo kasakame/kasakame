@@ -6,8 +6,8 @@ import { mnemonicToSeedSync } from 'bip39'
 
 type XhdWalletModule = typeof XhdWalletApi
 
-// ts-node transpiles dynamic imports in the CommonJS deploy scripts into `require`, which cannot load this ESM-only
-// package; a native dynamic import created outside TypeScript's downleveling can.
+// CommonJS transpilation of dynamic imports can turn them into `require`, which cannot load this ESM-only
+// package; a native dynamic import created outside the downleveling can.
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const nativeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<XhdWalletModule>
 

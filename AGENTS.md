@@ -52,7 +52,7 @@ npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 
 cd ../frontend
-npm run dev                      # builds the SDK, regenerates app clients, then Vite
+npm run dev:localnet             # builds the SDK, regenerates app clients, then Vite
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (+ react/react-hooks plugins)
 npm run format                   # Prettier check
@@ -99,6 +99,12 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   are build outputs - never edit or commit them. Rebuild instead (`npm run build` in
   `projects/contracts`; `npm run codegen` in `projects/sdk` refreshes the SDK copies).
 - **Never commit secrets.** `.env` files are gitignored; mnemonics/API keys never go in code.
+- **Env files are per network, never a shared `.env`.** Commands name their network
+  explicitly (`.env.localnet` / `.env.testnet`; e.g. `npm run dev:testnet`,
+  `npm run seed:testnet`; `algokit project deploy <network>` maps to the matching command in
+  `.algokit.toml`). The committed `.env.template` documents the shape - keep network-specific
+  values out of any base file, since both Vite and AlgoKit layer `.env` underneath
+  `.env.<mode>`. MainNet is not wired up yet; the convention extends to `.env.mainnet` when it is.
 - **Lint, format, and compiler rules** (ESLint, Prettier, and `tsconfig.json` options)
   are documented in [`docs/conventions.md`](docs/conventions.md).
 - **Algorand TypeScript gotchas** (contracts use `@algorandfoundation/algorand-typescript`):

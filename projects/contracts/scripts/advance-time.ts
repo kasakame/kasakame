@@ -6,7 +6,7 @@ import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
  * LocalNet only - never run against TestNet/MainNet. Used to expire campaign
  * deadlines (or refund windows) while testing the UI by hand.
  *
- * Usage: `SECONDS=<offset> npx ts-node --transpile-only scripts/advance-time.ts`
+ * Usage: `SECONDS=<offset> npx tsx scripts/advance-time.ts`
  *
  * `SECONDS` replaces the current offset (it does not add to it); `SECONDS=0`
  * resets the clock to real time. The offset persists on the sandbox until
