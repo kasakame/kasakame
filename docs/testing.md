@@ -82,8 +82,8 @@ class as it does not extend Contract or BaseContract".
 - LocalNet algod runs in **dev mode**: block timestamp = previous tip timestamp +
   offset. `advanceTime(n)` sets the offset, produces any transaction (a self-payment
   "time bump"), then resets the offset in a `finally`.
-- Two hand-testing scripts live in `projects/contracts/scripts/` (LocalNet only,
-  run with `npx tsx scripts/<name>.ts`):
+- Two hand-testing scripts live in `projects/contracts/scripts/localnet/` (LocalNet only,
+  run with `npx tsx scripts/localnet/<name>.ts`):
   `fund-account.ts` (`ADDRESS=… [ALGO=…]`, dispenser-funds any empty wallet) and
   `advance-time.ts` (`SECONDS=…`, moves the chain clock past deadlines; the
   offset persists until changed, so new campaigns use it as their baseline).
