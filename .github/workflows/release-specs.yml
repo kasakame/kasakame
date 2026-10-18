@@ -1,0 +1,102 @@
+name: release-specs
+
+# Manual release of the contract interface: builds the contracts from the
+# dispatched commit and attaches the compiled artifacts to a GitHub Release
+# tagged `specs-v<version>`. The SDK pins that tag and regenerates its clients
+# from the attached ARC-56 specs (docs/sdk.md); generated clients are not
+# attached and nothing generated is committed.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Specs version, without the specs-v prefix (e.g. 0.1.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as prerelease (interface can still break on TestNet)'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-specs
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release contract specs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/contracts/package-lock.json
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install AlgoKit CLI
+        run: |
+          if ! command -v algokit >/dev/null 2>&1; then
+            pipx install algokit==2.10.2
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        shell: bash
+
+      # Fail before building if the version is malformed or the tag is taken.
+      - name: Validate the version and check the tag is free
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must be plain X.Y.Z (got: $VERSION)" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/specs-v$VERSION" >/dev/null 2>&1; then
+            echo "tag specs-v$VERSION already exists" >&2
+            exit 1
+          fi
+
+      - name: Install contract dependencies
+        run: npm ci
+        working-directory: projects/contracts
+
+      - name: Compile contracts (TEAL + specs + clients)
+        run: npm run build
+        working-directory: projects/contracts
+
+      # Main's CI already gates merges; this is the release-time sanity run.
+      - name: Run the offline contract tests
+        run: npm run test
+        working-directory: projects/contracts
+
+      # Attach specs + TEAL + source maps only; the generated `*Client.ts`
+      # stays out (regenerable from the specs).
+      - name: Create the specs release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          mapfile -t assets < <(find projects/contracts/smart_contracts/artifacts -type f \
+            \( -name '*.arc56.json' -o -name '*.arc32.json' -o -name '*.teal' -o -name '*.puya.map' \) | sort)
+          prerelease_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(--prerelease)
+          fi
+          notes="Compiled contract interface (ARC-56/ARC-32 specs, approval/clear TEAL, Puya source maps) built from $GITHUB_SHA. Generated clients are intentionally not attached - regenerate them from the ARC-56 specs with \`algokit generate client\`, or consume the SDK, which ships its own. Download with \`gh release download specs-v$VERSION\`."
+          gh release create "specs-v$VERSION" "${assets[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "Contract specs v$VERSION" \
+            --notes "$notes" \
+            "${prerelease_flag[@]}"

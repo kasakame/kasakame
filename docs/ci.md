@@ -1,9 +1,10 @@
 # CI
 
 This page describes the GitHub Actions setup: a consolidated
-[`build-and-test`](.github/workflows/build-and-test.yml) workflow
-plus a separate [`markdown-lint`](.github/workflows/markdown-lint.yml), and
-the reasoning behind the split.
+[`build-and-test`](.github/workflows/build-and-test.yml) workflow,
+a separate [`markdown-lint`](.github/workflows/markdown-lint.yml), and the
+manual [`release-specs`](.github/workflows/release-specs.yml) release - plus
+the reasoning behind the splits.
 
 ## Principles
 
@@ -52,6 +53,7 @@ flowchart TD
 | `backend` | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
 | `markdown-lint` (own workflow) | ✅ | - | - | - |
+| `release-specs` (own workflow) | ✅ | ✅ | - | - |
 
 Key point: **lint/format/type-check, unit-test, and markdown are pure Node**.
 `eslint`, `prettier`, `tsc`, `vitest`, and `markdownlint-cli2` need no Docker
@@ -118,6 +120,24 @@ config) change.
 This also gives markdown its own status check, so a docs failure isn't buried
 under the per-project matrix. The lint command checks all
 `*.md` files; the `paths:` filter limits runs to docs changes.
+
+## Workflow: release-specs (separate file)
+
+Implemented at `.github/workflows/release-specs.yml`. Manual (`workflow_dispatch`)
+release of the **contract interface**: it builds the contracts from the
+dispatched commit, runs the offline contract tests, and attaches the compiled
+per-app artifacts (ARC-56 + ARC-32 specs, approval/clear TEAL, `*.puya.map`
+source maps - never the generated clients) to a GitHub Release tagged
+`specs-v<version>`. Its own file because it is a release, not a CI gate: it runs
+manually (contracts rarely change) and needs `contents: write` to create the
+release. The version is a dispatch input - the series is independent of the npm
+packages, started at `0.1.0` - and `prerelease` defaults on while the interface
+can still break on TestNet; GitHub pre-release status only affects the "Latest"
+label, not downloads by tag.
+
+The SDK pins `specs-v<version>` and regenerates its clients from the attached
+ARC-56 specs (see [`sdk.md`](sdk.md) and the CI & packaging items in
+[`roadmap.md`](roadmap.md)); nothing generated is committed.
 
 ## Testing taxonomy
 
