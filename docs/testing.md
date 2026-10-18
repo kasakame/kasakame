@@ -304,7 +304,7 @@ remaining questions to settle before implementing:
 - Playwright vs. Vitest browser mode (Playwright is the natural fit for
   click-driven flows; Vitest browser mode keeps it in the existing runner).
 - How to seed campaigns idempotently before each run (`npm run seed:localnet` / `npm run unseed:localnet`
-  in `projects/contracts`, state-tracked via `scripts/.seed-state.json`; the `:testnet` variants read
+  in `projects/contracts`, state-tracked via `scripts/.seed-state.<network>.json`; the `:testnet` variants read
   `.env.testnet` instead) and reclaim afterwards (`npm run reclaim` in `projects/frontend`, which reads
   its `.env.testnet`: refunds/cancels known leaves, deletes, unregisters; unknown leaves reported).
 

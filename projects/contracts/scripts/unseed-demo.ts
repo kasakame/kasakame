@@ -5,7 +5,7 @@ import path from 'node:path'
 
 /**
  * Remove campaigns created by `seed-demo.ts`: creator-signed `delete()` (skipped when live pledges forbid it) followed
- * by `unregister()`, which drops the campaign from the browse list either way. Reads `.seed-state.json` and clears
+ * by `unregister()`, which drops the campaign from the browse list either way. Reads `.seed-state.<network>.json` and clears
  * entries that fully unregister; anything left is reported for a later retry (e.g. after its deadline passes).
  *
  * Same environment rules as the seed script: `npm run unseed:localnet` loads `.env.localnet`, `npm run unseed:testnet` loads `.env.testnet`.
@@ -13,7 +13,9 @@ import path from 'node:path'
  * Usage: `npm run unseed:localnet` (the Factory and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
  */
 
-const STATE_PATH = path.resolve(__dirname, '.seed-state.json')
+const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
+const NETWORK = isLocalNet ? 'localnet' : 'testnet'
+const STATE_PATH = path.resolve(__dirname, `.seed-state.${NETWORK}.json`)
 
 interface SeedEntry {
   appId: string
@@ -38,10 +40,9 @@ function vaultBoxName(appId: bigint): Uint8Array {
 
 void (async () => {
   if (!fs.existsSync(STATE_PATH)) {
-    throw new Error('No .seed-state.json found (run the seed script first).')
+    throw new Error(`No ${path.basename(STATE_PATH)} found (run the matching seed script first).`)
   }
   const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) as SeedState
-  const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
   const algorand = isLocalNet ? AlgorandClient.defaultLocalNet() : AlgorandClient.fromEnvironment()
 
   const factoryId = BigInt(state.factoryId)

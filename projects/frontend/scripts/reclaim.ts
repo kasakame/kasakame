@@ -26,22 +26,32 @@ import { appIdFromEnv } from '../src/utils/network/getAlgoClientConfigs'
  * The npm script loads the TestNet frontend config from `.env.testnet`. Backer/creator mnemonics
  * live in ../../contracts/.env.testnet - export them first:
  *   set -a; source ../contracts/.env.testnet; set +a
- * With no app ids, falls back to the seed state file (`npm run seed` output).
+ * With no app ids, falls back to the TestNet seed state file (`npm run seed:testnet` output).
  */
 
-const SEED_STATE_PATH = path.resolve(process.cwd(), '../contracts/scripts/.seed-state.json')
+const SEED_STATE_PATH = path.resolve(process.cwd(), '../contracts/scripts/.seed-state.testnet.json')
 
 interface LiveLeaf extends BackerLeaf {
   backer: string
+}
+
+function decodeMnemonic(value: string): ReturnType<typeof algosdk.mnemonicToSecretKey> | undefined {
+  try {
+    return algosdk.mnemonicToSecretKey(value)
+  } catch {
+    return undefined
+  }
 }
 
 function knownSessions(): Map<string, WalletSession> {
   const sessions = new Map<string, WalletSession>()
   for (const [key, value] of Object.entries(process.env)) {
     if (!key.endsWith('_MNEMONIC') || value === undefined || value === '') continue
-    const { addr, sk } = algosdk.mnemonicToSecretKey(value)
-    const address = addr.toString()
-    const signer: TransactionSigner = algosdk.makeBasicAccountTransactionSigner({ addr, sk })
+    const account = decodeMnemonic(value)
+    // Not an Algo25 phrase (e.g. the 24-word Pera DEPLOYER_MNEMONIC) - no session needed for it here.
+    if (account === undefined) continue
+    const address = account.addr.toString()
+    const signer: TransactionSigner = algosdk.makeBasicAccountTransactionSigner(account)
     sessions.set(address, { address, signer })
   }
   return sessions
@@ -51,7 +61,7 @@ function targetAppIds(): bigint[] {
   const fromArgs = process.argv.slice(2).map((arg) => BigInt(arg))
   if (fromArgs.length > 0) return fromArgs
   if (!fs.existsSync(SEED_STATE_PATH)) {
-    throw new Error('Pass app ids or seed first (no .seed-state.json found).')
+    throw new Error('Pass app ids or seed:testnet first (no .seed-state.testnet.json found).')
   }
   const state = JSON.parse(fs.readFileSync(SEED_STATE_PATH, 'utf8')) as { campaigns: { appId: string }[] }
   return state.campaigns.map((entry) => BigInt(entry.appId))

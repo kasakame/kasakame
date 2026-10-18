@@ -56,8 +56,8 @@ test-results/
 playwright-report/
 *.received.*
 
-# Local seed state (created by scripts/seed-demo.ts, consumed by unseed-demo.ts)
-projects/contracts/scripts/.seed-state.json
+# Local seed state, one file per network (created by scripts/seed-demo.ts, consumed by unseed-demo.ts)
+projects/contracts/scripts/.seed-state*.json
 
 # Demo upload payloads (local working files, never committed)
 demo-metadata/

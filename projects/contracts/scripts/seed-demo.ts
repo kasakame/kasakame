@@ -16,7 +16,7 @@ import path from 'node:path'
  * `.env.localnet`; `npm run seed:testnet` loads `.env.testnet`, where accounts come from `<NAME>_MNEMONIC` env vars
  * (`BACKER_A`, `ALICE`, `BOB`, `CAROL`, `DAVE`) and must be pre-funded. TestNet amounts are smaller (faucet-friendly).
  *
- * Created campaigns are recorded in `.seed-state.json` (gitignored) for `unseed-demo.ts`.
+ * Created campaigns are recorded in `.seed-state.<network>.json` (gitignored) for `unseed-demo.ts`.
  *
  * Metadata URIs default to `ipfs://seed/<creator>` placeholders. Override per campaign (in table order,
  * comma-separated) with `SEED_METADATA_URIS`, e.g. real pins from `demo-metadata/cids.json`:
@@ -28,7 +28,9 @@ import path from 'node:path'
 const SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/campaign/Campaign.arc56.json')
 const FACTORY_SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/factory/Factory.arc56.json')
 const VAULT_SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/claimsvault/ClaimsVault.arc56.json')
-const STATE_PATH = path.resolve(__dirname, '.seed-state.json')
+const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
+const NETWORK = isLocalNet ? 'localnet' : 'testnet'
+const STATE_PATH = path.resolve(__dirname, `.seed-state.${NETWORK}.json`)
 
 const DAY = 86_400
 
@@ -68,7 +70,6 @@ function toMicroAlgos(algo: number): bigint {
 }
 
 void (async () => {
-  const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
   const algorand = isLocalNet ? AlgorandClient.defaultLocalNet() : AlgorandClient.fromEnvironment()
   const campaigns = isLocalNet ? CAMPAIGNS_LOCALNET : CAMPAIGNS_TESTNET
   const spec = JSON.parse(fs.readFileSync(SPEC_PATH, 'utf8')) as Arc56Contract
@@ -167,4 +168,5 @@ void (async () => {
     STATE_PATH,
     `${JSON.stringify({ factoryId: factoryId.toString(), vaultId: vaultId.toString(), campaigns: seeded }, null, 2)}\n`,
   )
+  console.log(`seed state written to ${path.relative(process.cwd(), STATE_PATH)}`)
 })()
