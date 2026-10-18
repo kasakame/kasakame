@@ -148,12 +148,39 @@ one commit each - CI wiring comes last:
 
 ## CI & packaging
 
-- [ ] Wire up the CI coverage gate + lint/format/type-check gate (workflow partially done - see [`ci.md`](ci.md)).
+- [ ] Split `build-and-test.yml` into fast parallel jobs with change detection: `lint-contracts`, `test-contracts`, `lint-sdk`, `test-sdk`, `lint-frontend`, `test-frontend`, `build`, `integration-test`, `backend`. Contracts jobs only run when `projects/contracts/**` changed; SDK/frontend jobs run on every PR. Fast jobs (lint + typecheck + unit tests) run without building the contracts or the frontend bundle (the sdk lanes still run codegen for the generated clients; the frontend lanes rebuild the SDK `dist/` - upload it from `build` if that proves slow); the `build` job runs contracts→SDK→frontend sequentially and uploads `contracts-artifacts`.
+- [ ] Frontend tests SDK changes against the locally-built SDK `dist/` (`file:../sdk`); frontend-only changes test against the published npm package. SDK→frontend direction only — frontend changes never require rebuilding the SDK.
+- [ ] Final gate job: depends on all candidate jobs, passes if all are `success` or `skipped`, fails only on `failure`/`cancelled`; single required check so skipped change-detection jobs don't block merges under strict policy.
+- [ ] New `release.yml` workflow: `workflow_dispatch` only, no reviewer gate (single developer). Prep job runs `prepublishOnly` equivalent (build contracts → generate SDK clients via `algokit generate client` → `tsc` emit → lint → format → check-types → test:coverage → `npm pack --dry-run` → `npm publish --dry-run`); publish job runs `npm publish` directly after prep succeeds.
+- [ ] SDK installable from npm OR from repo: frontend `package.json` switches `@kasakame/sdk` between `file:../sdk` (local/unpublished changes) and the published npm version; same commands work locally and in CI.
+- [ ] **Contracts → SDK stays same-SHA local** - the SDK always regenerates its clients from the locally built contracts; no local/published switch at this boundary. Separately versioned specs would be a second source of truth (skew risk, extra download machinery) for no gain while both packages live here: the `build` job compiles the contracts once, every lane consumes `contracts-artifacts`, and the publish path regenerates from the repo so the published SDK always matches the released commit. The published interface (specs on GitHub Releases) serves outside consumers, not our build.
 - [ ] Package the frontend as a container image for portable hosting.
 - [ ] **Publish the contract interface** - commit the generated ARC-32/56 specs (currently gitignored build output) and attach them to GitHub Releases, so explorers, auditors, and third-party clients can build against the contracts without our code.
 - [ ] **Publish the client SDK** - publish the versioned `@kasakame/sdk` package (claim-tree math and generated typed clients, migrating per [`sdk.md`](sdk.md)) to the public npm registry (not GitHub Packages: even public installs there need an auth token). The SDK takes indexer-provider and signer interfaces so one codebase serves the UI, the CLI, and third parties.
 - [ ] **Ship the escape-hatch CLI** - graduate `scripts/reclaim.ts` into a standalone `npx`-runnable tool (refund/cancel/claim by app ID from a mnemonic, public indexer only, no backend). Canonical proof that exits never need our servers.
-- [ ] **On-chain campaign headers (deleted included)** - SDK functions: enumerate campaigns from factory registry + vault boxes, recover title/metadata/goal/deadline/creator for deleted ones by decoding the creation transaction (live campaigns read globals as today), and derive display status via `getCampaignStatus` (Open/Successful/Failed from status + goal + deadline + clock - never a new on-chain status). Headers keep the raw facts too (`deleted`, on-chain `status`) for completeness - e.g. reminding a creator to claim a funded-but-unclaimed campaign. Serves My pledges, the ended-list, and the CLI alike - no catalog involved.
+
+- [x] **On-chain campaign headers (deleted included)** - SDK functions: enumerate campaigns from factory registry + vault boxes, recover title/metadata/goal/deadline for deleted ones by decoding the creation transaction (creator survives in the indexer; live campaigns read globals as today), and derive display status via `getCampaignStatus` (Open/Successful/Failed from status + goal + deadline + clock - never a new on-chain status). Headers keep the raw facts too (`deleted`, on-chain `status`) for completeness - e.g. reminding a creator to claim a funded-but-unclaimed campaign. Serves My pledges, the ended-list, and the CLI alike - no catalog involved.
+
+## Local development
+
+- [ ] **No custom codegen script** - delete `projects/sdk/scripts/codegen.mjs` and the
+      `prebuild` hook; clients come from `algokit generate client`, the same generator the
+      contracts build already runs. Generated clients stay gitignored (`src/generated/`);
+      nothing generated is committed. Steps:
+  1. Point the SDK's `codegen` script at the contracts' ARC-56 specs (after `npm run build`
+     in `projects/contracts`, or against the artifacts CI already downloads):
+     `algokit generate client ../contracts/smart_contracts/artifacts --output src/generated/{contract_name}Client.ts`.
+  2. Keep tagging the generated `*Client.ts` with `// @ts-nocheck` - verified: they fail the
+     SDK's strict `tsc` (unused imports, `exactOptionalPropertyTypes`). A one-line tag step,
+     not a build script.
+  3. Copy the `*.arc56.json` specs into `src/generated/` (the publish `files` list ships them).
+  4. Sync [`sdk.md`](sdk.md) (module layout, stages) and [`ci.md`](ci.md); the sdk CI lanes
+     either install the AlgoKit CLI or keep consuming the clients the contracts build already
+     emits into the downloaded artifacts.
+- [ ] **Document running the SDK locally** - add a README section to `projects/sdk/` explaining
+      how to generate contract clients locally, how `npm run build` produces `dist/`, and how the
+      frontend consumes `@kasakame/sdk` as a `file:` dependency. Keep this in sync with `ci.md` so
+      local and CI always run the same commands.
 
 ## Open design questions
 

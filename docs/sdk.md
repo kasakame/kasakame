@@ -13,7 +13,7 @@ The chain layer leaves `projects/frontend/src/lib` and becomes a versioned packa
 
 - **One explicit setup call instead of singletons.** The frontend's `lib/algorand.ts` reads Vite env and builds module singletons; an SDK cannot depend on Vite (Node has none) or React. The SDK exposes `configureSdk({ algorand, factoryAppId, vaultAppId })`, called once at startup by the frontend (with the client it already builds) and by the CLI (from env/flags). Everything else keeps its current shape.
 - **Structural, framework-free types.** `WalletSession { address, signer }` already uses algosdk's `TransactionSigner` — no wallet dependency. Indexer/algod access goes through the configured `AlgorandClient`.
-- **Generated clients are build output.** `*Client.ts` and `*.arc56.json` stay gitignored; `scripts/codegen.mjs` builds the contracts and copies them into `src/generated/` (also gitignored) before SDK build/publish and before local dev.
+- **Generated clients are build output.** `*Client.ts` and `*.arc56.json` stay gitignored; `algokit generate client` (the same generator the contracts build runs) writes them into `src/generated/` (also gitignored) before SDK build/publish and before local dev. Generated clients don't pass the SDK's strict `tsc` flags, so each is tagged `// @ts-nocheck` - a tag step, not a codegen script.
 - **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and `disconnectQuietly` never move. The stale-proof *retry policy* moves (it's protocol: the CLI needs it); the error-to-*message* mapping stays (it's UI).
 - **Upload auth stays out.** `backend.ts`/`profiles.ts` sign-in flows are backend-coupled, not chain logic.
 
@@ -26,7 +26,6 @@ projects/sdk/
   tsconfig.build.json   # noEmit off, specs excluded → dist/
   eslint.config.mjs     # copied from frontend (minus react/tailwind)
   vitest.config.ts      # copied; same 100% gate (SDK = utils)
-  scripts/codegen.mjs   # contracts build → copy clients + arc56 → src/generated/
   src/
     index.ts            # public exports only
     claim-tree.ts       # pure math + replay (moved as-is)
@@ -73,7 +72,7 @@ interface CampaignHeader {
 function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): 'open' | 'successful' | 'failed'
 ```
 
-`enumerateCampaigns()` lists app IDs from factory registry boxes plus vault boxes (live and deleted-unfinalized alike). `fetchCampaignHeader(appId)` reads globals for live campaigns and decodes the creation transaction (selector stripped, tuple per the ARC-56 spec) for deleted ones. `getCampaignStatus` derives the display word: funded (claimed or goal-reached) maps to `successful`, past-deadline unfunded maps to `failed`, otherwise `open`. Raw `status`/`deleted` stay on the header for consumers that need them (creator claim reminders, audit views).
+`enumerateCampaigns()` lists app IDs from factory registry boxes plus vault boxes (live and deleted-unfinalized alike). `fetchCampaignHeader(appId)` reads globals for live campaigns and decodes the creation transaction (selector stripped, tuple per the ARC-56 spec) for deleted ones. `getCampaignStatus` derives the display word: funded (claimed or goal-reached) maps to `successful`, past-deadline unfunded maps to `failed`, otherwise `open`. Raw `status`/`deleted` stay on the header for consumers that need them (creator claim reminders, audit views). Post-release outcomes are best-effort: once the vault box is gone (claimed and release-notified), `status` reads `open` with `raised` 0 - the outcome survives only in history.
 
 ### Writes (`transactions.ts`)
 
@@ -105,9 +104,10 @@ Each stage is one commit (a stage may split further if the diff gets unwieldy), 
 12. **Enumeration** - `enumerateCampaigns` lists app ids from the Factory registry boxes and the vault boxes.
 13. **Headers** - `fetchCampaignHeader`, including creation-transaction decode for deleted campaigns; reads return protocol records and the frontend composes its view models.
 14. **Status** - `getCampaignStatus` and the `deriveStatus` rename; frontend imports update. The ended-list and My pledges switch rides here or lands separately.
-15. **Publish prep** - `prepublishOnly` (contracts build → codegen → `tsc` emit), `files` including the arc56 specs, README, engines; reserve the npm org.
-16. **Publish** - `0.1.0` to the public registry (manual step).
-17. **CLI** - scaffold `projects/cli` as its own package (not inside the SDK) and port `reclaim.ts` onto the SDK; publish alongside.
+15. **Codegen removal** - delete `scripts/codegen.mjs` (and the `prebuild` hook); `npm run codegen` invokes `algokit generate client` on the contracts' ARC-56 specs into `src/generated/`, tags each `*Client.ts` with `// @ts-nocheck` (they don't pass the strict `tsc` flags), and copies the specs for packaging; `ci.md` follows in the same change.
+16. **Publish prep** - `prepublishOnly` (contracts build → codegen → `tsc` emit), `files` including the arc56 specs, README, engines; reserve the npm org.
+17. **Publish** - `0.1.0` to the public registry (manual step).
+18. **CLI** - scaffold `projects/cli` as its own package (not inside the SDK) and port `reclaim.ts` onto the SDK; publish alongside.
 
 ## Open questions
 

@@ -11,10 +11,11 @@ the reasoning behind the split.
   ARC specs) and the SDK's `src/generated/` clients are gitignored and
   regenerable. One `build` job produces them and uploads them as artifacts;
   downstream jobs download what they need instead of recompiling.
-- **Split by prerequisites.** Lint, format, type-check, unit-test, and build
-  jobs need only Node.js; the `integration-test` job needs Docker for LocalNet
-  and Python for the AlgoKit CLI. Keeping those in separate jobs (not separate
-  workflows) keeps feedback fast and failures attributable to the right lane.
+- **Split by prerequisites.** Lint, format, type-check, and unit-test jobs need
+  only Node.js; the `build` job adds Python for the AlgoKit CLI (contract
+  compilation), and `integration-test` adds Docker for LocalNet too. Keeping
+  those in separate jobs (not separate workflows) keeps feedback fast and
+  failures attributable to the right lane.
 - **Parallel lanes per project.** `contracts`, `frontend`, and `sdk` are
   independent npm projects; the per-project jobs run them side by side via a
   matrix. The backend runs as its own job (it needs a Postgres service, so it
@@ -46,8 +47,8 @@ flowchart TD
 | Job | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
 | --- | --- | --- | --- | --- |
 | `build` | ✅ | ✅ | - | - |
-| `lint-format-type-check` | ✅ | - | - | contracts + frontend clients |
-| `unit-test` | ✅ | - | - | contracts + frontend clients |
+| `lint-format-type-check` | ✅ | - | - | contracts artifacts |
+| `unit-test` | ✅ | - | - | contracts artifacts |
 | `backend` | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
 | `markdown-lint` (own workflow) | ✅ | - | - | - |
@@ -130,8 +131,9 @@ generated clients resolve at import time. All are described in
 
 The offline contract tests don't need the AlgoKit CLI or Docker because the
 `algorand-typescript-testing` transformer runs the contract source directly
-under Node. That's why the unit-test job is pure Node - it consumes nothing from the
-build job, never the compiled TEAL.
+under Node - the contract lane is pure Node and consumes nothing from the build
+job, never the compiled TEAL. The sdk and frontend lanes of the same job do
+download the build job's `contracts-artifacts` (see above for why).
 
 ## Caching
 

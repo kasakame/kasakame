@@ -46,11 +46,6 @@ projects/frontend/src/
 │   ├── metadata.ts           # campaign metadata blob type
 │   ├── transaction.ts        # wallet disconnect helper + re-export of the SDK write path
 │   └── format.ts             # microAlgo / deadline formatting
-├── contracts/                # generated typed clients (gitignored)
-│   ├── Campaign.ts
-│   ├── ClaimsVault.ts
-│   ├── ClaimTree.ts
-│   └── Factory.ts
 ├── components/               # generic UI (ConnectWallet, Account, ErrorBoundary)
 ├── Home.tsx                  # state-based navigation between list/detail/create
 └── utils/                    # ellipseAddress, network config
@@ -82,7 +77,7 @@ the live sum.
 
 ```ts
 // @kasakame/sdk - the shape the UI renders
-type CampaignStatus = 'open' | 'funded' | 'failed' | 'claimed'
+type CampaignStatus = 'open' | 'successful' | 'failed'
 
 interface CampaignViewModel {
   id: bigint
@@ -98,10 +93,11 @@ interface CampaignViewModel {
 }
 ```
 
-The derived `funded`/`failed` states are computed client-side from
-`goal`/`raised`/`deadline` - exactly the rule the contract evaluates. Neither is
-stored on-chain; `failed` only materialises in `status` after the first
-`refund()`.
+The `successful`/`failed` display states come from `getCampaignStatus` in
+`@kasakame/sdk`, derived from `goal`/`raised`/`deadline` - exactly the rule the
+contract evaluates. The display state is never stored on-chain; the contract's
+own status byte (`open`/`failed`/`claimed`) stays on the SDK header for
+consumers that need it.
 
 ## Campaign metadata
 
@@ -341,8 +337,8 @@ target) once settled:
 - **The composer does not dedupe.** Pass each transaction either explicitly
   (`addTransaction`) or by method-arg reference, never both - otherwise the
   group carries it twice.
-- **Suppress pledge readout on `claimed`.** Spent leaves drop out of the live
-  set, so the detail view's "Your pledge" reflects the live total naturally.
+- **Spent leaves drop out of the live set.** After a claim, the detail view's
+  "Your pledge" reflects the live total naturally - the spent leaves are gone.
 
 ## Wallet integration
 
