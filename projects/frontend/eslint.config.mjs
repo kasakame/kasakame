@@ -11,12 +11,7 @@ import tseslint from 'typescript-eslint'
 
 export default defineConfig(
   {
-    ignores: [
-      'node_modules/',
-      'dist/',
-      'coverage/',
-      'src/contracts/', // generated typed clients (linked from contract artifacts)
-    ],
+    ignores: ['node_modules/', 'dist/', 'coverage/'],
   },
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
@@ -28,7 +23,7 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts', 'scripts/ts-nocheck-generated.mjs', 'scripts/reclaim.ts'],
+          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts', 'scripts/reclaim.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
