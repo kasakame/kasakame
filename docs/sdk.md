@@ -1,60 +1,177 @@
-# SDK design
+# SDK
 
-The chain layer leaves `projects/frontend/src/lib` and becomes a versioned package, `projects/sdk` (published as `@kasakame/sdk`). SDK-first: the frontend clarity work, the escape-hatch CLI, and third-party clients all consume this package instead of reimplementing proofs. Status: in progress — stages 1–14 landed; the migration stages at the end are the build order. Related roadmap items: the SDK/CLI steps under CI & packaging, on-chain headers, and the Frontend clarity section.
+The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
+
+Status: version `0.1.0`, private (not yet published to npm). The frontend consumes it as a `file:../sdk` dependency with a local build ahead of typecheck. All migration stages have landed; only publishing to the public registry remains.
+
+## Why the SDK exists
+
+Before the SDK, the frontend's `lib/` folder held the chain logic: claim-tree math, indexer replay, campaign reads, and transaction assembly. That code could not leave the frontend, so the CLI and any third-party client had to reimplement proofs. The SDK moves that layer into one versioned, framework-free package. The frontend stays thin: it builds views and handles wallet approvals, while the SDK owns the protocol logic.
 
 ## Package identity and placement
 
-- Location `projects/sdk/`. The AlgoKit workspace discovers `projects/*` entries through their `.algokit.toml`, so the SDK ships a minimal one (mirroring the backend's `[project.run]` entries) to take part in `algokit project run` and `bootstrap`.
-- One package, not three. Split only when a consumer needs a subset — today nobody does.
-- Version `0.1.0` while the contracts churn; follows the contracts' breaking changes.
-- Reserve the `@kasakame` npm org early (free, prevents squatting).
+- Location `projects/sdk/`. The AlgoKit workspace discovers `projects/*` entries through their `.algokit.toml`, so the SDK ships a minimal one to take part in `algokit project run` and `bootstrap`.
+- One package. Split only when a consumer needs a subset; today nobody does.
+- Version `0.1.0`, `private: true`. Reserve the `@kasakame` npm org early (free, prevents squatting).
+- Node.js >= 24, ESM. Entry point is `./dist/index.js` with types in `./dist/index.d.ts`.
 
-## Design decisions
+Dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and generated clients), `@noble/hashes` (SHA-512/256, the same function as the AVM opcode), and `algosdk` (indexer and algod access).
 
-- **One explicit setup call instead of singletons.** The frontend's `lib/algorand.ts` reads Vite env and builds module singletons; an SDK cannot depend on Vite (Node has none) or React. The SDK exposes `configureSdk({ algorand, factoryAppId, vaultAppId })`, called once at startup by the frontend (with the client it already builds) and by the CLI (from env/flags). Everything else keeps its current shape.
-- **Structural, framework-free types.** `WalletSession { address, signer }` already uses algosdk's `TransactionSigner` — no wallet dependency. Indexer/algod access goes through the configured `AlgorandClient`.
-- **Released interfaces are the default inputs.** Each boundary consumes its producer's released form: the frontend uses the published `@kasakame/sdk` for frontend-only work, and the SDK builds against the pinned specs release (`specs-vX.Y.Z`). Local HEAD (`file:../sdk`, or `SDK_SPECS=local` for locally built contracts) is swapped in only inside a change-set that modifies the producer; release builds pin exact versions. Every component stays clone-and-run and ready for a repo split.
-- **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` and `*.arc56.json` stay gitignored. The SDK regenerates the clients from the specs with its own pinned generator devDependency (default: the pinned specs release; `SDK_SPECS=local`: locally built contracts) and tags each `// @ts-nocheck` (they don't pass the strict `tsc` flags). Clients never travel between packages - the contracts project generates its own for its tests and deployer.
-- **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and `disconnectQuietly` never move. The stale-proof *retry policy* moves (it's protocol: the CLI needs it); the error-to-*message* mapping stays (it's UI).
-- **Upload auth stays out.** `backend.ts`/`profiles.ts` sign-in flows are backend-coupled, not chain logic.
+## How to consume it
 
-## Module layout
+### Configure once at startup
 
-```text
-projects/sdk/
-  package.json          # name @kasakame/sdk, version 0.1.0, exports → ./dist
-  tsconfig.json         # strict trio copied; NodeNext module/resolution (portable ESM)
-  tsconfig.build.json   # noEmit off, specs excluded → dist/
-  eslint.config.mjs     # copied from frontend (minus react/tailwind)
-  vitest.config.ts      # copied; same 100% gate (SDK = utils)
-  src/
-    index.ts            # public exports only
-    claim-tree.ts       # pure math + replay (moved as-is)
-    campaigns.ts        # reads: browse/detail/vault (moved) + headers/discovery (new)
-    transactions.ts     # writes: call assembly + retry (moved minus wallet bits)
-    chain.ts            # configureSdk + indexer polling (moved from lib/algorand.ts)
-    generated/          # gitignored: clients regenerated from specs + specs
+Call `configureSdk` once with an `AlgorandClient` and the Factory and ClaimsVault app ids:
+
+```ts
+import { configureSdk } from '@kasakame/sdk'
+import { AlgorandClient } from '@algorandfoundation/algokit-utils'
+
+const algorand = AlgorandClient.fromConfig({
+  algodConfig: { server, port, token },
+  indexerConfig: { server, port, token },
+})
+
+configureSdk({
+  algorand,
+  factoryAppId: 774437557n,
+  vaultAppId: 774437570n,
+})
 ```
+
+The frontend calls this in `lib/algorand.ts` after building its client. The CLI builds its own client from flags or env. Every SDK read and write uses the configured session.
+
+### Read campaigns
+
+```ts
+import { enumerateCampaigns, getCampaign, fetchChainTimestamp } from '@kasakame/sdk'
+
+const ids = await enumerateCampaigns()
+const now = await fetchChainTimestamp()
+const campaign = await getCampaign(ids.values().next().value, now)
+```
+
+### Write through the wallet
+
+Each write takes a `WalletSession` (`{ address, signer }`) so the wallet holds the keys:
+
+```ts
+import { pledge } from '@kasakame/sdk'
+
+await pledge(appId, { address, signer }, amountMicroAlgos)
+```
+
+### Re-exports
+
+The frontend re-exports the SDK through `src/lib/claimtree.ts`, `src/lib/campaign.ts`, and `src/lib/transaction.ts`, so existing importers keep working while the SDK owns the logic.
 
 ## Public API surface
 
-Moved functions keep their names and signatures; new ones are marked. Only deliberate rename: `deriveStatus` becomes `getCampaignStatus` (clearer for outside consumers; frontend imports update).
+The barrel file `src/index.ts` exports everything below. Generated clients live in `src/generated/` (gitignored) and are regenerated from the ARC-56 specs; do not import them directly.
 
-### Pure tree math (`claim-tree.ts`, no network)
+### Chain plumbing (`chain.ts`)
 
-`ZERO_ROOT` (constant), `zeroLeaf()`, `hashPair(left, right)`, `u64be(value)` / `u64beDecode(value)`, `leafFor(backer, amount, txidHex)`, `emptyTree()`, `appendLeaf(state, pledge)`, `foldPeaks(peaks)`, `treeFrontier(state)`, `treeRoot(state)`, `nullLeaf(state, position, amount)`, `pathShape(n, k)`, `treePathFor(state, k)`, `concatHashes(parts)`, `frontierForPledge(state)`, `pathBlobForRefund(state, k)`, `base32ToBytes(input)`, plus types `PledgeRecord`, `TreeState`, `AuthPath`, `PledgeEvent`, `SpendEvent`. Vectors (`claimtree.vectors.ts`, generator script) move with the math.
+```ts
+interface SdkConfig {
+  algorand: AlgorandClient
+  factoryAppId: bigint
+  vaultAppId: bigint
+}
 
-### Replay and leaves (`claim-tree.ts`, configured indexer)
+function configureSdk(config: SdkConfig): void
+function getSdkConfig(): SdkConfig
+function fetchChainTimestamp(): Promise<bigint>
+function waitForIndexerRound(round: bigint, timeoutMs?: number, pollMs?: number): Promise<void>
+function waitForIndexerCatchUp(timeoutMs?: number, pollMs?: number): Promise<void>
+```
 
-`fetchPledges(campaignId, vaultAddress)`, `fetchSpends(campaignId, vaultId)`, `loadTree(campaignId, vaultId, vaultAddress)`, `fetchMyLeaves(appId, address)` (the `transaction.ts` shape wins; the `vaultId`/`vaultAddress` variant folds into it via configured ids), plus `clearTreeCache()`.
+`configureSdk` stores the session. `getSdkConfig` throws until you call it. `fetchChainTimestamp` reads the latest block header; use this, not `Date.now()`, for deadline and status decisions. The two waiters poll the indexer until it catches up to a round or to algod's tip.
+
+### Claim-tree math and replay (`claim-tree.ts`)
+
+Pure math, no network:
+
+```ts
+interface PledgeRecord {
+  backer: string
+  amount: bigint
+  txidHex: string
+}
+
+interface TreeState {
+  leaves: Uint8Array[]
+  raised: bigint
+}
+
+interface AuthPath {
+  siblings: Uint8Array[]
+  top: Uint8Array | null
+  lower: Uint8Array[]
+}
+
+interface BackerLeaf {
+  position: number
+  amount: bigint
+  txidHex: string
+}
+
+function zeroLeaf(): Uint8Array
+function hashPair(left: Uint8Array, right: Uint8Array): Uint8Array
+function u64be(value: bigint): Uint8Array
+function u64beDecode(value: Uint8Array): bigint
+function leafFor(backer: string, amount: bigint, txidHex: string): Uint8Array
+function emptyTree(): TreeState
+function appendLeaf(state: TreeState, pledge: PledgeRecord): TreeState
+function foldPeaks(peaks: Uint8Array[]): Uint8Array
+function treeFrontier(state: TreeState): Uint8Array[]
+function treeRoot(state: TreeState): Uint8Array
+function nullLeaf(state: TreeState, position: number, amount: bigint): TreeState
+function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop: boolean }
+function treePathFor(state: TreeState, k: number): AuthPath
+function concatHashes(parts: Uint8Array[]): Uint8Array
+function frontierForPledge(state: TreeState): Uint8Array
+function pathBlobForRefund(state: TreeState, k: number): Uint8Array
+function base32ToBytes(input: string): Uint8Array
+```
+
+Replay over the configured indexer:
+
+```ts
+interface PledgeEvent extends PledgeRecord {
+  round: bigint
+}
+
+interface SpendEvent {
+  position: number
+}
+
+function fetchPledges(campaignId: bigint, vaultAddress: string): Promise<PledgeEvent[]>
+function fetchSpends(campaignId: bigint, vaultId: bigint): Promise<SpendEvent[]>
+function loadTree(campaignId: bigint, vaultId: bigint, vaultAddress: string): Promise<TreeState>
+function fetchMyLeaves(campaignId: bigint, address: string): Promise<BackerLeaf[]>
+function clearTreeCache(): void
+```
+
+`loadTree` replays pledges in chain order, then nulls spent positions. `fetchMyLeaves` returns the viewer's unspent leaves, which drive refund and cancel buttons and the pledge total.
 
 ### Campaign reads (`campaigns.ts`)
 
-`fetchRegisteredCampaignIds(factoryId)`, `listCampaigns(viewerAddress?)`, `getCampaign(appId, nowSeconds, viewerAddress?)`, `fetchMyPledge(appId, address)`, `decodeGlobalState(app)`, `isCampaignApp(app)`, session memoization (`get/set/clearCachedCampaigns`).
-
-### Headers and discovery (`campaigns.ts`, new)
-
 ```ts
+type CampaignStatus = 'open' | 'successful' | 'failed'
+
+interface CampaignViewModel {
+  id: bigint
+  creator: string
+  title: string
+  metadataUri: string
+  goalMicroAlgos: bigint
+  raisedMicroAlgos: bigint
+  deadlineSeconds: bigint
+  status: CampaignStatus
+  myPledgeMicroAlgos?: bigint
+  deleted?: boolean
+}
+
 interface CampaignHeader {
   id: bigint
   creator: string
@@ -62,54 +179,91 @@ interface CampaignHeader {
   metadataUri: string
   goalMicroAlgos: bigint
   deadlineSeconds: bigint
-  /** Live pledge total; from globals, or vault paidIn − paidOut once deleted. */
   raisedMicroAlgos: bigint
-  /** Raw on-chain status byte (open/failed/claimed), kept for completeness. */
   status: 'open' | 'failed' | 'claimed'
-  /** True when the app is deleted (globals gone; fields recovered from history). */
   deleted: boolean
 }
 
 function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): 'open' | 'successful' | 'failed'
+function decodeGlobalState(app: algosdk.indexerModels.Application): {
+  creator?: string
+  title?: string
+  metadataUri?: string
+  goal?: bigint
+  deadline?: bigint
+  raised?: bigint
+  status?: bigint
+}
+function isCampaignApp(app: algosdk.indexerModels.Application): boolean
+function toCampaignViewModel(
+  app: algosdk.indexerModels.Application,
+  nowSeconds: bigint,
+  myPledgeMicroAlgos?: bigint,
+): CampaignViewModel
+function fetchMyPledge(appId: bigint, address: string): Promise<bigint | undefined>
+function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set<bigint>>
+function enumerateCampaigns(): Promise<Set<bigint>>
+function getCachedCampaigns(): { campaigns: CampaignViewModel[]; nowSeconds: bigint } | undefined
+function setCachedCampaigns(result: { campaigns: CampaignViewModel[]; nowSeconds: bigint }): void
+function clearCachedCampaigns(): void
+function listCampaigns(viewerAddress?: string): Promise<{ campaigns: CampaignViewModel[]; nowSeconds: bigint }>
+function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddress?: string): Promise<CampaignViewModel | undefined>
+function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined>
 ```
 
-`enumerateCampaigns()` lists app IDs from factory registry boxes plus vault boxes (live and deleted-unfinalized alike). `fetchCampaignHeader(appId)` reads globals for live campaigns and decodes the creation transaction (selector stripped, tuple per the ARC-56 spec) for deleted ones. `getCampaignStatus` derives the display word: funded (claimed or goal-reached) maps to `successful`, past-deadline unfunded maps to `failed`, otherwise `open`. Raw `status`/`deleted` stay on the header for consumers that need them (creator claim reminders, audit views). Post-release outcomes are best-effort: once the vault box is gone (claimed and release-notified), `status` reads `open` with `raised` 0 - the outcome survives only in history.
+`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box.
 
 ### Writes (`transactions.ts`)
 
-`WalletSession`, `BackerLeaf`, `VaultBoxView`, `vaultAddress()`, `fetchVaultBox(appId)`, `fetchVaultConfig()`, `createCampaign(...)`, `pledge(appId, session, amountMicroAlgos)`, `cancelPledge(appId, session, leaf)`, `refund(appId, session, leaf)`, `claim(appId, session)`, `deleteCampaign(appId, session)` (create + factory register/unregister stay grouped as today), plus the exported stale-proof predicate for the frontend's error mapping.
+```ts
+interface WalletSession {
+  address: string
+  signer: TransactionSigner
+}
 
-### Chain plumbing (`chain.ts`)
+interface VaultBoxView {
+  paidIn: bigint
+  paidOut: bigint
+  status: number
+  settledAt: bigint
+}
 
-`configureSdk({ algorand, factoryAppId, vaultAppId })`, `fetchChainTimestamp()`, `waitForIndexerRound(round, timeoutMs?, pollMs?)`, `waitForIndexerCatchUp(timeoutMs?, pollMs?)`.
+function isStaleProofError(error: unknown): boolean
+function vaultAddress(): string
+function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undefined>
+function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }>
+function createCampaign(
+  session: WalletSession,
+  title: string,
+  metadataUri: string,
+  goalMicroAlgos: bigint,
+  deadlineSeconds: bigint,
+): Promise<{ appId: bigint; appAddress: string }>
+function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void>
+function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
+function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
+function claim(appId: bigint, session: WalletSession): Promise<void>
+function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
+```
+
+Creation chains `create` to Factory `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete settles in O(1) on every path.
+
+## Design decisions
+
+- **One explicit setup call instead of singletons.** An SDK cannot depend on Vite or React, so you call `configureSdk` once at startup. The frontend passes its `AlgorandClient`; the CLI builds one from flags or env.
+- **Structural, framework-free types.** `WalletSession` uses algosdk's `TransactionSigner` with no wallet dependency. Indexer and algod access go through the configured `AlgorandClient`.
+- **Released interfaces are the default inputs.** The SDK builds against the pinned specs release (`specs-vX.Y.Z`). Local HEAD (`file:../sdk`, or `SDK_SPECS=local`) is swapped in only inside a change set that modifies the contracts. Every component stays clone-and-run and ready for a repo split.
+- **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` and `*.arc56.json` stay gitignored. The SDK regenerates clients from specs and tags them `// @ts-nocheck` (they do not pass the strict compiler). Clients never travel between packages.
+- **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and disconnect handling stay in the frontend. The stale-proof retry policy moves to the SDK because the CLI needs it; the error-to-message mapping stays in the frontend.
+- **Upload auth stays out.** Backend sign-in flows are backend-coupled, not chain logic.
 
 ## Conventions
 
-Mirror the frontend: ESLint + Prettier config copies, strictest tsconfig trio, Vitest with the 100% line/branch/function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk` (add to the allowed scopes in `AGENTS.md`, plus the `projects/sdk` layout line, as part of stage 2).
+Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk`.
 
-## Migration stages
+## Release info
 
-Each stage is one commit (a stage may split further if the diff gets unwieldy), ending green in every affected project: format, lint, check-types, tests. During the migration the frontend consumes the SDK via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck/dev; once `0.1.0` is published, the registry version becomes the committed default and `file:../sdk` is swapped in only to test contracts/SDK changes (see the CI & packaging roadmap items). The SDK's own input follows the same rule against the contract specs: the pinned specs release by default, locally built contracts only while they change. Codegen is deliberately deferred to stage 9 — nothing before the writes needs generated clients.
-
-1. **Land the design** - commit this document and link it from the README docs map.
-2. **Scaffold** - package skeleton, configs, empty `src/index.ts` in `projects/sdk`; add the `sdk` commit scope and layout line to `AGENTS.md`.
-3. **Pure math** - move the pure layer, vectors, generator script, and specs into the SDK. The frontend stays untouched.
-4. **SDK CI lane** - add `sdk` to the lint/format/type-check and unit-test matrices and build the SDK in the build job; update [`ci.md`](ci.md).
-5. **Frontend switch (math)** - add the `file:../sdk` dependency and build-ahead scripts, delete the local math, re-export from the SDK. This is where the file-dependency mechanics get verified (npm workspaces remain the fallback if `file:` + prebuilt `dist/` proves fragile).
-6. **Chain plumbing** - `configureSdk`, both indexer waiters, and `fetchChainTimestamp` land in `chain.ts`; the frontend `algorand.ts` shrinks to building the `AlgorandClient` and calling `configureSdk`.
-7. **Replay** - move `fetchPledges`, `fetchSpends`, `loadTree`, the consolidated `fetchMyLeaves`, and `clearTreeCache`; the frontend re-exports for its remaining consumers.
-8. **Campaign reads** - registry reads, global-state decode, `fetchMyPledge`, `listCampaigns`, `getCampaign`, the session caches, and `getCampaignStatus` (renamed from `deriveStatus`) move with their signatures intact. The protocol-record reshape (dropping viewer fields) rides with the headers in stage 13.
-9. **Codegen** - `scripts/codegen.mjs` builds the contracts (or reuses artifacts), copies the clients and `*.arc56.json` into `src/generated/`, and tags them for `tsc`.
-10. **Writes** - move call assembly, retry, vault helpers, and `WalletSession` into `transactions.ts`; `disconnectQuietly` and the error-to-message mapping stay in the frontend. The largest diff - split it by operation group if review needs it.
-11. **Drop linked clients** - remove `algokit project link`, `src/contracts`, the ts-nocheck script, and the CI `frontend-clients` artifact; `reclaim.ts` imports from the SDK.
-12. **Enumeration** - `enumerateCampaigns` lists app ids from the Factory registry boxes and the vault boxes.
-13. **Headers** - `fetchCampaignHeader`, including creation-transaction decode for deleted campaigns; reads return protocol records and the frontend composes its view models.
-14. **Status** - `getCampaignStatus` and the `deriveStatus` rename; frontend imports update. The ended-list and My pledges switch rides here or lands separately.
-15. **Spec-driven codegen** - delete `scripts/codegen.mjs` (and the `prebuild` hook). Replace with the spec step: fetch the pinned specs release (default: `gh release download specs-v<version> -p arc56.tar.gz` then unpack, at the version constant) or copy the local contracts artifacts (`SDK_SPECS=local`, set by contracts-changed CI lanes and local contract work); regenerate the `*Client.ts` files with the SDK's pinned generator devDependency (direct bin call; `algokit generate client` is a wrapper around the installed devDependency); tag each `// @ts-nocheck`. Drop the build-if-missing branch - the released-specs path needs no contracts checkout. The released-specs default activates once `release-specs.yml` tags the first `specs-v*` release; until then, local artifacts are the only source. `ci.md` and `AGENTS.md` follow in the same change.
-16. **Publish prep** - `prepublishOnly` (fetch the pinned specs → regenerate → tag → `tsc` emit), `files` whitelisting the emitted `dist/` (clients + specs; sources, tests, and configs stay out), record the consumed specs version (exported constant), README, engines; reserve the npm org.
-17. **Publish** - `0.1.0` to the public registry (manual step).
-18. **CLI** - scaffold `projects/cli` as its own package (not inside the SDK) and port `reclaim.ts` onto the SDK; publish alongside.
-
-## Open questions
-
-- Versioning discipline once external consumers exist (semver-minor for additive SDK surface, major with any contract breaking change).
+- Version `0.1.0`, following the contracts' breaking changes while they churn.
+- `private: true`, not yet published to the npm registry. The frontend consumes it via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck.
+- Once `0.1.0` is published, the registry version becomes the committed default and `file:../sdk` is swapped in only to test contracts/SDK changes.
+- Codegen: `npm run codegen` (also the `prebuild` hook) copies compiled contract clients and ARC-56 specs from `projects/contracts/smart_contracts/artifacts` into `src/generated/` (gitignored). Build with `npm run build` (`tsc` to `dist/`).
