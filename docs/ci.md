@@ -126,18 +126,23 @@ under the per-project matrix. The lint command checks all
 Implemented at `.github/workflows/release-specs.yml`. Manual (`workflow_dispatch`)
 release of the **contract interface**: it builds the contracts from the
 dispatched commit, runs the offline contract tests, and attaches the compiled
-per-app artifacts (ARC-56 + ARC-32 specs, approval/clear TEAL, `*.puya.map`
-source maps - never the generated clients) to a GitHub Release tagged
-`specs-v<version>`. Its own file because it is a release, not a CI gate: it runs
+per-app artifacts to a GitHub Release tagged `specs-v<version>` as one tarball
+per artifact kind - `arc56.tar.gz` (ARC-56 specs), `arc32.tar.gz` (ARC-32
+specs), `teal.tar.gz` (approval/clear TEAL), and `puya.tar.gz` (`*.puya.map`
+source maps) - each keeping the per-app directories. Generated clients are
+never attached. Its own file because it is a release, not a CI gate: it runs
 manually (contracts rarely change) and needs `contents: write` to create the
 release. The version is a dispatch input - the series is independent of the npm
 packages, started at `0.1.0` - and `prerelease` defaults on while the interface
 can still break on TestNet; GitHub pre-release status only affects the "Latest"
 label, not downloads by tag.
 
-The SDK pins `specs-v<version>` and regenerates its clients from the attached
-ARC-56 specs (see [`sdk.md`](sdk.md) and the CI & packaging items in
-[`roadmap.md`](roadmap.md)); nothing generated is committed.
+The SDK pins `specs-v<version>`, downloads `arc56.tar.gz`, and regenerates its
+clients from the ARC-56 specs after unpacking it (see [`sdk.md`](sdk.md) and
+the CI & packaging items in [`roadmap.md`](roadmap.md)); nothing generated is
+committed. The other tarballs serve deployers and verifiers - the ARC-32 specs
+for legacy tooling and the TEAL + source maps for independent
+recompile-and-verify audits.
 
 ## Testing taxonomy
 

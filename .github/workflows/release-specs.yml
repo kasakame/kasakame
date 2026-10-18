@@ -2,9 +2,10 @@ name: release-specs
 
 # Manual release of the contract interface: builds the contracts from the
 # dispatched commit and attaches the compiled artifacts to a GitHub Release
-# tagged `specs-v<version>`. The SDK pins that tag and regenerates its clients
-# from the attached ARC-56 specs (docs/sdk.md); generated clients are not
-# attached and nothing generated is committed.
+# tagged `specs-v<version>`, as one tarball per artifact kind (arc56, arc32,
+# teal, puya). The SDK pins that tag, unpacks arc56.tar.gz, and regenerates its
+# clients from those specs (docs/sdk.md); generated clients are not attached
+# and nothing generated is committed.
 on:
   workflow_dispatch:
     inputs:
@@ -80,23 +81,42 @@ jobs:
         run: npm run test
         working-directory: projects/contracts
 
-      # Attach specs + TEAL + source maps only; the generated `*Client.ts`
-      # stays out (regenerable from the specs).
+      # One tarball per artifact kind, each keeping the per-app directories
+      # (campaign/, claimsvault/, factory/) - consumers download only the kind
+      # they need, and arc56.tar.gz is the interface the SDK regenerates from.
+      - name: Bundle the artifacts (one tarball per kind)
+        run: |
+          cd projects/contracts/smart_contracts/artifacts
+          for kind in 'arc56:*.arc56.json' 'arc32:*.arc32.json' 'teal:*.teal' 'puya:*.puya.map'; do
+            name="${kind%%:*}"
+            mapfile -t files < <(find . -type f -name "${kind#*:}" | sort)
+            tar -czf "$RUNNER_TEMP/$name.tar.gz" "${files[@]}"
+          done
+
+      # Attach the tarballs only; the generated `*Client.ts` stays out
+      # (regenerable from the specs).
       - name: Create the specs release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
-          mapfile -t assets < <(find projects/contracts/smart_contracts/artifacts -type f \
-            \( -name '*.arc56.json' -o -name '*.arc32.json' -o -name '*.teal' -o -name '*.puya.map' \) | sort)
           prerelease_flag=()
           if [[ "$PRERELEASE" == "true" ]]; then
             prerelease_flag=(--prerelease)
           fi
-          notes="Compiled contract interface (ARC-56/ARC-32 specs, approval/clear TEAL, Puya source maps) built from $GITHUB_SHA. Generated clients are intentionally not attached - regenerate them from the ARC-56 specs with \`algokit generate client\`, or consume the SDK, which ships its own. Download with \`gh release download specs-v$VERSION\`."
-          gh release create "specs-v$VERSION" "${assets[@]}" \
+          notes="Commit: $GITHUB_SHA
+
+          This release includes:
+
+          - ARC-56 specs
+          - ARC-32 specs
+          - compiled approval/clear TEAL
+          - Puya source maps
+          "
+
+          gh release create "specs-v$VERSION" "$RUNNER_TEMP"/*.tar.gz \
             --target "$GITHUB_SHA" \
-            --title "Contract specs v$VERSION" \
+            --title "specs-v$VERSION" \
             --notes "$notes" \
             "${prerelease_flag[@]}"
