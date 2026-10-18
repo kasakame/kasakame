@@ -11,7 +11,7 @@
   "description": "Chain layer for kasakame: claim-tree proofs, campaign reads, and transaction assembly",
   "engines": {
     "node": ">=24.0.0",
-    "npm": ">=9.0"
+    "npm": ">=12.0"
   },
   "exports": {
     ".": {
