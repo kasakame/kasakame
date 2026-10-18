@@ -57,12 +57,13 @@ each open item links to the doc with the details. Design context is in
       Policy, non-custodial disclaimer. New `features/app/` components, Tailwind.
 - [ ] **Search** - navbar search filters the browse list by title client-side
       (state in `CampaignList`); indexer/catalog-backed search stays a Backend item.
-- [ ] **Hamburger menu** - Profile, My pledges, My projects, Settings. The wallet
+- [x] **Hamburger menu** - Profile, My pledges, My projects, Settings. The wallet
       button stays persistent top-right *outside* the menu: connection state must
       always be visible (see edge cases in [`frontend.md`](frontend.md)), and
       connect/disconnect is too frequent to bury behind two taps.
-- [ ] **Profile section** - address + network, my pledges (live leaves via
-      `fetchMyLeaves`), my projects (campaigns filtered by creator).
+- [ ] **Profile section** - address + network, my projects (campaigns filtered by
+      creator). My pledges shipped as its own section: live leaves via
+      `fetchMyLeaves` over every enumerated campaign, deleted ones included.
 - [x] **Settings section** - profile form (display name/bio/avatar/email) and settings
       form (notification prefs, theme) behind the account menu, wired to the backend CRUD.
 

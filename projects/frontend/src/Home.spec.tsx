@@ -10,10 +10,15 @@ vi.mock('@txnlab/use-wallet-react', () => ({
 }))
 
 vi.mock('./features/app/Nav', () => ({
-  default: ({ onNavigateHome }: { onNavigateHome: () => void }) => (
-    <button type="button" onClick={onNavigateHome}>
-      NAV_HOME
-    </button>
+  default: ({ onNavigateHome, onNavigatePledges }: { onNavigateHome: () => void; onNavigatePledges: () => void }) => (
+    <>
+      <button type="button" onClick={onNavigateHome}>
+        NAV_HOME
+      </button>
+      <button type="button" onClick={onNavigatePledges}>
+        NAV_PLEDGES
+      </button>
+    </>
   ),
 }))
 

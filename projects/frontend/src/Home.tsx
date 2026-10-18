@@ -7,6 +7,7 @@ import Settings from './features/app/Settings'
 import CampaignDetail from './features/campaigns/CampaignDetail'
 import CampaignList from './features/campaigns/CampaignList'
 import CreateCampaignForm from './features/campaigns/CreateCampaignForm'
+import MyPledges from './features/campaigns/MyPledges'
 
 type View =
   | { kind: 'list' }
@@ -122,19 +123,14 @@ const Home = () => {
         )}
 
         {view.kind === 'pledges' && (
-          <div className="mx-auto max-w-md py-12 text-center">
-            <h1 className="mb-4 text-2xl font-bold">My Pledges</h1>
-            <p className="mb-6 text-muted">Coming soon — will show your live pledge leaves from the campaign trees.</p>
-            <button
-              type="button"
-              className="cursor-pointer rounded-md border border-teal bg-teal px-4 py-2 text-sm text-white hover:border-teal-dark hover:bg-teal-dark"
-              onClick={() => {
-                navigate({ kind: 'list' })
-              }}
-            >
-              Back
-            </button>
-          </div>
+          <MyPledges
+            onSelectCampaign={(appId) => {
+              navigate({ kind: 'detail', appId })
+            }}
+            onBack={() => {
+              navigate({ kind: 'list' })
+            }}
+          />
         )}
 
         {view.kind === 'projects' && (

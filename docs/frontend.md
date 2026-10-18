@@ -64,6 +64,7 @@ navigation (selected campaign id) is enough.
 | **Detail** | Full campaign state, progress bar, per-pledge actions | indexer detail + live leaves + vault box | pledge / claim / refund / cancelPledge / delete |
 | **Create** | Title + metadata URI + goal (ALGO) + deadline form | - | `create()` + `factory.register()` |
 | **Pledge** | Amount input on the detail page | tree replay (frontier) | payment + `pledge()` + `credit()` (one atomic group) |
+| **My pledges** | Grid of the connected wallet's campaigns with live pledge leaves, deleted ones included (their vault refunds stay open) | campaign enumerate + headers + `fetchMyLeaves` replay per campaign | - |
 
 ## Data model
 
