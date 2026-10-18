@@ -148,14 +148,14 @@ one commit each - CI wiring comes last:
 
 ## CI & packaging
 
-- [ ] Split `build-and-test.yml` into fast parallel jobs with change detection: `lint-contracts`, `test-contracts`, `lint-sdk`, `test-sdk`, `lint-frontend`, `test-frontend`, `build`, `integration-test`, `backend`. Contracts jobs only run when `projects/contracts/**` changed; SDK/frontend jobs run on every PR. Fast jobs (lint + typecheck + unit tests) run without building the contracts or the frontend bundle (the sdk lanes still run codegen for the generated clients; the frontend lanes rebuild the SDK `dist/` - upload it from `build` if that proves slow); the `build` job runs contracts→SDK→frontend sequentially and uploads `contracts-artifacts`.
-- [ ] Frontend tests SDK changes against the locally-built SDK `dist/` (`file:../sdk`); frontend-only changes test against the published npm package. SDK→frontend direction only — frontend changes never require rebuilding the SDK.
+- [ ] Split `build-and-test.yml` into fast parallel jobs with change detection: `lint-contracts`, `test-contracts`, `lint-sdk`, `test-sdk`, `lint-frontend`, `test-frontend`, `build`, `integration-test`, `backend`. Contracts jobs only run when `projects/contracts/**` changed; SDK/frontend jobs run on every PR. Fast jobs (lint + typecheck + unit tests) run without building the contracts or the frontend bundle (the sdk lanes regenerate the clients from specs - the same-run `contracts-artifacts` when `projects/contracts/**` changed, the pinned specs release otherwise - and never build the contracts; the frontend lanes rebuild the SDK `dist/` - upload it from `build` if that proves slow); the `build` job runs contracts→SDK→frontend sequentially and uploads `contracts-artifacts`.
+- [ ] Frontend resolves `@kasakame/sdk` by what a change touches: contracts/SDK changes test against the locally-built SDK `dist/` (`file:../sdk`, rebuilt from the change set's specs); frontend-only changes test against the published npm package, so routine frontend work exercises what users install (a frontend change needing an unreleased SDK API waits for its release — the published package stays truthful). SDK→frontend direction only — frontend changes never require rebuilding the SDK; the `build` and integration jobs always run local (they compile the chain anyway). Activates with the first publish.
 - [ ] Final gate job: depends on all candidate jobs, passes if all are `success` or `skipped`, fails only on `failure`/`cancelled`; single required check so skipped change-detection jobs don't block merges under strict policy.
-- [ ] New `release.yml` workflow: `workflow_dispatch` only, no reviewer gate (single developer). Prep job runs `prepublishOnly` equivalent (build contracts → generate SDK clients via `algokit generate client` → `tsc` emit → lint → format → check-types → test:coverage → `npm pack --dry-run` → `npm publish --dry-run`); publish job runs `npm publish` directly after prep succeeds.
-- [ ] SDK installable from npm OR from repo: frontend `package.json` switches `@kasakame/sdk` between `file:../sdk` (local/unpublished changes) and the published npm version; same commands work locally and in CI.
-- [ ] **Contracts → SDK stays same-SHA local** - the SDK always regenerates its clients from the locally built contracts; no local/published switch at this boundary. Separately versioned specs would be a second source of truth (skew risk, extra download machinery) for no gain while both packages live here: the `build` job compiles the contracts once, every lane consumes `contracts-artifacts`, and the publish path regenerates from the repo so the published SDK always matches the released commit. The published interface (specs on GitHub Releases) serves outside consumers, not our build.
+- [ ] New `release-sdk.yml` workflow: `workflow_dispatch` only, no reviewer gate (single developer). Prep job runs the `prepublishOnly` equivalent (fetch the pinned specs release → regenerate clients → `tsc` emit → lint → format → check-types → test:coverage → `npm pack --dry-run` → `npm publish --dry-run`) - node/npm only, no contracts build, so a published SDK can never embed an unreleased interface; the package records the consumed specs version. Publish job runs `npm publish` directly after prep succeeds, then builds the frontend against the exact published version (`npm pkg set dependencies.@kasakame/sdk=<version> && npm install && npm run build`) and deploys that bundle - the deployable artifact doubles as the packaging/parity test. The release chain is specs → SDK → frontend; the frontend deploy can split into its own workflow when the repos split.
+- [ ] SDK consumable from repo or npm behind one specifier (`@kasakame/sdk`): once `0.1.0` is published, the committed frontend dependency is the registry version; `file:../sdk` is swapped in to test contracts/SDK changes via `npm pkg set dependencies.@kasakame/sdk="file:../sdk" && npm install` (CI: change detection, ephemeral; local: same commands, restore with `git checkout` + `npm ci`). Same commands everywhere, one specifier, different resolver.
+- [ ] **Contracts → SDK consumes released specs** - the contracts rarely change, so the SDK regenerates clients from the pinned specs release by default (`gh release download specs-v<version>` on one version constant; promote to a tiny specs npm package only if the repos split). Local contract artifacts are the explicit override (`SDK_SPECS=local`): contracts-changed CI lanes and local contract work. Clients never travel between packages - the ARC-56 spec is the interface; the contracts project generates its own clients for its tests and deployer. The `build` job stays straight-line local (contracts → SDK from those artifacts → frontend) as the same-SHA end-to-end gate. A fresh clone builds the SDK without the contracts folder - the split-ready property.
 - [ ] Package the frontend as a container image for portable hosting.
-- [ ] **Publish the contract interface** - commit the generated ARC-32/56 specs (currently gitignored build output) and attach them to GitHub Releases, so explorers, auditors, and third-party clients can build against the contracts without our code.
+- [ ] **Publish the contract interface** - its own `release-specs.yml` workflow (rare - run it when the contracts change): build the contracts at the tagged commit and attach the compiled per-app artifacts to a GitHub Release tagged `specs-vX.Y.Z` - ARC-56 + ARC-32 specs (the SDK's build input; client generation), approval/clear TEAL and `*.puya.map` source maps (independent recompile-and-verify audits). Skip the generated `*Client.ts` - one `algokit generate client` away from the spec. They stay gitignored build output; Releases version them - nothing generated is committed.
 - [ ] **Publish the client SDK** - publish the versioned `@kasakame/sdk` package (claim-tree math and generated typed clients, migrating per [`sdk.md`](sdk.md)) to the public npm registry (not GitHub Packages: even public installs there need an auth token). The SDK takes indexer-provider and signer interfaces so one codebase serves the UI, the CLI, and third parties.
 - [ ] **Ship the escape-hatch CLI** - graduate `scripts/reclaim.ts` into a standalone `npx`-runnable tool (refund/cancel/claim by app ID from a mnemonic, public indexer only, no backend). Canonical proof that exits never need our servers.
 
@@ -163,24 +163,25 @@ one commit each - CI wiring comes last:
 
 ## Local development
 
-- [ ] **No custom codegen script** - delete `projects/sdk/scripts/codegen.mjs` and the
-      `prebuild` hook; clients come from `algokit generate client`, the same generator the
-      contracts build already runs. Generated clients stay gitignored (`src/generated/`);
-      nothing generated is committed. Steps:
-  1. Point the SDK's `codegen` script at the contracts' ARC-56 specs (after `npm run build`
-     in `projects/contracts`, or against the artifacts CI already downloads):
-     `algokit generate client ../contracts/smart_contracts/artifacts --output src/generated/{contract_name}Client.ts`.
-  2. Keep tagging the generated `*Client.ts` with `// @ts-nocheck` - verified: they fail the
-     SDK's strict `tsc` (unused imports, `exactOptionalPropertyTypes`). A one-line tag step,
-     not a build script.
-  3. Copy the `*.arc56.json` specs into `src/generated/` (the publish `files` list ships them).
-  4. Sync [`sdk.md`](sdk.md) (module layout, stages) and [`ci.md`](ci.md); the sdk CI lanes
-     either install the AlgoKit CLI or keep consuming the clients the contracts build already
-     emits into the downloaded artifacts.
+- [ ] **Spec-driven codegen** - replace `projects/sdk/scripts/codegen.mjs` (and the `prebuild`
+      hook) with the spec step:
+  1. Obtain the specs: default is the pinned release (`gh release download
+     specs-v<version>` on the version constant) - no contracts checkout needed;
+     `SDK_SPECS=local` copies the `projects/contracts` artifacts instead, set by
+     contracts-changed CI lanes and local contract work. Delete the build-if-missing branch.
+  2. Regenerate each `*Client.ts` from its ARC-56 spec with the SDK's own pinned generator
+     devDependency (`algokit generate client` is a wrapper around the installed
+     devDependency - invoke it or its bin directly; verify the exact flags at implementation)
+     and tag it `// @ts-nocheck` (verified: the clients fail the strict `tsc`).
+  3. `src/generated/` stays gitignored; nothing generated is committed - regenerated every run
+     from the pinned specs, so the clients can never drift from a released interface.
+  4. Sync [`sdk.md`](sdk.md) (design decisions, stages), [`frontend.md`](frontend.md) (writes
+     section), [`ci.md`](ci.md), and [`AGENTS.md`](../AGENTS.md) (commands).
 - [ ] **Document running the SDK locally** - add a README section to `projects/sdk/` explaining
-      how to generate contract clients locally, how `npm run build` produces `dist/`, and how the
-      frontend consumes `@kasakame/sdk` as a `file:` dependency. Keep this in sync with `ci.md` so
-      local and CI always run the same commands.
+      how the SDK obtains specs (pinned release download by default; `SDK_SPECS=local` against
+      locally built contracts), how `npm run build` produces `dist/`, and how the frontend
+      consumes `@kasakame/sdk` as a `file:` dependency. Keep this in sync with `ci.md` and
+      [`AGENTS.md`](../AGENTS.md) so local and CI always run the same commands.
 
 ## Open design questions
 

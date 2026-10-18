@@ -13,7 +13,8 @@ The chain layer leaves `projects/frontend/src/lib` and becomes a versioned packa
 
 - **One explicit setup call instead of singletons.** The frontend's `lib/algorand.ts` reads Vite env and builds module singletons; an SDK cannot depend on Vite (Node has none) or React. The SDK exposes `configureSdk({ algorand, factoryAppId, vaultAppId })`, called once at startup by the frontend (with the client it already builds) and by the CLI (from env/flags). Everything else keeps its current shape.
 - **Structural, framework-free types.** `WalletSession { address, signer }` already uses algosdk's `TransactionSigner` — no wallet dependency. Indexer/algod access goes through the configured `AlgorandClient`.
-- **Generated clients are build output.** `*Client.ts` and `*.arc56.json` stay gitignored; `algokit generate client` (the same generator the contracts build runs) writes them into `src/generated/` (also gitignored) before SDK build/publish and before local dev. Generated clients don't pass the SDK's strict `tsc` flags, so each is tagged `// @ts-nocheck` - a tag step, not a codegen script.
+- **Released interfaces are the default inputs.** Each boundary consumes its producer's released form: the frontend uses the published `@kasakame/sdk` for frontend-only work, and the SDK builds against the pinned specs release (`specs-vX.Y.Z`). Local HEAD (`file:../sdk`, or `SDK_SPECS=local` for locally built contracts) is swapped in only inside a change-set that modifies the producer; release builds pin exact versions. Every component stays clone-and-run and ready for a repo split.
+- **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` and `*.arc56.json` stay gitignored. The SDK regenerates the clients from the specs with its own pinned generator devDependency (default: the pinned specs release; `SDK_SPECS=local`: locally built contracts) and tags each `// @ts-nocheck` (they don't pass the strict `tsc` flags). Clients never travel between packages - the contracts project generates its own for its tests and deployer.
 - **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and `disconnectQuietly` never move. The stale-proof *retry policy* moves (it's protocol: the CLI needs it); the error-to-*message* mapping stays (it's UI).
 - **Upload auth stays out.** `backend.ts`/`profiles.ts` sign-in flows are backend-coupled, not chain logic.
 
@@ -32,7 +33,7 @@ projects/sdk/
     campaigns.ts        # reads: browse/detail/vault (moved) + headers/discovery (new)
     transactions.ts     # writes: call assembly + retry (moved minus wallet bits)
     chain.ts            # configureSdk + indexer polling (moved from lib/algorand.ts)
-    generated/          # gitignored codegen output
+    generated/          # gitignored: clients regenerated from specs + specs
 ```
 
 ## Public API surface
@@ -88,7 +89,7 @@ Mirror the frontend: ESLint + Prettier config copies, strictest tsconfig trio, V
 
 ## Migration stages
 
-Each stage is one commit (a stage may split further if the diff gets unwieldy), ending green in every affected project: format, lint, check-types, tests. During the migration the frontend consumes the SDK via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck/dev; once `0.1.0` is published, swapping that reference for the registry version is an isolated follow-up. Codegen is deliberately deferred to stage 9 — nothing before the writes needs generated clients.
+Each stage is one commit (a stage may split further if the diff gets unwieldy), ending green in every affected project: format, lint, check-types, tests. During the migration the frontend consumes the SDK via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck/dev; once `0.1.0` is published, the registry version becomes the committed default and `file:../sdk` is swapped in only to test contracts/SDK changes (see the CI & packaging roadmap items). The SDK's own input follows the same rule against the contract specs: the pinned specs release by default, locally built contracts only while they change. Codegen is deliberately deferred to stage 9 — nothing before the writes needs generated clients.
 
 1. **Land the design** - commit this document and link it from the README docs map.
 2. **Scaffold** - package skeleton, configs, empty `src/index.ts` in `projects/sdk`; add the `sdk` commit scope and layout line to `AGENTS.md`.
@@ -104,8 +105,8 @@ Each stage is one commit (a stage may split further if the diff gets unwieldy), 
 12. **Enumeration** - `enumerateCampaigns` lists app ids from the Factory registry boxes and the vault boxes.
 13. **Headers** - `fetchCampaignHeader`, including creation-transaction decode for deleted campaigns; reads return protocol records and the frontend composes its view models.
 14. **Status** - `getCampaignStatus` and the `deriveStatus` rename; frontend imports update. The ended-list and My pledges switch rides here or lands separately.
-15. **Codegen removal** - delete `scripts/codegen.mjs` (and the `prebuild` hook); `npm run codegen` invokes `algokit generate client` on the contracts' ARC-56 specs into `src/generated/`, tags each `*Client.ts` with `// @ts-nocheck` (they don't pass the strict `tsc` flags), and copies the specs for packaging; `ci.md` follows in the same change.
-16. **Publish prep** - `prepublishOnly` (contracts build → codegen → `tsc` emit), `files` including the arc56 specs, README, engines; reserve the npm org.
+15. **Spec-driven codegen** - delete `scripts/codegen.mjs` (and the `prebuild` hook). Replace with the spec step: fetch the pinned specs release (default, `gh release download` at the version constant) or copy the local contracts artifacts (`SDK_SPECS=local`, set by contracts-changed CI lanes and local contract work); regenerate the `*Client.ts` files with the SDK's pinned generator devDependency (direct bin call; `algokit generate client` is a wrapper around the installed devDependency); tag each `// @ts-nocheck`. Drop the build-if-missing branch - the released-specs path needs no contracts checkout. The released-specs default activates once `release-specs.yml` tags the first `specs-v*` release; until then, local artifacts are the only source. `ci.md` and `AGENTS.md` follow in the same change.
+16. **Publish prep** - `prepublishOnly` (fetch the pinned specs → regenerate → tag → `tsc` emit), `files` whitelisting the emitted `dist/` (clients + specs; sources, tests, and configs stay out), record the consumed specs version (exported constant), README, engines; reserve the npm org.
 17. **Publish** - `0.1.0` to the public registry (manual step).
 18. **CLI** - scaffold `projects/cli` as its own package (not inside the SDK) and port `reclaim.ts` onto the SDK; publish alongside.
 
