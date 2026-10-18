@@ -36,6 +36,11 @@ each open item links to the doc with the details. Design context is in
 - [ ] **Creator display names via NFDs** - resolve NFDomains (`name.algo`) for creator/backer
        display on cards and detail, with truncated-address fallback for unnamed accounts
        (names are opt-in and cost ALGO; resolution is a free off-chain read).
+- [ ] **Creator address on the campaign card** - show the campaign creator's address on the card
+       (and detail page) so backers can see who's behind a campaign without leaving the listing;
+       truncated-address fallback for long addresses.
+- [ ] **Total backer counter** - show the number of backers who pledged on the campaign card
+       and/or the campaign details page, so a campaign's traction is visible at a glance.
 - [x] Fee disclaimers beside every money-moving button (see [`frontend.md`](frontend.md) fee table).
 - [x] "Cancel pledge" action on open campaigns.
 - [x] "Delete campaign" action for creators on settled campaigns.
