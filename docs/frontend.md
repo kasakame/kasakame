@@ -29,7 +29,7 @@ Contract behavior is defined in [`campaign.md`](campaign.md) and
 projects/frontend/src/
 ├── features/
 │   ├── campaigns/            # create, browse, details
-│   │   ├── CampaignList.tsx        # browse all campaigns
+│   │   ├── CampaignList.tsx        # browse live campaigns + deleted ones with unrefunded pledges
 │   │   ├── CampaignCard.tsx        # one card in the list
 │   │   ├── CampaignDetail.tsx      # single campaign + per-leaf pledge/cancel/refund, claim/delete, window banner
 │   │   ├── CampaignImage.tsx       # metadata image with failure fallback
@@ -41,7 +41,7 @@ projects/frontend/src/
 │       └── Footer.tsx              # brand, disclaimer
 ├── lib/                      # shared services
 │   ├── algorand.ts           # AlgorandClient + IndexerClient singletons; configures the SDK session
-│   ├── campaign.ts           # re-exports the SDK campaign read model
+│   ├── campaign.ts           # re-exports the SDK read model + composes deleted-campaign view models
 │   ├── claimtree.ts          # re-exports the SDK proof builder (tree math + indexer replay)
 │   ├── metadata.ts           # campaign metadata blob type
 │   ├── transaction.ts        # wallet disconnect helper + re-export of the SDK write path
@@ -60,7 +60,7 @@ navigation (selected campaign id) is enough.
 
 | View | Content | Reads | Writes |
 | --- | --- | --- | --- |
-| **Browse** | Grid of campaign cards, Factory-registered only | indexer list + Factory box search | - |
+| **Browse** | Grid of campaign cards (Factory-registered) plus a Deleted campaigns section for vault-box campaigns still holding refunds | indexer list + Factory box search + vault boxes | - |
 | **Detail** | Full campaign state, progress bar, per-pledge actions | indexer detail + live leaves + vault box | pledge / claim / refund / cancelPledge / delete |
 | **Create** | Title + metadata URI + goal (ALGO) + deadline form | - | `create()` + `factory.register()` |
 | **Pledge** | Amount input on the detail page | tree replay (frontier) | payment + `pledge()` + `credit()` (one atomic group) |
@@ -140,6 +140,15 @@ All reads use `algosdk.Indexer` configured from the same env as algod:
   apps with full approval programs.
 - **One campaign** - `indexer.lookupApplications(appId).do()` for the global
   state.
+- **Deleted campaigns** - `enumerateCampaigns` (registry + vault boxes) minus the
+  live list yields deleted-but-unfinalized ids: the vault box outlives the app,
+  so backers are still owed. `fetchCampaignHeader` recovers title, metadata URI,
+  goal, and deadline from the creation transaction and the unrefunded total from
+  the vault box (`paidIn − paidOut`). Browse renders those still holding refunds
+  in a **Deleted campaigns** section; selecting one opens the deleted detail
+  state (recovered heading + vault-direct refunds per live leaf). Deleted
+  campaigns with nothing left to refund never surface: with no vault box they
+  are not enumerable at all.
 - **My pledges** - `fetchMyLeaves`: replay the campaign's pledge calls (with
   group payments paired by block position) and vault/campaign spends, keep the
   viewer's unspent positions with amounts and payment TxIDs for proofs. The

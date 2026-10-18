@@ -2,7 +2,7 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import { useCallback, useEffect, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
 import type { CampaignViewModel } from '../../lib/campaign'
-import { getCachedCampaigns, getCampaign } from '../../lib/campaign'
+import { campaignFromHeader, fetchCampaignHeader, getCachedCampaigns, getCampaign } from '../../lib/campaign'
 import { classifyError, errorMessage } from '../../lib/errors'
 import { formatAlgo, formatCountdown, formatDeadline } from '../../lib/format'
 import { logError } from '../../lib/log'
@@ -60,6 +60,11 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const readCore = useCallback(async () => {
     const now = await fetchChainTimestamp()
     const result = await getCampaign(appId, now, activeAddress ?? undefined)
+    if (result?.deleted === true) {
+      // Global state is gone: recover the creation metadata and the still-unrefunded total from history.
+      const header = await fetchCampaignHeader(appId).catch(() => undefined)
+      if (header !== undefined) return { now, result: campaignFromHeader(header, now) }
+    }
     return { now, result }
   }, [appId, activeAddress])
 
@@ -239,11 +244,23 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
           ← Back to campaigns
         </button>
         <div className="rounded-lg border border-line bg-card p-6">
-          <h2 className="m-0 mb-1 text-2xl">Campaign #{campaign.id.toString()} has been deleted</h2>
+          <h2 className="m-0 mb-1 text-2xl">{campaign.title || `Campaign #${campaign.id.toString()}`} has been deleted</h2>
+          <p className="mb-4 text-sm text-muted">
+            App id {campaign.id.toString()}
+            {campaign.creator !== '' && <> · Created by {campaign.creator}</>}
+          </p>
+          {campaign.raisedMicroAlgos > 0n && (
+            <p className="text-sm text-muted">{formatAlgo(campaign.raisedMicroAlgos)} ALGO in pledges is still unrefunded.</p>
+          )}
           <p className="rounded-md border border-line bg-mist p-3 text-sm text-muted">
             Its on-chain state is gone, but the vault still holds live pledges until the refund window closes. Refund below - each refund
             comes straight from the vault.
           </p>
+          {windowInfo && (
+            <p className="mt-3 rounded-md border border-line bg-mist p-3 text-sm text-muted">
+              Refunds are open until {formatDeadline(windowInfo.endsAt)}. After that, unclaimed funds go to {windowInfo.sweepTarget}.
+            </p>
+          )}
           {leaves.length > 0 && (
             <div className="mt-5 border-t border-line pt-5">
               <h3 className="m-0 mb-3 text-lg">Your pledges</h3>

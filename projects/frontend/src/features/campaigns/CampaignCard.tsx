@@ -32,8 +32,15 @@ const CampaignCard = ({ campaign, nowSeconds, onSelect }: CampaignCardProps) => 
     >
       <div className="mb-3 flex items-center justify-between">
         <span className="text-sm font-semibold text-muted">#{campaign.id.toString()}</span>
-        <span className={`rounded-full px-2 py-0.5 text-badge font-bold tracking-wider text-white uppercase ${badgeBg[campaign.status]}`}>
-          {campaign.status}
+        <span className="flex items-center gap-2">
+          {campaign.deleted === true && (
+            <span className="rounded-full border border-line bg-mist px-2 py-0.5 text-badge font-bold tracking-wider text-muted uppercase">
+              deleted
+            </span>
+          )}
+          <span className={`rounded-full px-2 py-0.5 text-badge font-bold tracking-wider text-white uppercase ${badgeBg[campaign.status]}`}>
+            {campaign.status}
+          </span>
         </span>
       </div>
 

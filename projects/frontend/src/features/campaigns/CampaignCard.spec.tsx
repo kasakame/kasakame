@@ -27,6 +27,11 @@ describe('CampaignCard', () => {
     expect(screen.getByText(/Your pledge: 1 ALGO/)).toBeInTheDocument()
   })
 
+  it('marks deleted campaigns', () => {
+    render(<CampaignCard campaign={{ ...campaign, deleted: true }} nowSeconds={9_999_999_999n} onSelect={() => {}} />)
+    expect(screen.getByText('deleted')).toBeInTheDocument()
+  })
+
   it('calls onSelect with the campaign id when clicked', async () => {
     const onSelect = vi.fn()
     const user = userEvent.setup()

@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CampaignViewModel } from '../../lib/campaign'
+import type { CampaignHeader, CampaignViewModel } from '../../lib/campaign'
 import { clearCachedCampaigns, setCachedCampaigns } from '../../lib/campaign'
 import CampaignList from './CampaignList'
 
@@ -15,11 +15,41 @@ vi.mock('@txnlab/use-wallet-react', () => ({
   useWallet: () => useWalletMock(),
 }))
 
+const enumerateCampaignsMock = vi.fn()
+const fetchCampaignHeaderMock = vi.fn()
+
+vi.mock('../../lib/campaign', async () => {
+  const actual = await vi.importActual('../../lib/campaign')
+  return {
+    ...actual,
+    listCampaigns: (...args: unknown[]) => listCampaignsMock(...args),
+    fetchMyPledge: (...args: unknown[]) => fetchMyPledgeMock(...args),
+    enumerateCampaigns: (...args: unknown[]) => enumerateCampaignsMock(...args),
+    fetchCampaignHeader: (...args: unknown[]) => fetchCampaignHeaderMock(...args),
+  }
+})
+
 const useWalletMock = vi.fn()
 beforeEach(() => {
   clearCachedCampaigns()
   useWalletMock.mockReturnValue({ activeAddress: null })
+  enumerateCampaignsMock.mockResolvedValue(new Set<bigint>())
+  fetchCampaignHeaderMock.mockResolvedValue(undefined)
 })
+
+function deletedHeader(id: bigint): CampaignHeader {
+  return {
+    id,
+    creator: `CREATOR${id.toString()}`,
+    title: `Deleted campaign ${id.toString()}`,
+    metadataUri: '',
+    goalMicroAlgos: 10_000_000n,
+    deadlineSeconds: 900_000_000n,
+    raisedMicroAlgos: 4_000_000n,
+    status: 'failed',
+    deleted: true,
+  }
+}
 
 const nowSeconds = BigInt(Math.floor(Date.now() / 1000))
 const campaigns: CampaignViewModel[] = [
@@ -47,15 +77,6 @@ const campaigns: CampaignViewModel[] = [
 
 const listCampaignsMock = vi.fn()
 const fetchMyPledgeMock = vi.fn()
-
-vi.mock('../../lib/campaign', async () => {
-  const actual = await vi.importActual('../../lib/campaign')
-  return {
-    ...actual,
-    listCampaigns: (...args: unknown[]) => listCampaignsMock(...args),
-    fetchMyPledge: (...args: unknown[]) => fetchMyPledgeMock(...args),
-  }
-})
 
 describe('CampaignList', () => {
   it('renders campaign cards when campaigns are loaded', async () => {
@@ -187,5 +208,78 @@ describe('CampaignList', () => {
     await new Promise((r) => setTimeout(r, 0))
     rejectList?.(new Error('boom'))
     expect(screen.queryByText(/Failed to load campaigns/)).not.toBeInTheDocument()
+  })
+
+  it('shows deleted campaigns with pending refunds and opens them', async () => {
+    listCampaignsMock.mockResolvedValue({ campaigns, nowSeconds: 1_000_000_000n })
+    enumerateCampaignsMock.mockResolvedValue(new Set([1n, 2n, 9n]))
+    fetchCampaignHeaderMock.mockResolvedValue(deletedHeader(9n))
+    const onSelectCampaign = vi.fn()
+    const user = userEvent.setup()
+    render(<CampaignList onSelectCampaign={onSelectCampaign} />)
+
+    expect(await screen.findByText('Deleted campaigns')).toBeInTheDocument()
+    expect(fetchCampaignHeaderMock).toHaveBeenCalledTimes(1)
+    expect(fetchCampaignHeaderMock).toHaveBeenCalledWith(9n)
+    expect(screen.getByText('deleted')).toBeInTheDocument()
+
+    await user.click(screen.getByText('Deleted campaign 9'))
+    expect(onSelectCampaign).toHaveBeenCalledWith(9n)
+  })
+
+  it('skips live ids, healthy headers, zero-raised and failed header lookups', async () => {
+    listCampaignsMock.mockResolvedValue({ campaigns, nowSeconds: 1_000_000_000n })
+    enumerateCampaignsMock.mockResolvedValue(new Set([1n, 2n, 3n, 4n, 5n]))
+    fetchCampaignHeaderMock.mockImplementation((id: bigint) => {
+      if (id === 3n) return Promise.resolve({ ...deletedHeader(3n), raisedMicroAlgos: 0n })
+      if (id === 4n) return Promise.resolve({ ...deletedHeader(4n), deleted: false })
+      return Promise.reject(new Error('offline'))
+    })
+    render(<CampaignList onSelectCampaign={() => {}} />)
+
+    expect(await screen.findByText('#1')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(fetchCampaignHeaderMock).toHaveBeenCalledTimes(3)
+    })
+    expect(fetchCampaignHeaderMock).not.toHaveBeenCalledWith(1n)
+    expect(fetchCampaignHeaderMock).not.toHaveBeenCalledWith(2n)
+    expect(screen.queryByText('Deleted campaigns')).not.toBeInTheDocument()
+  })
+
+  it('still renders the list when the deleted enumeration fails', async () => {
+    listCampaignsMock.mockResolvedValue({ campaigns, nowSeconds: 1_000_000_000n })
+    enumerateCampaignsMock.mockRejectedValue(new Error('offline'))
+    render(<CampaignList onSelectCampaign={() => {}} />)
+
+    expect(await screen.findByText('#1')).toBeInTheDocument()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('Deleted campaigns')).not.toBeInTheDocument()
+  })
+
+  it('shows deleted campaigns even when there are no live campaigns', async () => {
+    listCampaignsMock.mockResolvedValue({ campaigns: [], nowSeconds: 1_000_000_000n })
+    enumerateCampaignsMock.mockResolvedValue(new Set([9n]))
+    fetchCampaignHeaderMock.mockResolvedValue(deletedHeader(9n))
+    render(<CampaignList onSelectCampaign={() => {}} />)
+
+    expect(await screen.findByText(/No campaigns yet/)).toBeInTheDocument()
+    expect(await screen.findByText('Deleted campaigns')).toBeInTheDocument()
+  })
+
+  it('does not update the deleted section when unmounted mid-load', async () => {
+    listCampaignsMock.mockResolvedValue({ campaigns, nowSeconds: 1_000_000_000n })
+    let resolveEnumerate: ((value: Set<bigint>) => void) | undefined
+    enumerateCampaignsMock.mockReturnValue(
+      new Promise<Set<bigint>>((resolve) => {
+        resolveEnumerate = resolve
+      }),
+    )
+    const { unmount } = render(<CampaignList onSelectCampaign={() => {}} />)
+    expect(await screen.findByText('#1')).toBeInTheDocument()
+    unmount()
+
+    if (resolveEnumerate === undefined) throw new Error('enumeration was not requested')
+    resolveEnumerate(new Set([9n]))
+    await new Promise((r) => setTimeout(r, 0))
   })
 })

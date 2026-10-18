@@ -6,12 +6,14 @@ import { clearCachedCampaigns, setCachedCampaigns } from '../../lib/campaign'
 import CampaignDetail from './CampaignDetail'
 
 const getCampaignMock = vi.fn()
+const fetchCampaignHeaderMock = vi.fn()
 
 vi.mock('../../lib/campaign', async () => {
   const actual = await vi.importActual('../../lib/campaign')
   return {
     ...actual,
     getCampaign: (...args: unknown[]) => getCampaignMock(...args),
+    fetchCampaignHeader: (...args: unknown[]) => fetchCampaignHeaderMock(...args),
   }
 })
 
@@ -103,6 +105,7 @@ describe('CampaignDetail', () => {
     fetchMyLeavesMock.mockResolvedValue([])
     fetchVaultBoxMock.mockResolvedValue(undefined)
     fetchVaultConfigMock.mockResolvedValue(undefined)
+    fetchCampaignHeaderMock.mockResolvedValue(undefined)
   })
 
   it('shows a loading state initially', () => {
@@ -416,16 +419,53 @@ describe('CampaignDetail', () => {
     expect(await screen.findByText(/Refunds are open until/)).toBeInTheDocument()
   })
 
-  it('shows the deleted state with vault refunds for live leaves', async () => {
-    getCampaignMock.mockResolvedValue({ ...viewModel('failed'), deleted: true })
+  it('shows the deleted state with recovered metadata and vault refunds for live leaves', async () => {
+    getCampaignMock.mockResolvedValue({ id: 42n, deleted: true })
+    fetchCampaignHeaderMock.mockResolvedValue({
+      id: 42n,
+      creator: 'CREATOR',
+      title: 'Sunk costs',
+      metadataUri: '',
+      goalMicroAlgos: 10_000_000n,
+      deadlineSeconds: 999_999_999n,
+      raisedMicroAlgos: 1_000_000n,
+      status: 'failed',
+      deleted: true,
+    })
     fetchMyLeavesMock.mockResolvedValue([{ position: 3, amount: 1_000_000n, txidHex: 'aa' }])
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: 2, settledAt: 5_000n })
+    fetchVaultConfigMock.mockResolvedValue({ window: 3_600n, sweepTarget: 'SWEEP' })
     refundMock.mockResolvedValue(undefined)
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
-    expect(await screen.findByText(/has been deleted/)).toBeInTheDocument()
+    expect(await screen.findByText('Sunk costs has been deleted')).toBeInTheDocument()
+    expect(screen.getByText(/Created by CREATOR/)).toBeInTheDocument()
+    expect(screen.getByText(/1 ALGO in pledges is still unrefunded/)).toBeInTheDocument()
+    expect(screen.getByText(/Refunds are open until/)).toBeInTheDocument()
     await user.click(await screen.findByText('Refund my pledge'))
     expect(refundMock).toHaveBeenCalledWith(42n, { address: 'ADDRESS', signer: {} }, { position: 3, amount: 1_000_000n, txidHex: 'aa' })
+  })
+
+  it('falls back to a bare deleted state when the header cannot be recovered', async () => {
+    getCampaignMock.mockResolvedValue({
+      id: 42n,
+      creator: '',
+      title: '',
+      metadataUri: '',
+      goalMicroAlgos: 0n,
+      raisedMicroAlgos: 0n,
+      deadlineSeconds: 0n,
+      status: 'failed',
+      deleted: true,
+    } satisfies CampaignViewModel)
+    fetchCampaignHeaderMock.mockRejectedValue(new Error('offline'))
+    render(<CampaignDetail appId={42n} onBack={() => {}} />)
+
+    expect(await screen.findByText('Campaign #42 has been deleted')).toBeInTheDocument()
+    expect(screen.queryByText(/Created by/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/still unrefunded/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Refunds are open until/)).not.toBeInTheDocument()
   })
 
   it('navigates back after a successful delete', async () => {

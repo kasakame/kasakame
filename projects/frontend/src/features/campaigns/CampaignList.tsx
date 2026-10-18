@@ -1,7 +1,14 @@
 import { useWallet } from '@txnlab/use-wallet-react'
 import { useEffect, useState } from 'react'
-import type { CampaignViewModel } from '../../lib/campaign'
-import { fetchMyPledge, getCachedCampaigns, listCampaigns } from '../../lib/campaign'
+import type { CampaignHeader, CampaignViewModel } from '../../lib/campaign'
+import {
+  campaignFromHeader,
+  enumerateCampaigns,
+  fetchCampaignHeader,
+  fetchMyPledge,
+  getCachedCampaigns,
+  listCampaigns,
+} from '../../lib/campaign'
 import CampaignCard from './CampaignCard'
 
 interface CampaignListProps {
@@ -12,6 +19,7 @@ interface CampaignListProps {
 const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
   const { activeAddress } = useWallet()
   const [campaigns, setCampaigns] = useState<CampaignViewModel[]>([])
+  const [deletedCampaigns, setDeletedCampaigns] = useState<CampaignViewModel[]>([])
   const [nowSeconds, setNowSeconds] = useState<bigint | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +28,24 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
     let cancelled = false
     setLoading(true)
     setError(null)
+
+    // Deleted campaigns no longer appear in the Factory registry; the registry + vault-box enumeration finds them.
+    // Only the ones still holding backer refunds are worth rendering.
+    const loadDeleted = async (liveCampaigns: CampaignViewModel[], now: bigint) => {
+      try {
+        const all = await enumerateCampaigns()
+        const live = new Set(liveCampaigns.map((campaign) => campaign.id))
+        const headers = await Promise.all(
+          [...all].filter((id) => !live.has(id)).map((id) => fetchCampaignHeader(id).catch(() => undefined)),
+        )
+        const deleted = headers
+          .filter((header): header is CampaignHeader => header !== undefined && header.deleted && header.raisedMicroAlgos > 0n)
+          .map((header) => campaignFromHeader(header, now))
+        if (!cancelled) setDeletedCampaigns(deleted)
+      } catch {
+        // Supplementary section: a failed enumeration omits it, the live list still renders.
+      }
+    }
 
     // Fast pass without the viewer: cards render from global state alone (~0.2s for the whole list).
     // Pledge totals need a full history replay each, so they stream in afterwards without blocking.
@@ -37,6 +63,7 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
         if (!cancelled) {
           setNowSeconds(result.nowSeconds)
           setCampaigns(result.campaigns)
+          void loadDeleted(result.campaigns, result.nowSeconds)
           if (activeAddress) {
             const viewer = activeAddress
             void Promise.all(
@@ -90,21 +117,30 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
     )
   }
 
-  if (campaigns.length === 0) {
-    return (
-      <div>
-        <p className="text-muted">No campaigns yet. Create the first one!</p>
-      </div>
-    )
-  }
-
   return (
     <div>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4">
-        {campaigns.map((campaign) => (
-          <CampaignCard key={campaign.id.toString()} campaign={campaign} nowSeconds={nowSeconds} onSelect={onSelectCampaign} />
-        ))}
-      </div>
+      {campaigns.length === 0 ? (
+        <p className="text-muted">No campaigns yet. Create the first one!</p>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4">
+          {campaigns.map((campaign) => (
+            <CampaignCard key={campaign.id.toString()} campaign={campaign} nowSeconds={nowSeconds} onSelect={onSelectCampaign} />
+          ))}
+        </div>
+      )}
+      {deletedCampaigns.length > 0 && (
+        <section className="mt-8">
+          <h2 className="m-0 mb-1 text-xl">Deleted campaigns</h2>
+          <p className="mt-0 mb-4 text-sm text-muted">
+            These campaigns were removed on-chain; their unrefunded pledges stay refundable from the vault until each refund window closes.
+          </p>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-4">
+            {deletedCampaigns.map((campaign) => (
+              <CampaignCard key={campaign.id.toString()} campaign={campaign} nowSeconds={nowSeconds} onSelect={onSelectCampaign} />
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   )
 }
