@@ -41,7 +41,7 @@ npm run deploy:localnet -- claimsvault  # deploy the ClaimsVault - save its app 
 npm run seed:localnet                   # demo data
 
 cd ../frontend
-# put the same two app ids in .env.localnet (see .env.template)
+# put the same two app ids in .env.localnet (see .env.localnet.template)
 npm run dev:localnet   # frontend on http://localhost:5173
 ```
 

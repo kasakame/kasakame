@@ -29,6 +29,9 @@ function artifactPairs() {
 
 let pairs = artifactPairs()
 if (pairs.length === 0) {
+  if (!fs.existsSync(path.join(contractsDir, 'node_modules'))) {
+    throw new Error('contracts dependencies are not installed - run `algokit project bootstrap all` from the repository root, then retry')
+  }
   console.log('no contract artifacts found - building the contracts project')
   execSync('npm run build', { cwd: contractsDir, stdio: 'inherit' })
   pairs = artifactPairs()

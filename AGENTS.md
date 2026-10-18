@@ -102,9 +102,10 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 - **Env files are per network, never a shared `.env`.** Commands name their network
   explicitly (`.env.localnet` / `.env.testnet`; e.g. `npm run dev:testnet`,
   `npm run seed:testnet`; `algokit project deploy <network>` maps to the matching command in
-  `.algokit.toml`). The committed `.env.template` documents the shape - keep network-specific
-  values out of any base file, since both Vite and AlgoKit layer `.env` underneath
-  `.env.<mode>`. MainNet is not wired up yet; the convention extends to `.env.mainnet` when it is.
+  `.algokit.toml`). The committed `.env.<network>.template` files document the shape, and
+  `algokit project bootstrap all` creates the matching `.env.<network>` from them when missing -
+  never a base `.env`, since Vite layers `.env` underneath `.env.<mode>`.
+  MainNet is not wired up yet; the convention extends to `.env.mainnet` when it is.
 - **Lint, format, and compiler rules** (ESLint, Prettier, and `tsconfig.json` options)
   are documented in [`docs/conventions.md`](docs/conventions.md).
 - **Algorand TypeScript gotchas** (contracts use `@algorandfoundation/algorand-typescript`):
