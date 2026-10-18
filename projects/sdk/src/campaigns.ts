@@ -429,10 +429,10 @@ function readU16BE(bytes: Uint8Array, offset: number): number {
 
 /**
  * Decode the ARC-56 tuple arguments of the Campaign `create` method call, selector already stripped:
- * `vault: Application, title: bytes, metadataUri: bytes, goal: uint64, deadline: uint64`.
+ * `vault: uint64, title: byte[], metadataUri: byte[], goal: uint64, deadline: uint64`.
  *
- * `Application` is encoded as an address (a 2-byte length prefix plus 32 bytes); `bytes` arguments carry a
- * 2-byte length prefix; `uint64` arguments are 8 raw big-endian bytes.
+ * `uint64` arguments (vault, goal, deadline) are 8 raw big-endian bytes; `byte[]` arguments carry a
+ * 2-byte length prefix.
  *
  * @param args Application call args with the 4-byte method selector already removed.
  * @returns The decoded title, metadata URI, goal and deadline.
@@ -443,7 +443,7 @@ function decodeCreateArgs(args: Uint8Array[]): {
   goal: bigint
   deadline: bigint
 } {
-  // args[0] = vault (Application → address); not needed in the header.
+  // args[0] = vault (uint64); not needed in the header.
   const titleArg = args[1]
   const metadataUriArg = args[2]
   const goalArg = args[3]
@@ -507,8 +507,9 @@ export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader
       const transactions = block.transactions ?? []
       const creation = transactions.find((tx) => tx.createdApplicationIndex !== undefined && tx.createdApplicationIndex === appId)
       const args = creation?.applicationTransaction?.applicationArgs
-      if (args !== undefined && args.length >= 5) {
-        const decoded = decodeCreateArgs(args)
+      // On-chain args carry the 4-byte ARC-4 method selector first; the decode helper takes the tuple without it.
+      if (args !== undefined && args.length >= 6) {
+        const decoded = decodeCreateArgs(args.slice(1))
         title = decoded.title
         metadataUri = decoded.metadataUri
         goalMicroAlgos = decoded.goal

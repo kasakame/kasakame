@@ -529,8 +529,10 @@ describe('fetchCampaignHeader', () => {
           createdApplicationIndex: 42n,
           applicationTransaction: {
             applicationId: 0n,
+            // Selector, then the ARC-56 tuple: vault uint64, title, metadataUri, goal, deadline.
             applicationArgs: [
-              new Uint8Array([0, 32, ...new Uint8Array(32).fill(1)]),
+              new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]),
+              new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]),
               new Uint8Array([0, 16, ...new TextEncoder().encode('Deleted campaign')]),
               new Uint8Array([0, 8, ...new TextEncoder().encode('ipfs://x')]),
               new Uint8Array([0, 0, 0, 0, 0, 0x98, 0x96, 0x80]),
@@ -580,8 +582,10 @@ describe('fetchCampaignHeader', () => {
           createdApplicationIndex: 42n,
           applicationTransaction: {
             applicationId: 0n,
+            // Selector, then the ARC-56 tuple: vault uint64, title, metadataUri, goal, deadline.
             applicationArgs: [
-              new Uint8Array([0, 32, ...new Uint8Array(32)]),
+              new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]),
+              new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]),
               new Uint8Array([0, 16, ...new TextEncoder().encode('Deleted campaign')]),
               new Uint8Array([0, 8, ...new TextEncoder().encode('ipfs://x')]),
               new Uint8Array([0, 0, 0, 0, 0, 0x98, 0x96, 0x80]),
