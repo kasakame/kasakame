@@ -2,6 +2,7 @@ import type algosdk from 'algosdk'
 import { encodeAddress } from 'algosdk'
 import { fetchChainTimestamp, getSdkConfig } from './chain.js'
 import { fetchMyLeaves, u64beDecode } from './claim-tree.js'
+import { FactoryClient } from './generated/FactoryClient.js'
 import { fetchVaultBox } from './transactions.js'
 
 /**
@@ -280,6 +281,21 @@ export async function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set
     nextToken = response.nextToken
   } while (nextToken !== undefined)
   return registered
+}
+
+/**
+ * Whether a campaign is registered with the configured Factory - the check `ClaimsVault.credit` runs on a campaign's
+ * first pledge. Gate pledge actions on it so an unregistered app never produces a doomed transaction.
+ *
+ * @param appId Campaign application id.
+ * @returns True when the Factory's registration box exists for the app; false when it does not, or when no Factory is
+ *   configured (nothing can be registered then).
+ */
+export async function isRegistered(appId: bigint): Promise<boolean> {
+  const { algorand, factoryAppId } = getSdkConfig()
+  if (factoryAppId <= 0n) return false
+  const factoryClient = new FactoryClient({ algorand, appId: factoryAppId })
+  return (await factoryClient.state.box.registered.value(appId)) !== undefined
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   fetchRegisteredCampaignIds,
   getCachedCampaigns,
   getCampaign,
+  isRegistered,
   listCampaigns,
 } from './campaigns.js'
 import { configureSdk } from './chain.js'
@@ -20,6 +21,7 @@ const indexerMock = vi.hoisted(() => ({
 
 const fetchMyLeavesMock = vi.hoisted(() => vi.fn())
 const fetchVaultBoxMock = vi.hoisted(() => vi.fn())
+const registeredValueMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./claim-tree.js', async () => {
   const actual = await vi.importActual('./claim-tree.js')
@@ -28,6 +30,12 @@ vi.mock('./claim-tree.js', async () => {
 
 vi.mock('./transactions.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
+}))
+
+vi.mock('./generated/FactoryClient.js', () => ({
+  FactoryClient: class {
+    state = { box: { registered: { value: (...args: unknown[]) => registeredValueMock(...args) } } }
+  },
 }))
 
 const ZERO_ADDRESS = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'
@@ -123,6 +131,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   clearCachedCampaigns()
   fetchVaultBoxMock.mockResolvedValue(undefined)
+  registeredValueMock.mockResolvedValue(undefined)
   configureSdk({ algorand: fakeAlgorand(), factoryAppId: 1001n, vaultAppId: 2002n })
 })
 
@@ -185,6 +194,24 @@ describe('fetchRegisteredCampaignIds', () => {
       }),
     }))
     expect([...(await fetchRegisteredCampaignIds(1001n))]).toEqual([7n, 8n])
+  })
+})
+
+describe('isRegistered', () => {
+  it('reads the Factory registration box', async () => {
+    registeredValueMock.mockResolvedValue(ZERO_ADDRESS)
+    await expect(isRegistered(42n)).resolves.toBe(true)
+    expect(registeredValueMock).toHaveBeenCalledWith(42n)
+  })
+
+  it('returns false when the registration box is missing', async () => {
+    await expect(isRegistered(42n)).resolves.toBe(false)
+  })
+
+  it('returns false without a configured Factory', async () => {
+    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
+    await expect(isRegistered(42n)).resolves.toBe(false)
+    expect(registeredValueMock).not.toHaveBeenCalled()
   })
 })
 

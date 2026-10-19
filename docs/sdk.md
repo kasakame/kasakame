@@ -203,6 +203,7 @@ function toCampaignViewModel(
 ): CampaignViewModel
 function fetchMyPledge(appId: bigint, address: string): Promise<bigint | undefined>
 function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set<bigint>>
+function isRegistered(appId: bigint): Promise<boolean>
 function enumerateCampaigns(): Promise<Set<bigint>>
 function getCachedCampaigns(): { campaigns: CampaignViewModel[]; nowSeconds: bigint } | undefined
 function setCachedCampaigns(result: { campaigns: CampaignViewModel[]; nowSeconds: bigint }): void
