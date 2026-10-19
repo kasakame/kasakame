@@ -172,10 +172,10 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const isCreator = connected && campaign.creator !== '' && activeAddress === campaign.creator
   const hasPledge = leaves.length > 0
   const canPledge = campaign.status === 'open' && connected && !isCreator
-  const canClaim = campaign.status === 'successful' && isCreator
+  const canClaim = campaign.status === 'successful' && !campaign.claimed && isCreator
   const canRefund = campaign.status === 'failed' && connected && hasPledge
   const canCancelPledge = campaign.status === 'open' && connected && hasPledge
-  const canDelete = isCreator && (campaign.status !== 'open' || campaign.raisedMicroAlgos === 0n)
+  const canDelete = isCreator && (campaign.status === 'failed' || campaign.claimed || campaign.raisedMicroAlgos === 0n)
 
   const runAction = async (key: string, action: () => Promise<void>, success: string, refresh: () => Promise<unknown>) => {
     setBusy(true)

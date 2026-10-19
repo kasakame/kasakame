@@ -81,6 +81,7 @@ function viewModel(
     myPledgeMicroAlgos?: bigint | undefined
     goalMicroAlgos?: bigint
     raisedMicroAlgos?: bigint
+    claimed?: boolean
   } = {},
 ): CampaignViewModel {
   return {
@@ -92,6 +93,7 @@ function viewModel(
     raisedMicroAlgos: overrides.raisedMicroAlgos ?? 10_000_000n,
     deadlineSeconds: nowSeconds + 86_400n,
     status,
+    claimed: overrides.claimed ?? false,
     myPledgeMicroAlgos: overrides.myPledgeMicroAlgos,
   }
 }
@@ -270,6 +272,15 @@ describe('CampaignDetail', () => {
     expect(await screen.findByText('Claim funds')).toBeInTheDocument()
   })
 
+  it('hides the claim button and shows delete once the creator has claimed', async () => {
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS', claimed: true }))
+    render(<CampaignDetail appId={42n} onBack={() => {}} />)
+
+    await screen.findByText('Campaign #42')
+    expect(screen.queryByText('Claim funds')).not.toBeInTheDocument()
+    expect(screen.getByText('Delete campaign')).toBeInTheDocument()
+  })
+
   it('hides the claim button when the viewer is not the creator', async () => {
     getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'SOMEONEELSE' }))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -430,6 +441,7 @@ describe('CampaignDetail', () => {
       raisedMicroAlgos: 1_000_000n,
       deadlineSeconds: 999_999_999n,
       status: 'failed',
+      claimed: false,
       deleted: true,
     } satisfies CampaignViewModel)
     fetchMyLeavesMock.mockResolvedValue([{ position: 3, amount: 1_000_000n, txidHex: 'aa' }])
@@ -457,6 +469,7 @@ describe('CampaignDetail', () => {
       raisedMicroAlgos: 0n,
       deadlineSeconds: 0n,
       status: 'failed',
+      claimed: false,
       deleted: true,
     } satisfies CampaignViewModel)
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
@@ -491,6 +504,14 @@ describe('CampaignDetail', () => {
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     expect(await screen.findByText('Delete campaign')).toBeInTheDocument()
+  })
+
+  it('hides the delete button for a successful campaign that has not been claimed', async () => {
+    getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
+    render(<CampaignDetail appId={42n} onBack={() => {}} />)
+
+    await screen.findByText('Campaign #42')
+    expect(screen.queryByText('Delete campaign')).not.toBeInTheDocument()
   })
 
   it('hides the delete button for non-creators and open campaigns with pledges', async () => {

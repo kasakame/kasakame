@@ -237,8 +237,13 @@ describe('campaignFromHeader', () => {
       raisedMicroAlgos: 0n,
       deadlineSeconds: 1_000n,
       status: 'successful',
+      claimed: true,
       deleted: true,
     })
+  })
+
+  it('does not mark a failed header as claimed', () => {
+    expect(campaignFromHeader(header({ status: 'failed' }), 2_000n).claimed).toBe(false)
   })
 })
 
@@ -290,6 +295,7 @@ describe('toCampaignViewModel', () => {
     })
     const vm = toCampaignViewModel(app, 1_000n)
     expect(vm.status).toBe('failed')
+    expect(vm.claimed).toBe(false)
   })
 
   it('maps stored status 2 (claimed) to successful', () => {
@@ -304,6 +310,7 @@ describe('toCampaignViewModel', () => {
     })
     const vm = toCampaignViewModel(app, 1_000n)
     expect(vm.status).toBe('successful')
+    expect(vm.claimed).toBe(true)
   })
 
   it('defaults missing title and metadata uri to empty string', () => {

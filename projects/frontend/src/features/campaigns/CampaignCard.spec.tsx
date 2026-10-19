@@ -13,6 +13,7 @@ const campaign: CampaignViewModel = {
   raisedMicroAlgos: 5_000_000n,
   deadlineSeconds: BigInt(Math.floor(Date.now() / 1000) + 86_400),
   status: 'open',
+  claimed: false,
   myPledgeMicroAlgos: 1_000_000n,
 }
 

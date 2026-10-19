@@ -168,6 +168,7 @@ interface CampaignViewModel {
   raisedMicroAlgos: bigint
   deadlineSeconds: bigint
   status: CampaignStatus
+  claimed: boolean
   myPledgeMicroAlgos?: bigint
   deleted?: boolean
 }
@@ -213,7 +214,7 @@ function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddress?: string):
 function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined>
 ```
 
-`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box; `getCampaign` recovers the same fields through it. `campaignFromHeader` maps either header to the view model (deriving the display status), so the detail view and the deleted section of the browse list agree on a deleted campaign.
+`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. `claimed` keeps the raw Claimed fact, so actions can tell a funded campaign awaiting claim from one already claimed (the display word is `successful` for both). For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box; `getCampaign` recovers the same fields through it. `campaignFromHeader` maps either header to the view model (deriving the display status), so the detail view and the deleted section of the browse list agree on a deleted campaign.
 
 ### Writes (`transactions.ts`)
 

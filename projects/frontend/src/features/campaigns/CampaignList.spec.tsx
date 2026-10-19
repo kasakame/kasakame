@@ -62,6 +62,7 @@ const campaigns: CampaignViewModel[] = [
     raisedMicroAlgos: 5_000_000n,
     deadlineSeconds: nowSeconds + 86_400n,
     status: 'open',
+    claimed: false,
   },
   {
     id: 2n,
@@ -72,6 +73,7 @@ const campaigns: CampaignViewModel[] = [
     raisedMicroAlgos: 20_000_000n,
     deadlineSeconds: nowSeconds - 1n,
     status: 'successful',
+    claimed: false,
   },
 ]
 

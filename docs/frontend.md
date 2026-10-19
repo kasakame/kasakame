@@ -89,6 +89,7 @@ interface CampaignViewModel {
   raisedMicroAlgos: bigint
   deadlineSeconds: bigint
   status: CampaignStatus
+  claimed: boolean                     // true once the creator claimed (display status stays 'successful')
   myPledgeMicroAlgos?: bigint          // live-leaf sum for the viewer
   deleted?: boolean                     // true for a deleted campaign (fields recovered from history)
 }
@@ -97,8 +98,9 @@ interface CampaignViewModel {
 The `successful`/`failed` display states come from `getCampaignStatus` in
 `@kasakame/sdk`, derived from `goal`/`raised`/`deadline` - exactly the rule the
 contract evaluates. The display state is never stored on-chain; the contract's
-own status byte (`open`/`failed`/`claimed`) stays on the SDK header for
-consumers that need it.
+own status byte (`open`/`failed`/`claimed`) stays on the SDK header, and the
+view model carries `claimed` so actions can tell a claimable funded campaign
+from one already claimed.
 
 ## Campaign metadata
 

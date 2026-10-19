@@ -344,6 +344,7 @@ describe('getCampaign', () => {
       raisedMicroAlgos: 6_000_000n,
       deadlineSeconds: 2_000n,
       status: 'successful',
+      claimed: true,
       deleted: true,
     })
     expect(indexerMock.lookupBlock).toHaveBeenCalledWith(100n)

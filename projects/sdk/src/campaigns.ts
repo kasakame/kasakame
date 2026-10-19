@@ -39,6 +39,8 @@ export interface CampaignViewModel {
   deadlineSeconds: bigint
   /** Derived display status. `funded` is computed, never stored on-chain. */
   status: CampaignStatus
+  /** True once the creator claimed (raw Claimed status); `status` is 'successful' for both claimable and claimed campaigns. */
+  claimed: boolean
   /** The connected wallet's live pledge total (microAlgos), or undefined if it has no live leaves. */
   myPledgeMicroAlgos?: bigint | undefined
   /** True when the application was deleted on-chain (global state is gone; only history remains). */
@@ -124,6 +126,7 @@ export function campaignFromHeader(header: CampaignHeader, nowSeconds: bigint): 
     raisedMicroAlgos: header.raisedMicroAlgos,
     deadlineSeconds: header.deadlineSeconds,
     status: getCampaignStatus(header, nowSeconds),
+    claimed: header.status === 'claimed',
     deleted: header.deleted,
   }
 }
@@ -215,6 +218,7 @@ export function toCampaignViewModel(
   const goal = state.goal ?? 0n
   const raised = state.raised ?? 0n
   const deadline = state.deadline ?? 0n
+  const chainStatus = state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open'
 
   const viewModel: CampaignViewModel = {
     id: app.id,
@@ -233,11 +237,12 @@ export function toCampaignViewModel(
         goalMicroAlgos: goal,
         deadlineSeconds: deadline,
         raisedMicroAlgos: raised,
-        status: state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open',
+        status: chainStatus,
         deleted: app.deleted === true,
       },
       nowSeconds,
     ),
+    claimed: chainStatus === 'claimed',
   }
   if (myPledgeMicroAlgos !== undefined) {
     viewModel.myPledgeMicroAlgos = myPledgeMicroAlgos
