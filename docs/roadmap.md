@@ -163,7 +163,7 @@ each, in order; the last two publish the package.
 - [x] **Refund-window end-date helper** - `refundWindowEndsAt(settledAt, window)` lives in the SDK and the refund-window banner uses it, so the end date is computed in one place (the CLI can share it).
 - [x] **Registration check** - `isRegistered(appId)` reads the Factory's registration box (the same fact `ClaimsVault.credit` checks on a campaign's first pledge), so pledge actions can gate on registration without simulating a call. No Factory configured means false.
 - [x] **Build-without-send escape hatch** - `pledgeGroup`/`refundGroup` return the unsigned group (`TransactionWithSigner[]`, session signer attached); `pledge`/`refund` are the build-and-send wrappers for the CLI.
-- [ ] **Verify exported types** - confirm every type a consumer needs (`CampaignHeader`, `CampaignViewModel`, `WalletSession`, `VaultBoxView`, `BackerLeaf`, `SdkConfig`) is exported from `@kasakame/sdk`.
+- [x] **Verify exported types** - confirmed `CampaignHeader`, `CampaignViewModel`, `WalletSession`, `VaultBoxView`, `BackerLeaf`, and `SdkConfig` are exported from `@kasakame/sdk`; added the missing `getSdkConfig` barrel export (documented as public in [`sdk.md`](sdk.md)).
 - [ ] **Spec-driven codegen** - replace `projects/sdk/scripts/codegen.mjs` (and the `prebuild`
       hook) with the spec step:
   1. Obtain the specs: default is the pinned release (`gh release download
