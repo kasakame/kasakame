@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CampaignStatus, CampaignViewModel } from '../../lib/campaign'
@@ -616,5 +616,49 @@ describe('CampaignDetail', () => {
 
     await screen.findByText('Campaign #42')
     expect(screen.queryByText('Claim funds')).not.toBeInTheDocument()
+  })
+
+  it('updates leaves on wallet switch', async () => {
+    getCampaignMock.mockResolvedValue({
+      ...viewModel('failed', { creator: 'CREATOR', raisedMicroAlgos: 1_000_000n }),
+      deleted: true,
+    })
+    fetchMyLeavesMock.mockImplementation((_app: unknown, address: string) =>
+      Promise.resolve(address === 'ADDRESS' ? [{ position: 0, amount: 1_000_000n, txidHex: 'aa' }] : []),
+    )
+    const { rerender } = render(<CampaignDetail appId={42n} onBack={() => {}} />)
+    expect(await screen.findByText('Refund my pledge')).toBeInTheDocument()
+
+    useWalletMock.mockReturnValue({ activeAddress: 'OTHER', activeWallet: { disconnect: disconnectMock }, transactionSigner: {} })
+    rerender(<CampaignDetail appId={42n} onBack={() => {}} />)
+
+    await waitFor(() => expect(screen.queryByText('Refund my pledge')).not.toBeInTheDocument())
+  })
+
+  it('does not show leaves fetched for a previous wallet', async () => {
+    let resolveFirst: ((leaves: { position: number; amount: bigint; txidHex: string }[]) => void) | undefined
+    getCampaignMock.mockResolvedValue({
+      ...viewModel('failed', { creator: 'CREATOR', raisedMicroAlgos: 1_000_000n }),
+      deleted: true,
+    })
+    fetchMyLeavesMock.mockImplementation((_app: unknown, address: string) => {
+      if (address === 'ADDRESS') {
+        return new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+      }
+      return Promise.resolve([])
+    })
+    const { rerender } = render(<CampaignDetail appId={42n} onBack={() => {}} />)
+
+    useWalletMock.mockReturnValue({ activeAddress: 'OTHER', activeWallet: { disconnect: disconnectMock }, transactionSigner: {} })
+    rerender(<CampaignDetail appId={42n} onBack={() => {}} />)
+    await screen.findByText('Campaign #42 has been deleted')
+
+    await act(async () => {
+      resolveFirst?.([{ position: 0, amount: 1_000_000n, txidHex: 'aa' }])
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(screen.queryByText('Refund my pledge')).not.toBeInTheDocument()
   })
 })

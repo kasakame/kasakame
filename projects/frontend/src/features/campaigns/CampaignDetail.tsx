@@ -1,5 +1,5 @@
 import { useWallet } from '@txnlab/use-wallet-react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
 import type { CampaignViewModel } from '../../lib/campaign'
 import { getCachedCampaigns, getCampaign } from '../../lib/campaign'
@@ -36,6 +36,15 @@ interface WindowInfo {
   sweepTarget: string
 }
 
+interface LeafState {
+  /** Monotonic request id; later requests win over earlier in-flight ones. */
+  request: number
+  /** Wallet address the leaves were fetched for. */
+  address: string | null
+  /** Live leaves owned by that address. */
+  items: BackerLeaf[]
+}
+
 const NETWORK_FEE_ALGO = '≈0.004 ALGO'
 const CLAIM_FEE_ALGO = '≈0.003 ALGO'
 const DELETE_FEE_ALGO = '≈0.005 ALGO'
@@ -50,7 +59,8 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const { activeAddress, activeWallet, transactionSigner } = useWallet()
   const [campaign, setCampaign] = useState<CampaignViewModel | null>(null)
   const [nowSeconds, setNowSeconds] = useState<bigint | null>(null)
-  const [leaves, setLeaves] = useState<BackerLeaf[]>([])
+  const [leafState, setLeafState] = useState<LeafState>({ request: 0, address: null, items: [] })
+  const latestLeafRequest = useRef(0)
   const [windowInfo, setWindowInfo] = useState<WindowInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -64,14 +74,20 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
     return { now, result }
   }, [appId, activeAddress])
 
-  const readLeaves = useCallback(async (): Promise<BackerLeaf[]> => {
-    if (!activeAddress) return []
+  const readLeaves = useCallback(async (): Promise<LeafState> => {
+    const request = ++latestLeafRequest.current
+    const address = activeAddress ?? null
+    if (!address) return { request, address, items: [] }
     try {
-      return await fetchMyLeaves(appId, activeAddress)
+      return { request, address, items: await fetchMyLeaves(appId, address) }
     } catch {
-      return []
+      return { request, address, items: [] }
     }
   }, [appId, activeAddress])
+
+  const applyLeaves = useCallback((result: LeafState) => {
+    setLeafState((current) => (result.request > current.request ? result : current))
+  }, [])
 
   const readWindow = useCallback(async () => {
     const box = await fetchVaultBox(appId).catch(() => undefined)
@@ -86,34 +102,34 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
     setLoading(true)
     setError(null)
     try {
-      const [{ now, result }, leaves, window] = await Promise.all([readCore(), readLeaves(), readWindow()])
+      const [{ now, result }, leafResult, window] = await Promise.all([readCore(), readLeaves(), readWindow()])
       setNowSeconds(now)
       if (!result) {
         setError('Campaign not found (or it is not a Campaign app).')
       } else {
         setCampaign(result)
       }
-      setLeaves(leaves)
+      applyLeaves(leafResult)
       setWindowInfo(window)
     } catch {
       setError('Failed to load campaign. Is the indexer reachable?')
     } finally {
       setLoading(false)
     }
-  }, [readCore, readLeaves, readWindow])
+  }, [readCore, readLeaves, readWindow, applyLeaves])
 
   // Post-action refresh: raised, status, and leaves only. Metadata, window, and timestamp cannot change under an
   // action, so they are left alone - and the old UI stays visible throughout (no spinner).
   const refreshSpend = useCallback(async () => {
     try {
-      const [{ now, result }, leaves] = await Promise.all([readCore(), readLeaves()])
+      const [{ now, result }, leafResult] = await Promise.all([readCore(), readLeaves()])
       setNowSeconds(now)
       if (result) setCampaign(result)
-      setLeaves(leaves)
+      applyLeaves(leafResult)
     } catch {
       setMessage('Could not refresh data. It will update on your next action.')
     }
-  }, [readCore, readLeaves])
+  }, [readCore, readLeaves, applyLeaves])
 
   const noRefresh = useCallback(() => Promise.resolve(), [])
 
@@ -170,6 +186,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const percent = campaign.goalMicroAlgos > 0n ? Number((campaign.raisedMicroAlgos * 100n) / campaign.goalMicroAlgos) : 0
   const connected = Boolean(activeWallet && activeAddress && transactionSigner)
   const isCreator = connected && campaign.creator !== '' && activeAddress === campaign.creator
+  const leaves = leafState.address === (activeAddress ?? null) ? leafState.items : []
   const hasPledge = leaves.length > 0
   const canPledge = campaign.status === 'open' && connected && !isCreator
   const canClaim = campaign.status === 'successful' && !campaign.claimed && isCreator
