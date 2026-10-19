@@ -162,7 +162,7 @@ each, in order; the last two publish the package.
 - [x] **Fix deleted-campaign inconsistency** - `getCampaign` now recovers a deleted campaign from the same history as `fetchCampaignHeader` (creation transaction + vault box) and maps it with `campaignFromHeader` (now an SDK export), so the detail view and the deleted section of the browse list render the same fields - no more fieldless stub.
 - [x] **Refund-window end-date helper** - `refundWindowEndsAt(settledAt, window)` lives in the SDK and the refund-window banner uses it, so the end date is computed in one place (the CLI can share it).
 - [x] **Registration check** - `isRegistered(appId)` reads the Factory's registration box (the same fact `ClaimsVault.credit` checks on a campaign's first pledge), so pledge actions can gate on registration without simulating a call. No Factory configured means false.
-- [ ] **Build-without-send escape hatch** - export group builders (`pledgeGroup`, `refundGroup`) that return unsigned transaction groups, with `pledge`/`refund` as thin build-and-send wrappers for the CLI.
+- [x] **Build-without-send escape hatch** - `pledgeGroup`/`refundGroup` return the unsigned group (`TransactionWithSigner[]`, session signer attached); `pledge`/`refund` are the build-and-send wrappers for the CLI.
 - [ ] **Verify exported types** - confirm every type a consumer needs (`CampaignHeader`, `CampaignViewModel`, `WalletSession`, `VaultBoxView`, `BackerLeaf`, `SdkConfig`) is exported from `@kasakame/sdk`.
 - [ ] **Spec-driven codegen** - replace `projects/sdk/scripts/codegen.mjs` (and the `prebuild`
       hook) with the spec step:

@@ -1,5 +1,6 @@
+import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
-import type { TransactionSigner } from 'algosdk'
+import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getApplicationAddress, hexToBytes } from 'algosdk'
 import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from './chain.js'
 import type { BackerLeaf } from './claim-tree.js'
@@ -52,6 +53,8 @@ const STALE_PROOF_PATTERN = /stale or forged frontier|proof does not match root/
 export function isStaleProofError(error: unknown): boolean {
   return error instanceof Error && STALE_PROOF_PATTERN.test(error.message)
 }
+
+type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
 
 // The Factory registration deposit: the registration box's minimum balance, returned by `unregister()`.
 const REGISTER_DEPOSIT_MICRO_ALGOS = 18_900n
@@ -270,48 +273,73 @@ export async function createCampaign(
 }
 
 /**
- * Pledge ALGO: one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier. Waits for the
- * indexer to catch up before building proofs (a lagging indexer is the usual cause of stale first attempts, each of
- * which costs the user an approval plus burned fees). Retries once when a concurrent pledge moved the frontier
- * under us.
+ * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt
+ * frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
+ * first attempts, each of which costs the user an approval plus burned fees).
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ * @param amountMicroAlgos Pledge amount in microAlgos.
+ * @returns The composer holding the group, ready to build or send.
+ */
+async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
+  const { algorand, factoryAppId, vaultAppId } = getSdkConfig()
+  // The manual composer resolves signers by sender address - register the wallet signer for this address first.
+  algorand.account.setSigner(session.address, session.signer)
+  await waitForIndexerCatchUp()
+  const tree = await loadTree(appId, vaultAppId, vaultAddress())
+  const campaignClient = campaignClientFor(appId, session)
+  const vaultClient = vaultClientFor(session)
+  const composer = algorand.send.newGroup()
+  composer.addAppCallMethodCall(
+    await campaignClient.params.pledge({
+      args: {
+        payment: await algorand.createTransaction.payment({
+          sender: session.address,
+          receiver: vaultAddress(),
+          amount: microAlgos(amountMicroAlgos),
+        }),
+        frontier: frontierForPledge(tree),
+      },
+      sender: session.address,
+    }),
+  )
+  composer.addAppCallMethodCall(
+    await vaultClient.params.credit({
+      args: { app: appId, amount: amountMicroAlgos },
+      sender: session.address,
+      appReferences: [factoryAppId],
+      boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
+      extraFee: microAlgos(FEE_CREDIT_EXTRA),
+    }),
+  )
+  return composer
+}
+
+/**
+ * Build the pledge group without sending it. The transactions come back unsigned with the session signer attached, so
+ * an external signer can inspect or replace it before submitting; `pledge` is the build-and-send wrapper.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ * @param amountMicroAlgos Pledge amount in microAlgos.
+ * @returns The unsigned group.
+ */
+export async function pledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionWithSigner[]> {
+  return (await buildPledgeGroup(appId, session, amountMicroAlgos)).build().then((built) => built.transactions)
+}
+
+/**
+ * Pledge ALGO: build the group with `pledgeGroup` and send it. Retries once when a concurrent pledge moved the
+ * frontier under us.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param amountMicroAlgos Pledge amount in microAlgos.
  */
 export async function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void> {
-  const { algorand, factoryAppId, vaultAppId } = getSdkConfig()
-  // The manual composer resolves signers by sender address - register the wallet signer for this address first.
-  algorand.account.setSigner(session.address, session.signer)
-
   const attempt = async (): Promise<bigint | undefined> => {
-    await waitForIndexerCatchUp()
-    const tree = await loadTree(appId, vaultAppId, vaultAddress())
-    const campaignClient = campaignClientFor(appId, session)
-    const vaultClient = vaultClientFor(session)
-    const composer = algorand.send.newGroup()
-    composer.addAppCallMethodCall(
-      await campaignClient.params.pledge({
-        args: {
-          payment: await algorand.createTransaction.payment({
-            sender: session.address,
-            receiver: vaultAddress(),
-            amount: microAlgos(amountMicroAlgos),
-          }),
-          frontier: frontierForPledge(tree),
-        },
-        sender: session.address,
-      }),
-    )
-    composer.addAppCallMethodCall(
-      await vaultClient.params.credit({
-        args: { app: appId, amount: amountMicroAlgos },
-        sender: session.address,
-        appReferences: [factoryAppId],
-        boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
-        extraFee: microAlgos(FEE_CREDIT_EXTRA),
-      }),
-    )
+    const composer = await buildPledgeGroup(appId, session, amountMicroAlgos)
     await composer.send()
     return undefined
   }
@@ -364,45 +392,76 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
 }
 
 /**
- * Refund one pledge after a failed campaign. Routes by the vault box (fresh from algod): an `Open`/missing box goes
+ * Build the refund group without sending it. Routes by the vault box (fresh from algod): an `Open`/missing box goes
  * through the campaign, a `Failed` box goes straight to `vault.refund` (covers post-settle and post-delete). Waits
- * for the indexer to catch up before rebuilding the path (see pledge), then retries once when a concurrent spend
- * moved the root under us.
+ * for the indexer to catch up before rebuilding the path (see buildPledgeGroup).
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ * @param leaf The leaf to spend (from `fetchMyLeaves`).
+ * @returns The composer holding the group, ready to build or send.
+ */
+async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionComposer> {
+  const { algorand, vaultAppId } = getSdkConfig()
+  // Same signer registration as cancelPledge (see above): without it both the campaign and vault paths fail.
+  algorand.account.setSigner(session.address, session.signer)
+  await waitForIndexerCatchUp()
+  const tree = await loadTree(appId, vaultAppId, vaultAddress())
+  const path = pathBlobForRefund(tree, leaf.position)
+  const txid = hexToBytes(leaf.txidHex)
+  const composer = algorand.send.newGroup()
+  const box = await fetchVaultBox(appId)
+  if (box !== undefined && box.status === 2) {
+    const vaultClient = vaultClientFor(session)
+    composer.addAppCallMethodCall(
+      await vaultClient.params.refund({
+        args: { app: appId, k: leaf.position, amount: leaf.amount, txid, path },
+        sender: session.address,
+        boxReferences: vaultBoxRef(appId),
+        extraFee: microAlgos(FEE_SPEND_EXTRA),
+      }),
+    )
+  } else {
+    const client = campaignClientFor(appId, session)
+    composer.addAppCallMethodCall(
+      await client.params.refund({
+        args: { k: leaf.position, amount: leaf.amount, txid, path },
+        sender: session.address,
+        appReferences: [vaultAppId],
+        boxReferences: vaultBoxRef(appId),
+        extraFee: microAlgos(FEE_SPEND_EXTRA),
+      }),
+    )
+  }
+  return composer
+}
+
+/**
+ * Build the refund group without sending it - unsigned transactions with the session signer attached, for external
+ * signing or inspection. `refund` is the build-and-send wrapper.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ * @param leaf The leaf to spend (from `fetchMyLeaves`).
+ * @returns The unsigned group.
+ */
+export async function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]> {
+  return (await buildRefundGroup(appId, session, leaf)).build().then((built) => built.transactions)
+}
+
+/**
+ * Refund one pledge after a failed campaign: build the group with `refundGroup` and send it. Retries once when a
+ * concurrent spend moved the root under us.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param leaf The leaf to spend (from `fetchMyLeaves`).
  */
 export async function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void> {
-  const { algorand, vaultAppId } = getSdkConfig()
-  // Same signer registration as cancelPledge (see above): without it both the campaign and vault paths fail.
-  algorand.account.setSigner(session.address, session.signer)
   const attempt = async (): Promise<bigint | undefined> => {
-    await waitForIndexerCatchUp()
-    const tree = await loadTree(appId, vaultAppId, vaultAddress())
-    const path = pathBlobForRefund(tree, leaf.position)
-    const txid = hexToBytes(leaf.txidHex)
-    const box = await fetchVaultBox(appId)
-    if (box !== undefined && box.status === 2) {
-      const vaultClient = vaultClientFor(session)
-      const result = await vaultClient.send.refund({
-        args: { app: appId, k: leaf.position, amount: leaf.amount, txid, path },
-        sender: session.address,
-        boxReferences: vaultBoxRef(appId),
-        extraFee: microAlgos(FEE_SPEND_EXTRA),
-      })
-      return result.confirmation.confirmedRound
-    }
-
-    const client = campaignClientFor(appId, session)
-    const result = await client.send.refund({
-      args: { k: leaf.position, amount: leaf.amount, txid, path },
-      sender: session.address,
-      appReferences: [vaultAppId],
-      boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(FEE_SPEND_EXTRA),
-    })
-    return result.confirmation.confirmedRound
+    const composer = await buildRefundGroup(appId, session, leaf)
+    const result = await composer.send()
+    return result.confirmations[0]?.confirmedRound
   }
 
   const confirmedRound = await submitWithFreshProof(attempt)

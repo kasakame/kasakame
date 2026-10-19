@@ -243,13 +243,21 @@ function createCampaign(
   deadlineSeconds: bigint,
 ): Promise<{ appId: bigint; appAddress: string }>
 function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void>
+function pledgeGroup(
+  appId: bigint,
+  session: WalletSession,
+  amountMicroAlgos: bigint,
+): Promise<TransactionWithSigner[]>
 function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
 function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
+function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]>
 function claim(appId: bigint, session: WalletSession): Promise<void>
 function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
 ```
 
 Creation chains `create` to Factory `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete settles in O(1) on every path.
+
+`pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 
 ## Design decisions
 

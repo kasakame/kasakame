@@ -10,7 +10,9 @@ import {
   fetchVaultConfig,
   isStaleProofError,
   pledge,
+  pledgeGroup,
   refund,
+  refundGroup,
   refundWindowEndsAt,
   vaultAddress,
 } from './transactions.js'
@@ -20,15 +22,16 @@ const {
   sendRegisterMock,
   sendUnregisterMock,
   sendClaimMock,
-  sendRefundMock,
   sendCancelPledgeMock,
   sendDeleteMock,
-  sendVaultRefundMock,
   paramsPledgeMock,
   paramsCreditMock,
+  paramsCampaignRefundMock,
+  paramsVaultRefundMock,
   paramsUnregisterMock,
   paymentMock,
   composerAddMock,
+  composerBuildMock,
   composerSendMock,
   setSignerMock,
   campaignBoxValueMock,
@@ -46,15 +49,16 @@ const {
   sendRegisterMock: vi.fn(),
   sendUnregisterMock: vi.fn(),
   sendClaimMock: vi.fn(),
-  sendRefundMock: vi.fn(),
   sendCancelPledgeMock: vi.fn(),
   sendDeleteMock: vi.fn(),
-  sendVaultRefundMock: vi.fn(),
   paramsPledgeMock: vi.fn(),
   paramsCreditMock: vi.fn(),
+  paramsCampaignRefundMock: vi.fn(),
+  paramsVaultRefundMock: vi.fn(),
   paramsUnregisterMock: vi.fn(),
   paymentMock: vi.fn(),
   composerAddMock: vi.fn(),
+  composerBuildMock: vi.fn(),
   composerSendMock: vi.fn(),
   setSignerMock: vi.fn(),
   campaignBoxValueMock: vi.fn(),
@@ -75,13 +79,12 @@ vi.mock('./generated/CampaignClient.js', () => ({
     params = {
       pledge: (...args: unknown[]) => paramsPledgeMock(...args),
       cancelPledge: (...args: unknown[]) => paramsPledgeMock(...args),
-      refund: (...args: unknown[]) => paramsPledgeMock(...args),
+      refund: (...args: unknown[]) => paramsCampaignRefundMock(...args),
       claim: (...args: unknown[]) => paramsPledgeMock(...args),
       delete: { delete: (...args: unknown[]) => paramsPledgeMock(...args) },
     }
     send = {
       claim: sendClaimMock,
-      refund: sendRefundMock,
       cancelPledge: sendCancelPledgeMock,
       delete: { delete: sendDeleteMock },
     }
@@ -96,9 +99,7 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
     appAddress = 'VAULTADDRESS'
     params = {
       credit: (...args: unknown[]) => paramsCreditMock(...args),
-    }
-    send = {
-      refund: sendVaultRefundMock,
+      refund: (...args: unknown[]) => paramsVaultRefundMock(...args),
     }
     state = {
       box: { campaignBox: { value: (...args: unknown[]) => campaignBoxValueMock(...args) } },
@@ -128,7 +129,11 @@ vi.mock('./chain.js', () => ({
     algorand: {
       createTransaction: { payment: paymentMock },
       send: {
-        newGroup: () => ({ addAppCallMethodCall: (...args: unknown[]) => composerAddMock(...args), send: composerSendMock }),
+        newGroup: () => ({
+          addAppCallMethodCall: (...args: unknown[]) => composerAddMock(...args),
+          build: composerBuildMock,
+          send: composerSendMock,
+        }),
       },
       account: { setSigner: (...args: unknown[]) => setSignerMock(...args) },
     },
@@ -165,19 +170,14 @@ describe('transaction helpers', () => {
     factoryAppIdMock.mockReturnValue(1001n)
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
     paramsCreditMock.mockResolvedValue({ credit: 'params' })
+    paramsCampaignRefundMock.mockResolvedValue({ refund: 'params' })
+    paramsVaultRefundMock.mockResolvedValue({ refund: 'params' })
     paramsUnregisterMock.mockResolvedValue({ unregister: 'params' })
     paymentMock.mockResolvedValue({ payment: 'pay-txn' })
-    composerSendMock.mockResolvedValue({ confirmation: { confirmedRound: 99n } })
+    composerBuildMock.mockResolvedValue({ transactions: [{ txn: 'txn', signer: 'signer' }] })
+    composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }] })
     sendCreateMock.mockResolvedValue({ result: { appId: 9n, appAddress: { toString: () => 'ESCROW' } } })
-    for (const mock of [
-      sendRegisterMock,
-      sendUnregisterMock,
-      sendClaimMock,
-      sendRefundMock,
-      sendCancelPledgeMock,
-      sendDeleteMock,
-      sendVaultRefundMock,
-    ]) {
+    for (const mock of [sendRegisterMock, sendUnregisterMock, sendClaimMock, sendCancelPledgeMock, sendDeleteMock]) {
       mock.mockResolvedValue({ confirmation: { confirmedRound: 99n } })
     }
   })
@@ -212,8 +212,8 @@ describe('transaction helpers', () => {
   })
 
   it('skips the indexer wait when confirmations carry no round', async () => {
-    composerSendMock.mockResolvedValue({ confirmation: {} })
-    for (const mock of [sendCancelPledgeMock, sendRefundMock, sendClaimMock, sendDeleteMock, sendVaultRefundMock]) {
+    composerSendMock.mockResolvedValue({ confirmations: [] })
+    for (const mock of [sendCancelPledgeMock, sendClaimMock, sendDeleteMock]) {
       mock.mockResolvedValue({ confirmation: {} })
     }
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
@@ -239,6 +239,17 @@ describe('transaction helpers', () => {
     expect(composerSendMock).toHaveBeenCalledOnce()
     // Once before building proofs (fresh tree on the first attempt), once after for UI refresh.
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('pledgeGroup returns the built group without sending', async () => {
+    const transactions = [{ txn: 'txn', signer: 'signer' }]
+    composerBuildMock.mockResolvedValue({ transactions })
+
+    await expect(pledgeGroup(9n, session, 1_000_000n)).resolves.toBe(transactions)
+    expect(composerAddMock).toHaveBeenCalledTimes(2)
+    expect(composerBuildMock).toHaveBeenCalledOnce()
+    expect(composerSendMock).not.toHaveBeenCalled()
+    expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
   })
 
   it('pledge retries once on a stale frontier, then throws', async () => {
@@ -277,8 +288,9 @@ describe('transaction helpers', () => {
     await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
 
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
-    expect(sendRefundMock).toHaveBeenCalledOnce()
-    expect(sendVaultRefundMock).not.toHaveBeenCalled()
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(paramsVaultRefundMock).not.toHaveBeenCalled()
+    expect(composerSendMock).toHaveBeenCalledOnce()
   })
 
   it('refund routes straight to the vault once settled', async () => {
@@ -288,15 +300,25 @@ describe('transaction helpers', () => {
     await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
 
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
-    expect(sendVaultRefundMock).toHaveBeenCalledOnce()
-    expect(sendRefundMock).not.toHaveBeenCalled()
+    expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
+    expect(paramsCampaignRefundMock).not.toHaveBeenCalled()
   })
 
   it('refund routes through the campaign when no box exists yet', async () => {
     campaignBoxValueMock.mockRejectedValue(new Error('box not found'))
     await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
 
-    expect(sendRefundMock).toHaveBeenCalledOnce()
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+  })
+
+  it('refundGroup returns the built group without sending', async () => {
+    campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
+    const transactions = [{ txn: 'txn', signer: 'signer' }]
+    composerBuildMock.mockResolvedValue({ transactions })
+
+    await expect(refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).resolves.toBe(transactions)
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(composerSendMock).not.toHaveBeenCalled()
   })
 
   it('claim pays the vault-derived total', async () => {
