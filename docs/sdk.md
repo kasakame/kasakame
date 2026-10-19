@@ -233,6 +233,7 @@ function isStaleProofError(error: unknown): boolean
 function vaultAddress(): string
 function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undefined>
 function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }>
+function refundWindowEndsAt(settledAt: bigint, window: bigint): bigint
 function createCampaign(
   session: WalletSession,
   title: string,

@@ -178,6 +178,18 @@ export async function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget:
 }
 
 /**
+ * The refund window's end timestamp: settlement plus the vault's configured window. Refunds stay open until then;
+ * afterwards `finalize` can sweep whatever is unclaimed (see docs/claim-tree-protocol.md).
+ *
+ * @param settledAt Settlement timestamp (seconds) from the vault box (`VaultBoxView.settledAt`).
+ * @param window Refund window (seconds) from `fetchVaultConfig`.
+ * @returns The window end as a UNIX timestamp (seconds).
+ */
+export function refundWindowEndsAt(settledAt: bigint, window: bigint): bigint {
+  return settledAt + window
+}
+
+/**
  * Run a proof-carrying submission, rebuilding proofs once when the tree moved under us (concurrent pledge/refund
  * changed the root between our read and our submit). Anything else throws immediately.
  *

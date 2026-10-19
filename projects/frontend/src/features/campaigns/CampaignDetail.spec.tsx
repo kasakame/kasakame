@@ -24,7 +24,10 @@ const fetchVaultBoxMock = vi.fn()
 const fetchVaultConfigMock = vi.fn()
 
 vi.mock('../../lib/transaction', async () => {
-  const actual: { disconnectQuietly: (wallet: unknown) => Promise<void> } = await vi.importActual('../../lib/transaction')
+  const actual: {
+    disconnectQuietly: (wallet: unknown) => Promise<void>
+    refundWindowEndsAt: (settledAt: bigint, window: bigint) => bigint
+  } = await vi.importActual('../../lib/transaction')
   return {
     claim: (...args: unknown[]) => claimMock(...args),
     refund: (...args: unknown[]) => refundMock(...args),
@@ -33,6 +36,7 @@ vi.mock('../../lib/transaction', async () => {
     fetchMyLeaves: (...args: unknown[]) => fetchMyLeavesMock(...args),
     fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
     fetchVaultConfig: (...args: unknown[]) => fetchVaultConfigMock(...args),
+    refundWindowEndsAt: actual.refundWindowEndsAt,
     disconnectQuietly: actual.disconnectQuietly,
   }
 })

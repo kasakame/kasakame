@@ -17,6 +17,7 @@ import {
   fetchVaultBox,
   fetchVaultConfig,
   refund,
+  refundWindowEndsAt,
 } from '../../lib/transaction'
 import { getWalletManager } from '../../lib/wallets'
 import CampaignImage from './CampaignImage'
@@ -77,7 +78,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
     if (box === undefined || box.status !== 2 || box.settledAt <= 0n) return null
     const config = await fetchVaultConfig().catch(() => undefined)
     if (config === undefined) return null
-    return { endsAt: box.settledAt + config.window, sweepTarget: config.sweepTarget }
+    return { endsAt: refundWindowEndsAt(box.settledAt, config.window), sweepTarget: config.sweepTarget }
   }, [appId])
 
   // Full initial load with a spinner. Later refreshes use refreshSpend so the page never flashes.

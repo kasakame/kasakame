@@ -11,6 +11,7 @@ import {
   isStaleProofError,
   pledge,
   refund,
+  refundWindowEndsAt,
   vaultAddress,
 } from './transactions.js'
 
@@ -339,6 +340,10 @@ describe('transaction helpers', () => {
     refundWindowMock.mockResolvedValue(63_072_000n)
     sweepTargetMock.mockResolvedValue('SWEEP')
     await expect(fetchVaultConfig()).resolves.toEqual({ window: 63_072_000n, sweepTarget: 'SWEEP' })
+  })
+
+  it('refundWindowEndsAt is settlement plus the configured window', () => {
+    expect(refundWindowEndsAt(1_000n, 5n)).toBe(1_005n)
   })
 })
 
