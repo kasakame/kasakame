@@ -103,9 +103,8 @@ transparency rule in [`AGENTS.md`](../AGENTS.md).
       deployer, 730-day window. Supersedes the initial deploy (`773811780`/`773811800`), which
       has no delete path and is left orphaned.
       View on Lora: `https://lora.algokit.io/testnet/application/<id>/`.
-- [ ] **TestNet smoke test** - run create → pledge → claim and create → pledge → refund
-      against the deployed apps with a real wallet (Pera/Defly). This de-risks
-      wallet + public-network integration and is independent of styling.
+- [x] **TestNet smoke test** - passed on the deployed apps: create → pledge → claim,
+      create → pledge → refund, plus a refund from a deleted campaign.
 - [x] **Lock the contract shape** - decided: no `updateMetadata()`; title and metadata URI stay immutable
       (a backer's pledge can never be re-described under them; mutability can come later via the off-chain JSON).
 - [ ] Deploy the frontend to a **free static host** (GitHub Pages / Cloudflare Pages / Netlify).
