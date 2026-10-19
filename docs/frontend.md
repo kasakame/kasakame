@@ -41,7 +41,7 @@ projects/frontend/src/
 │       └── Footer.tsx              # brand, disclaimer
 ├── lib/                      # shared services
 │   ├── algorand.ts           # AlgorandClient + IndexerClient singletons; configures the SDK session
-│   ├── campaign.ts           # re-exports the SDK read model + composes deleted-campaign view models
+│   ├── campaign.ts           # re-exports the SDK read model (deleted-campaign recovery included)
 │   ├── claimtree.ts          # re-exports the SDK proof builder (tree math + indexer replay)
 │   ├── metadata.ts           # campaign metadata blob type
 │   ├── transaction.ts        # wallet disconnect helper + re-export of the SDK write path
@@ -90,7 +90,7 @@ interface CampaignViewModel {
   deadlineSeconds: bigint
   status: CampaignStatus
   myPledgeMicroAlgos?: bigint          // live-leaf sum for the viewer
-  deleted?: boolean                     // true for the gone-app stub
+  deleted?: boolean                     // true for a deleted campaign (fields recovered from history)
 }
 ```
 

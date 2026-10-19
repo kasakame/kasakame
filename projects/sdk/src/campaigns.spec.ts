@@ -2,6 +2,7 @@ import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CampaignHeader } from './campaigns.js'
 import {
+  campaignFromHeader,
   decodeGlobalState,
   enumerateCampaigns,
   fetchCampaignHeader,
@@ -190,20 +191,20 @@ describe('isCampaignApp', () => {
   })
 })
 
-describe('getCampaignStatus', () => {
-  const header = (overrides: Partial<CampaignHeader> = {}): CampaignHeader => ({
-    id: 42n,
-    creator: 'SENDER',
-    title: 'T',
-    metadataUri: 'M',
-    goalMicroAlgos: 10n,
-    deadlineSeconds: 1_000n,
-    raisedMicroAlgos: 0n,
-    status: 'open',
-    deleted: false,
-    ...overrides,
-  })
+const header = (overrides: Partial<CampaignHeader> = {}): CampaignHeader => ({
+  id: 42n,
+  creator: 'SENDER',
+  title: 'T',
+  metadataUri: 'M',
+  goalMicroAlgos: 10n,
+  deadlineSeconds: 1_000n,
+  raisedMicroAlgos: 0n,
+  status: 'open',
+  deleted: false,
+  ...overrides,
+})
 
+describe('getCampaignStatus', () => {
   it('returns open before the deadline', () => {
     expect(getCampaignStatus(header(), 500n)).toBe('open')
   })
@@ -222,6 +223,22 @@ describe('getCampaignStatus', () => {
 
   it('returns successful when claimed after the deadline', () => {
     expect(getCampaignStatus(header({ status: 'claimed', deadlineSeconds: 500n }), 1_000n)).toBe('successful')
+  })
+})
+
+describe('campaignFromHeader', () => {
+  it('carries the header fields and derives the display status', () => {
+    expect(campaignFromHeader(header({ status: 'claimed', deleted: true }), 500n)).toEqual({
+      id: 42n,
+      creator: 'SENDER',
+      title: 'T',
+      metadataUri: 'M',
+      goalMicroAlgos: 10n,
+      raisedMicroAlgos: 0n,
+      deadlineSeconds: 1_000n,
+      status: 'successful',
+      deleted: true,
+    })
   })
 })
 

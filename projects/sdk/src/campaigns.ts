@@ -105,6 +105,28 @@ export function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): '
   return 'open'
 }
 
+/**
+ * Map a campaign header to a view model, deriving the display status. Deleted campaigns take this path (see
+ * `fetchCampaignHeader`), so every consumer renders the same recovered fields.
+ *
+ * @param header Campaign header, live or recovered from history.
+ * @param nowSeconds Current UNIX timestamp (seconds).
+ * @returns The campaign view model.
+ */
+export function campaignFromHeader(header: CampaignHeader, nowSeconds: bigint): CampaignViewModel {
+  return {
+    id: header.id,
+    creator: header.creator,
+    title: header.title,
+    metadataUri: header.metadataUri,
+    goalMicroAlgos: header.goalMicroAlgos,
+    raisedMicroAlgos: header.raisedMicroAlgos,
+    deadlineSeconds: header.deadlineSeconds,
+    status: getCampaignStatus(header, nowSeconds),
+    deleted: header.deleted,
+  }
+}
+
 /** The global-state key names this contract materialises. */
 const KNOWN_KEYS = ['creator', 'title', 'metadataUri', 'goal', 'deadline', 'raised', 'status', 'root', 'n'] as const
 
@@ -394,17 +416,8 @@ export async function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddre
   const app = response.application
   if (!app) return undefined
   if (app.deleted === true) {
-    return {
-      id: app.id,
-      creator: '',
-      title: '',
-      metadataUri: '',
-      goalMicroAlgos: 0n,
-      raisedMicroAlgos: 0n,
-      deadlineSeconds: 0n,
-      status: 'failed',
-      deleted: true,
-    }
+    // Global state is gone: recover from history so this agrees with what the deleted section of the list renders.
+    return campaignFromHeader(await headerFromApplication(app), nowSeconds)
   }
   if (!isCampaignApp(app)) return undefined
 
@@ -463,23 +476,18 @@ function decodeCreateArgs(args: Uint8Array[]): {
 }
 
 /**
- * Fetch a campaign's header: the immutable creation metadata plus its live total and raw status.
+ * Build a campaign header from an indexer application: global state for live campaigns, history for deleted ones.
  *
- * For live campaigns the fields come from global state. For deleted campaigns global state is gone, so the
- * creation transaction is decoded from the block at the app's creation round (selector stripped, tuple per the
- * ARC-56 spec) and the live total is recovered from the vault box (`paidIn - paidOut`, or zero when the box has
- * already been released). The raw status for deleted campaigns is best-effort: read from the vault box when it
- * still exists, otherwise `open`.
+ * For deleted campaigns the creation transaction is decoded from the block at the app's creation round (selector
+ * stripped, tuple per the ARC-56 spec) and the live total is recovered from the vault box (`paidIn - paidOut`, or
+ * zero when the box has already been released). The raw status for deleted campaigns is best-effort: read from
+ * the vault box when it still exists, otherwise `open`.
  *
- * @param appId Campaign application id.
- * @returns The campaign header, or undefined when the application is not indexed.
+ * @param application Indexer application, live or deleted.
+ * @returns The campaign header.
  */
-export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined> {
+async function headerFromApplication(application: algosdk.indexerModels.Application): Promise<CampaignHeader> {
   const indexer = getSdkConfig().algorand.client.indexer
-  const response = await indexer.lookupApplications(appId).includeAll(true).do()
-  const application = response.application
-  if (!application) return undefined
-
   const deleted = application.deleted === true
   const rawCreator = application.params.creator
   /* v8 ignore next - the indexer always returns a creator string; the Address-object branch is defensive */
@@ -505,7 +513,7 @@ export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader
     if (createdAtRound !== undefined) {
       const block = await indexer.lookupBlock(createdAtRound).do()
       const transactions = block.transactions ?? []
-      const creation = transactions.find((tx) => tx.createdApplicationIndex !== undefined && tx.createdApplicationIndex === appId)
+      const creation = transactions.find((tx) => tx.createdApplicationIndex !== undefined && tx.createdApplicationIndex === application.id)
       const args = creation?.applicationTransaction?.applicationArgs
       // On-chain args carry the 4-byte ARC-4 method selector first; the decode helper takes the tuple without it.
       if (args !== undefined && args.length >= 6) {
@@ -516,7 +524,7 @@ export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader
         deadlineSeconds = decoded.deadline
       }
     }
-    const box = await fetchVaultBox(appId)
+    const box = await fetchVaultBox(application.id)
     if (box !== undefined) {
       raisedMicroAlgos = box.paidIn - box.paidOut
       status = box.status === 1 ? 'open' : box.status === 2 ? 'failed' : 'claimed'
@@ -524,7 +532,7 @@ export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader
   }
 
   return {
-    id: appId,
+    id: application.id,
     creator,
     title,
     metadataUri,
@@ -534,4 +542,20 @@ export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader
     status,
     deleted,
   }
+}
+
+/**
+ * Fetch a campaign's header: the immutable creation metadata plus its live total and raw status.
+ *
+ * For live campaigns the fields come from global state; for deleted campaigns they are recovered from history
+ * (see `headerFromApplication`).
+ *
+ * @param appId Campaign application id.
+ * @returns The campaign header, or undefined when the application is not indexed.
+ */
+export async function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined> {
+  const response = await getSdkConfig().algorand.client.indexer.lookupApplications(appId).includeAll(true).do()
+  const application = response.application
+  if (!application) return undefined
+  return headerFromApplication(application)
 }

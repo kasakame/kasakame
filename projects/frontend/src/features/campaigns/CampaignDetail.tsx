@@ -2,7 +2,7 @@ import { useWallet } from '@txnlab/use-wallet-react'
 import { useCallback, useEffect, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
 import type { CampaignViewModel } from '../../lib/campaign'
-import { campaignFromHeader, fetchCampaignHeader, getCachedCampaigns, getCampaign } from '../../lib/campaign'
+import { getCachedCampaigns, getCampaign } from '../../lib/campaign'
 import { classifyError, errorMessage } from '../../lib/errors'
 import { formatAlgo, formatCountdown, formatDeadline } from '../../lib/format'
 import { logError } from '../../lib/log'
@@ -60,11 +60,6 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const readCore = useCallback(async () => {
     const now = await fetchChainTimestamp()
     const result = await getCampaign(appId, now, activeAddress ?? undefined)
-    if (result?.deleted === true) {
-      // Global state is gone: recover the creation metadata and the still-unrefunded total from history.
-      const header = await fetchCampaignHeader(appId).catch(() => undefined)
-      if (header !== undefined) return { now, result: campaignFromHeader(header, now) }
-    }
     return { now, result }
   }, [appId, activeAddress])
 

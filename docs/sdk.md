@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.1.0`, private (not yet published to npm). The frontend consumes it as a `file:../sdk` dependency with a local build ahead of typecheck. All migration stages have landed; only publishing to the public registry remains.
+Status: version `0.1.0`, private (not yet published to npm). The frontend consumes it as a `file:../sdk` dependency with a local build ahead of typecheck. All migration stages have landed; the remaining pre-publish items are tracked in the [SDK section](roadmap.md#sdk) of the roadmap.
 
 ## Why the SDK exists
 
@@ -185,6 +185,7 @@ interface CampaignHeader {
 }
 
 function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): 'open' | 'successful' | 'failed'
+function campaignFromHeader(header: CampaignHeader, nowSeconds: bigint): CampaignViewModel
 function decodeGlobalState(app: algosdk.indexerModels.Application): {
   creator?: string
   title?: string
@@ -211,7 +212,7 @@ function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddress?: string):
 function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined>
 ```
 
-`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box.
+`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box; `getCampaign` recovers the same fields through it. `campaignFromHeader` maps either header to the view model (deriving the display status), so the detail view and the deleted section of the browse list agree on a deleted campaign.
 
 ### Writes (`transactions.ts`)
 

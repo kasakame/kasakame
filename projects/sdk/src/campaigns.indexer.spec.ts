@@ -13,14 +13,21 @@ import { configureSdk } from './chain.js'
 
 const indexerMock = vi.hoisted(() => ({
   lookupApplications: vi.fn(),
+  lookupBlock: vi.fn(),
   searchForApplications: vi.fn(),
   searchForApplicationBoxes: vi.fn(),
 }))
 
 const fetchMyLeavesMock = vi.hoisted(() => vi.fn())
+const fetchVaultBoxMock = vi.hoisted(() => vi.fn())
 
-vi.mock('./claim-tree.js', () => ({
-  fetchMyLeaves: (...args: unknown[]) => fetchMyLeavesMock(...args),
+vi.mock('./claim-tree.js', async () => {
+  const actual = await vi.importActual('./claim-tree.js')
+  return { ...actual, fetchMyLeaves: (...args: unknown[]) => fetchMyLeavesMock(...args) }
+})
+
+vi.mock('./transactions.js', () => ({
+  fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 
 const ZERO_ADDRESS = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'
@@ -115,6 +122,7 @@ function registrationBoxName(appId: bigint): Uint8Array {
 beforeEach(() => {
   vi.clearAllMocks()
   clearCachedCampaigns()
+  fetchVaultBoxMock.mockResolvedValue(undefined)
   configureSdk({ algorand: fakeAlgorand(), factoryAppId: 1001n, vaultAppId: 2002n })
 })
 
@@ -263,19 +271,56 @@ describe('getCampaign', () => {
     expect(vm?.myPledgeMicroAlgos).toBe(250_000n)
   })
 
-  it('returns a deleted marker for a deleted app', async () => {
+  it('recovers a deleted campaign from its creation transaction and vault box', async () => {
     const deleted = new algosdk.indexerModels.Application({
       id: 44n,
       deleted: true,
+      createdAtRound: 100n,
       params: new algosdk.indexerModels.ApplicationParams({
+        creator: ZERO_ADDRESS,
         approvalProgram: new Uint8Array(),
         clearStateProgram: new Uint8Array(),
       }),
     })
     indexerMock.lookupApplications.mockImplementation(() => lookupBuilder({ application: deleted }))
-    const vm = await getCampaign(44n, 3_000n)
-    expect(vm?.deleted).toBe(true)
-    expect(vm?.id).toBe(44n)
+    indexerMock.lookupBlock.mockImplementation(() =>
+      lookupBuilder({
+        transactions: [
+          {
+            id: 'tx-create',
+            sender: 'SENDER',
+            createdApplicationIndex: 44n,
+            applicationTransaction: {
+              applicationId: 0n,
+              // Selector, then the ARC-56 tuple: vault uint64, title, metadataUri, goal, deadline.
+              applicationArgs: [
+                new Uint8Array([0xaa, 0xbb, 0xcc, 0xdd]),
+                new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]),
+                new Uint8Array([0, 16, ...new TextEncoder().encode('Deleted campaign')]),
+                new Uint8Array([0, 8, ...new TextEncoder().encode('ipfs://x')]),
+                new Uint8Array([0, 0, 0, 0, 0, 0x98, 0x96, 0x80]),
+                new Uint8Array([0, 0, 0, 0, 0, 0, 0x07, 0xd0]),
+              ],
+            },
+          },
+        ],
+      }),
+    )
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 7_000_000n, paidOut: 1_000_000n, status: 3, settledAt: 1_500n })
+
+    expect(await getCampaign(44n, 3_000n)).toEqual({
+      id: 44n,
+      creator: ZERO_ADDRESS,
+      title: 'Deleted campaign',
+      metadataUri: 'ipfs://x',
+      goalMicroAlgos: 10_000_000n,
+      raisedMicroAlgos: 6_000_000n,
+      deadlineSeconds: 2_000n,
+      status: 'successful',
+      deleted: true,
+    })
+    expect(indexerMock.lookupBlock).toHaveBeenCalledWith(100n)
+    expect(fetchVaultBoxMock).toHaveBeenCalledWith(44n)
   })
 
   it('returns undefined for a non-campaign app', async () => {
