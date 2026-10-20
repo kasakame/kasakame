@@ -8,8 +8,8 @@ const require = createRequire(import.meta.url)
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  // `@kasakame/sdk` is a `file:` dependency: without dedupe its own copies of
-  // shared runtime deps would load alongside the frontend's.
+  // Keep one copy of the runtime deps shared with `@kasakame/sdk`; also needed
+  // when the SDK is swapped in as `file:../sdk` to test unreleased changes.
   resolve: {
     dedupe: ['algosdk', '@algorandfoundation/algokit-utils', '@noble/hashes'],
     // vite-plugin-node-polyfills injects this Buffer shim into every module
@@ -25,7 +25,7 @@ export default defineConfig({
   },
   server: {
     fs: {
-      // Serve the SDK's prebuilt dist/ from outside this project root.
+      // Serve the SDK's dist/ when it is swapped in as `file:../sdk`.
       allow: [searchForWorkspaceRoot(process.cwd()), '../sdk'],
     },
   },

@@ -50,8 +50,8 @@ flowchart TD
 | Job | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
 | --- | --- | --- | --- | --- |
 | `build` | ✅ | ✅ | - | - |
-| `lint-format-type-check` | ✅ | - | - | contracts artifacts |
-| `unit-test` | ✅ | - | - | contracts artifacts |
+| `lint-format-type-check` | ✅ | - | - | contracts artifacts (sdk lane) |
+| `unit-test` | ✅ | - | - | contracts artifacts (sdk lane) |
 | `backend` | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
 | `markdown-lint` (own workflow) | ✅ | - | - | - |
@@ -59,13 +59,13 @@ flowchart TD
 
 Key point: **lint/format/type-check, unit-test, and markdown are pure Node**.
 `eslint`, `prettier`, `tsc`, `vitest`, and `markdownlint-cli2` need no Docker
-or AlgoKit install; they only download the `build` job's artifacts and run the
-SDK's codegen (the sdk lane) or build the SDK (the frontend lanes), with
-`SDK_SPECS=local` so codegen reads the downloaded ARC-56 specs - see below. The
-backend lane is the exception: its suite runs against a throwaway Postgres
-service (migrations first, like local development).
+or AlgoKit install. The sdk lane downloads the `build` job's artifacts and runs
+the SDK's codegen with `SDK_SPECS=local`; the frontend lane installs the
+published `@kasakame/sdk` from the registry - see below. The backend lane is
+the exception: its suite runs against a throwaway Postgres service (migrations
+first, like local development).
 
-## Why the SDK and frontend need the build's output
+## Why the SDK lane needs the build's output
 
 The SDK's write path imports the generated clients (`src/generated/*`,
 gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
@@ -79,22 +79,25 @@ type-check and tests resolve the clients without a release download and against
 the change set's contracts. Codegen never builds the contracts: local mode fails
 with instructions if the artifacts are absent.
 
-Current CI sets `SDK_SPECS=local` at the workflow level in `build-and-test`,
-because every SDK build there tests the same commit's contracts and the
-frontend's `pre*` hooks rebuild the SDK in later steps. The roadmap's CI change
-detection will switch SDK-only lanes to the pinned release and frontend-only
-lanes to the published SDK; until then, local is the same-SHA end-to-end gate.
+The `build` job also sets `SDK_SPECS=local`, because it deliberately builds the
+SDK from this commit and bundles the frontend against it (the same-SHA
+end-to-end gate). The frontend's fast lanes do not: they install the published
+`@kasakame/sdk` and exercise what users install.
 
-## Why the frontend lanes build the SDK
+## Why the frontend lanes use the published SDK
 
-The frontend consumes `@kasakame/sdk` as `"@kasakame/sdk": "file:../sdk"` with
-a prebuilt `dist/` (see [`sdk.md`](sdk.md)), so **both the frontend type-check
-and its unit tests resolve that `dist/`**. The `lint-format-type-check` and
-`unit-test` frontend lanes therefore install the SDK's dependencies and build it
-before running their scripts (`tsc` emit, seconds; the SDK's prebuild codegen
-regenerates the clients from the `contracts-artifacts` those lanes also download,
-with `SDK_SPECS=local`). Cheaper to rebuild per lane than to shuttle another
-artifact. The frontend's own `pre*` npm hooks rebuild it on demand for local dev.
+The committed frontend dependency is `"@kasakame/sdk": "^0.1.0"` (see
+[`sdk.md`](sdk.md)), so **both the frontend type-check and its unit tests
+resolve the published package** from `npm ci`. Those lanes need no contract
+artifacts and no SDK build.
+
+The `build` job keeps the same-SHA gate: after building the SDK locally it
+swaps the frontend dependency to `file:../sdk` (`npm pkg set ... && npm
+install`) and bundles the frontend against that `dist/`. The swap is ephemeral
+and never committed. Locally, build the SDK (`npm run build` in
+`projects/sdk`), use the same swap commands to test unreleased SDK/contract
+changes, then restore with `git checkout package.json package-lock.json && npm
+ci` (see [`sdk.md`](sdk.md)).
 
 ## Workflow: build-and-test
 
@@ -103,18 +106,17 @@ Implemented at `.github/workflows/build-and-test.yml`. Five jobs, with
 
 - **`build`** - installs Node + AlgoKit, compiles the contracts (`npm run
   build` → TEAL + ARC-56 specs), builds the SDK (`npm run build`; its prebuild
-  codegen regenerates the clients from those specs, `SDK_SPECS=local`), bundles
-  the frontend (`npx vite build`), and uploads one artifact:
-  `contracts-artifacts`.
+  codegen regenerates the clients from those specs, `SDK_SPECS=local`), points
+  the frontend at that local SDK (`file:../sdk`), bundles the frontend (`npx
+  vite build`), and uploads one artifact: `contracts-artifacts`.
 - **`lint-format-type-check`** - matrix over `[contracts, frontend, sdk]`. The
-  sdk and frontend lanes download `contracts-artifacts`; the sdk lane runs
-  `npm run codegen` and the frontend lane's SDK build does it via its prebuild
-  hook, both with `SDK_SPECS=local`. Then each lane runs lint, format, and
-  type-check. `fail-fast` is off so one project's failure doesn't cancel the
-  other lanes.
-- **`unit-test`** - matrix over `[contracts, frontend, sdk]`. The same
-  artifact/codegen downloads as the lint lane, then each lane runs
-  `npm run test:coverage`.
+  sdk lane downloads `contracts-artifacts` and runs `npm run codegen` with
+  `SDK_SPECS=local`; the frontend lane installs the published SDK. Then each
+  lane runs lint, format, and type-check. `fail-fast` is off so one project's
+  failure doesn't cancel the other lanes.
+- **`unit-test`** - matrix over `[contracts, frontend, sdk]`. The sdk lane
+  downloads `contracts-artifacts` and runs codegen as in the lint lane, then
+  each lane runs `npm run test:coverage`.
 - **`backend`** - standalone (needs nothing from `build`): starts a Postgres
   service, runs migrations, then lint, format, type-check, and
   `npm run test:coverage` - the same sequence as local development.
@@ -299,8 +301,9 @@ described in [`testing.md`](testing.md) (contracts) and
 The offline contract tests don't need the AlgoKit CLI or Docker because the
 `algorand-typescript-testing` transformer runs the contract source directly
 under Node - the contract lane is pure Node and consumes nothing from the build
-job, never the compiled TEAL. The sdk and frontend lanes of the same job do
-download the build job's `contracts-artifacts` (see above for why).
+job, never the compiled TEAL. The sdk lane of the same job downloads the build
+job's `contracts-artifacts` (see above for why); the frontend lane installs the
+published SDK.
 
 ## Caching
 
@@ -325,7 +328,6 @@ The `build` job uploads one artifact that downstream jobs download, so nothing
 is compiled twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
-  (TEAL, ARC-32/56 specs). Consumed by `integration-test`, and by
-  `lint-format-type-check` and `unit-test` (the sdk lane regenerates clients
-  from it; the frontend lane's SDK build does the same) - all with
-  `SDK_SPECS=local`.
+  (TEAL, ARC-32/56 specs). Consumed by `integration-test` and by the sdk lane
+  of `lint-format-type-check` and `unit-test` (it regenerates clients from it
+  with `SDK_SPECS=local`).

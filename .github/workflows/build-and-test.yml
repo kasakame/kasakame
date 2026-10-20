@@ -5,9 +5,10 @@ on:
   push:
     branches: [main]
 
-# This workflow is the same-commit gate: every SDK build regenerates clients
-# from the build job's ARC-56 artifacts. The frontend's pre* hooks rebuild the
-# SDK in later steps, so the override lives here instead of on individual steps.
+# This workflow is the same-commit gate: the SDK builds regenerate clients from
+# the build job's ARC-56 artifacts, and the build job bundles the frontend
+# against the SDK built from this commit. The fast frontend lanes install the
+# published package instead.
 env:
   SDK_SPECS: local
 
@@ -67,9 +68,7 @@ jobs:
 
       # The SDK's prebuild codegen regenerates clients from the ARC-56 specs
       # in src/generated/ (gitignored); SDK_SPECS=local points it at the
-      # contracts build above instead of the pinned specs release. The
-      # frontend then resolves `@kasakame/sdk` as a `file:` dependency with a
-      # prebuilt dist/, so the SDK builds before the frontend bundle.
+      # contracts build above instead of the pinned specs release.
       - name: Install SDK dependencies
         run: npm ci
         working-directory: projects/sdk
@@ -78,8 +77,15 @@ jobs:
         run: npm run build
         working-directory: projects/sdk
 
+      # The committed dependency is the published package; swap in this
+      # commit's SDK so the bundle exercises the same SHA (ephemeral, not
+      # committed).
+      - name: Point the frontend at the local SDK
+        run: npm pkg set dependencies.@kasakame/sdk="file:../sdk"
+        working-directory: projects/frontend
+
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install
         working-directory: projects/frontend
 
       - name: Build frontend bundle (Vite)
@@ -113,11 +119,10 @@ jobs:
           cache: npm
           cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
 
-      # The SDK's codegen regenerates clients from ARC-56 specs into
-      # src/generated/ (gitignored); SDK_SPECS=local uses the build job's
-      # artifacts for the sdk lane and the SDK build the frontend needs.
+      # Only the SDK lane needs the artifacts; the frontend lane installs the
+      # published package.
       - name: Download contract artifacts
-        if: matrix.project != 'contracts'
+        if: matrix.project == 'sdk'
         uses: actions/download-artifact@v8
         with:
           name: contracts-artifacts
@@ -132,16 +137,6 @@ jobs:
       - name: Run SDK codegen
         if: matrix.project == 'sdk'
         run: npm run codegen
-        working-directory: projects/sdk
-
-      # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
-      # built dist/ before type-checking; the SDK build regenerates the clients
-      # from the downloaded specs via its prebuild codegen.
-      - name: Install and build the SDK
-        if: matrix.project == 'frontend'
-        run: |
-          npm ci
-          npm run build
         working-directory: projects/sdk
 
       - name: Lint
@@ -173,11 +168,10 @@ jobs:
           cache: npm
           cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
 
-      # The SDK's codegen regenerates clients from ARC-56 specs into
-      # src/generated/ (gitignored); SDK_SPECS=local uses the build job's
-      # artifacts for the sdk lane and the SDK build the frontend needs.
+      # Only the SDK lane needs the artifacts; the frontend lane installs the
+      # published package.
       - name: Download contract artifacts
-        if: matrix.project != 'contracts'
+        if: matrix.project == 'sdk'
         uses: actions/download-artifact@v8
         with:
           name: contracts-artifacts
@@ -192,16 +186,6 @@ jobs:
       - name: Run SDK codegen
         if: matrix.project == 'sdk'
         run: npm run codegen
-        working-directory: projects/sdk
-
-      # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
-      # built dist/ for the tests; the SDK build regenerates the clients from
-      # the downloaded specs via its prebuild codegen.
-      - name: Install and build the SDK
-        if: matrix.project == 'frontend'
-        run: |
-          npm ci
-          npm run build
         working-directory: projects/sdk
 
       - name: Run unit tests with coverage

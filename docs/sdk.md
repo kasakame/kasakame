@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.1.0`, published as a public npm package. The frontend still consumes it as a `file:../sdk` dependency with a local build ahead of typecheck; the remaining release items are tracked in the [SDK section](roadmap.md#sdk) of the roadmap.
+Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; `file:../sdk` is only swapped in to test unreleased SDK changes. The remaining release items are tracked in the [SDK section](roadmap.md#sdk) of the roadmap.
 
 ## Why the SDK exists
 
@@ -287,9 +287,9 @@ Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio,
 ## Release info
 
 - Version `0.1.0`, following the contracts' breaking changes while they churn.
-- Public npm package, published as `0.1.0`. The frontend still consumes it via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck until the switch to the registry version.
+- Public npm package, published as `0.1.0`. The frontend consumes `"@kasakame/sdk": "^0.1.0"` from the registry.
 - License: MIT (`package.json` SPDX id and a `projects/sdk/LICENSE` copy); the published tarball includes it.
 - Packaging: `files: ["dist"]`, `publishConfig.access: "public"`, `projects/sdk/README.md`, and the MIT `LICENSE`. The manual `release-sdk` workflow takes the package version (checked against `package.json`), defaults to `dry_run=true`, runs codegen, build, lint, format, type-check, coverage, `npm pack --dry-run`, `npm publish --dry-run`, and a tarball install/import smoke test as separate steps, and only publishes with `dry_run=false`; releases authenticate with npm OIDC trusted publishing and pass `--provenance`.
-- Once `0.1.0` is published, the registry version becomes the committed default and `file:../sdk` is swapped in only to test contracts/SDK changes.
+- The registry version is the committed default. To test unreleased contracts/SDK changes, build the SDK (`npm run build` in `projects/sdk`), swap in `file:../sdk` (`npm pkg set dependencies.@kasakame/sdk="file:../sdk" && npm install`), and restore with `git checkout package.json package-lock.json && npm ci`.
 - Codegen: `npm run codegen` (also the `prebuild` hook) downloads the pinned `specs-v0.1.0` release asset over HTTPS (no `gh` login) and regenerates each `*Client.ts` from its ARC-56 spec with the pinned `@algorandfoundation/algokit-client-generator`, tagged `// @ts-nocheck`. Set `SDK_SPECS=local` to use `projects/contracts/smart_contracts/artifacts` instead; the version lives in `package.json` under `config.specsVersion` and is exported as `SPECS_VERSION`.
 - Build: `npm run build` (`tsc` to `dist/`). The default codegen downloads the pinned release; `SDK_SPECS=local` needs a contracts build instead.
