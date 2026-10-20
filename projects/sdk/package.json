@@ -55,8 +55,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
-    "format:fix": "prettier --write .",
-    "prepublishOnly": "npm run build && npm run lint && npm run format && npm run check-types && npm run test:coverage"
+    "format:fix": "prettier --write ."
   },
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "^6.0.1",

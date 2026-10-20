@@ -161,6 +161,33 @@ work. Nothing generated is committed. The other tarballs serve deployers and
 verifiers - the ARC-32 specs for legacy tooling and the TEAL + source maps for
 independent recompile-and-verify audits.
 
+## Workflow: release-sdk (separate file)
+
+Implemented at `.github/workflows/release-sdk.yml`. Manual (`workflow_dispatch`)
+release of `@kasakame/sdk`; no reviewer gate (single developer). The version is
+`projects/sdk/package.json`; bump it in the release commit. Prerelease versions
+publish under the `next` dist-tag, finals under `latest`.
+
+- `prep` is Node/npm only and never builds the contracts: install, validate the
+  version and that it is unpublished, regenerate clients from the pinned
+  `specs-vX.Y.Z` release, compile TypeScript, lint, format, type-check, run
+  coverage, inspect the packed tarball, and dry-run the publish. Each command is
+  its own step. It uploads the tested `dist/`.
+- `smoke` packs that `dist/`, installs the tarball into a clean consumer,
+  checks the version and `LICENSE`, imports the public API, and verifies
+  `SPECS_VERSION` against the pin. It gates the publish.
+- `publish` downloads the tested `dist/`, verifies the package files and
+  version, runs `npm publish --provenance --access public --tag <tag>` using npm
+  OIDC trusted publishing (`id-token: write`), with no `NPM_TOKEN`, then checks
+  the version is visible in the registry.
+
+The frontend is built by its own release/deploy workflow against the published
+version; it is not part of the SDK release.
+
+Configure the npm trusted publisher for `@kasakame/sdk` with GitHub owner
+`kasakame`, repository `kasakame`, workflow `release-sdk.yml`, and no
+environment. Then dispatch the workflow from `main`.
+
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
@@ -197,21 +224,21 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   it as `SPECS_VERSION`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
-- Publish `0.1.0-rc.N` before `0.1.0`. npm versions and `specs-v*` tags are
-  never reused.
+- Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
+  the `next` dist-tag and finals to `latest`; npm versions and `specs-v*` tags
+  are never reused.
 
 ### npm publishing
 
 - Publish only `@kasakame/sdk`, then `@kasakame/cli`. Both are public packages
   with a `files` whitelist.
-- The SDK publishes only `dist/` plus the package metadata and README;
-  `publishConfig.access: "public"` makes the scoped package public, and
-  `prepublishOnly` rebuilds and runs the full local gate.
+- The SDK publishes only `dist/` plus the package metadata, README, and
+  `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- The publish workflow (planned) uses npm OIDC trusted publishing with
-  provenance; no long-lived `NPM_TOKEN`. It runs `npm pack --dry-run` before
-  publishing.
+- The `release-sdk` workflow uses npm OIDC trusted publishing with provenance;
+  no long-lived `NPM_TOKEN`. It runs the gate as separate steps, smoke-tests the
+  packed tarball, and inspects and dry-runs the package before publishing.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.

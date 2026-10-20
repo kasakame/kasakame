@@ -1,0 +1,246 @@
+name: release-sdk
+
+# Manual release of @kasakame/sdk. The SDK is regenerated from the pinned
+# specs release, so this workflow never builds the contracts and cannot embed
+# an unreleased interface. Every gate is its own step so a failure and its
+# timing are visible in the run.
+#
+# Publishing uses npm OIDC trusted publishing (no NPM_TOKEN). Configure the
+# trusted publisher for @kasakame/sdk as GitHub owner `kasakame`, repository
+# `kasakame`, workflow `release-sdk.yml`, with no environment.
+#
+# A smoke job installs the packed tarball in a clean consumer and imports the
+# public API before the publish job runs. The frontend is released separately
+# against the published version.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-sdk
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    name: Prepare and verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      specs: ${{ steps.version.outputs.specs }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/sdk/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: projects/sdk
+
+      - name: Read version and choose dist-tag
+        id: version
+        run: |
+          version=$(node -p "require('./projects/sdk/package.json').version")
+          specs=$(node -p "require('./projects/sdk/package.json').config.specsVersion")
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "package version is not semver: $version" >&2
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            tag=next
+          else
+            tag=latest
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "specs=$specs" >> "$GITHUB_OUTPUT"
+          echo "@kasakame/sdk@$version -> $tag (specs $specs)"
+
+      - name: Check the version is unpublished
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "@kasakame/sdk@$VERSION" version >/dev/null 2>&1; then
+            echo "@kasakame/sdk@$VERSION is already published" >&2
+            exit 1
+          fi
+          echo "@kasakame/sdk@$VERSION is free"
+
+      # The pinned specs release is the only interface input. Do not set
+      # SDK_SPECS=local here: a published SDK must not use an unreleased
+      # contracts checkout.
+      - name: Regenerate clients from pinned specs
+        run: npm run codegen
+        working-directory: projects/sdk
+
+      # Codegen already ran in the previous step; skip the prebuild hook so
+      # this step is only the TypeScript emit.
+      - name: Compile TypeScript
+        run: npm run build --ignore-scripts
+        working-directory: projects/sdk
+
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/sdk
+
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/sdk
+
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/sdk
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/sdk
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
+        working-directory: projects/sdk
+
+      - name: Dry-run the publish
+        run: npm publish --dry-run
+        working-directory: projects/sdk
+
+      - name: Upload the tested dist
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+          if-no-files-found: error
+
+  smoke:
+    name: Smoke-test the packed package
+    runs-on: ubuntu-latest
+    needs: prep
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download the tested dist
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+
+      - name: Pack the tested package
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk-package"
+          npm pack --pack-destination "$RUNNER_TEMP/sdk-package"
+        working-directory: projects/sdk
+
+      - name: Install and import the packed package
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+          SPECS_VERSION: ${{ needs.prep.outputs.specs }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/sdk-consumer"
+          cd "$RUNNER_TEMP/sdk-consumer"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$RUNNER_TEMP"/sdk-package/*.tgz
+          installed=$(node -p "require('./node_modules/@kasakame/sdk/package.json').version")
+          if [[ "$installed" != "$VERSION" ]]; then
+            echo "installed @kasakame/sdk@$installed, expected $VERSION" >&2
+            exit 1
+          fi
+          license=$(node -p "require('./node_modules/@kasakame/sdk/package.json').license")
+          if [[ "$license" != "MIT" ]]; then
+            echo "installed license is $license, expected MIT" >&2
+            exit 1
+          fi
+          test -f node_modules/@kasakame/sdk/LICENSE
+          cat > smoke.mjs <<'EOF'
+          import { SPECS_VERSION, configureSdk, getCampaign, pledgeGroup, refundGroup } from '@kasakame/sdk'
+
+          const api = { SPECS_VERSION, configureSdk, getCampaign, pledgeGroup, refundGroup }
+          if (typeof SPECS_VERSION !== 'string') {
+            throw new Error('SPECS_VERSION is not a string')
+          }
+          for (const name of ['configureSdk', 'getCampaign', 'pledgeGroup', 'refundGroup']) {
+            if (typeof api[name] !== 'function') {
+              throw new Error('missing function export: ' + name)
+            }
+          }
+          if (SPECS_VERSION !== process.env.SPECS_VERSION) {
+            throw new Error('SPECS_VERSION ' + SPECS_VERSION + ' does not match pin ' + process.env.SPECS_VERSION)
+          }
+          console.log('@kasakame/sdk@' + process.env.VERSION + ' loaded; specs ' + SPECS_VERSION)
+          EOF
+          node smoke.mjs
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [prep, smoke]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Download the tested dist
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+
+      - name: Verify package files
+        run: |
+          test -f README.md
+          test -f LICENSE
+          test -f dist/index.js
+          test -f dist/index.d.ts
+        working-directory: projects/sdk
+
+      - name: Verify the checked-out version
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        run: |
+          version=$(node -p "require('./projects/sdk/package.json').version")
+          if [[ "$version" != "$VERSION" ]]; then
+            echo "checked-out version $version does not match prep $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Publish with provenance
+        env:
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG"
+          npm publish --provenance --access public --tag "$TAG"
+        working-directory: projects/sdk
+
+      - name: Verify the published version
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        run: |
+          for attempt in {1..10}; do
+            if npm view "@kasakame/sdk@$VERSION" version; then
+              exit 0
+            fi
+            echo "not visible yet (attempt $attempt/10); waiting"
+            sleep 6
+          done
+          echo "@kasakame/sdk@$VERSION did not appear in the registry" >&2
+          exit 1
