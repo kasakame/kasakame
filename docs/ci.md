@@ -172,8 +172,6 @@ are:
 - `version`: required, without the `v` prefix; must match the package version.
 - `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
   and the prep publish dry-run, but skips the real publish and registry check.
-- `bootstrap`: first release only; publishes with the `NPM_TOKEN` secret instead
-  of OIDC.
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
@@ -188,31 +186,32 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   pin. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag. Normal runs authenticate through npm OIDC trusted publishing
-  (`id-token: write`); a dispatch with `bootstrap=true` uses the `NPM_TOKEN`
-  secret. Both paths pass `--provenance`, so the bootstrap release gets a
-  provenance attestation too. It then checks the version is visible in the
-  registry. A dry run stops before the publish and registry check.
+  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
+  `--provenance`. It then polls the registry for the version, allowing 10
+  minutes: npm stages a new package and the first publish took about 2.5
+  minutes to become visible. A dry run stops before the publish and registry
+  check.
 
-The first release is a bootstrap: npm requires the package to exist before a
-trusted publisher can be configured, so dispatch with `dry_run=false`,
-`bootstrap=true`, and a short-lived granular token in the `NPM_TOKEN` secret
-(for example, a `0.1.0-rc.1` publish). The token needs read/write access to the
-`@kasakame` package scope and 2FA bypass; do not reuse a read-only install
-token. After that release creates the package, configure the trusted publisher,
-delete the secret, and revoke the token. Future runs set `dry_run=false`, leave
-`bootstrap=false`, and authenticate with OIDC. Provenance is not tied to
-trusted-publishing authentication: a token publish with `--provenance` from a
-public repository and public package produces an attestation too
-([npm provenance docs](https://docs.npmjs.com/generating-provenance-statements)).
+Configure the trusted publisher for `@kasakame/sdk` on npmjs.com (package
+Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
+`kasakame`, workflow `release-sdk.yml`, and no environment. Enable **Allow npm
+publish**; leave **Allow npm dist-tag** off, because the workflow only passes
+`--tag` to `npm publish` and never runs `npm dist-tag`. `npm stage publish` is
+always allowed and needs no opt-in. The `npm trust github` CLI is the
+equivalent (`--allow-publish`).
+
+A new trusted publisher must complete its first publish within 2 days or it
+expires and must be recreated. OIDC publishes do not prompt for 2FA: the job
+exchanges the GitHub identity for a short-lived token. 2FA still gates
+interactive actions (npmjs.com login, `npm trust`, and `npm stage approve`).
+After the first OIDC publish succeeds, set the package's Publishing access to
+"Require two-factor authentication and disallow tokens", delete the
+`NPM_TOKEN` GitHub secret, and revoke the bootstrap token.
 
 The frontend is built by its own release/deploy workflow against the published
 version; it is not part of the SDK release.
 
-Configure the npm trusted publisher for `@kasakame/sdk` with GitHub owner
-`kasakame`, repository `kasakame`, workflow `release-sdk.yml`, and no
-environment. Then dispatch the workflow from `main` with `dry_run=false` and
-`bootstrap=false`.
+Then dispatch the workflow from `main` with `dry_run=false`.
 
 ## Release and distribution
 
@@ -265,11 +264,10 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- The `release-sdk` workflow uses npm OIDC trusted publishing after the first
-  bootstrap; every publish passes `--provenance`. The first bootstrap uses a
-  short-lived `NPM_TOKEN` secret because the package must exist before the
-  trusted publisher can be configured. No long-lived token: delete the secret
-  and revoke the token after the bootstrap.
+- The `release-sdk` workflow uses npm OIDC trusted publishing; every publish
+  passes `--provenance`. Set the package's publishing access to "Require
+  two-factor authentication and disallow tokens" so only the trusted publisher
+  can publish.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.

@@ -7,15 +7,10 @@ name: release-sdk
 # projects/sdk/package.json, and dry_run defaults to true; set it to false only
 # for a real release.
 #
-# Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
-# release is a bootstrap: npm requires the package to exist before a trusted
-# publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
-# and a temporary NPM_TOKEN secret. Both paths pass --provenance; the token is
-# only for authentication. Delete the secret and revoke the token after that
-# release.
-#
-# Configure the trusted publisher for @kasakame/sdk as GitHub owner `kasakame`,
-# repository `kasakame`, workflow `release-sdk.yml`, with no environment.
+# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
+# --provenance. Configure the trusted publisher for @kasakame/sdk as GitHub
+# owner `kasakame`, repository `kasakame`, workflow `release-sdk.yml`, with no
+# environment and "Allow npm publish" enabled.
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
 # public API before the publish job runs. The frontend is released separately
@@ -31,11 +26,6 @@ on:
         description: 'Run all checks but skip publishing'
         required: true
         default: true
-        type: boolean
-      bootstrap:
-        description: 'Publish with NPM_TOKEN (first release only, before trusted publishing)'
-        required: true
-        default: false
         type: boolean
 
 permissions:
@@ -173,7 +163,7 @@ jobs:
     needs: [prep, smoke]
     permissions:
       contents: read
-      # OIDC authenticates normal releases and signs provenance on both paths.
+      # OIDC authenticates the publish and signs provenance.
       id-token: write
     steps:
       - name: Check out repository
@@ -209,28 +199,8 @@ jobs:
             exit 1
           fi
 
-      - name: Require the bootstrap token
-        if: ${{ inputs.bootstrap && !inputs.dry_run }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "bootstrap=true but the NPM_TOKEN secret is not set" >&2
-            exit 1
-          fi
-
-      - name: Publish with the bootstrap token
-        if: ${{ inputs.bootstrap && !inputs.dry_run }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          TAG: ${{ needs.prep.outputs.tag }}
-        run: |
-          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/sdk
-
       - name: Publish with provenance (OIDC)
-        if: ${{ !inputs.bootstrap && !inputs.dry_run }}
+        if: ${{ !inputs.dry_run }}
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
@@ -246,13 +216,17 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ needs.prep.outputs.version }}
+        # npm stages a new package ("being processed") before it is visible;
+        # the first publish took ~2.5 minutes. Normal publishes exit immediately.
         run: |
-          for attempt in {1..10}; do
-            if npm view "@kasakame/sdk@$VERSION" version; then
+          for attempt in {1..40}; do
+            if npm view "@kasakame/sdk@$VERSION" version >/dev/null 2>&1; then
+              echo "@kasakame/sdk@$VERSION is visible (attempt $attempt/40)"
               exit 0
             fi
-            echo "not visible yet (attempt $attempt/10); waiting"
-            sleep 6
+            echo "not visible yet (attempt $attempt/40); waiting"
+            sleep 15
           done
-          echo "@kasakame/sdk@$VERSION did not appear in the registry" >&2
+          npm view "@kasakame/sdk@$VERSION" version || true
+          echo "@kasakame/sdk@$VERSION did not appear in the registry after 10 minutes" >&2
           exit 1
