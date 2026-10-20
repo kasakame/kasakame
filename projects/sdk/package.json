@@ -5,10 +5,18 @@
     "name": "Alessio Di Domenico",
     "email": "alessio.661@hotmail.it"
   },
-  "private": true,
   "type": "module",
   "sideEffects": false,
   "description": "Chain layer for kasakame: claim-tree proofs, campaign reads, and transaction assembly",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kasakame/kasakame.git",
+    "directory": "projects/sdk"
+  },
+  "homepage": "https://github.com/kasakame/kasakame/tree/main/projects/sdk#readme",
+  "bugs": {
+    "url": "https://github.com/kasakame/kasakame/issues"
+  },
   "config": {
     "specsVersion": "0.1.0"
   },
@@ -16,11 +24,19 @@
     "node": ">=24.0.0",
     "npm": ">=9.0"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@algorandfoundation/algokit-utils": "^9.0.0",
@@ -38,7 +54,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "prepublishOnly": "npm run build && npm run lint && npm run format && npm run check-types && npm run test:coverage"
   },
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "^6.0.1",

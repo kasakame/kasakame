@@ -171,7 +171,7 @@ each, in order; the last two publish the package.
       instead (no build-if-missing). `src/generated/` stays gitignored; docs synced
       ([`sdk.md`](sdk.md), [`frontend.md`](frontend.md), [`ci.md`](ci.md),
       [`AGENTS.md`](../AGENTS.md)).
-- [ ] **Pre-publish packaging** - flip `package.json` to public, add a `files` whitelist for `dist/`, add `projects/sdk/README` (how the SDK obtains specs - the pinned release by default, `SDK_SPECS=local` against locally built contracts - how `npm run build` produces `dist/`, and how the frontend consumes the package; keep it in sync with `ci.md` and [`AGENTS.md`](../AGENTS.md) so local and CI run the same commands), and export the consumed specs version constant.
+- [x] **Pre-publish packaging** - public `package.json` (`publishConfig.access: "public"`, `files: ["dist"]`), a consumer-facing `projects/sdk/README.md`, and `SPECS_VERSION` generated from `config.specsVersion`. `npm pack` ships `dist/` plus metadata/README; `prepublishOnly` runs the local gate.
 - [ ] **Publish the client SDK** - publish the versioned `@kasakame/sdk` package (claim-tree math and generated typed clients, migrating per [`sdk.md`](sdk.md)) to the public npm registry (not GitHub Packages: even public installs there need an auth token). The SDK takes indexer-provider and signer interfaces so one codebase serves the UI, the CLI, and third parties.
 - [ ] **Ship the escape-hatch CLI** - graduate `scripts/reclaim.ts` into a standalone `npx`-runnable tool (refund/cancel/claim by app ID from a mnemonic, public indexer only, no backend). Canonical proof that exits never need our servers.
 

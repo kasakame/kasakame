@@ -193,8 +193,8 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 ### Versions and release order
 
 - `specs-vX.Y.Z` and the npm packages are independent series; the SDK pins the
-  consumed specs version in `package.json` (`config.specsVersion`) and will
-  export it once the pre-publish packaging lands.
+  consumed specs version in `package.json` (`config.specsVersion`) and exports
+  it as `SPECS_VERSION`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. npm versions and `specs-v*` tags are
@@ -204,6 +204,9 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 
 - Publish only `@kasakame/sdk`, then `@kasakame/cli`. Both are public packages
   with a `files` whitelist.
+- The SDK publishes only `dist/` plus the package metadata and README;
+  `publishConfig.access: "public"` makes the scoped package public, and
+  `prepublishOnly` rebuilds and runs the full local gate.
 - The publish workflow (planned) uses npm OIDC trusted publishing with
   provenance; no long-lived `NPM_TOKEN`. It runs `npm pack --dry-run` before
   publishing.
