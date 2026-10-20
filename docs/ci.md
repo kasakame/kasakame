@@ -70,19 +70,20 @@ service (migrations first, like local development).
 The SDK's write path imports the generated clients (`src/generated/*`,
 gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
 pinned `@algorandfoundation/algokit-client-generator`. By default codegen
-downloads the pinned `specs-v<version>` release (`gh release download ... -p
-arc56.tar.gz`); `SDK_SPECS=local` reads
+downloads the pinned `specs-v<version>` release asset over HTTPS
+(`.../releases/download/specs-v<version>/arc56.tar.gz`), so it needs no `gh`
+login; `SDK_SPECS=local` reads
 `projects/contracts/smart_contracts/artifacts` instead. The `sdk` lane downloads
 `contracts-artifacts` and runs `npm run codegen` with `SDK_SPECS=local`, so
 type-check and tests resolve the clients without a release download and against
 the change set's contracts. Codegen never builds the contracts: local mode fails
 with instructions if the artifacts are absent.
 
-Current CI sets `SDK_SPECS=local` on the SDK codegen/build steps in the lanes
-that consume `contracts-artifacts`, because those lanes test the same commit's
-contracts. The roadmap's CI change detection will switch SDK-only lanes to the
-pinned release and frontend-only lanes to the published SDK; until then, local
-is the same-SHA end-to-end gate.
+Current CI sets `SDK_SPECS=local` at the workflow level in `build-and-test`,
+because every SDK build there tests the same commit's contracts and the
+frontend's `pre*` hooks rebuild the SDK in later steps. The roadmap's CI change
+detection will switch SDK-only lanes to the pinned release and frontend-only
+lanes to the published SDK; until then, local is the same-SHA end-to-end gate.
 
 ## Why the frontend lanes build the SDK
 
@@ -152,8 +153,9 @@ can still break on TestNet; GitHub pre-release status only affects the "Latest"
 label, not downloads by tag.
 
 The SDK pins `specs-v<version>` in `projects/sdk/package.json`
-(`config.specsVersion`), downloads `arc56.tar.gz` by default, and regenerates its
-clients from those specs with its own pinned generator; `SDK_SPECS=local` uses
+(`config.specsVersion`), downloads the public `arc56.tar.gz` asset over HTTPS by
+default, and regenerates its clients from those specs with its own pinned
+generator; `SDK_SPECS=local` uses
 the contracts project's artifacts for contracts-changed lanes and local contract
 work. Nothing generated is committed. The other tarballs serve deployers and
 verifiers - the ARC-32 specs for legacy tooling and the TEAL + source maps for
@@ -175,9 +177,11 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 - **No specs npm package for now.** GitHub Releases stay canonical for ARC-56,
   ARC-32, TEAL, and source maps. Raw ARC-56 packages are uncommon, and the SDK
   ships generated clients, so a second channel adds maintenance without a
-  consumer. Revisit only if the SDK must build with only `npm ci` (no `gh`),
-  external consumers need spec-only installs, the contracts repo becomes
-  private after a split, or npm-native interface versioning is wanted.
+  consumer. The public release asset downloads over HTTPS without `gh` (a
+  private repo would need an authenticated download). Revisit only if the SDK
+  must build with only `npm ci` (no release download), external consumers need
+  spec-only installs, the contracts repo becomes private after a split, or
+  npm-native interface versioning is wanted.
 - **If specs go to npm later**, publish a thin `@kasakame/specs` mirror from
   the same `release-specs` workflow at the same commit and version, primarily
   ARC-56; the GitHub release remains the canonical audit bundle. Never

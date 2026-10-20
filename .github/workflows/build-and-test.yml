@@ -5,6 +5,12 @@ on:
   push:
     branches: [main]
 
+# This workflow is the same-commit gate: every SDK build regenerates clients
+# from the build job's ARC-56 artifacts. The frontend's pre* hooks rebuild the
+# SDK in later steps, so the override lives here instead of on individual steps.
+env:
+  SDK_SPECS: local
+
 jobs:
   # Build once: compile contracts (TEAL + ARC-56 specs), regenerate the SDK
   # clients from those specs, and bundle the frontend. All outputs are
@@ -71,8 +77,6 @@ jobs:
       - name: Build SDK package (codegen + tsc)
         run: npm run build
         working-directory: projects/sdk
-        env:
-          SDK_SPECS: local
 
       - name: Install frontend dependencies
         run: npm ci
@@ -129,8 +133,6 @@ jobs:
         if: matrix.project == 'sdk'
         run: npm run codegen
         working-directory: projects/sdk
-        env:
-          SDK_SPECS: local
 
       # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
       # built dist/ before type-checking; the SDK build regenerates the clients
@@ -141,8 +143,6 @@ jobs:
           npm ci
           npm run build
         working-directory: projects/sdk
-        env:
-          SDK_SPECS: local
 
       - name: Lint
         run: npm run lint
@@ -193,8 +193,6 @@ jobs:
         if: matrix.project == 'sdk'
         run: npm run codegen
         working-directory: projects/sdk
-        env:
-          SDK_SPECS: local
 
       # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
       # built dist/ for the tests; the SDK build regenerates the clients from
@@ -205,8 +203,6 @@ jobs:
           npm ci
           npm run build
         working-directory: projects/sdk
-        env:
-          SDK_SPECS: local
 
       - name: Run unit tests with coverage
         run: npm run test:coverage

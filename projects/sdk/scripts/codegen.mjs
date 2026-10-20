@@ -27,17 +27,17 @@ function findSpecs(root) {
   return specs.sort()
 }
 
-function releaseSpecsDir() {
-  try {
-    execFileSync('gh', ['--version'], { stdio: 'ignore' })
-  } catch {
-    throw new Error('gh CLI not found - install it and run `gh auth login`, or set SDK_SPECS=local')
-  }
+async function releaseSpecsDir() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kasakame-specs-'))
   try {
-    execFileSync('gh', ['release', 'download', `specs-v${String(specsVersion)}`, '--pattern', 'arc56.tar.gz', '--dir', dir], {
-      stdio: 'inherit',
-    })
+    // Public release assets need no auth; a private repo would need a token.
+    const response = await fetch(`https://github.com/kasakame/kasakame/releases/download/specs-v${String(specsVersion)}/arc56.tar.gz`)
+    if (!response.ok) {
+      throw new Error(
+        `could not download specs-v${String(specsVersion)} arc56.tar.gz (HTTP ${String(response.status)}) - check config.specsVersion and the release`,
+      )
+    }
+    fs.writeFileSync(path.join(dir, 'arc56.tar.gz'), Buffer.from(await response.arrayBuffer()))
     execFileSync('tar', ['-xzf', path.join(dir, 'arc56.tar.gz'), '-C', dir], { stdio: 'inherit' })
     return dir
   } catch (error) {
@@ -64,7 +64,7 @@ if (source === 'local') {
   }
   specsDir = localArtifactsDir
 } else {
-  specsDir = releaseSpecsDir()
+  specsDir = await releaseSpecsDir()
   cleanup = () => {
     fs.rmSync(specsDir, { recursive: true, force: true })
   }
