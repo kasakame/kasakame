@@ -64,11 +64,7 @@ jobs:
             echo "version must be plain X.Y.Z (got: $VERSION)" >&2
             exit 1
           fi
-          package_version=$(node -p "require('./projects/contracts/package.json').version")
-          if [[ "$VERSION" != "$package_version" ]]; then
-            echo "input version $VERSION does not match projects/contracts/package.json $package_version" >&2
-            exit 1
-          fi
+          node .github/scripts/check-release-version.mjs projects/contracts/package.json "$VERSION"
           if git ls-remote --exit-code --tags origin "refs/tags/specs-v$VERSION" >/dev/null 2>&1; then
             echo "tag specs-v$VERSION already exists" >&2
             exit 1

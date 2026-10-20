@@ -10,8 +10,9 @@ name: release-sdk
 # Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
 # release is a bootstrap: npm requires the package to exist before a trusted
 # publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
-# and a temporary NPM_TOKEN secret. Delete the secret and revoke the token after
-# that release.
+# and a temporary NPM_TOKEN secret. Both paths pass --provenance; the token is
+# only for authentication. Delete the secret and revoke the token after that
+# release.
 #
 # Configure the trusted publisher for @kasakame/sdk as GitHub owner `kasakame`,
 # repository `kasakame`, workflow `release-sdk.yml`, with no environment.
@@ -72,11 +73,8 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         run: |
+          node .github/scripts/check-release-version.mjs projects/sdk/package.json "$INPUT_VERSION"
           version=$(node -p "require('./projects/sdk/package.json').version")
-          if [[ "$INPUT_VERSION" != "$version" ]]; then
-            echo "input version $INPUT_VERSION does not match projects/sdk/package.json $version" >&2
-            exit 1
-          fi
           specs=$(node -p "require('./projects/sdk/package.json').config.specsVersion")
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "package version is not semver: $version" >&2
@@ -165,50 +163,9 @@ jobs:
           name: sdk-dist
           path: projects/sdk/dist
 
-      - name: Pack the tested package
-        run: |
-          mkdir -p "$RUNNER_TEMP/sdk-package"
-          npm pack --pack-destination "$RUNNER_TEMP/sdk-package"
+      - name: Smoke-test the packed package
+        run: node scripts/smoke-package.mjs
         working-directory: projects/sdk
-
-      - name: Install and import the packed package
-        env:
-          VERSION: ${{ needs.prep.outputs.version }}
-          SPECS_VERSION: ${{ needs.prep.outputs.specs }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/sdk-consumer"
-          cd "$RUNNER_TEMP/sdk-consumer"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund "$RUNNER_TEMP"/sdk-package/*.tgz
-          installed=$(node -p "require('./node_modules/@kasakame/sdk/package.json').version")
-          if [[ "$installed" != "$VERSION" ]]; then
-            echo "installed @kasakame/sdk@$installed, expected $VERSION" >&2
-            exit 1
-          fi
-          license=$(node -p "require('./node_modules/@kasakame/sdk/package.json').license")
-          if [[ "$license" != "MIT" ]]; then
-            echo "installed license is $license, expected MIT" >&2
-            exit 1
-          fi
-          test -f node_modules/@kasakame/sdk/LICENSE
-          cat > smoke.mjs <<'EOF'
-          import { SPECS_VERSION, configureSdk, getCampaign, pledgeGroup, refundGroup } from '@kasakame/sdk'
-
-          const api = { SPECS_VERSION, configureSdk, getCampaign, pledgeGroup, refundGroup }
-          if (typeof SPECS_VERSION !== 'string') {
-            throw new Error('SPECS_VERSION is not a string')
-          }
-          for (const name of ['configureSdk', 'getCampaign', 'pledgeGroup', 'refundGroup']) {
-            if (typeof api[name] !== 'function') {
-              throw new Error('missing function export: ' + name)
-            }
-          }
-          if (SPECS_VERSION !== process.env.SPECS_VERSION) {
-            throw new Error('SPECS_VERSION ' + SPECS_VERSION + ' does not match pin ' + process.env.SPECS_VERSION)
-          }
-          console.log('@kasakame/sdk@' + process.env.VERSION + ' loaded; specs ' + SPECS_VERSION)
-          EOF
-          node smoke.mjs
 
   publish:
     name: Publish to npm
@@ -216,6 +173,7 @@ jobs:
     needs: [prep, smoke]
     permissions:
       contents: read
+      # OIDC authenticates normal releases and signs provenance on both paths.
       id-token: write
     steps:
       - name: Check out repository
@@ -267,8 +225,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
-          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token (no provenance)"
-          npm publish --access public --tag "$TAG"
+          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token"
+          npm publish --provenance --access public --tag "$TAG"
         working-directory: projects/sdk
 
       - name: Publish with provenance (OIDC)

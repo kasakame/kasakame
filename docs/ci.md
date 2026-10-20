@@ -182,15 +182,17 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   clients from the pinned `specs-vX.Y.Z` release, compile TypeScript, lint,
   format, type-check, run coverage, inspect the packed tarball, and dry-run the
   publish. Each command is its own step. It uploads the tested `dist/`.
-- `smoke` packs that `dist/`, installs the tarball into a clean consumer,
-  checks the version and `LICENSE`, imports the public API, and verifies
-  `SPECS_VERSION` against the pin. It gates the publish.
+- `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
+  `dist/`, installs the tarball into a clean consumer, checks the version and
+  `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
+  pin. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag. Normal runs use `npm publish --provenance` with npm OIDC trusted
-  publishing (`id-token: write`); a dispatch with `bootstrap=true` uses the
-  `NPM_TOKEN` secret and omits provenance. It then checks the version is visible
-  in the registry. A dry run stops before the publish and registry check.
+  dist-tag. Normal runs authenticate through npm OIDC trusted publishing
+  (`id-token: write`); a dispatch with `bootstrap=true` uses the `NPM_TOKEN`
+  secret. Both paths pass `--provenance`, so the bootstrap release gets a
+  provenance attestation too. It then checks the version is visible in the
+  registry. A dry run stops before the publish and registry check.
 
 The first release is a bootstrap: npm requires the package to exist before a
 trusted publisher can be configured, so dispatch with `dry_run=false`,
@@ -199,7 +201,10 @@ trusted publisher can be configured, so dispatch with `dry_run=false`,
 `@kasakame` package scope and 2FA bypass; do not reuse a read-only install
 token. After that release creates the package, configure the trusted publisher,
 delete the secret, and revoke the token. Future runs set `dry_run=false`, leave
-`bootstrap=false`, and use OIDC provenance.
+`bootstrap=false`, and authenticate with OIDC. Provenance is not tied to
+trusted-publishing authentication: a token publish with `--provenance` from a
+public repository and public package produces an attestation too
+([npm provenance docs](https://docs.npmjs.com/generating-provenance-statements)).
 
 The frontend is built by its own release/deploy workflow against the published
 version; it is not part of the SDK release.
@@ -244,6 +249,8 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   independent of the published npm package versions. The SDK pins the consumed
   specs version in `package.json` (`config.specsVersion`) and exports it as
   `SPECS_VERSION`.
+- Both release workflows validate the dispatch version against their project
+  `package.json` with `.github/scripts/check-release-version.mjs`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
@@ -258,10 +265,11 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- The `release-sdk` workflow uses npm OIDC trusted publishing with provenance;
-  the first bootstrap release uses a short-lived `NPM_TOKEN` secret because the
-  package must exist before the trusted publisher can be configured. No
-  long-lived token: delete the secret and revoke the token after the bootstrap.
+- The `release-sdk` workflow uses npm OIDC trusted publishing after the first
+  bootstrap; every publish passes `--provenance`. The first bootstrap uses a
+  short-lived `NPM_TOKEN` secret because the package must exist before the
+  trusted publisher can be configured. No long-lived token: delete the secret
+  and revoke the token after the bootstrap.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.
