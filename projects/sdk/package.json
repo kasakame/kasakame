@@ -8,6 +8,18 @@
   "type": "module",
   "sideEffects": false,
   "description": "Chain layer for kasakame: claim-tree proofs, campaign reads, and transaction assembly",
+  "keywords": [
+    "algorand",
+    "algorand-blockchain",
+    "algokit",
+    "algosdk",
+    "blockchain",
+    "smart-contracts",
+    "crowdfunding",
+    "dapp",
+    "typescript",
+    "merkle-tree"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
