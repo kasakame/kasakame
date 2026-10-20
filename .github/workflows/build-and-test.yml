@@ -6,9 +6,9 @@ on:
     branches: [main]
 
 jobs:
-  # Build once: compile contracts (TEAL + generated clients), copy the
-  # clients into the SDK and build it, and bundle the frontend. All outputs
-  # are gitignored and regenerable; the contract artifacts are shared as
+  # Build once: compile contracts (TEAL + ARC-56 specs), regenerate the SDK
+  # clients from those specs, and bundle the frontend. All outputs are
+  # gitignored and regenerable; the contract artifacts are shared as
   # artifacts instead of being rebuilt by every consumer.
   build:
     name: Build contracts, frontend, and SDK
@@ -59,10 +59,11 @@ jobs:
         run: npm run build
         working-directory: projects/contracts
 
-      # The SDK's prebuild codegen copies the compiled clients and ARC-56
-      # specs into src/generated/ (gitignored); the frontend then resolves
-      # `@kasakame/sdk` as a `file:` dependency with a prebuilt dist/, so the
-      # SDK builds after the contracts and before the frontend bundle.
+      # The SDK's prebuild codegen regenerates clients from the ARC-56 specs
+      # in src/generated/ (gitignored); SDK_SPECS=local points it at the
+      # contracts build above instead of the pinned specs release. The
+      # frontend then resolves `@kasakame/sdk` as a `file:` dependency with a
+      # prebuilt dist/, so the SDK builds before the frontend bundle.
       - name: Install SDK dependencies
         run: npm ci
         working-directory: projects/sdk
@@ -70,6 +71,8 @@ jobs:
       - name: Build SDK package (codegen + tsc)
         run: npm run build
         working-directory: projects/sdk
+        env:
+          SDK_SPECS: local
 
       - name: Install frontend dependencies
         run: npm ci
@@ -106,9 +109,9 @@ jobs:
           cache: npm
           cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
 
-      # The SDK's codegen copies the compiled contract clients and ARC-56
-      # specs into src/generated/ (gitignored); the build job's artifacts are
-      # that input for the sdk lane and for the SDK build the frontend needs.
+      # The SDK's codegen regenerates clients from ARC-56 specs into
+      # src/generated/ (gitignored); SDK_SPECS=local uses the build job's
+      # artifacts for the sdk lane and the SDK build the frontend needs.
       - name: Download contract artifacts
         if: matrix.project != 'contracts'
         uses: actions/download-artifact@v8
@@ -120,22 +123,26 @@ jobs:
         run: npm ci
         working-directory: projects/${{ matrix.project }}
 
-      # Copy the generated clients in before type-checking the SDK (the
-      # artifacts are already local, so codegen only copies).
+      # Regenerate the clients before type-checking the SDK (SDK_SPECS=local
+      # reads the downloaded ARC-56 specs, no release download).
       - name: Run SDK codegen
         if: matrix.project == 'sdk'
         run: npm run codegen
         working-directory: projects/sdk
+        env:
+          SDK_SPECS: local
 
       # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
-      # built dist/ before type-checking; the SDK build copies the generated
-      # clients via its prebuild codegen.
+      # built dist/ before type-checking; the SDK build regenerates the clients
+      # from the downloaded specs via its prebuild codegen.
       - name: Install and build the SDK
         if: matrix.project == 'frontend'
         run: |
           npm ci
           npm run build
         working-directory: projects/sdk
+        env:
+          SDK_SPECS: local
 
       - name: Lint
         run: npm run lint
@@ -166,9 +173,9 @@ jobs:
           cache: npm
           cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
 
-      # The SDK's codegen copies the compiled contract clients and ARC-56
-      # specs into src/generated/ (gitignored); the build job's artifacts are
-      # that input for the sdk lane and for the SDK build the frontend needs.
+      # The SDK's codegen regenerates clients from ARC-56 specs into
+      # src/generated/ (gitignored); SDK_SPECS=local uses the build job's
+      # artifacts for the sdk lane and the SDK build the frontend needs.
       - name: Download contract artifacts
         if: matrix.project != 'contracts'
         uses: actions/download-artifact@v8
@@ -180,22 +187,26 @@ jobs:
         run: npm ci
         working-directory: projects/${{ matrix.project }}
 
-      # Copy the generated clients in before running the SDK suite (the
-      # artifacts are already local, so codegen only copies).
+      # Regenerate the clients before running the SDK suite (SDK_SPECS=local
+      # reads the downloaded ARC-56 specs, no release download).
       - name: Run SDK codegen
         if: matrix.project == 'sdk'
         run: npm run codegen
         working-directory: projects/sdk
+        env:
+          SDK_SPECS: local
 
       # The frontend lane resolves `@kasakame/sdk` (file:../sdk) and needs its
-      # built dist/ for the tests; the SDK build copies the generated clients
-      # via its prebuild codegen.
+      # built dist/ for the tests; the SDK build regenerates the clients from
+      # the downloaded specs via its prebuild codegen.
       - name: Install and build the SDK
         if: matrix.project == 'frontend'
         run: |
           npm ci
           npm run build
         working-directory: projects/sdk
+        env:
+          SDK_SPECS: local
 
       - name: Run unit tests with coverage
         run: npm run test:coverage

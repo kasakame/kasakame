@@ -67,7 +67,7 @@ The frontend re-exports the SDK through `src/lib/claimtree.ts`, `src/lib/campaig
 
 ## Public API surface
 
-The barrel file `src/index.ts` exports everything below. Generated clients live in `src/generated/` (gitignored) and are regenerated from the ARC-56 specs; do not import them directly.
+The barrel file `src/index.ts` exports everything below. Generated clients live in `src/generated/` (gitignored) and are regenerated from the pinned ARC-56 specs; do not import them directly.
 
 ### Chain plumbing (`chain.ts`)
 
@@ -264,8 +264,8 @@ Creation chains `create` to Factory `register`. Pledges are one atomic group `[p
 
 - **One explicit setup call instead of singletons.** An SDK cannot depend on Vite or React, so you call `configureSdk` once at startup. The frontend passes its `AlgorandClient`; the CLI builds one from flags or env.
 - **Structural, framework-free types.** `WalletSession` uses algosdk's `TransactionSigner` with no wallet dependency. Indexer and algod access go through the configured `AlgorandClient`.
-- **Released interfaces are the default inputs.** The SDK builds against the pinned specs release (`specs-vX.Y.Z`). Local HEAD (`file:../sdk`, or `SDK_SPECS=local`) is swapped in only inside a change set that modifies the contracts. Every component stays clone-and-run and ready for a repo split.
-- **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` and `*.arc56.json` stay gitignored. The SDK regenerates clients from specs and tags them `// @ts-nocheck` (they do not pass the strict compiler). Clients never travel between packages.
+- **Released interfaces are the default inputs.** The SDK builds against the pinned specs release (`specs-vX.Y.Z`): `scripts/codegen.mjs` downloads `arc56.tar.gz` and regenerates clients with its own pinned generator. `SDK_SPECS=local` reads `projects/contracts/smart_contracts/artifacts` and is the explicit override inside a change set that modifies the contracts. A fresh clone builds without the contracts folder - the split-ready property.
+- **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` stays gitignored; specs are downloaded (or read locally) and never committed. The SDK regenerates clients from specs and tags them `// @ts-nocheck` (they do not pass the strict compiler). Clients never travel between packages.
 - **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and disconnect handling stay in the frontend. The stale-proof retry policy moves to the SDK because the CLI needs it; the error-to-message mapping stays in the frontend.
 - **Upload auth stays out.** Backend sign-in flows are backend-coupled, not chain logic.
 
@@ -278,4 +278,5 @@ Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio,
 - Version `0.1.0`, following the contracts' breaking changes while they churn.
 - `private: true`, not yet published to the npm registry. The frontend consumes it via `"@kasakame/sdk": "file:../sdk"` with an SDK build ahead of frontend typecheck.
 - Once `0.1.0` is published, the registry version becomes the committed default and `file:../sdk` is swapped in only to test contracts/SDK changes.
-- Codegen: `npm run codegen` (also the `prebuild` hook) copies compiled contract clients and ARC-56 specs from `projects/contracts/smart_contracts/artifacts` into `src/generated/` (gitignored). Build with `npm run build` (`tsc` to `dist/`).
+- Codegen: `npm run codegen` (also the `prebuild` hook) downloads the pinned `specs-v0.1.0` release (`gh release download ... -p arc56.tar.gz`) and regenerates each `*Client.ts` from its ARC-56 spec with the pinned `@algorandfoundation/algokit-client-generator`, tagged `// @ts-nocheck`. Set `SDK_SPECS=local` to use `projects/contracts/smart_contracts/artifacts` instead; the version lives in `package.json` under `config.specsVersion`.
+- Build: `npm run build` (`tsc` to `dist/`). The default codegen needs an authenticated `gh` CLI; `SDK_SPECS=local` needs a contracts build instead.

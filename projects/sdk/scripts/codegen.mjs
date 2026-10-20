@@ -1,47 +1,89 @@
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 
-// Copy the compiled contract clients and ARC-56 specs into src/generated/ (gitignored). Reuses the contracts
-// project's artifacts when they exist and builds the contracts otherwise, so a fresh clone only needs this script.
-// The clients trip the strict compiler options (unused locals/parameters), so each copy is tagged with
-// `// @ts-nocheck` - the same treatment the frontend applies to its linked clients.
+const sdkDir = path.resolve(import.meta.dirname, '..')
+const specsVersion = JSON.parse(fs.readFileSync(path.join(sdkDir, 'package.json'), 'utf8')).config?.specsVersion
+if (typeof specsVersion !== 'string' || specsVersion.length === 0) {
+  throw new Error('package.json config.specsVersion is missing - add the pinned specs version')
+}
+const generatedDir = path.join(sdkDir, 'src', 'generated')
+const localArtifactsDir = path.resolve(sdkDir, '../contracts/smart_contracts/artifacts')
+const generatorBin = path.join(
+  sdkDir,
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'algokit-client-generator.cmd' : 'algokit-client-generator',
+)
 
-const contractsDir = path.resolve(import.meta.dirname, '../../contracts')
-const artifactsDir = path.join(contractsDir, 'smart_contracts', 'artifacts')
-const generatedDir = path.resolve(import.meta.dirname, '../src/generated')
-
-function artifactPairs() {
-  if (!fs.existsSync(artifactsDir)) return []
-  const pairs = []
-  for (const entry of fs.readdirSync(artifactsDir)) {
-    const dir = path.join(artifactsDir, entry)
-    if (!fs.statSync(dir).isDirectory()) continue
-    for (const file of fs.readdirSync(dir)) {
-      if (!file.endsWith('Client.ts')) continue
-      const spec = `${file.slice(0, -'Client.ts'.length)}.arc56.json`
-      if (!fs.existsSync(path.join(dir, spec))) continue
-      pairs.push({ from: path.join(dir, file), name: file }, { from: path.join(dir, spec), name: spec })
-    }
+function findSpecs(root) {
+  const specs = []
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const full = path.join(root, entry.name)
+    if (entry.isDirectory()) specs.push(...findSpecs(full))
+    else if (entry.name.endsWith('.arc56.json')) specs.push(full)
   }
-  return pairs
+  return specs.sort()
 }
 
-let pairs = artifactPairs()
-if (pairs.length === 0) {
-  if (!fs.existsSync(path.join(contractsDir, 'node_modules'))) {
-    throw new Error('contracts dependencies are not installed - run `algokit project bootstrap all` from the repository root, then retry')
+function releaseSpecsDir() {
+  try {
+    execFileSync('gh', ['--version'], { stdio: 'ignore' })
+  } catch {
+    throw new Error('gh CLI not found - install it and run `gh auth login`, or set SDK_SPECS=local')
   }
-  console.log('no contract artifacts found - building the contracts project')
-  execSync('npm run build', { cwd: contractsDir, stdio: 'inherit' })
-  pairs = artifactPairs()
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kasakame-specs-'))
+  try {
+    execFileSync('gh', ['release', 'download', `specs-v${String(specsVersion)}`, '--pattern', 'arc56.tar.gz', '--dir', dir], {
+      stdio: 'inherit',
+    })
+    execFileSync('tar', ['-xzf', path.join(dir, 'arc56.tar.gz'), '-C', dir], { stdio: 'inherit' })
+    return dir
+  } catch (error) {
+    fs.rmSync(dir, { recursive: true, force: true })
+    throw error
+  }
 }
-if (pairs.length === 0) throw new Error(`no contract clients under ${artifactsDir} even after building`)
 
-fs.rmSync(generatedDir, { recursive: true, force: true })
-fs.mkdirSync(generatedDir, { recursive: true })
-for (const { from, name } of pairs) {
-  const source = fs.readFileSync(from, 'utf8')
-  fs.writeFileSync(path.join(generatedDir, name), name.endsWith('.ts') ? `// @ts-nocheck\n${source}` : source)
+const source = process.env.SDK_SPECS ?? 'release'
+if (source !== 'release' && source !== 'local') {
+  throw new Error(`SDK_SPECS must be "release" or "local" (got: ${source})`)
 }
-console.log(`copied ${String(pairs.length)} files to src/generated/`)
+if (!fs.existsSync(generatorBin)) {
+  throw new Error(`algokit-client-generator is not installed at ${generatorBin} - run npm install`)
+}
+
+let specsDir
+let cleanup = () => {}
+if (source === 'local') {
+  if (!fs.existsSync(localArtifactsDir)) {
+    throw new Error(
+      `no local contract artifacts at ${localArtifactsDir} - build the contracts first (npm run build in projects/contracts), or use SDK_SPECS=release`,
+    )
+  }
+  specsDir = localArtifactsDir
+} else {
+  specsDir = releaseSpecsDir()
+  cleanup = () => {
+    fs.rmSync(specsDir, { recursive: true, force: true })
+  }
+}
+
+try {
+  const specs = findSpecs(specsDir)
+  if (specs.length === 0) throw new Error(`no *.arc56.json specs found under ${specsDir}`)
+
+  fs.rmSync(generatedDir, { recursive: true, force: true })
+  fs.mkdirSync(generatedDir, { recursive: true })
+  for (const spec of specs) {
+    const name = path.basename(spec, '.arc56.json')
+    const output = path.join(generatedDir, `${name}Client.ts`)
+    execFileSync(generatorBin, ['generate', '--application', spec, '--output', output], { stdio: 'inherit' })
+    // `exclude` doesn't remove imported files from the program, so the generated client opts out per file.
+    fs.writeFileSync(output, `// @ts-nocheck\n${fs.readFileSync(output, 'utf8')}`)
+    console.log(`generated ${path.relative(sdkDir, output)} from ${path.relative(specsDir, spec)}`)
+  }
+} finally {
+  cleanup()
+}

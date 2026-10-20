@@ -24,7 +24,7 @@ debug_traces/
 projects/frontend/src/contracts/*
 !projects/frontend/src/contracts/README.md
 
-# SDK codegen output (copied from contract artifacts by scripts/codegen.mjs)
+# SDK codegen output (clients regenerated from ARC-56 specs by scripts/codegen.mjs)
 projects/sdk/src/generated/
 
 # Environment / secrets

@@ -58,7 +58,8 @@ npm run lint                     # ESLint (+ react/react-hooks plugins)
 npm run format                   # Prettier check
 
 cd ../sdk
-npm run build                    # tsc emit to dist (the published artifact)
+npm run build                    # codegen + tsc emit to dist (the published artifact)
+npm run codegen                  # regenerate clients from the pinned specs release
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
@@ -95,9 +96,14 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 ## Conventions
 
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
-  `*Client.ts`) and the SDK's `src/generated/` codegen output (`*Client.ts`, `*.arc56.json`)
-  are build outputs - never edit or commit them. Rebuild instead (`npm run build` in
-  `projects/contracts`; `npm run codegen` in `projects/sdk` refreshes the SDK copies).
+  `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
+  commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
+  `projects/sdk`).
+- **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
+  `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
+  with `gh` by default and regenerates clients with the pinned generator. `SDK_SPECS=local`
+  reads `projects/contracts/smart_contracts/artifacts` instead - contracts-changed CI lanes
+  and local contract work use it. Never copy clients between projects.
 - **Never commit secrets.** `.env` files are gitignored; mnemonics/API keys never go in code.
 - **Env files are per network, never a shared `.env`.** Commands name their network
   explicitly (`.env.localnet` / `.env.testnet`; e.g. `npm run dev:testnet`,

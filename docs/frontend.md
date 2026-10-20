@@ -176,10 +176,10 @@ All reads use `algosdk.Indexer` configured from the same env as algod:
 ## Writes (SDK clients)
 
 All writes go through `@kasakame/sdk`'s `CampaignClient` / `ClaimsVaultClient` /
-`FactoryClient` (generated from the ARC-56 specs by `npm run codegen` in
-`projects/sdk`, never edited by hand). Pledges pay the **vault** (its app
-address, derived from `VITE_VAULT_APP_ID` via `algosdk.getApplicationAddress`),
-never the campaign escrow.
+`FactoryClient` (generated from the pinned ARC-56 specs by the SDK build;
+`SDK_SPECS=local` regenerates them for contracts changes; never edited by hand).
+Pledges pay the **vault** (its app address, derived from `VITE_VAULT_APP_ID` via
+`algosdk.getApplicationAddress`), never the campaign escrow.
 
 ### create - create + register
 

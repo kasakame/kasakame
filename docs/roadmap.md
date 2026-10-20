@@ -163,21 +163,14 @@ each, in order; the last two publish the package.
 - [x] **Registration check** - `isRegistered(appId)` reads the Factory's registration box (the same fact `ClaimsVault.credit` checks on a campaign's first pledge), so pledge actions can gate on registration without simulating a call. No Factory configured means false.
 - [x] **Build-without-send escape hatch** - `pledgeGroup`/`refundGroup` return the unsigned group (`TransactionWithSigner[]`, session signer attached); `pledge`/`refund` are the build-and-send wrappers for the CLI.
 - [x] **Verify exported types** - confirmed `CampaignHeader`, `CampaignViewModel`, `WalletSession`, `VaultBoxView`, `BackerLeaf`, and `SdkConfig` are exported from `@kasakame/sdk`; added the missing `getSdkConfig` barrel export (documented as public in [`sdk.md`](sdk.md)).
-- [ ] **Spec-driven codegen** - replace `projects/sdk/scripts/codegen.mjs` (and the `prebuild`
-      hook) with the spec step:
-  1. Obtain the specs: default is the pinned release (`gh release download
-     specs-v<version> -p arc56.tar.gz` then unpack, on the version constant) -
-     no contracts checkout needed;
-     `SDK_SPECS=local` copies the `projects/contracts` artifacts instead, set by
-     contracts-changed CI lanes and local contract work. Delete the build-if-missing branch.
-  2. Regenerate each `*Client.ts` from its ARC-56 spec with the SDK's own pinned generator
-     devDependency (`algokit generate client` is a wrapper around the installed
-     devDependency - invoke it or its bin directly; verify the exact flags at implementation)
-     and tag it `// @ts-nocheck` (verified: the clients fail the strict `tsc`).
-  3. `src/generated/` stays gitignored; nothing generated is committed - regenerated every run
-     from the pinned specs, so the clients can never drift from a released interface.
-  4. Sync [`sdk.md`](sdk.md) (design decisions, stages), [`frontend.md`](frontend.md) (writes
-     section), [`ci.md`](ci.md), and [`AGENTS.md`](../AGENTS.md) (commands).
+- [x] **Spec-driven codegen** - `projects/sdk/scripts/codegen.mjs` (still the `prebuild` hook)
+      downloads the pinned `specs-v0.1.0` release by default (`gh release download
+      specs-v<version> -p arc56.tar.gz`), regenerates each `*Client.ts` from its ARC-56 spec
+      with the pinned `@algorandfoundation/algokit-client-generator`, and tags it
+      `// @ts-nocheck`; `SDK_SPECS=local` reads `projects/contracts/smart_contracts/artifacts`
+      instead (no build-if-missing). `src/generated/` stays gitignored; docs synced
+      ([`sdk.md`](sdk.md), [`frontend.md`](frontend.md), [`ci.md`](ci.md),
+      [`AGENTS.md`](../AGENTS.md)).
 - [ ] **Pre-publish packaging** - flip `package.json` to public, add a `files` whitelist for `dist/`, add `projects/sdk/README` (how the SDK obtains specs - the pinned release by default, `SDK_SPECS=local` against locally built contracts - how `npm run build` produces `dist/`, and how the frontend consumes the package; keep it in sync with `ci.md` and [`AGENTS.md`](../AGENTS.md) so local and CI run the same commands), and export the consumed specs version constant.
 - [ ] **Publish the client SDK** - publish the versioned `@kasakame/sdk` package (claim-tree math and generated typed clients, migrating per [`sdk.md`](sdk.md)) to the public npm registry (not GitHub Packages: even public installs there need an auth token). The SDK takes indexer-provider and signer interfaces so one codebase serves the UI, the CLI, and third parties.
 - [ ] **Ship the escape-hatch CLI** - graduate `scripts/reclaim.ts` into a standalone `npx`-runnable tool (refund/cancel/claim by app ID from a mnemonic, public indexer only, no backend). Canonical proof that exits never need our servers.
@@ -189,7 +182,7 @@ each, in order; the last two publish the package.
 - [ ] Final gate job: depends on all candidate jobs, passes if all are `success` or `skipped`, fails only on `failure`/`cancelled`; single required check so skipped change-detection jobs don't block merges under strict policy.
 - [ ] New `release-sdk.yml` workflow: `workflow_dispatch` only, no reviewer gate (single developer). Prep job runs the `prepublishOnly` equivalent (fetch the pinned specs release → regenerate clients → `tsc` emit → lint → format → check-types → test:coverage → `npm pack --dry-run` → `npm publish --dry-run`) - node/npm only, no contracts build, so a published SDK can never embed an unreleased interface; the package records the consumed specs version. Publish job runs `npm publish` directly after prep succeeds, then builds the frontend against the exact published version (`npm pkg set dependencies.@kasakame/sdk=<version> && npm install && npm run build:testnet`) and deploys that bundle - the deployable artifact doubles as the packaging/parity test. The release chain is specs → SDK → frontend; the frontend deploy can split into its own workflow when the repos split.
 - [ ] SDK consumable from repo or npm behind one specifier (`@kasakame/sdk`): once `0.1.0` is published, the committed frontend dependency is the registry version; `file:../sdk` is swapped in to test contracts/SDK changes via `npm pkg set dependencies.@kasakame/sdk="file:../sdk" && npm install` (CI: change detection, ephemeral; local: same commands, restore with `git checkout` + `npm ci`). Same commands everywhere, one specifier, different resolver.
-- [ ] **Contracts → SDK consumes released specs** - the contracts rarely change, so the SDK regenerates clients from the pinned specs release by default (`gh release download specs-v<version> -p arc56.tar.gz` then unpack, on one version constant; promote to a tiny specs npm package only if the repos split). Local contract artifacts are the explicit override (`SDK_SPECS=local`): contracts-changed CI lanes and local contract work. Clients never travel between packages - the ARC-56 spec is the interface; the contracts project generates its own clients for its tests and deployer. The `build` job stays straight-line local (contracts → SDK from those artifacts → frontend) as the same-SHA end-to-end gate. A fresh clone builds the SDK without the contracts folder - the split-ready property.
+- [ ] **Contracts → SDK consumes released specs** - the contracts rarely change, so the SDK regenerates clients from the pinned specs release by default (`gh release download specs-v<version> -p arc56.tar.gz` then unpack, on `package.json`'s `config.specsVersion`; promote to a tiny specs npm package only if the repos split). Local contract artifacts are the explicit override (`SDK_SPECS=local`): contracts-changed CI lanes and local contract work. Clients never travel between packages - the ARC-56 spec is the interface; the contracts project generates its own clients for its tests and deployer. The `build` job stays straight-line local (contracts → SDK from those artifacts → frontend) as the same-SHA end-to-end gate. A fresh clone builds the SDK without the contracts folder - the split-ready property.
 - [ ] Package the frontend as a container image for portable hosting.
 - [ ] **Publish the contract interface** - its own `release-specs.yml` workflow (rare - run it when the contracts change): build the contracts at the tagged commit and attach the compiled artifacts to a GitHub Release tagged `specs-vX.Y.Z` as one tarball per kind (`arc56.tar.gz`, `arc32.tar.gz`, `teal.tar.gz`, `puya.tar.gz`, each keeping the per-app directories) - ARC-56 specs (the SDK's build input; client generation), ARC-32 specs, approval/clear TEAL, and `*.puya.map` source maps (independent recompile-and-verify audits). Skip the generated `*Client.ts` - one `algokit generate client` away from the spec. They stay gitignored build output; Releases version them - nothing generated is committed.
 

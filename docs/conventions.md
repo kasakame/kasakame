@@ -26,7 +26,9 @@ documents the rules and the reasoning behind them.
   enables them, so unused variables/parameters are caught by `tsc --noEmit`, not just
   ESLint. Generated client files are exempt: contracts exclude
   `smart_contracts/artifacts` from `tsc`; the SDK prepends `// @ts-nocheck` to its
-  gitignored `src/generated/` clients via `scripts/codegen.mjs`.
+  gitignored `src/generated/` clients via `scripts/codegen.mjs` (it imports them, and
+  `exclude` does not remove imported files from the program, so the prefix is the
+  per-file opt-out).
 - **`verbatimModuleSyntax` is on (contracts).** The contracts `tsconfig.json` enables
   it, so type-only imports must be written `import type` and the compiler no longer
   elides them silently. The frontend omits it and relies on
