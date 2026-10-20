@@ -147,10 +147,11 @@ specs), `teal.tar.gz` (approval/clear TEAL), and `puya.tar.gz` (`*.puya.map`
 source maps) - each keeping the per-app directories. Generated clients are
 never attached. Its own file because it is a release, not a CI gate: it runs
 manually (contracts rarely change) and needs `contents: write` to create the
-release. The version is a dispatch input - the series is independent of the npm
-packages, started at `0.1.0` - and `prerelease` defaults on while the interface
-can still break on TestNet; GitHub pre-release status only affects the "Latest"
-label, not downloads by tag.
+release. The version is a dispatch input and must match
+`projects/contracts/package.json`; bump that version in the release commit. The
+specs series is independent of the published npm packages, started at `0.1.0`.
+`prerelease` defaults on while the interface can still break on TestNet; GitHub
+pre-release status only affects the "Latest" label, not downloads by tag.
 
 The SDK pins `specs-v<version>` in `projects/sdk/package.json`
 (`config.specsVersion`), downloads the public `arc56.tar.gz` asset over HTTPS by
@@ -165,28 +166,48 @@ independent recompile-and-verify audits.
 
 Implemented at `.github/workflows/release-sdk.yml`. Manual (`workflow_dispatch`)
 release of `@kasakame/sdk`; no reviewer gate (single developer). The version is
-`projects/sdk/package.json`; bump it in the release commit. Prerelease versions
-publish under the `next` dist-tag, finals under `latest`.
+`projects/sdk/package.json`; bump it in the release commit. The dispatch inputs
+are:
+
+- `version`: required, without the `v` prefix; must match the package version.
+- `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
+  and the prep publish dry-run, but skips the real publish and registry check.
+- `bootstrap`: first release only; publishes with the `NPM_TOKEN` secret instead
+  of OIDC.
+
+Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` is Node/npm only and never builds the contracts: install, validate the
-  version and that it is unpublished, regenerate clients from the pinned
-  `specs-vX.Y.Z` release, compile TypeScript, lint, format, type-check, run
-  coverage, inspect the packed tarball, and dry-run the publish. Each command is
-  its own step. It uploads the tested `dist/`.
+  input version against `package.json` and that it is unpublished, regenerate
+  clients from the pinned `specs-vX.Y.Z` release, compile TypeScript, lint,
+  format, type-check, run coverage, inspect the packed tarball, and dry-run the
+  publish. Each command is its own step. It uploads the tested `dist/`.
 - `smoke` packs that `dist/`, installs the tarball into a clean consumer,
   checks the version and `LICENSE`, imports the public API, and verifies
   `SPECS_VERSION` against the pin. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
-  version, runs `npm publish --provenance --access public --tag <tag>` using npm
-  OIDC trusted publishing (`id-token: write`), with no `NPM_TOKEN`, then checks
-  the version is visible in the registry.
+  version, and, when `dry_run=false`, publishes with the `next`/`latest`
+  dist-tag. Normal runs use `npm publish --provenance` with npm OIDC trusted
+  publishing (`id-token: write`); a dispatch with `bootstrap=true` uses the
+  `NPM_TOKEN` secret and omits provenance. It then checks the version is visible
+  in the registry. A dry run stops before the publish and registry check.
+
+The first release is a bootstrap: npm requires the package to exist before a
+trusted publisher can be configured, so dispatch with `dry_run=false`,
+`bootstrap=true`, and a short-lived granular token in the `NPM_TOKEN` secret
+(for example, a `0.1.0-rc.1` publish). The token needs read/write access to the
+`@kasakame` package scope and 2FA bypass; do not reuse a read-only install
+token. After that release creates the package, configure the trusted publisher,
+delete the secret, and revoke the token. Future runs set `dry_run=false`, leave
+`bootstrap=false`, and use OIDC provenance.
 
 The frontend is built by its own release/deploy workflow against the published
 version; it is not part of the SDK release.
 
 Configure the npm trusted publisher for `@kasakame/sdk` with GitHub owner
 `kasakame`, repository `kasakame`, workflow `release-sdk.yml`, and no
-environment. Then dispatch the workflow from `main`.
+environment. Then dispatch the workflow from `main` with `dry_run=false` and
+`bootstrap=false`.
 
 ## Release and distribution
 
@@ -219,9 +240,10 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 
 ### Versions and release order
 
-- `specs-vX.Y.Z` and the npm packages are independent series; the SDK pins the
-  consumed specs version in `package.json` (`config.specsVersion`) and exports
-  it as `SPECS_VERSION`.
+- `specs-vX.Y.Z` is the `projects/contracts/package.json` version; it is
+  independent of the published npm package versions. The SDK pins the consumed
+  specs version in `package.json` (`config.specsVersion`) and exports it as
+  `SPECS_VERSION`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
@@ -237,8 +259,9 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
 - The `release-sdk` workflow uses npm OIDC trusted publishing with provenance;
-  no long-lived `NPM_TOKEN`. It runs the gate as separate steps, smoke-tests the
-  packed tarball, and inspects and dry-runs the package before publishing.
+  the first bootstrap release uses a short-lived `NPM_TOKEN` secret because the
+  package must exist before the trusted publisher can be configured. No
+  long-lived token: delete the secret and revoke the token after the bootstrap.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.

@@ -5,12 +5,13 @@ name: release-specs
 # tagged `specs-v<version>`, as one tarball per artifact kind (arc56, arc32,
 # teal, puya). The SDK pins that tag, unpacks arc56.tar.gz, and regenerates its
 # clients from those specs (docs/sdk.md); generated clients are not attached
-# and nothing generated is committed.
+# and nothing generated is committed. The dispatch version must match
+# projects/contracts/package.json.
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Specs version, without the specs-v prefix (e.g. 0.1.0)'
+        description: 'Specs version, without the specs-v prefix (e.g. 0.1.0); must match projects/contracts/package.json'
         required: true
         type: string
       prerelease:
@@ -61,6 +62,11 @@ jobs:
         run: |
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "version must be plain X.Y.Z (got: $VERSION)" >&2
+            exit 1
+          fi
+          package_version=$(node -p "require('./projects/contracts/package.json').version")
+          if [[ "$VERSION" != "$package_version" ]]; then
+            echo "input version $VERSION does not match projects/contracts/package.json $package_version" >&2
             exit 1
           fi
           if git ls-remote --exit-code --tags origin "refs/tags/specs-v$VERSION" >/dev/null 2>&1; then

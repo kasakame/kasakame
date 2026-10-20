@@ -3,17 +3,39 @@ name: release-sdk
 # Manual release of @kasakame/sdk. The SDK is regenerated from the pinned
 # specs release, so this workflow never builds the contracts and cannot embed
 # an unreleased interface. Every gate is its own step so a failure and its
-# timing are visible in the run.
+# timing are visible in the run. The dispatch version must match
+# projects/sdk/package.json, and dry_run defaults to true; set it to false only
+# for a real release.
 #
-# Publishing uses npm OIDC trusted publishing (no NPM_TOKEN). Configure the
-# trusted publisher for @kasakame/sdk as GitHub owner `kasakame`, repository
-# `kasakame`, workflow `release-sdk.yml`, with no environment.
+# Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
+# release is a bootstrap: npm requires the package to exist before a trusted
+# publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
+# and a temporary NPM_TOKEN secret. Delete the secret and revoke the token after
+# that release.
+#
+# Configure the trusted publisher for @kasakame/sdk as GitHub owner `kasakame`,
+# repository `kasakame`, workflow `release-sdk.yml`, with no environment.
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
 # public API before the publish job runs. The frontend is released separately
 # against the published version.
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'SDK version, without the v prefix (e.g. 0.1.0); must match projects/sdk/package.json'
+        required: true
+        type: string
+      dry_run:
+        description: 'Run all checks but skip publishing'
+        required: true
+        default: true
+        type: boolean
+      bootstrap:
+        description: 'Publish with NPM_TOKEN (first release only, before trusted publishing)'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -45,10 +67,16 @@ jobs:
         run: npm ci
         working-directory: projects/sdk
 
-      - name: Read version and choose dist-tag
+      - name: Validate version and choose dist-tag
         id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
           version=$(node -p "require('./projects/sdk/package.json').version")
+          if [[ "$INPUT_VERSION" != "$version" ]]; then
+            echo "input version $INPUT_VERSION does not match projects/sdk/package.json $version" >&2
+            exit 1
+          fi
           specs=$(node -p "require('./projects/sdk/package.json').config.specsVersion")
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "package version is not semver: $version" >&2
@@ -223,15 +251,41 @@ jobs:
             exit 1
           fi
 
-      - name: Publish with provenance
+      - name: Require the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "bootstrap=true but the NPM_TOKEN secret is not set" >&2
+            exit 1
+          fi
+
+      - name: Publish with the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token (no provenance)"
+          npm publish --access public --tag "$TAG"
+        working-directory: projects/sdk
+
+      - name: Publish with provenance (OIDC)
+        if: ${{ !inputs.bootstrap && !inputs.dry_run }}
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
-          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG"
+          echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
           npm publish --provenance --access public --tag "$TAG"
         working-directory: projects/sdk
 
+      - name: Skip publish (dry run)
+        if: ${{ inputs.dry_run }}
+        run: echo "dry_run=true; package verified but not published"
+
       - name: Verify the published version
+        if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ needs.prep.outputs.version }}
         run: |
