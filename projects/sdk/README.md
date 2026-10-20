@@ -49,3 +49,7 @@ await pledge(appId, { address, signer }, amountMicroAlgos)
 See the [SDK documentation](https://github.com/kasakame/kasakame/blob/main/docs/sdk.md)
 for the full public API: campaign reads, claim-tree math and replay, pledge and
 refund groups, and the settlement calls.
+
+## License
+
+MIT. See [LICENSE](https://github.com/kasakame/kasakame/blob/main/projects/sdk/LICENSE).

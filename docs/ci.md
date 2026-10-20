@@ -207,6 +207,8 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 - The SDK publishes only `dist/` plus the package metadata and README;
   `publishConfig.access: "public"` makes the scoped package public, and
   `prepublishOnly` rebuilds and runs the full local gate.
+- Published packages carry the root MIT `LICENSE` (copy it into each package
+  directory) and declare `"license": "MIT"` in `package.json`.
 - The publish workflow (planned) uses npm OIDC trusted publishing with
   provenance; no long-lived `NPM_TOKEN`. It runs `npm pack --dry-run` before
   publishing.

@@ -78,4 +78,4 @@ Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/applicati
 
 ## License
 
-Demo project for educational purposes.
+MIT. See [LICENSE](LICENSE).
