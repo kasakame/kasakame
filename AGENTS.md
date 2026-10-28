@@ -101,12 +101,12 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
   `projects/sdk`).
 - **The frontend consumes the published SDK.** `projects/frontend` depends on
-  `@kasakame/sdk@^0.1.0` from npm; swap in `file:../sdk` only to test unreleased
-  contracts/SDK changes (build it first with `npm run build` in `projects/sdk`,
-  then `npm pkg set dependencies.@kasakame/sdk="file:../sdk" && npm install`),
-  then restore with `git checkout package.json package-lock.json && npm ci`. CI
-  does the same swap only in the `build` job; the fast frontend lanes test the
-  registry package.
+  `@kasakame/sdk@^0.1.0` from npm; to test unreleased contracts/SDK changes,
+  build the SDK (`npm run build` in `projects/sdk`) and install it as a packed
+  local copy (`npm install --no-save --install-links "file:../sdk"` in
+  `projects/frontend`) - a plain `npm ci` restores the published package. CI
+  installs the same copy only when the SDK or contracts changed; other frontend
+  runs test the registry package.
 - **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
   `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
   over HTTPS by default and regenerates clients with the pinned generator. The version is

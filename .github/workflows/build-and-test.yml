@@ -5,45 +5,383 @@ on:
   push:
     branches: [main]
 
-# This workflow is the same-commit gate: the SDK builds regenerate clients from
-# the build job's ARC-56 artifacts, and the build job bundles the frontend
-# against the SDK built from this commit. The fast frontend lanes install the
-# published package instead.
-env:
-  SDK_SPECS: local
+# Same-commit gate, split into fast per-project jobs. `changes` decides what the
+# change touches: the contracts jobs (lint, tests, compile) run only when
+# projects/contracts/** (or this workflow) changed, so unrelated PRs never
+# compile the contracts. The SDK lanes run every time and regenerate their
+# clients from the same-run `contracts-artifacts` when the contracts changed,
+# from the pinned specs release otherwise. The frontend lanes and `build` run
+# every time: the frontend lanes install the published @kasakame/sdk on a
+# frontend-only change and build/use the local `file:../sdk` when the SDK or
+# contracts changed; `build` always bundles against the local SDK as the
+# same-SHA end-to-end gate. `gate` is the single required check.
 
 jobs:
-  # Build once: compile contracts (TEAL + ARC-56 specs), regenerate the SDK
-  # clients from those specs, and bundle the frontend. All outputs are
-  # gitignored and regenerable; the contract artifacts are shared as
-  # artifacts instead of being rebuilt by every consumer.
-  build:
-    name: Build contracts, frontend, and SDK
+  # Path detection. Outputs:
+  # - `contracts`: run the contracts jobs, compile them once, and use the local
+  #   ARC-56 specs.
+  # - `local_sdk`: the frontend lanes build and use the local SDK instead of
+  #   the published package (the SDK changed, or the contracts did).
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      contracts: ${{ steps.detect.outputs.contracts }}
+      local_sdk: ${{ steps.detect.outputs.local_sdk }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: detect
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            git fetch --no-tags origin "$GITHUB_BASE_REF"
+            base="$(git merge-base FETCH_HEAD HEAD)"
+            files="$(git diff --name-only "$base" HEAD)"
+          else
+            # A push to main validates everything.
+            files="$(git ls-files)"
+          fi
+          contracts=false
+          local_sdk=false
+          if printf '%s\n' "$files" | grep -Eq '^(projects/contracts/|\.github/)'; then
+            contracts=true
+          fi
+          if [ "$contracts" = true ] || printf '%s\n' "$files" | grep -q '^projects/sdk/'; then
+            local_sdk=true
+          fi
+          printf 'contracts=%s\nlocal_sdk=%s\n' "$contracts" "$local_sdk" >> "$GITHUB_OUTPUT"
+          printf 'contracts=%s local_sdk=%s (%s paths)\n' "$contracts" "$local_sdk" "$(printf '%s\n' "$files" | wc -l)"
+
+  # Compile the contracts once when they changed. The artifact feeds the SDK
+  # lanes, the frontend lanes, `build`, and `integration-test` instead of each
+  # recompiling.
+  build-contracts:
+    name: Build contracts (TEAL + ARC-56 artifacts)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-
-      # Cache each project's node_modules (setup-node keys its cache by a
-      # single lockfile path, so one step per project).
-      - name: Set up Node.js (contracts cache)
+      - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/contracts/package-lock.json
-      - name: Set up Node.js (frontend cache)
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install AlgoKit CLI
+        run: |
+          if ! command -v algokit >/dev/null 2>&1; then
+            pipx install algokit==2.10.2
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        shell: bash
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: projects/contracts
+
+      - name: Compile contracts (TEAL + generate clients)
+        run: npm run build
+        working-directory: projects/contracts
+
+      - name: Upload contract artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+          if-no-files-found: error
+
+  # Contracts lint/format/type-check - pure Node, no artifacts, no build.
+  lint-contracts:
+    name: Lint, format, type-check (contracts)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: projects/frontend/package-lock.json
-      - name: Set up Node.js (sdk cache)
+          cache-dependency-path: projects/contracts/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: projects/contracts
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/contracts
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/contracts
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/contracts
+
+  # Contracts unit tests - pure Node; the offline suite runs the contract
+  # source directly, so it never needs the compiled artifacts.
+  test-contracts:
+    name: Unit tests (contracts)
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/contracts/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+        working-directory: projects/contracts
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/contracts
+
+  # SDK checks - run on every PR. Codegen regenerates the clients from the
+  # same-run artifacts when the contracts changed (SDK_SPECS=local), from the
+  # pinned specs release otherwise.
+  lint-sdk:
+    name: Lint, format, type-check (sdk)
+    needs: [changes, build-contracts]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/sdk/package-lock.json
+      - name: Download contract artifacts
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+      - name: Install dependencies
+        run: npm ci
+        working-directory: projects/sdk
+      - name: Regenerate clients
+        run: npm run codegen
+        working-directory: projects/sdk
+        env:
+          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/sdk
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/sdk
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/sdk
+
+  test-sdk:
+    name: Unit tests (sdk)
+    needs: [changes, build-contracts]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/sdk/package-lock.json
+      - name: Download contract artifacts
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+      - name: Install dependencies
+        run: npm ci
+        working-directory: projects/sdk
+      - name: Regenerate clients
+        run: npm run codegen
+        working-directory: projects/sdk
+        env:
+          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/sdk
+
+  # Frontend checks - run on every PR. A frontend-only change installs the
+  # published @kasakame/sdk, so routine work exercises what users install; an
+  # SDK or contracts change builds the local `file:../sdk` (same-run artifacts
+  # when the contracts changed) and resolves that instead.
+  lint-frontend:
+    name: Lint, format, type-check (frontend)
+    needs: [changes, build-contracts]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            projects/frontend/package-lock.json
+            projects/sdk/package-lock.json
+      - name: Download contract artifacts
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+      - name: Build the local SDK
+        if: needs.changes.outputs.local_sdk == 'true'
+        run: |
+          npm ci
+          npm run build
+        working-directory: projects/sdk
+        env:
+          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+      - name: Install frontend dependencies (published SDK)
+        if: needs.changes.outputs.local_sdk != 'true'
+        run: npm ci
+        working-directory: projects/frontend
+      - name: Install frontend dependencies (local SDK)
+        if: needs.changes.outputs.local_sdk == 'true'
+        run: npm install --no-save --install-links "file:../sdk"
+        working-directory: projects/frontend
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/frontend
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/frontend
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/frontend
+
+  test-frontend:
+    name: Unit tests (frontend)
+    needs: [changes, build-contracts]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            projects/frontend/package-lock.json
+            projects/sdk/package-lock.json
+      - name: Download contract artifacts
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+      - name: Build the local SDK
+        if: needs.changes.outputs.local_sdk == 'true'
+        run: |
+          npm ci
+          npm run build
+        working-directory: projects/sdk
+        env:
+          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+      - name: Install frontend dependencies (published SDK)
+        if: needs.changes.outputs.local_sdk != 'true'
+        run: npm ci
+        working-directory: projects/frontend
+      - name: Install frontend dependencies (local SDK)
+        if: needs.changes.outputs.local_sdk == 'true'
+        run: npm install --no-save --install-links "file:../sdk"
+        working-directory: projects/frontend
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/frontend
+
+  # The same-SHA end-to-end gate: always bundles the frontend against the local
+  # SDK - built from the same-run artifacts when the contracts changed, from
+  # the pinned specs release otherwise.
+  build:
+    name: Build (SDK + frontend bundle)
+    needs: [changes, build-contracts]
+    if: always() && !failure() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            projects/frontend/package-lock.json
+            projects/sdk/package-lock.json
+      - name: Download contract artifacts
+        if: needs.changes.outputs.contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: projects/sdk
+      - name: Build SDK package (codegen + tsc)
+        run: npm run build
+        working-directory: projects/sdk
+        env:
+          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+      - name: Install frontend dependencies (local SDK)
+        run: npm install --no-save --install-links "file:../sdk"
+        working-directory: projects/frontend
+      - name: Build frontend bundle (Vite)
+        run: npx vite build
+        working-directory: projects/frontend
+
+  # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
+  # same-run contract artifacts; only meaningful when the contracts changed.
+  integration-test:
+    name: Integration tests (localnet)
+    needs: [changes, build-contracts]
+    if: always() && needs.changes.outputs.contracts == 'true' && needs.build-contracts.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/contracts/package-lock.json
+
+      - name: Download contract artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
 
       - name: Set up Python (for AlgoKit CLI)
         uses: actions/setup-python@v7
@@ -62,139 +400,15 @@ jobs:
         run: npm ci
         working-directory: projects/contracts
 
-      - name: Compile contracts (TEAL + generate clients)
-        run: npm run build
+      - name: Start LocalNet (algod + indexer)
+        run: algokit localnet start
+
+      - name: Run LocalNet integration tests
+        run: npm run test:integration
         working-directory: projects/contracts
 
-      # The SDK's prebuild codegen regenerates clients from the ARC-56 specs
-      # in src/generated/ (gitignored); SDK_SPECS=local points it at the
-      # contracts build above instead of the pinned specs release.
-      - name: Install SDK dependencies
-        run: npm ci
-        working-directory: projects/sdk
-
-      - name: Build SDK package (codegen + tsc)
-        run: npm run build
-        working-directory: projects/sdk
-
-      # The committed dependency is the published package; swap in this
-      # commit's SDK so the bundle exercises the same SHA (ephemeral, not
-      # committed).
-      - name: Point the frontend at the local SDK
-        run: npm pkg set dependencies.@kasakame/sdk="file:../sdk"
-        working-directory: projects/frontend
-
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: projects/frontend
-
-      - name: Build frontend bundle (Vite)
-        run: npx vite build
-        working-directory: projects/frontend
-
-      # Share the contract artifacts with the downstream jobs.
-      - name: Upload contract artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: contracts-artifacts
-          path: projects/contracts/smart_contracts/artifacts
-          if-no-files-found: error
-
-  # Pure static checks - no build, no AlgoKit. Symmetric across projects.
-  lint-format-type-check:
-    name: Lint, format, and type-check (${{ matrix.project }})
-    runs-on: ubuntu-latest
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [contracts, frontend, sdk]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
-
-      # Only the SDK lane needs the artifacts; the frontend lane installs the
-      # published package.
-      - name: Download contract artifacts
-        if: matrix.project == 'sdk'
-        uses: actions/download-artifact@v8
-        with:
-          name: contracts-artifacts
-          path: projects/contracts/smart_contracts/artifacts
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: projects/${{ matrix.project }}
-
-      # Regenerate the clients before type-checking the SDK (SDK_SPECS=local
-      # reads the downloaded ARC-56 specs, no release download).
-      - name: Run SDK codegen
-        if: matrix.project == 'sdk'
-        run: npm run codegen
-        working-directory: projects/sdk
-
-      - name: Lint
-        run: npm run lint
-        working-directory: projects/${{ matrix.project }}
-      - name: Check formatting
-        run: npm run format
-        working-directory: projects/${{ matrix.project }}
-      - name: Type-check
-        run: npm run check-types
-        working-directory: projects/${{ matrix.project }}
-
-  # Unit tests + coverage - pure Node, symmetric across projects.
-  unit-test:
-    name: Unit tests (${{ matrix.project }})
-    runs-on: ubuntu-latest
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        project: [contracts, frontend, sdk]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: projects/${{ matrix.project }}/package-lock.json
-
-      # Only the SDK lane needs the artifacts; the frontend lane installs the
-      # published package.
-      - name: Download contract artifacts
-        if: matrix.project == 'sdk'
-        uses: actions/download-artifact@v8
-        with:
-          name: contracts-artifacts
-          path: projects/contracts/smart_contracts/artifacts
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: projects/${{ matrix.project }}
-
-      # Regenerate the clients before running the SDK suite (SDK_SPECS=local
-      # reads the downloaded ARC-56 specs, no release download).
-      - name: Run SDK codegen
-        if: matrix.project == 'sdk'
-        run: npm run codegen
-        working-directory: projects/sdk
-
-      - name: Run unit tests with coverage
-        run: npm run test:coverage
-        working-directory: projects/${{ matrix.project }}
-
   # Backend lane: lint/format/types plus the suite against a throwaway
-  # Postgres. Needs nothing from the build job (no generated clients), so it
-  # runs standalone - same workflow so failures stay attributable to the lane.
+  # Postgres. Needs nothing from the other jobs, so it runs standalone.
   backend:
     name: Backend (lint, format, types, tests)
     runs-on: ubuntu-latest
@@ -241,49 +455,31 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/backend
 
-  # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
-  # compiled contract artifacts from the build job instead of recompiling.
-  integration-test:
-    name: Integration tests (localnet)
+  # Single required check: skipped change-detection jobs don't block merges
+  # under strict branch protection - only failures and cancellations do.
+  gate:
+    name: Gate
+    if: always()
+    needs:
+      - changes
+      - build-contracts
+      - lint-contracts
+      - test-contracts
+      - lint-sdk
+      - test-sdk
+      - lint-frontend
+      - test-frontend
+      - build
+      - integration-test
+      - backend
     runs-on: ubuntu-latest
-    needs: build
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: projects/contracts/package-lock.json
-
-      - name: Download contract artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: contracts-artifacts
-          path: projects/contracts/smart_contracts/artifacts
-
-      - name: Set up Python (for AlgoKit CLI)
-        uses: actions/setup-python@v7
-        with:
-          python-version: '3.12'
-
-      - name: Install AlgoKit CLI
+      - name: Fail if a job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: |
-          if ! command -v algokit >/dev/null 2>&1; then
-            pipx install algokit==2.10.2
-          fi
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        shell: bash
-
-      - name: Install contract dependencies
-        run: npm ci
-        working-directory: projects/contracts
-
-      - name: Start LocalNet (algod + indexer)
-        run: algokit localnet start
-
-      - name: Run LocalNet integration tests
-        run: npm run test:integration
-        working-directory: projects/contracts
+          echo "One or more jobs failed or were cancelled:" >&2
+          echo '${{ toJSON(needs) }}' >&2
+          exit 1
+      - name: Pass
+        if: ${{ !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+        run: echo "All jobs passed or were skipped."

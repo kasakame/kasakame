@@ -58,8 +58,8 @@ marks as executed, so statement coverage tops out at ~93% even when every real
 line is covered.
 
 Run it with `npm run test:coverage`. The thresholds live in
-`vitest.config.mts` and are enforced as a CI gate by the `unit-test` job (see
-[`ci.md`](ci.md)).
+`vitest.config.mts` and are enforced as a CI gate by the `test-contracts` job
+(see [`ci.md`](ci.md)).
 
 ## Test file naming (important)
 
