@@ -42,7 +42,9 @@ the reasoning behind the splits.
   projects sequentially.
 - **Run once per change.** Both workflows trigger on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
-  `push` and `pull_request` events and run everything twice.
+  `push` and `pull_request` events and run everything twice. Superseded PR runs
+  are cancelled; `main` runs finish. Every `build-and-test` job has a
+  `timeout-minutes` bound.
 
 ## Job graph
 
@@ -169,7 +171,8 @@ are excluded from every filter. It exposes six outputs:
   the outputs; no Node setup, seconds of work.
 - **`build-contracts`** - runs when `contracts` or `shared` is true. Installs
   Node + AlgoKit, compiles the contracts (`npm run build` → TEAL + ARC-56 specs
-  and generated clients), and uploads `contracts-artifacts`.
+  and generated clients), and uploads `contracts-artifacts` with
+  `overwrite: true` and 7-day retention.
 - **`lint-contracts` / `test-contracts`** - run when `contracts` or `shared` is
   true; pure Node (`npm ci`, then lint/format/type-check or
   `npm run test:coverage`).
@@ -409,3 +412,6 @@ contracts changed, so nothing is compiled twice:
   (TEAL, ARC-32/56 specs). Consumed by `integration-test`, by the SDK lanes
   (they regenerate clients from it with `SDK_SPECS=local`), and by the frontend
   lanes and `build` (their local SDK builds use it as the codegen input).
+
+Both this artifact and `release-sdk`'s `sdk-dist` are kept for 7 days - long
+enough to debug a failed run, short enough not to hoard storage.

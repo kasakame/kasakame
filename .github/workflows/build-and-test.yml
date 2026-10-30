@@ -5,10 +5,15 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   changes:
     name: Changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: read
@@ -74,6 +79,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -111,6 +117,8 @@ jobs:
           name: contracts-artifacts
           path: projects/contracts/smart_contracts/artifacts
           if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
   # Contracts lint/format/type-check - pure Node, no artifacts, no build.
   lint-contracts:
@@ -118,6 +126,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -147,6 +156,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -171,6 +181,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -209,6 +220,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -245,6 +257,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -293,6 +306,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -339,6 +353,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -379,6 +394,7 @@ jobs:
     needs: [changes, build-contracts]
     if: always() && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true') && needs.build-contracts.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -428,6 +444,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     services:
       postgres:
         image: postgres:16
@@ -489,6 +506,7 @@ jobs:
       - integration-test
       - backend
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Fail if a job failed or was cancelled
         if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
