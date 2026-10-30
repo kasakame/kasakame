@@ -5,63 +5,82 @@ on:
   push:
     branches: [main]
 
-# Same-commit gate, split into fast per-project jobs. `changes` decides what the
-# change touches: the contracts jobs (lint, tests, compile) run only when
-# projects/contracts/** (or this workflow) changed, so unrelated PRs never
-# compile the contracts. The SDK lanes run every time and regenerate their
-# clients from the same-run `contracts-artifacts` when the contracts changed,
-# from the pinned specs release otherwise. The frontend lanes and `build` run
-# every time: the frontend lanes install the published @kasakame/sdk on a
-# frontend-only change and build/use the local `file:../sdk` when the SDK or
-# contracts changed; `build` always bundles against the local SDK as the
-# same-SHA end-to-end gate. `gate` is the single required check.
+# Same-commit gate, split into fast per-project jobs. `changes` uses
+# dorny/paths-filter to turn changed paths into lane flags: each filter includes
+# its inputs, so the dependency graph lives in one block (`sdk` covers the SDK
+# and contracts; `frontend` covers the frontend, SDK, and contracts). Shared
+# paths outside the projects enable every lane. The SDK lanes regenerate clients
+# from the same-run `contracts-artifacts` when the contracts changed, from the
+# pinned specs release otherwise. The frontend lanes install the published
+# @kasakame/sdk unless the SDK or contracts changed; `build` always bundles
+# against the local SDK as the same-SHA end-to-end gate. `gate` is the single
+# required check.
 
 jobs:
-  # Path detection. Outputs:
-  # - `contracts`: run the contracts jobs, compile them once, and use the local
-  #   ARC-56 specs.
-  # - `local_sdk`: the frontend lanes build and use the local SDK instead of
-  #   the published package (the SDK changed, or the contracts did).
+  # Path detection with dorny/paths-filter. The filters encode the dependency
+  # graph: `sdk` includes contracts, `frontend` includes the SDK and contracts,
+  # and `backend` is independent. `shared` (anything outside the four projects
+  # except markdown and its config) enables every lane. Markdown and its config
+  # are excluded everywhere; the separate markdown workflow owns them.
+  # `local_sdk` is `sdk`: true when the SDK or the contracts changed.
   changes:
     name: Changes
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
-      contracts: ${{ steps.detect.outputs.contracts }}
-      local_sdk: ${{ steps.detect.outputs.local_sdk }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      sdk: ${{ steps.filter.outputs.sdk }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+      shared: ${{ steps.filter.outputs.shared }}
+      local_sdk: ${{ steps.filter.outputs.sdk }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Detect changed paths
-        id: detect
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            git fetch --no-tags origin "$GITHUB_BASE_REF"
-            base="$(git merge-base FETCH_HEAD HEAD)"
-            files="$(git diff --name-only "$base" HEAD)"
-          else
-            # A push to main validates everything.
-            files="$(git ls-files)"
-          fi
-          contracts=false
-          local_sdk=false
-          if printf '%s\n' "$files" | grep -Eq '^(projects/contracts/|\.github/)'; then
-            contracts=true
-          fi
-          if [ "$contracts" = true ] || printf '%s\n' "$files" | grep -q '^projects/sdk/'; then
-            local_sdk=true
-          fi
-          printf 'contracts=%s\nlocal_sdk=%s\n' "$contracts" "$local_sdk" >> "$GITHUB_OUTPUT"
-          printf 'contracts=%s local_sdk=%s (%s paths)\n' "$contracts" "$local_sdk" "$(printf '%s\n' "$files" | wc -l)"
+        id: filter
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          # PRs use the changed-files API; pushes diff against the previous
+          # commit on main. Shared paths enable every lane (fail open).
+          base: ${{ github.event_name == 'push' && github.ref || '' }}
+          predicate-quantifier: some-with-excludes
+          filters: |
+            contracts:
+              - 'projects/contracts/**'
+              - '!**/*.md'
+            sdk:
+              - 'projects/sdk/**'
+              - 'projects/contracts/**'
+              - '!**/*.md'
+            frontend:
+              - 'projects/frontend/**'
+              - 'projects/sdk/**'
+              - 'projects/contracts/**'
+              - '!**/*.md'
+            backend:
+              - 'projects/backend/**'
+              - '!**/*.md'
+            shared:
+              - '**'
+              - '!projects/contracts/**'
+              - '!projects/sdk/**'
+              - '!projects/frontend/**'
+              - '!projects/backend/**'
+              - '!**/*.md'
+              - '!.markdownlint-cli2.jsonc'
 
-  # Compile the contracts once when they changed. The artifact feeds the SDK
-  # lanes, the frontend lanes, `build`, and `integration-test` instead of each
-  # recompiling.
+  # Compile the contracts once when they (or a shared path) changed. The
+  # artifact feeds the SDK lanes, the frontend lanes, `build`, and
+  # `integration-test` instead of each recompiling.
   build-contracts:
     name: Build contracts (TEAL + ARC-56 artifacts)
     needs: changes
-    if: needs.changes.outputs.contracts == 'true'
+    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -105,7 +124,7 @@ jobs:
   lint-contracts:
     name: Lint, format, type-check (contracts)
     needs: changes
-    if: needs.changes.outputs.contracts == 'true'
+    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -134,7 +153,7 @@ jobs:
   test-contracts:
     name: Unit tests (contracts)
     needs: changes
-    if: needs.changes.outputs.contracts == 'true'
+    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -152,13 +171,13 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/contracts
 
-  # SDK checks - run on every PR. Codegen regenerates the clients from the
-  # same-run artifacts when the contracts changed (SDK_SPECS=local), from the
-  # pinned specs release otherwise.
+  # SDK checks - run when the SDK, contracts, or a shared path changed. Codegen
+  # regenerates the clients from the same-run artifacts when the contracts
+  # changed (SDK_SPECS=local), from the pinned specs release otherwise.
   lint-sdk:
     name: Lint, format, type-check (sdk)
     needs: [changes, build-contracts]
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -196,7 +215,7 @@ jobs:
   test-sdk:
     name: Unit tests (sdk)
     needs: [changes, build-contracts]
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -225,14 +244,14 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/sdk
 
-  # Frontend checks - run on every PR. A frontend-only change installs the
-  # published @kasakame/sdk, so routine work exercises what users install; an
-  # SDK or contracts change builds the local `file:../sdk` (same-run artifacts
-  # when the contracts changed) and resolves that instead.
+  # Frontend checks - run when the frontend, SDK, contracts, or a shared path
+  # changed. A frontend-only change installs the published @kasakame/sdk, so
+  # routine work exercises what users install; a contracts or SDK change builds
+  # the local `file:../sdk` (same-run artifacts when the contracts changed).
   lint-frontend:
     name: Lint, format, type-check (frontend)
     needs: [changes, build-contracts]
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -280,7 +299,7 @@ jobs:
   test-frontend:
     name: Unit tests (frontend)
     needs: [changes, build-contracts]
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -319,13 +338,14 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/frontend
 
-  # The same-SHA end-to-end gate: always bundles the frontend against the local
-  # SDK - built from the same-run artifacts when the contracts changed, from
-  # the pinned specs release otherwise.
+  # The same-SHA end-to-end gate for the web stack: runs when the frontend,
+  # SDK, contracts, or a shared path changed, and bundles the frontend against
+  # the local SDK - built from the same-run artifacts when the contracts
+  # changed, from the pinned specs release otherwise.
   build:
     name: Build (SDK + frontend bundle)
     needs: [changes, build-contracts]
-    if: always() && !failure() && !cancelled()
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -360,11 +380,12 @@ jobs:
         working-directory: projects/frontend
 
   # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
-  # same-run contract artifacts; only meaningful when the contracts changed.
+  # same-run contract artifacts; meaningful when the contracts or a shared path
+  # changed.
   integration-test:
     name: Integration tests (localnet)
     needs: [changes, build-contracts]
-    if: always() && needs.changes.outputs.contracts == 'true' && needs.build-contracts.result == 'success'
+    if: always() && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.shared == 'true') && needs.build-contracts.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -408,9 +429,12 @@ jobs:
         working-directory: projects/contracts
 
   # Backend lane: lint/format/types plus the suite against a throwaway
-  # Postgres. Needs nothing from the other jobs, so it runs standalone.
+  # Postgres. Runs when the backend or a shared path changed; needs nothing but
+  # `changes`.
   backend:
     name: Backend (lint, format, types, tests)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true'
     runs-on: ubuntu-latest
     services:
       postgres:

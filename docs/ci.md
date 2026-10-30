@@ -21,19 +21,22 @@ the reasoning behind the splits.
   compilation) and `integration-test` adds Docker for LocalNet too. Keeping
   those in separate jobs (not separate workflows) keeps feedback fast and
   failures attributable to the right lane.
-- **Change detection, not matrices.** One `changes` job diffs the pull request
-  and decides what every other job runs against: `build-contracts`,
-  `lint-contracts`, `test-contracts`, and `integration-test` run only when
-  `projects/contracts/**` (or this workflow) changed, while the SDK and
-  frontend jobs run on every PR. Separate jobs (no matrix) keep the conditional
-  presence and the status-check names stable.
+- **Change detection, not matrices.** One `changes` job runs
+  [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
+  what every other job runs against. The filters encode the dependency graph:
+  `sdk` includes the SDK and contracts, `frontend` includes the frontend, SDK,
+  and contracts, and `backend` is independent. A path outside the four
+  projects (workflows, root config, a new project) enables every lane. Markdown
+  files and `.markdownlint-cli2.jsonc` run no code lane (the separate markdown
+  workflow owns them). Separate jobs (no matrix) keep the conditional presence
+  and the status-check names stable.
 - **The frontend resolves the SDK by what changed.** A frontend-only change
   installs the published `@kasakame/sdk`, so routine frontend work exercises
   what users install; an SDK or contracts change builds the local SDK and
-  installs that copy instead (see below). The `build` job always bundles the
-  frontend against the local SDK as the same-SHA end-to-end gate. The backend
-  runs as its own job (it needs a Postgres service, so it doesn't fit the
-  pure-Node jobs).
+  installs that copy instead (see below). The `build` job bundles the frontend
+  against the local SDK as the same-SHA end-to-end gate whenever the web stack
+  or a shared path changed. The backend runs as its own job (it needs a
+  Postgres service, so it doesn't fit the pure-Node jobs).
 - **CI calls the per-project npm scripts directly** (`npm run lint`, …), not
   `algokit project run`. The algokit wrapper is a local convenience and runs
   projects sequentially.
@@ -46,13 +49,13 @@ the reasoning behind the splits.
 ```mermaid
 flowchart TD
     changes["changes<br/>(changed paths)"]
-    buildc["build-contracts<br/>(when contracts changed)"]
-    contracts["lint-contracts / test-contracts<br/>(when contracts changed)"]
-    sdk["lint-sdk / test-sdk<br/>(every PR)"]
-    frontend["lint-frontend / test-frontend<br/>(every PR)"]
+    buildc["build-contracts<br/>(when contracts or shared changed)"]
+    contracts["lint-contracts / test-contracts<br/>(when contracts or shared changed)"]
+    sdk["lint-sdk / test-sdk<br/>(when contracts, sdk, or shared changed)"]
+    frontend["lint-frontend / test-frontend<br/>(when contracts, sdk, frontend, or shared changed)"]
     build["build<br/>(SDK + Vite bundle, local SDK)"]
-    integration["integration-test<br/>(when contracts changed)"]
-    backend["backend<br/>(lint, format, types, tests + Postgres)"]
+    integration["integration-test<br/>(when contracts or shared changed)"]
+    backend["backend<br/>(when backend or shared changed)"]
     gate["gate<br/>(single required check)"]
 
     changes --> buildc
@@ -77,19 +80,19 @@ flowchart TD
 
 ## What each job needs
 
-| Job | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
-| --- | --- | --- | --- | --- |
-| `changes` | - | - | - | - |
-| `build-contracts` | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
-| `lint-contracts` / `test-contracts` | ✅ | - | - | - |
-| `lint-sdk` / `test-sdk` | ✅ | - | - | contracts artifacts (contracts-changed runs) |
-| `lint-frontend` / `test-frontend` | ✅ | - | - | contracts artifacts (contracts-changed runs); local SDK copy (SDK-changed runs) |
-| `build` | ✅ | - | - | contracts artifacts (contracts-changed runs) |
-| `backend` | ✅ | - | ✅ (Postgres service) | - |
-| `integration-test` | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
-| `gate` | ✅ (runner only) | - | - | - |
-| `markdown-lint` (own workflow) | ✅ | - | - | - |
-| `release-specs` (own workflow) | ✅ | ✅ | - | - |
+| Job | Runs when | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
+| --- | --- | --- | --- | --- | --- |
+| `changes` | always | - | - | - | - |
+| `build-contracts` | contracts or shared changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
+| `lint-contracts` / `test-contracts` | contracts or shared changed | ✅ | - | - | - |
+| `lint-sdk` / `test-sdk` | contracts, SDK, or shared changed | ✅ | - | - | contracts artifacts (contracts-changed runs) |
+| `lint-frontend` / `test-frontend` | contracts, SDK, frontend, or shared changed | ✅ | - | - | contracts artifacts (contracts-changed runs); local SDK copy (SDK/contracts-changed runs) |
+| `build` | contracts, SDK, frontend, or shared changed | ✅ | - | - | contracts artifacts (contracts-changed runs) |
+| `backend` | backend or shared changed | ✅ | - | ✅ (Postgres service) | - |
+| `integration-test` | contracts or shared changed | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
+| `gate` | always | ✅ (runner only) | - | - | - |
+| `markdown-lint` (own workflow) | markdown or its config changed | ✅ | - | - | - |
+| `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
 
 Key point: **lint/format/type-check, unit-test, and markdown are pure Node**.
 `eslint`, `prettier`, `tsc`, `vitest`, and `markdownlint-cli2` need no Docker
@@ -137,64 +140,77 @@ shape as the published package) instead of symlinking it; `--no-save` leaves
 restores the published package. Local contract/SDK work uses the same command
 (build the SDK first), so there is nothing to revert.
 
-The `build` job keeps the same-SHA gate: it always builds the local SDK and
+The `build` job is the same-SHA gate: when it runs, it builds the local SDK and
 bundles the frontend against that copy - from the same-run artifacts when the
 contracts changed, from the pinned release otherwise.
 
 ## Workflow: build-and-test
 
 Implemented at `.github/workflows/build-and-test.yml`. Twelve jobs. `changes`
-diffs the PR against its base branch (or marks everything changed on a `push`
-to `main`) and exposes two outputs:
+runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
+`pull-requests: read`), and pushes to `main` diff against the previous commit
+on the branch (`github.ref` as the base on pushes). The filters encode the
+dependency graph, and markdown files plus `.markdownlint-cli2.jsonc` are
+excluded from every filter. It exposes six outputs:
 
-- `contracts` - `projects/contracts/**` or `.github/**` changed.
-- `local_sdk` - `contracts` is true, or `projects/sdk/**` changed.
+- `contracts`, `sdk`, `frontend`, `backend` - run that lane. The filter already
+  folds in its inputs: `sdk` is SDK or contracts, `frontend` is frontend, SDK,
+  or contracts.
+- `shared` - any path outside the four projects except markdown and the
+  markdownlint config (workflow, root config, new project); every lane ORs it,
+  so shared changes are never silently skipped.
+- `local_sdk` - same as `sdk`: the frontend lanes build the local SDK when the
+  SDK or contracts changed.
 
-- **`changes`** - checkout with `fetch-depth: 0`, `git merge-base` +
-  `git diff --name-only` against the base branch, and the two outputs; no Node
-  setup, seconds of work.
-- **`build-contracts`** - runs when `contracts` is true. Installs Node +
-  AlgoKit, compiles the contracts (`npm run build` → TEAL + ARC-56 specs +
-  generated clients), and uploads `contracts-artifacts`.
-- **`lint-contracts` / `test-contracts`** - run when `contracts` is true; pure
-  Node (`npm ci`, then lint/format/type-check or `npm run test:coverage`).
-- **`lint-sdk` / `test-sdk`** - run every PR. When `contracts` is true they
-  download `contracts-artifacts` and codegen with `SDK_SPECS=local`; otherwise
-  codegen downloads the pinned specs release. Then lint/format/type-check or
+- **`changes`** - checkout with `fetch-depth: 0`, the paths-filter action, and
+  the outputs; no Node setup, seconds of work.
+- **`build-contracts`** - runs when `contracts` or `shared` is true. Installs
+  Node + AlgoKit, compiles the contracts (`npm run build` → TEAL + ARC-56 specs
+  and generated clients), and uploads `contracts-artifacts`.
+- **`lint-contracts` / `test-contracts`** - run when `contracts` or `shared` is
+  true; pure Node (`npm ci`, then lint/format/type-check or
+  `npm run test:coverage`).
+- **`lint-sdk` / `test-sdk`** - run when `sdk` or `shared` is true (`sdk` covers
+  the SDK and contracts). When the contracts changed they download
+  `contracts-artifacts` and codegen with `SDK_SPECS=local`; otherwise codegen
+  downloads the pinned specs release. Then lint/format/type-check or
   `npm run test:coverage`.
-- **`lint-frontend` / `test-frontend`** - run every PR. When `local_sdk` is
-  true they build the SDK (same-run artifacts or pinned release) and install
+- **`lint-frontend` / `test-frontend`** - run when `frontend` or `shared` is
+  true (`frontend` covers the frontend, SDK, and contracts). When `local_sdk`
+  is true they build the SDK (same-run artifacts or pinned release) and install
   the packed copy (`npm install --no-save --install-links "file:../sdk"`);
   otherwise they install the published package with `npm ci`. Then
   lint/format/type-check or `npm run test:coverage`.
-- **`build`** - runs every PR. Builds the local SDK (same-run artifacts or
-  pinned release), installs the packed copy into the frontend, and bundles it
-  (`npx vite build`) - the same-SHA end-to-end gate.
-- **`integration-test`** - runs when `contracts` is true: downloads
+- **`build`** - runs when `frontend` or `shared` is true. Builds the local SDK
+  (same-run artifacts or pinned release), installs the packed copy into the
+  frontend, and bundles it (`npx vite build`) - the same-SHA end-to-end gate.
+- **`integration-test`** - runs when `contracts` or `shared` is true: downloads
   `contracts-artifacts`, starts LocalNet, and runs the compiled TEAL against a
   live algod.
-- **`backend`** - standalone (needs nothing from the other jobs): starts a
-  Postgres service, runs migrations, then lint, format, type-check, and
+- **`backend`** - runs when `backend` or `shared` is true: starts a Postgres
+  service, runs migrations, then lint, format, type-check, and
   `npm run test:coverage` - the same sequence as local development.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
-  should require only this check, so skipped contracts jobs don't block a
-  merge.
+  requires only this check, so skipped jobs don't block a merge.
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
 
 ## Workflow: markdown-lint (separate file)
 
-Implemented at `.github/workflows/markdown-lint.yml`. Markdown linting gets its
+Implemented at `.github/workflows/markdown-lint.yml`. Markdown linting keeps its
 **own workflow file**, because triggers live at the workflow level - a job
-cannot have a different trigger than its workflow. Splitting it allows a
-`paths:` filter so the markdown job only runs when docs (or the markdownlint
-config) change.
+cannot have a different trigger than its workflow - and its `paths:` filter
+(markdown files and `.markdownlint-cli2.jsonc`) is independent of the code
+change detection. A markdown-only change therefore runs only this workflow and,
+in `build-and-test`, `changes` + `gate` (every code lane skips); a mixed change
+runs both.
 
-This also gives markdown its own status check, so a docs failure isn't buried
-under the per-project checks. The lint command checks all
-`*.md` files; the `paths:` filter limits runs to docs changes.
+The catch: a `paths`-filtered workflow cannot be a required status check,
+because it never reports on PRs that touch no markdown, leaving the check
+"Expected". It stays advisory unless it is folded into `Gate` as an always-run
+job. The lint command checks all `*.md` files.
 
 ## Workflow: release-specs (separate file)
 
