@@ -5,24 +5,7 @@ on:
   push:
     branches: [main]
 
-# Same-commit gate, split into fast per-project jobs. `changes` uses
-# dorny/paths-filter to turn changed paths into lane flags: each filter includes
-# its inputs, so the dependency graph lives in one block (`sdk` covers the SDK
-# and contracts; `frontend` covers the frontend, SDK, and contracts). Shared
-# paths outside the projects enable every lane. The SDK lanes regenerate clients
-# from the same-run `contracts-artifacts` when the contracts changed, from the
-# pinned specs release otherwise. The frontend lanes install the published
-# @kasakame/sdk unless the SDK or contracts changed; `build` always bundles
-# against the local SDK as the same-SHA end-to-end gate. `gate` is the single
-# required check.
-
 jobs:
-  # Path detection with dorny/paths-filter. The filters encode the dependency
-  # graph: `sdk` includes contracts, `frontend` includes the SDK and contracts,
-  # and `backend` is independent. `shared` (anything outside the four projects
-  # except markdown and its config) enables every lane. Markdown and its config
-  # are excluded everywhere; the separate markdown workflow owns them.
-  # `local_sdk` is `sdk`: true when the SDK or the contracts changed.
   changes:
     name: Changes
     runs-on: ubuntu-latest
@@ -53,26 +36,35 @@ jobs:
             contracts:
               - 'projects/contracts/**'
               - '!**/*.md'
+              - '!**/LICENSE'
             sdk:
               - 'projects/sdk/**'
               - 'projects/contracts/**'
               - '!**/*.md'
+              - '!**/LICENSE'
             frontend:
               - 'projects/frontend/**'
               - 'projects/sdk/**'
               - 'projects/contracts/**'
               - '!**/*.md'
+              - '!**/LICENSE'
             backend:
               - 'projects/backend/**'
               - '!**/*.md'
+              - '!**/LICENSE'
             shared:
               - '**'
               - '!projects/contracts/**'
               - '!projects/sdk/**'
               - '!projects/frontend/**'
               - '!projects/backend/**'
+              - '!docs/**/*.{png,jpg,jpeg,gif,svg,webp,pdf}'
+              - '!**/LICENSE'
               - '!**/*.md'
               - '!.markdownlint-cli2.jsonc'
+              - '!.gitignore'
+              - '!.editorconfig'
+              - '!kasakame.code-workspace'
 
   # Compile the contracts once when they (or a shared path) changed. The
   # artifact feeds the SDK lanes, the frontend lanes, `build`, and

@@ -25,11 +25,11 @@ the reasoning behind the splits.
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. The filters encode the dependency graph:
   `sdk` includes the SDK and contracts, `frontend` includes the frontend, SDK,
-  and contracts, and `backend` is independent. A path outside the four
-  projects (workflows, root config, a new project) enables every lane. Markdown
-  files and `.markdownlint-cli2.jsonc` run no code lane (the separate markdown
-  workflow owns them). Separate jobs (no matrix) keep the conditional presence
-  and the status-check names stable.
+  and contracts, and `backend` is independent. A non-inert path outside the
+  four projects (workflows, root config, a new project) enables every lane.
+  Markdown, docs images, licenses, and inert root files run no code lane (the
+  separate markdown workflow owns Markdown). Separate jobs (no matrix) keep the
+  conditional presence and the status-check names stable.
 - **The frontend resolves the SDK by what changed.** A frontend-only change
   installs the published `@kasakame/sdk`, so routine frontend work exercises
   what users install; an SDK or contracts change builds the local SDK and
@@ -150,15 +150,18 @@ Implemented at `.github/workflows/build-and-test.yml`. Twelve jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
 on the branch (`github.ref` as the base on pushes). The filters encode the
-dependency graph, and markdown files plus `.markdownlint-cli2.jsonc` are
-excluded from every filter. It exposes six outputs:
+dependency graph, and markdown files, licenses, and `.markdownlint-cli2.jsonc`
+are excluded from every filter. It exposes six outputs:
 
 - `contracts`, `sdk`, `frontend`, `backend` - run that lane. The filter already
   folds in its inputs: `sdk` is SDK or contracts, `frontend` is frontend, SDK,
   or contracts.
-- `shared` - any path outside the four projects except markdown and the
-  markdownlint config (workflow, root config, new project); every lane ORs it,
-  so shared changes are never silently skipped.
+- `shared` - a non-inert path outside the four projects (workflow, root config,
+  new project). Markdown, docs images, licenses, and inert root files such as
+  `.gitignore` and editor settings are excluded.
+  `docs/claim-tree-protocol-reference.py` stays shared because the contract
+  tests use it as an oracle. Every lane ORs it, so shared changes are never
+  silently skipped.
 - `local_sdk` - same as `sdk`: the frontend lanes build the local SDK when the
   SDK or contracts changed.
 
