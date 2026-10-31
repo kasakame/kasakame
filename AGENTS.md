@@ -24,6 +24,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
+- `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
+  (refund/cancel/claim by app ID; wallet or mnemonic signing); see the
+  [CLI roadmap](docs/roadmap.md#cli)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage; pinning and catalog planned)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
@@ -40,7 +43,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-algokit project bootstrap all    # install deps for contracts + frontend + sdk + backend
+algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
@@ -65,6 +68,13 @@ npm pack --dry-run               # inspect the published package contents
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
+
+cd ../cli
+npm run build                    # tsc emit to dist
+npm run check-types              # tsc --noEmit
+npm run lint                     # ESLint
+npm run format                   # Prettier check
+npm run test:coverage            # Vitest
 
 cd ../backend                    # optional API; Postgres via docker compose
 npm run db:migrate               # apply migrations
@@ -107,7 +117,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   local copy (`npm install --no-save --install-links "file:../sdk"` in
   `projects/frontend`) - a plain `npm ci` restores the published package. CI
   installs the same copy only when the SDK or contracts changed; other frontend
-  runs test the registry package.
+  runs test the registry package. The CLI (`projects/cli`) consumes the same
+  published package and follows the same packed-copy pattern for unreleased SDK
+  changes.
 - **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
   `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
   over HTTPS by default and regenerates clients with the pinned generator. The version is

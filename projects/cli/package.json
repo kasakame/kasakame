@@ -1,0 +1,81 @@
+{
+  "name": "@kasakame/cli",
+  "version": "0.1.0",
+  "author": {
+    "name": "Alessio Di Domenico",
+    "email": "alessio.661@hotmail.it"
+  },
+  "type": "module",
+  "description": "Escape-hatch CLI for kasakame: refund, cancel, and claim pledges by app ID",
+  "keywords": [
+    "algorand",
+    "algorand-blockchain",
+    "algokit",
+    "algosdk",
+    "blockchain",
+    "cli",
+    "crowdfunding",
+    "dapp",
+    "kasakame",
+    "walletconnect"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kasakame/kasakame.git",
+    "directory": "projects/cli"
+  },
+  "homepage": "https://github.com/kasakame/kasakame/tree/main/projects/cli#readme",
+  "bugs": {
+    "url": "https://github.com/kasakame/kasakame/issues"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=9.0"
+  },
+  "bin": {
+    "kasakame": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:fix": "prettier --write ."
+  },
+  "dependencies": {
+    "@algorandfoundation/algokit-utils": "^9.0.0",
+    "@kasakame/sdk": "^0.1.0",
+    "@walletconnect/keyvaluestorage": "^1.1.1",
+    "@walletconnect/sign-client": "^2.26.0",
+    "algosdk": "^3.9.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^24.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "@vitest/coverage-v8": "^5.0.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jsdoc": "^65.3.11",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "prettier-plugin-jsdoc": "^1.8.1",
+    "prettier-plugin-organize-imports": "^4.3.0",
+    "typescript": "^5.1.6",
+    "typescript-eslint": "^8.68.0",
+    "vitest": "^5.0.5"
+  }
+}

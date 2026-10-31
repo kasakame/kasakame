@@ -161,7 +161,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
 
   **Steps**
 
-  - [ ] Create `projects/cli` and scaffold the package: bin `kasakame`, ESM,
+  - [x] Create `projects/cli` and scaffold the package: bin `kasakame`, ESM,
         Node 24, `@kasakame/sdk` + `@algorandfoundation/algokit-utils` + `algosdk` +
         `@walletconnect/sign-client` + `@walletconnect/keyvaluestorage` +
         `qrcode-terminal`, shared configs, lockfile, README, LICENSE, `.algokit.toml`.
