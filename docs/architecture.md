@@ -12,7 +12,7 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | ClaimsVault | One permanent app, platform-owned | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
 | Factory | One registry app, platform-owned | Registers official campaigns against the owner-configured approval hash |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
-| Catalog (optional, in progress) | Fastify + Postgres | Auth today; profiles, pinning, search and history UX planned |
+| Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
 
 Users and wallets never appear as a piece: any Algorand address with a wallet is a creator or backer. No account system exists.
 
@@ -46,7 +46,7 @@ Both settlement paths finalize in O(1) time and cost. Refunds stay available for
 
 ## Optional catalog
 
-The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, the profiles/settings tables, and authenticated image uploads pinned to IPFS (`POST /uploads`) so far; profiles and settings CRUD, create-form upload wiring, and the per-campaign catalog row with its chain watcher are planned (see [`roadmap.md`](roadmap.md)). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see [`roadmap.md`](roadmap.md)). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 

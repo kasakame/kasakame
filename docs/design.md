@@ -52,10 +52,10 @@ indexer queries filtered by the connected address - no new storage.
 
 Content is hybrid and already implemented (see [`frontend.md`](frontend.md)): a
 short on-chain `title`, with the long description/image/category off-chain behind
-`metadataUri`. Both are immutable by decision (see [`roadmap.md`](roadmap.md)):
-a backer's pledge can never be re-described under them. Fixes and updates ship
-through the creator updates feed below, and mutability can return later via the
-off-chain JSON.
+`metadataUri`. Both are creation-time fields with no update method (see
+[`campaign.md`](campaign.md) → Design decisions): a backer's pledge can never be
+re-described under them. Fixes and updates ship through the creator updates feed
+below, and mutability can return later via the off-chain JSON.
 
 ## UI / design work
 

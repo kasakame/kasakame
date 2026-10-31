@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; a packed local copy is installed only to test unreleased SDK changes. The remaining release items are tracked in the [SDK section](roadmap.md#sdk) of the roadmap.
+Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; a packed local copy is installed only to test unreleased SDK changes. The escape-hatch CLI is the one remaining SDK item, tracked in the [SDK section](roadmap.md#sdk) of the roadmap.
 
 ## Why the SDK exists
 

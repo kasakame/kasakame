@@ -98,6 +98,7 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones. A stray vault inflow with no matching pledge still settles on pristine delete and sweeps through `finalize` instead of stranding.
 7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) at `delete()` + `unregister()`. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `finalize`.
+8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
 
