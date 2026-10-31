@@ -44,6 +44,7 @@ algokit project bootstrap all    # install deps for contracts + frontend + sdk +
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
+git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck  # ShellCheck all tracked shell scripts
 
 cd projects/contracts
 npm run build                    # compile contracts + generate typed clients

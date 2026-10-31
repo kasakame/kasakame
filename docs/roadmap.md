@@ -18,8 +18,9 @@ each open item links to the doc with the details. Design context is in
 - **Releases** - contract interface published as a `specs-v0.1.0` GitHub Release
   (ARC-56/32, TEAL, source maps); `release-specs` and `release-sdk` workflows run with
   npm OIDC trusted publishing. See [`ci.md`](ci.md).
-- **CI** - path-filtered `build-and-test` lanes, markdown lint, and the release
-  workflows. See [`ci.md`](ci.md).
+- **CI** - path-filtered `build-and-test` lanes, ShellCheck (repo-wide shell
+  scripts plus workflow `run:` blocks), markdown lint, and the release workflows.
+  See [`ci.md`](ci.md).
 - **Identity and hosting** - GitHub/npm `kasakame` orgs and the `kasakame.com` domain
   are set up.
 

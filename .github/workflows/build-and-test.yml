@@ -25,6 +25,7 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
       config: ${{ steps.filter.outputs.config }}
       oracle: ${{ steps.filter.outputs.oracle }}
+      shell: ${{ steps.filter.outputs.shell }}
       shared: ${{ steps.filter.outputs.shared }}
       local_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
     steps:
@@ -37,8 +38,8 @@ jobs:
         uses: dorny/paths-filter@v4.0.3
         with:
           # PRs use the changed-files API; pushes diff against the previous
-          # commit on main. `ci` and `config` have their own lanes; unknown
-          # shared paths fail open to the app lanes, never to contracts.
+          # commit on main. `ci`, `shell`, and `config` have their own lanes;
+          # unknown shared paths fail open to the app lanes, never to contracts.
           base: ${{ github.event_name == 'push' && github.ref || '' }}
           predicate-quantifier: some-with-excludes
           filters: |
@@ -65,6 +66,10 @@ jobs:
               - '.prettierrc.json'
             oracle:
               - 'docs/claim-tree-protocol-reference.py'
+            shell:
+              - '**/*.sh'
+              - '**/*.bash'
+              - '!**/node_modules/**'
             shared:
               - '**'
               - '!projects/contracts/**'
@@ -77,6 +82,8 @@ jobs:
               - '!docs/**/*.{png,jpg,jpeg,gif,svg,webp,pdf}'
               - '!**/LICENSE'
               - '!**/*.md'
+              - '!**/*.sh'
+              - '!**/*.bash'
               - '!.markdownlint-cli2.jsonc'
               - '!.gitignore'
               - '!.editorconfig'
@@ -84,7 +91,7 @@ jobs:
 
   # Workflow-file lint: the only code lane a CI-only change needs.
   actionlint:
-    name: Lint workflows (actionlint)
+    name: Lint workflows
     needs: changes
     if: needs.changes.outputs.ci == 'true'
     runs-on: ubuntu-latest
@@ -99,10 +106,26 @@ jobs:
             -w /repo \
             rhysd/actionlint:1.7.12
 
+  # Standalone shell scripts repo-wide. Workflow `run:` blocks are covered by
+  # actionlint, whose image bundles shellcheck.
+  shellcheck:
+    name: Lint shell scripts
+    needs: changes
+    if: needs.changes.outputs.shell == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Run shellcheck
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck
+
   # Compile the contracts once, only when the contracts changed. The artifact
   # feeds `build-sdk`, the SDK lanes, and `integration-test`.
   build-contracts:
-    name: Build contracts (TEAL + ARC-56 artifacts)
+    name: Build contracts
     needs: changes
     if: needs.changes.outputs.contracts == 'true'
     runs-on: ubuntu-latest
@@ -194,7 +217,7 @@ jobs:
   # Contracts lint/format/type-check - pure Node, no artifacts, no build. A
   # formatting-config change still lints them; tests stay contracts-only.
   lint-contracts:
-    name: Lint, format, type-check (contracts)
+    name: Contracts lint
     needs: changes
     if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.config == 'true'
     runs-on: ubuntu-latest
@@ -225,7 +248,7 @@ jobs:
   # source directly, so it never needs the compiled artifacts. The oracle is a
   # docs file, but it is the test input, so it triggers this lane.
   test-contracts:
-    name: Unit tests (contracts)
+    name: Contracts tests
     needs: changes
     if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.oracle == 'true'
     runs-on: ubuntu-latest
@@ -251,7 +274,7 @@ jobs:
   # when the contracts changed (SDK_SPECS=local), from the pinned specs release
   # otherwise.
   lint-sdk:
-    name: Lint, format, type-check (sdk)
+    name: SDK lint
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.config == 'true')
     runs-on: ubuntu-latest
@@ -290,7 +313,7 @@ jobs:
         working-directory: projects/sdk
 
   test-sdk:
-    name: Unit tests (sdk)
+    name: SDK tests
     needs: [changes, build-contracts]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true')
     runs-on: ubuntu-latest
@@ -327,7 +350,7 @@ jobs:
   # the published @kasakame/sdk; SDK/contracts changes consume the same-run
   # `sdk-dist` built by `build-sdk`.
   lint-frontend:
-    name: Lint, format, type-check (frontend)
+    name: Frontend lint
     needs: [changes, build-contracts, build-sdk]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true' || needs.changes.outputs.config == 'true')
     runs-on: ubuntu-latest
@@ -366,7 +389,7 @@ jobs:
         working-directory: projects/frontend
 
   test-frontend:
-    name: Unit tests (frontend)
+    name: Frontend tests
     needs: [changes, build-contracts, build-sdk]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true')
     runs-on: ubuntu-latest
@@ -398,11 +421,12 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/frontend
 
-  # The end-to-end bundle gate: frontend-only and shared-only changes bundle
-  # against the published @kasakame/sdk; SDK/contracts changes bundle against
-  # the same-run `sdk-dist`.
+  # Production bundle gate: catches Vite/Rollup-only failures (resolution, env
+  # inlining, tree-shaking) that `tsc --noEmit` and Vitest do not. Independent
+  # of the lint/test lanes, so it runs in parallel; the only input is the SDK
+  # choice, which it resolves the same way they do.
   build:
-    name: Build (frontend bundle)
+    name: Build frontend bundle
     needs: [changes, build-contracts, build-sdk]
     if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true')
     runs-on: ubuntu-latest
@@ -437,7 +461,7 @@ jobs:
   # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
   # same-run contract artifacts; contracts-only by design.
   integration-test:
-    name: Integration tests (localnet)
+    name: LocalNet integration tests
     needs: [changes, build-contracts]
     if: always() && needs.changes.outputs.contracts == 'true' && needs.build-contracts.result == 'success'
     runs-on: ubuntu-latest
@@ -487,7 +511,7 @@ jobs:
   # Postgres. Independent of contracts/SDK/frontend; a formatting-config change
   # still checks it.
   backend:
-    name: Backend (lint, format, types, tests)
+    name: Backend lint and tests
     needs: changes
     if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.config == 'true'
     runs-on: ubuntu-latest
@@ -543,6 +567,7 @@ jobs:
     needs:
       - changes
       - actionlint
+      - shellcheck
       - build-contracts
       - build-sdk
       - lint-contracts

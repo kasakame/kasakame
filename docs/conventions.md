@@ -79,3 +79,7 @@ documents the rules and the reasoning behind them.
   root) to lint every `*.md` file; add `--fix` to autofix. Rules, globs, and ignores
   all live in a single `.markdownlint-cli2.jsonc`, shared with the VS Code extension.
   The version is pinned in the command (no root `package.json` needed).
+- **Shell scripts are linted repo-wide.** Run
+  `git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck` (needs `shellcheck`
+  installed) to check every tracked `.sh`/`.bash` file. Workflow `run:` blocks are
+  checked by actionlint's bundled ShellCheck.

@@ -45,6 +45,10 @@ the reasoning behind the splits.
 - **CI calls the per-project npm scripts directly** (`npm run lint`, …), not
   `algokit project run`. The algokit wrapper is a local convenience and runs
   projects sequentially.
+- **Shell scripts are linted repo-wide.** The `shellcheck` job runs the
+  runner's preinstalled ShellCheck over every tracked `.sh`/`.bash` file.
+  Workflow `run:` blocks are covered separately: actionlint runs its bundled
+  ShellCheck on them.
 - **Run once per change.** Both workflows trigger on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
   `push` and `pull_request` events and run everything twice. Superseded PR runs
@@ -57,6 +61,7 @@ the reasoning behind the splits.
 flowchart TD
     changes["changes<br/>(changed paths)"]
     actionlint["actionlint<br/>(ci changed)"]
+    shellcheck["shellcheck<br/>(shell changed)"]
     buildc["build-contracts<br/>(contracts only)"]
     buildsdk["build-sdk<br/>(SDK or contracts)"]
     contracts["lint-contracts / test-contracts"]
@@ -68,6 +73,7 @@ flowchart TD
     gate["gate<br/>(single required check)"]
 
     changes --> actionlint
+    changes --> shellcheck
     changes --> buildc
     changes --> contracts
     changes --> sdk
@@ -82,6 +88,7 @@ flowchart TD
     buildsdk -->|"sdk-dist"| build
     changes --> gate
     actionlint --> gate
+    shellcheck --> gate
     buildc --> gate
     buildsdk --> gate
     contracts --> gate
@@ -98,6 +105,7 @@ flowchart TD
 | --- | --- | --- | --- | --- | --- |
 | `changes` | always | - | - | - | - |
 | `actionlint` | `ci` changed | - | - | ✅ (actionlint image) | - |
+| `shellcheck` | `shell` changed | - | - | - | - |
 | `build-contracts` | contracts changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
 | `build-sdk` | SDK or contracts changed | ✅ | - | - | `contracts-artifacts` (contracts-changed runs); produces `sdk-dist` |
 | `lint-contracts` | contracts or `config` changed | ✅ | - | - | - |
@@ -113,10 +121,10 @@ flowchart TD
 | `markdown-lint` (own workflow) | markdown or its config changed | ✅ | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
 
-Key point: **lint/format/type-check, unit-test, and markdown are pure Node**.
-`eslint`, `prettier`, `tsc`, `vitest`, and `markdownlint-cli2` need no Docker
-or AlgoKit install; `actionlint` is the one workflow-lint job that uses a
-container. The contracts lint/test jobs do not build anything: the offline
+Key point: **lint/format/type-check, unit-test, markdown, and shell lint need no
+AlgoKit install**. `eslint`, `prettier`, `tsc`, `vitest`, `markdownlint-cli2`, and
+`shellcheck` are standalone tools; `actionlint` is the one workflow-lint job that
+uses a container. The contracts lint/test jobs do not build anything: the offline
 contract suite runs the contract source directly, and only `build-contracts`
 compiles. The SDK
 lanes run codegen against the same-run artifacts or the pinned release; the
@@ -166,11 +174,11 @@ or shared-only changes, the same-run `sdk-dist` for SDK/contracts changes.
 
 ## Workflow: build-and-test
 
-Implemented at `.github/workflows/build-and-test.yml`. Fourteen jobs. `changes`
+Implemented at `.github/workflows/build-and-test.yml`. Fifteen jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
 on the branch (`github.ref` as the base on pushes). Markdown, licenses, and
-`.markdownlint-cli2.jsonc` are excluded from every filter. It exposes nine
+`.markdownlint-cli2.jsonc` are excluded from every filter. It exposes ten
 outputs:
 
 - `contracts`, `sdk`, `frontend`, `backend` - the project path itself, no
@@ -180,11 +188,12 @@ outputs:
 - `config` - `.prettierrc.json`; format/lint-only changes.
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle.
+- `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
 - `shared` - any other non-inert path outside the four projects (root config, a
   new project). It fails open to the app lanes but never sets `contracts`:
   `build-contracts` and `integration-test` run only when the contracts changed,
   and the contract suite runs only for the contracts or the oracle. Markdown,
-  docs images, licenses, and inert root files are excluded.
+  shell scripts, docs images, licenses, and inert root files are excluded.
 - `local_sdk` - `contracts || sdk`: the frontend lanes download `sdk-dist` and
   install the local SDK; otherwise they use the published package.
 
@@ -192,6 +201,11 @@ outputs:
   the outputs; no Node setup, seconds of work.
 - **`actionlint`** - runs when `ci` is true. Lints the workflow files in the
   `rhysd/actionlint:1.7.12` container; the only lane a CI-only change needs.
+  The image bundles ShellCheck, so it also checks every workflow `run:` block.
+- **`shellcheck`** - runs when `shell` is true. Uses the runner's preinstalled
+  ShellCheck (no install step) to lint every tracked `.sh`/`.bash` file via
+  `git ls-files`. Standalone scripts only - workflow `run:` blocks belong to
+  actionlint above.
 - **`build-contracts`** - runs when `contracts` is true. Installs Node + AlgoKit,
   compiles the contracts (`npm run build` → TEAL + ARC-56 specs and generated
   clients), and uploads `contracts-artifacts` with `overwrite: true` and 7-day
@@ -219,7 +233,9 @@ outputs:
   `npm run test:coverage`.
 - **`build`** - runs when `contracts`, `sdk`, frontend, or `shared` is true.
   Bundles the frontend with `npx vite build` against the published SDK or the
-  same-run `sdk-dist`, matching the frontend lane choice.
+  same-run `sdk-dist`, matching the frontend lane choice. It is an independent
+  production-bundle gate (catch Vite/Rollup-only failures), so it runs in
+  parallel with lint and tests rather than after them.
 - **`integration-test`** - runs when `contracts` is true: downloads
   `contracts-artifacts`, starts LocalNet, and runs the compiled TEAL against a
   live algod.
