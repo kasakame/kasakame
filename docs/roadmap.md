@@ -112,10 +112,100 @@ slices land one commit each:
 ## SDK
 
 The chain layer the frontend and the escape-hatch CLI share, published as
-`@kasakame/sdk` - design in [`sdk.md`](sdk.md). The package is released; one item
-remains:
+`@kasakame/sdk` - design in [`sdk.md`](sdk.md). The package is released; the
+escape-hatch CLI is tracked in its own [CLI](#cli) section.
 
-- [ ] **Ship the escape-hatch CLI** - graduate `scripts/reclaim.ts` into a standalone `npx`-runnable tool (refund/cancel/claim by app ID from a mnemonic, public indexer only, no backend). Canonical proof that exits never need our servers.
+## CLI
+
+- [ ] **Ship the escape-hatch CLI** - `projects/cli`, published as `@kasakame/cli`
+      (`npx @kasakame/cli`): refund/cancel/claim by app ID, public algod + indexer
+      only, no backend. Canonical proof that exits never need our servers.
+
+  **Decisions**
+
+  - **Wallet approval is the default.** `login` pairs a wallet over WalletConnect
+    and stores the session locally; commands reuse it and the wallet prompts for
+    every transaction group, as on the website. No account keys are stored by this
+    path.
+  - **WalletConnect Cloud project approved.** Register one Reown/WalletConnect
+    project; embed its public project ID in the package and allow an override via
+    `KASAKAME_WALLETCONNECT_PROJECT_ID`. The project ID is public and identifies the
+    app to the relay - it does not hold keys or funds. The free Starter plan is 1
+    project with 2.5M Reown RPC calls and 500 embedded-wallet/SIWX MAUs per month
+    (the project pauses at the cap); the CLI only uses the relay, not Reown's RPC or
+    embedded wallets, so those caps are not the binding constraint. The relay is
+    still a third-party dependency: it rate-limits shared project IDs, so document
+    the override/rotation path.
+  - **Terminal QR only for now.** `login` prints the pairing QR in the terminal
+    (plus the raw `wc:` URI). A localhost page that shows the same QR is a later
+    display-only option; a local browser wallet bridge (the website's Pera/Defly/
+    Exodus SDKs) is not planned - it needs a browser, a local server, and a signing
+    page, and only helps desktop-only users.
+  - **Why WalletConnect:** it is the terminal-compatible wallet transport. Pera
+    Connect runs on WalletConnect and TxnLab's `use-wallet` adapter already
+    implements the exact `algo_signTxn` flow; there is no Algorand CLI wallet-login
+    standard yet, so use the stable protocol primitives rather than WalletConnect's
+    beta CLI wrapper.
+  - **Both signers ship.** Wallet is the default. `--signer mnemonic` is an explicit
+    opt-in on any network and the only path on LocalNet (Pera/Defly cannot target
+    it). Both produce the same `WalletSession`, so commands never branch. The
+    mnemonic is read from a file or env, never argv, and documented as a hot key.
+  - **SDK unchanged.** It already accepts any `TransactionSigner`; the WalletConnect
+    adapter belongs to the CLI, not the chain layer.
+  - **TestNet is the default**, with Factory `774437557` and ClaimsVault `774437570`.
+    `--vault`/`--factory` override them; LocalNet and custom networks use
+    `ALGOD_*`/`INDEXER_*`. MainNet stays out until it is deployed.
+  - **Small scope:** one app id per run, `--dry-run`, one wallet approval per leaf,
+    no `delete`/`unregister`. `projects/frontend/scripts/reclaim.ts` stays as the
+    batch dev/seed cleanup tool.
+
+  **Steps**
+
+  - [ ] Create `projects/cli` and scaffold the package: bin `kasakame`, ESM,
+        Node 24, `@kasakame/sdk` + `@algorandfoundation/algokit-utils` + `algosdk` +
+        `@walletconnect/sign-client` + `@walletconnect/keyvaluestorage` +
+        `qrcode-terminal`, shared configs, lockfile, README, LICENSE, `.algokit.toml`.
+  - [ ] Register the Reown/WalletConnect project and wire its project ID into the
+        package (env override included); confirm pairing works without a web origin
+        allowlist entry.
+  - [ ] Wallet session layer: `login` (terminal QR, session proposal for the
+        Algorand TestNet CAIP-2 chain `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe`,
+        wallet approval), `whoami`, `logout`; file-backed session store under
+        `~/.kasakame/walletconnect/`, expiry/restore handling, and a clear "run
+        login" error when no session matches the network.
+  - [ ] WalletConnect signer: wrap `algo_signTxn` (ARC-1 transaction objects,
+        base64, `signers: []` for group members the wallet does not sign) as the
+        standard `TransactionSigner` the SDK already accepts. No SDK or command
+        changes; one wallet approval per transaction group.
+  - [ ] Plumb flags and config: `parseArgs`, app-id validation, network presets
+        (`testnet` default, `mainnet` later, `localnet`/`custom` reading
+        `ALGOD_*`/`INDEXER_*`), `--vault`/`--factory` overrides (TestNet defaults
+        `774437570`/`774437557`), and `--signer wallet|mnemonic` (wallet default;
+        mnemonic opt-in on any network, required on LocalNet; file/env, never argv).
+        Pera and Defly do not support LocalNet, so that network always uses the
+        mnemonic path. Both signers produce the same `WalletSession`, so commands do
+        not branch.
+  - [ ] Implement `refund` (failed or deleted campaigns), `cancel` (open, before the
+        deadline), and `claim` (creator, successful, not yet claimed): state
+        prechecks, one transaction per live leaf, partial-failure reporting, and
+        `--dry-run` (no wallet prompt).
+  - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
+        transport: happy paths, state rejections, no leaves, partial failure,
+        invalid flags/network, missing/expired session, rejected approval, and
+        mnemonic validation. Add a manual TestNet smoke test with Pera and Defly
+        (login → refund/cancel/claim) and with `--signer mnemonic`.
+  - [ ] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
+        local SDK artifact when the SDK or contracts change, and `gate` entry. CI
+        never contacts the relay.
+  - [ ] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
+        provenance, and a tarball smoke test running `kasakame --help`.
+  - [ ] Document: new `docs/cli.md` (install, login/logout, wallet approval,
+        commands, networks, the mnemonic opt-in and its hot-key trade-off, the
+        WalletConnect project ID/relay dependency, self-hosting), plus `ci.md`,
+        `sdk.md`, `architecture.md`, `frontend.md`, `testing.md`, `README.md`,
+        `AGENTS.md`.
+  - [ ] Keep `projects/frontend/scripts/reclaim.ts` as the batch dev/seed cleanup
+        tool; it also deletes/unregisters, which the CLI does not.
 
 ## Deployment
 

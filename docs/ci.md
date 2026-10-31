@@ -345,7 +345,7 @@ Then dispatch the workflow from `main` with `dry_run=false`.
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
-order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the SDK CLI).
+order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section).
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |
