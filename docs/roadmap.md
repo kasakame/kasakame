@@ -165,10 +165,10 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         Node 24, `@kasakame/sdk` + `@algorandfoundation/algokit-utils` + `algosdk` +
         `@walletconnect/sign-client` + `@walletconnect/keyvaluestorage` +
         `qrcode-terminal`, shared configs, lockfile, README, LICENSE, `.algokit.toml`.
-  - [ ] Register the Reown/WalletConnect project and wire its project ID into the
-        package (env override included); confirm pairing works without a web origin
-        allowlist entry.
-  - [ ] Wallet session layer: `login` (terminal QR, session proposal for the
+  - [x] Register the Reown/WalletConnect project and wire its project ID into the
+        package (env override included); confirmed the relay accepts it and returns
+        a TestNet pairing URI without a web origin allowlist entry.
+  - [x] Wallet session layer: `login` (terminal QR, session proposal for the
         Algorand TestNet CAIP-2 chain `algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe`,
         wallet approval), `whoami`, `logout`; file-backed session store under
         `~/.kasakame/walletconnect/`, expiry/restore handling, and a clear "run
