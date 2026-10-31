@@ -75,9 +75,11 @@ jobs:
           else
             tag=latest
           fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "specs=$specs" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "specs=$specs"
+          } >> "$GITHUB_OUTPUT"
           echo "@kasakame/sdk@$version -> $tag (specs $specs)"
 
       - name: Check the version is unpublished
@@ -133,6 +135,7 @@ jobs:
           name: sdk-dist
           path: projects/sdk/dist
           if-no-files-found: error
+          retention-days: 7
 
   smoke:
     name: Smoke-test the packed package
