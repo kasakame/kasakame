@@ -204,7 +204,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         the deadline; cancel the signer's live leaves one per transaction,
         reporting partial failures. Reuse the connection lifecycle and `--dry-run`
         behavior above.
-  - [ ] Implement creator `claim`: reject non-creators, campaigns that are not
+  - [x] Implement creator `claim`: reject non-creators, campaigns that are not
         successful, and already-claimed campaigns; submit the single claim and
         report the result. Reuse the connection lifecycle and `--dry-run` behavior
         above.

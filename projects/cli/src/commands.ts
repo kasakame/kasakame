@@ -1,11 +1,13 @@
 import {
   cancelPledge,
+  claim,
   fetchCampaignHeader,
   fetchChainTimestamp,
   fetchMyLeaves,
   getCampaignStatus,
   refund,
   type BackerLeaf,
+  type CampaignHeader,
   type CampaignStatus,
   type WalletSession,
 } from '@kasakame/sdk'
@@ -56,6 +58,48 @@ export async function runCancel(options: CliOptions): Promise<number> {
   return spendLeaves(options, appId, { verb: 'cancel', done: 'Cancelled' }, (wallet, leaf) => cancelPledge(appId, wallet, leaf))
 }
 
+/**
+ * Claim a successful campaign for its creator.
+ *
+ * Open, failed, and already-claimed campaigns are rejected before the wallet is touched; a connected wallet that
+ * did not create the campaign is rejected before anything is submitted.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runClaim(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'claim')
+  const header = await campaignHeader(appId)
+  const status = getCampaignStatus(header, await fetchChainTimestamp())
+  if (status === 'open') {
+    throw new Error(`Campaign ${appId.toString()} is still open; claim opens after its deadline`)
+  }
+  if (status === 'failed') {
+    throw new Error(`Campaign ${appId.toString()} failed; there is nothing to claim`)
+  }
+  if (header.status === 'claimed') {
+    throw new Error(`Campaign ${appId.toString()} was already claimed`)
+  }
+
+  const session = await openCliSession(options)
+  try {
+    if (header.creator !== session.wallet.address) {
+      throw new Error(`Campaign ${appId.toString()} was created by ${header.creator}; only the creator can claim`)
+    }
+    if (options.dryRun) {
+      console.log(`Would claim campaign ${appId.toString()} as ${session.wallet.address}.`)
+      console.log('Dry run: nothing submitted.')
+      return 0
+    }
+
+    await claim(appId, session.wallet)
+    console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
+    return 0
+  } finally {
+    await session.close()
+  }
+}
+
 function requireAppId(options: CliOptions, command: string): bigint {
   const appId = options.appId
   if (appId === undefined) {
@@ -64,12 +108,16 @@ function requireAppId(options: CliOptions, command: string): bigint {
   return appId
 }
 
-async function campaignStatus(appId: bigint): Promise<CampaignStatus> {
+async function campaignHeader(appId: bigint): Promise<CampaignHeader> {
   const header = await fetchCampaignHeader(appId)
   if (header === undefined) {
     throw new Error(`Campaign ${appId.toString()} not found`)
   }
-  return getCampaignStatus(header, await fetchChainTimestamp())
+  return header
+}
+
+async function campaignStatus(appId: bigint): Promise<CampaignStatus> {
+  return getCampaignStatus(await campaignHeader(appId), await fetchChainTimestamp())
 }
 
 interface SpendLabel {

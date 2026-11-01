@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runCancel, runRefund } from './commands.js'
+import { runCancel, runClaim, runRefund } from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
   fetchCampaignHeader: vi.fn(),
@@ -8,6 +8,7 @@ const sdkMocks = vi.hoisted(() => ({
   getCampaignStatus: vi.fn(),
   fetchMyLeaves: vi.fn(),
   cancelPledge: vi.fn(),
+  claim: vi.fn(),
   refund: vi.fn(),
 }))
 const closeMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -53,6 +54,7 @@ beforeEach(() => {
   sdkMocks.getCampaignStatus.mockReturnValue('failed')
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
   sdkMocks.cancelPledge.mockResolvedValue(undefined)
+  sdkMocks.claim.mockResolvedValue(undefined)
   sdkMocks.refund.mockResolvedValue(undefined)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
@@ -219,6 +221,76 @@ describe('runCancel', () => {
   it('requires an app id', async () => {
     await expect(runCancel({ command: 'cancel', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
       'cancel requires exactly one app id',
+    )
+  })
+})
+
+describe('runClaim', () => {
+  function claimOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'claim', ...overrides })
+  }
+
+  beforeEach(() => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 10_000_000n })
+  })
+
+  it('claims a successful campaign for its creator and closes the session', async () => {
+    expect(await runClaim(claimOptions())).toBe(0)
+
+    expect(sdkMocks.claim).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.log).toHaveBeenCalledWith('Claimed campaign 1; the vault paid its live total to BACKER.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('prints the plan in a dry run without submitting', async () => {
+    expect(await runClaim(claimOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.claim).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would claim campaign 1 as BACKER.')
+    expect(console.log).toHaveBeenCalledWith('Dry run: nothing submitted.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('rejects an open campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+
+    await expect(runClaim(claimOptions())).rejects.toThrow('Campaign 1 is still open; claim opens after its deadline')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a failed campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+
+    await expect(runClaim(claimOptions())).rejects.toThrow('Campaign 1 failed; there is nothing to claim')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an already-claimed campaign before opening the wallet', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', status: 'claimed' })
+
+    await expect(runClaim(claimOptions())).rejects.toThrow('Campaign 1 was already claimed')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a wallet that did not create the campaign', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'CREATOR' })
+
+    await expect(runClaim(claimOptions())).rejects.toThrow('Campaign 1 was created by CREATOR; only the creator can claim')
+    expect(sdkMocks.claim).not.toHaveBeenCalled()
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('closes the session when the claim fails', async () => {
+    sdkMocks.claim.mockRejectedValue(new Error('rejected'))
+
+    await expect(runClaim(claimOptions())).rejects.toThrow('rejected')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runClaim({ command: 'claim', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'claim requires exactly one app id',
     )
   })
 })
