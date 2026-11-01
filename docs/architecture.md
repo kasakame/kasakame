@@ -75,7 +75,7 @@ The Factory plus the indexer already cover discovery (which campaigns exist) and
 | Reads | `algosdk.Indexer` for app state, boxes, and transaction history |
 | Frontend tests | Vitest + Testing Library, 100% gate on components and utils |
 | Contract tests | Offline AVM emulation plus LocalNet integration (see [`testing.md`](testing.md)) |
-| CI | One `build-and-test` workflow plus a separate `markdown-lint` workflow (see [`ci.md`](ci.md)) |
+| CI | One `build-and-test` workflow with per-change lanes (contracts, SDK, frontend, CLI, backend, shell, Markdown) plus the manual release workflows (see [`ci.md`](ci.md)) |
 
 ## Constraints
 

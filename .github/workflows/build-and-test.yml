@@ -26,6 +26,7 @@ jobs:
       ci: ${{ steps.filter.outputs.ci }}
       config: ${{ steps.filter.outputs.config }}
       oracle: ${{ steps.filter.outputs.oracle }}
+      markdown: ${{ steps.filter.outputs.markdown }}
       shell: ${{ steps.filter.outputs.shell }}
       shared: ${{ steps.filter.outputs.shared }}
       local_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
@@ -71,6 +72,9 @@ jobs:
               - '.prettierrc.json'
             oracle:
               - 'docs/claim-tree-protocol-reference.py'
+            markdown:
+              - '**/*.md'
+              - '.markdownlint-cli2.jsonc'
             shell:
               - '**/*.sh'
               - '**/*.bash'
@@ -127,6 +131,19 @@ jobs:
         run: |
           shellcheck --version
           git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck
+
+  # In this workflow so `gate` can require it; a filtered workflow never reports.
+  markdown-lint:
+    name: Lint markdown
+    needs: changes
+    if: needs.changes.outputs.markdown == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Run markdownlint
+        run: npx --yes markdownlint-cli2@0.23.2
 
   # Compile the contracts once, only when the contracts changed. The artifact
   # feeds `build-sdk`, the SDK lanes, and `integration-test`.
@@ -623,6 +640,7 @@ jobs:
       - changes
       - actionlint
       - shellcheck
+      - markdown-lint
       - build-contracts
       - build-sdk
       - lint-contracts

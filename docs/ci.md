@@ -1,9 +1,9 @@
 # CI
 
 This page describes the GitHub Actions setup: a consolidated
-[`build-and-test`](.github/workflows/build-and-test.yml) workflow,
-a separate [`markdown-lint`](.github/workflows/markdown-lint.yml), and the
-manual [`release-specs`](.github/workflows/release-specs.yml),
+[`build-and-test`](.github/workflows/build-and-test.yml) workflow that includes
+the Markdown lint, and the manual
+[`release-specs`](.github/workflows/release-specs.yml),
 [`release-sdk`](.github/workflows/release-sdk.yml), and
 [`release-cli`](.github/workflows/release-cli.yml) releases - plus the
 reasoning behind the splits.
@@ -29,14 +29,13 @@ reasoning behind the splits.
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. Each filter is a lane input: contracts,
   SDK, frontend, CLI, backend, `ci` (workflows/scripts), `config` (formatting),
-  and `oracle` (the contract test oracle; also the SDK vector source). Unknown
-  root paths land in `shared`, which fails open to the app lanes but never sets
-  `contracts`: `build-contracts` and `integration-test` run only when the
-  contracts changed, and the contract suite runs only for the contracts or the
-  oracle. Markdown,
-  docs images, licenses, and inert root files run no code lane (the separate
-  markdown workflow owns Markdown). Separate jobs (no matrix) keep the
-  conditional presence and the status-check names stable.
+  `oracle` (the contract test oracle; also the SDK vector source), and
+  `markdown`. Unknown root paths land in `shared`, which fails open to the app
+  lanes but never sets `contracts`: `build-contracts` and `integration-test`
+  run only when the contracts changed, and the contract suite runs only for the
+  contracts or the oracle. Markdown files run only the Markdown lint job; docs
+  images, licenses, and inert root files run no lane. Separate jobs (no matrix)
+  keep the conditional presence and the status-check names stable.
 - **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
   CLI-only, or shared-only change installs the published `@kasakame/sdk`, so
   routine work exercises what users install; an SDK or contracts change
@@ -51,7 +50,7 @@ reasoning behind the splits.
   runner's preinstalled ShellCheck over every tracked `.sh`/`.bash` file.
   Workflow `run:` blocks are covered separately: actionlint runs its bundled
   ShellCheck on them.
-- **Run once per change.** Both workflows trigger on `pull_request` (any branch)
+- **Run once per change.** The workflow triggers on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
   `push` and `pull_request` events and run everything twice. Superseded PR runs
   are cancelled; `main` runs finish. Every `build-and-test` job has a
@@ -64,6 +63,7 @@ flowchart TD
     changes["changes<br/>(changed paths)"]
     actionlint["actionlint<br/>(ci changed)"]
     shellcheck["shellcheck<br/>(shell changed)"]
+    markdown["markdown-lint<br/>(markdown changed)"]
     buildc["build-contracts<br/>(contracts only)"]
     buildsdk["build-sdk<br/>(SDK or contracts)"]
     contracts["lint-contracts / test-contracts"]
@@ -77,6 +77,7 @@ flowchart TD
 
     changes --> actionlint
     changes --> shellcheck
+    changes --> markdown
     changes --> buildc
     changes --> contracts
     changes --> sdk
@@ -94,6 +95,7 @@ flowchart TD
     changes --> gate
     actionlint --> gate
     shellcheck --> gate
+    markdown --> gate
     buildc --> gate
     buildsdk --> gate
     contracts --> gate
@@ -112,6 +114,7 @@ flowchart TD
 | `changes` | always | - | - | - | - |
 | `actionlint` | `ci` changed | - | - | ✅ (actionlint image) | - |
 | `shellcheck` | `shell` changed | - | - | - | - |
+| `markdown-lint` | markdown or its config changed | ✅ | - | - | - |
 | `build-contracts` | contracts changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
 | `build-sdk` | SDK or contracts changed | ✅ | - | - | `contracts-artifacts` (contracts-changed runs); produces `sdk-dist` |
 | `lint-contracts` | contracts or `config` changed | ✅ | - | - | - |
@@ -125,7 +128,6 @@ flowchart TD
 | `backend` | backend, `shared`, or `config` changed | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | contracts changed | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
 | `gate` | always | ✅ (runner only) | - | - | - |
-| `markdown-lint` (own workflow) | markdown or its config changed | ✅ | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
 | `release-cli` (own workflow) | manual | ✅ | - | - | - |
@@ -186,12 +188,12 @@ choice.
 
 ## Workflow: build-and-test
 
-Implemented at `.github/workflows/build-and-test.yml`. Sixteen jobs. `changes`
+Implemented at `.github/workflows/build-and-test.yml`. Seventeen jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
-on the branch (`github.ref` as the base on pushes). Markdown, licenses, and
-`.markdownlint-cli2.jsonc` are excluded from every filter. It exposes eleven
-outputs:
+on the branch (`github.ref` as the base on pushes). Licenses are excluded from
+every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
+`markdown`. It exposes twelve outputs:
 
 - `contracts`, `sdk`, `frontend`, `cli`, `backend` - the project path itself, no
   folding. A contracts change does not set `sdk`, `frontend`, or `cli`; the lane
@@ -200,12 +202,14 @@ outputs:
 - `config` - `.prettierrc.json`; format/lint-only changes.
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle.
+- `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
 - `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
 - `shared` - any other non-inert path outside the five projects (root config, a
   new project). It fails open to the app lanes but never sets `contracts`:
   `build-contracts` and `integration-test` run only when the contracts changed,
   and the contract suite runs only for the contracts or the oracle. Markdown,
-  shell scripts, docs images, licenses, and inert root files are excluded.
+  shell scripts, docs images, licenses, and inert root files are excluded from
+  it.
 - `local_sdk` - `contracts || sdk`: the frontend and CLI lanes download
   `sdk-dist` and install the local SDK; otherwise they use the published
   package.
@@ -219,6 +223,10 @@ outputs:
   ShellCheck (no install step) to lint every tracked `.sh`/`.bash` file via
   `git ls-files`. Standalone scripts only - workflow `run:` blocks belong to
   actionlint above.
+- **`markdown-lint`** - runs when `markdown` is true. Runs
+  `npx --yes markdownlint-cli2@0.23.2` over every `*.md` file. It lives in this
+  workflow so `gate` can require it: a paths-filtered workflow never reports on
+  PRs without Markdown changes, which leaves its check "Expected".
 - **`build-contracts`** - runs when `contracts` is true. Installs Node + AlgoKit,
   compiles the contracts (`npm run build` → TEAL + ARC-56 specs and generated
   clients), and uploads `contracts-artifacts` with `overwrite: true` and 7-day
@@ -268,21 +276,6 @@ outputs:
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
-
-## Workflow: markdown-lint (separate file)
-
-Implemented at `.github/workflows/markdown-lint.yml`. Markdown linting keeps its
-**own workflow file**, because triggers live at the workflow level - a job
-cannot have a different trigger than its workflow - and its `paths:` filter
-(markdown files and `.markdownlint-cli2.jsonc`) is independent of the code
-change detection. A markdown-only change therefore runs only this workflow and,
-in `build-and-test`, `changes` + `gate` (every code lane skips); a mixed change
-runs both.
-
-The catch: a `paths`-filtered workflow cannot be a required status check,
-because it never reports on PRs that touch no markdown, leaving the check
-"Expected". It stays advisory unless it is folded into `Gate` as an always-run
-job. The lint command checks all `*.md` files.
 
 ## Workflow: release-specs (separate file)
 
