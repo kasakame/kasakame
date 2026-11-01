@@ -219,7 +219,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         `campaigns` lists campaigns the address created, with `claim` or `delete`
         when the contract allows. Accept `--address` for a wallet address without
         a signer, so nobody needs an app id to start.
-  - [ ] Polish command output: announce each wallet approval ("waiting for
+  - [x] Polish command output: announce each wallet approval ("waiting for
         approval"), print one clear success line per completed action, and turn
         every rejection into a message that names the next step (`pledges`,
         `campaigns`, or the right command). Keep `--dry-run` explicit that nothing

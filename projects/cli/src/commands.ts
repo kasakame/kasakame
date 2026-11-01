@@ -30,7 +30,7 @@ import { whoami } from './walletconnect.js'
  */
 export async function runRefund(options: CliOptions): Promise<number> {
   const appId = requireAppId(options, 'refund')
-  const status = await campaignStatus(appId)
+  const status = await campaignStatus(appId, options.network)
   if (status === 'open') {
     throw new Error(`Campaign ${appId.toString()} is still open; use \`kasakame cancel\` before the deadline`)
   }
@@ -52,7 +52,7 @@ export async function runRefund(options: CliOptions): Promise<number> {
  */
 export async function runCancel(options: CliOptions): Promise<number> {
   const appId = requireAppId(options, 'cancel')
-  const status = await campaignStatus(appId)
+  const status = await campaignStatus(appId, options.network)
   if (status === 'failed') {
     throw new Error(`Campaign ${appId.toString()} already failed; use \`kasakame refund\` instead`)
   }
@@ -74,7 +74,7 @@ export async function runCancel(options: CliOptions): Promise<number> {
  */
 export async function runClaim(options: CliOptions): Promise<number> {
   const appId = requireAppId(options, 'claim')
-  const header = await campaignHeader(appId)
+  const header = await campaignHeader(appId, options.network)
   const status = getCampaignStatus(header, await fetchChainTimestamp())
   if (status === 'open') {
     throw new Error(`Campaign ${appId.toString()} is still open; claim opens after its deadline`)
@@ -97,6 +97,7 @@ export async function runClaim(options: CliOptions): Promise<number> {
       return 0
     }
 
+    announceSubmit(options)
     await claim(appId, session.wallet)
     console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
     return 0
@@ -116,7 +117,7 @@ export async function runClaim(options: CliOptions): Promise<number> {
  */
 export async function runDelete(options: CliOptions): Promise<number> {
   const appId = requireAppId(options, 'delete')
-  const header = await campaignHeader(appId)
+  const header = await campaignHeader(appId, options.network)
   if (header.deleted) {
     throw new Error(`Campaign ${appId.toString()} was already deleted`)
   }
@@ -139,6 +140,7 @@ export async function runDelete(options: CliOptions): Promise<number> {
       return 0
     }
 
+    announceSubmit(options)
     await deleteCampaign(appId, session.wallet)
     console.log(`Deleted campaign ${appId.toString()}.`)
     if (status === 'failed' && header.raisedMicroAlgos > 0n) {
@@ -161,20 +163,30 @@ export async function runDelete(options: CliOptions): Promise<number> {
  */
 export async function runPledges(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
-  const entries = await listCampaignEntries()
+  progress(`Searching ${options.network} for live pledges to ${address}…`)
+
+  let rows: string[]
+  try {
+    rows = await pledgeRows(await listCampaignEntries(), address)
+  } catch (error) {
+    throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
+  }
+
+  printRows(`Live pledges for ${address} on ${options.network}`, `No live pledges for ${address} on ${options.network}.`, rows)
+  return 0
+}
+
+async function pledgeRows(entries: CampaignEntry[], address: string): Promise<string[]> {
   const rows: string[] = []
   for (const { header, status } of entries) {
     const leaves = await fetchMyLeaves(header.id, address)
     if (leaves.length === 0) continue
     const total = leaves.reduce((sum, leaf) => sum + leaf.amount, 0n)
-    const next = pledgeAction(header, status)
     rows.push(
-      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}, pledged ${formatAlgo(total)} ALGO, next: ${next ?? 'none'}`,
+      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}, pledged ${formatAlgo(total)} ALGO, ${pledgeSuffix(header, status)}`,
     )
   }
-
-  printRows(`Live pledges for ${address} on ${options.network}`, `No live pledges for ${address} on ${options.network}.`, rows)
-  return 0
+  return rows
 }
 
 /**
@@ -187,13 +199,19 @@ export async function runPledges(options: CliOptions): Promise<number> {
  */
 export async function runCampaigns(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
-  const entries = await listCampaignEntries()
-  const rows = entries
-    .filter(({ header }) => header.creator === address)
-    .map(({ header, status }) => {
-      const next = campaignAction(header, status)
-      return `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, raised ${formatAlgo(header.raisedMicroAlgos)} of ${formatAlgo(header.goalMicroAlgos)} ALGO, deadline ${formatDeadline(header.deadlineSeconds)}, next: ${next ?? 'none'}`
-    })
+  progress(`Searching ${options.network} for campaigns created by ${address}…`)
+
+  let rows: string[]
+  try {
+    rows = (await listCampaignEntries())
+      .filter(({ header }) => header.creator === address)
+      .map(
+        ({ header, status }) =>
+          `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, raised ${formatAlgo(header.raisedMicroAlgos)} of ${formatAlgo(header.goalMicroAlgos)} ALGO, deadline ${formatDeadline(header.deadlineSeconds)}, ${campaignSuffix(header, status)}`,
+      )
+  } catch (error) {
+    throw new Error(`Could not read campaigns from the indexer: ${messageOf(error)}`)
+  }
 
   printRows(`Campaigns created by ${address} on ${options.network}`, `No campaigns created by ${address} on ${options.network}.`, rows)
   return 0
@@ -225,7 +243,13 @@ async function listCampaignEntries(): Promise<CampaignEntry[]> {
   const nowSeconds = await fetchChainTimestamp()
   const entries: CampaignEntry[] = []
   for (const appId of await enumerateCampaigns()) {
-    const header = await fetchCampaignHeader(appId)
+    let header: CampaignHeader | undefined
+    try {
+      header = await fetchCampaignHeader(appId)
+    } catch (error) {
+      if (!isNotFound(error)) throw error
+      continue
+    }
     if (header !== undefined) {
       entries.push({ header, status: getCampaignStatus(header, nowSeconds) })
     }
@@ -233,19 +257,19 @@ async function listCampaignEntries(): Promise<CampaignEntry[]> {
   return entries.sort((a, b) => Number(a.header.id - b.header.id))
 }
 
-function pledgeAction(header: CampaignHeader, status: CampaignStatus): string | undefined {
-  if (status === 'successful') return undefined
+function pledgeSuffix(header: CampaignHeader, status: CampaignStatus): string {
+  if (status === 'successful') return 'no action available'
   if (header.deleted) {
-    return status === 'open' ? 'none (refund window closed)' : 'refund'
+    return status === 'open' ? 'no action available (refund window closed)' : 'you can: refund'
   }
-  return status === 'open' ? 'cancel' : 'refund'
+  return status === 'open' ? 'you can: cancel' : 'you can: refund'
 }
 
-function campaignAction(header: CampaignHeader, status: CampaignStatus): string | undefined {
-  if (header.deleted) return undefined
-  if (header.status === 'claimed' || status === 'failed') return 'delete'
-  if (status === 'successful') return 'claim'
-  return header.raisedMicroAlgos === 0n ? 'delete' : undefined
+function campaignSuffix(header: CampaignHeader, status: CampaignStatus): string {
+  if (header.deleted) return 'no action available'
+  if (header.status === 'claimed' || status === 'failed') return 'you can: delete'
+  if (status === 'successful') return 'you can: claim'
+  return header.raisedMicroAlgos === 0n ? 'you can: delete' : 'no action available'
 }
 
 function describeStatus(header: CampaignHeader, status: CampaignStatus): string {
@@ -266,6 +290,22 @@ function formatDeadline(seconds: bigint): string {
   return new Date(Number(seconds) * 1000).toISOString()
 }
 
+function progress(message: string): void {
+  console.error(message)
+}
+
+function announceSubmit(options: CliOptions): void {
+  progress(options.signer === 'wallet' ? 'Waiting for wallet approval…' : 'Submitting…')
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function isNotFound(error: unknown): boolean {
+  return /404|no application found/i.test(messageOf(error))
+}
+
 function requireAppId(options: CliOptions, command: string): bigint {
   const appId = options.appId
   if (appId === undefined) {
@@ -274,16 +314,21 @@ function requireAppId(options: CliOptions, command: string): bigint {
   return appId
 }
 
-async function campaignHeader(appId: bigint): Promise<CampaignHeader> {
-  const header = await fetchCampaignHeader(appId)
+async function campaignHeader(appId: bigint, network: string): Promise<CampaignHeader> {
+  let header: CampaignHeader | undefined
+  try {
+    header = await fetchCampaignHeader(appId)
+  } catch (error) {
+    if (!isNotFound(error)) throw error
+  }
   if (header === undefined) {
-    throw new Error(`Campaign ${appId.toString()} not found`)
+    throw new Error(`Campaign ${appId.toString()} not found on ${network}`)
   }
   return header
 }
 
-async function campaignStatus(appId: bigint): Promise<CampaignStatus> {
-  return getCampaignStatus(await campaignHeader(appId), await fetchChainTimestamp())
+async function campaignStatus(appId: bigint, network: string): Promise<CampaignStatus> {
+  return getCampaignStatus(await campaignHeader(appId, network), await fetchChainTimestamp())
 }
 
 interface SpendLabel {
@@ -325,11 +370,12 @@ async function spendLeaves(
     let failed = 0
     for (const leaf of leaves) {
       try {
+        announceSubmit(options)
         await spend(session.wallet, leaf)
         console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
       } catch (error) {
         failed += 1
-        console.error(`Pledge #${String(leaf.position)} failed: ${error instanceof Error ? error.message : String(error)}`)
+        console.error(`Pledge #${String(leaf.position)} failed: ${messageOf(error)}`)
       }
     }
 

@@ -84,7 +84,13 @@ describe('runRefund', () => {
     expect(console.log).toHaveBeenCalledWith('Refunded pledge #0 (1.5 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Refunded pledge #1 (0.000001 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Refunded 2 pledges.')
+    expect(console.error).toHaveBeenCalledWith('Submitting…')
     expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('announces the wallet approval for the wallet signer', async () => {
+    expect(await runRefund(options({ signer: 'wallet' }))).toBe(0)
+    expect(console.error).toHaveBeenCalledWith('Waiting for wallet approval…')
   })
 
   it('prints planned refunds in a dry run without submitting', async () => {
@@ -154,6 +160,21 @@ describe('runRefund', () => {
     expect(openCliSessionMock).not.toHaveBeenCalled()
   })
 
+  it('turns a missing campaign into a clear error', async () => {
+    sdkMocks.fetchCampaignHeader.mockRejectedValue(
+      new Error('Network request error. Received status 404 (Not Found): no application found for application-id: 999999999'),
+    )
+
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 not found on testnet')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps unexpected indexer errors', async () => {
+    sdkMocks.fetchCampaignHeader.mockRejectedValue(new Error('indexer down'))
+
+    await expect(runRefund(options())).rejects.toThrow('indexer down')
+  })
+
   it('requires an app id', async () => {
     await expect(runRefund({ command: 'refund', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
       'refund requires exactly one app id',
@@ -179,6 +200,7 @@ describe('runCancel', () => {
     expect(sdkMocks.cancelPledge).toHaveBeenNthCalledWith(2, 1n, WALLET, leaf(1, 1n))
     expect(console.log).toHaveBeenCalledWith('Cancelled pledge #0 (1.5 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Cancelled 2 pledges.')
+    expect(console.error).toHaveBeenCalledWith('Submitting…')
     expect(closeMock).toHaveBeenCalled()
   })
 
@@ -248,6 +270,7 @@ describe('runClaim', () => {
 
     expect(sdkMocks.claim).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Claimed campaign 1; the vault paid its live total to BACKER.')
+    expect(console.error).toHaveBeenCalledWith('Submitting…')
     expect(closeMock).toHaveBeenCalled()
   })
 
@@ -319,6 +342,7 @@ describe('runDelete', () => {
     expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Deleted campaign 1.')
     expect(console.log).toHaveBeenCalledWith("The campaign's schema MBR and any Factory registration deposit are back in your account.")
+    expect(console.error).toHaveBeenCalledWith('Submitting…')
     expect(console.log).not.toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
     expect(closeMock).toHaveBeenCalled()
   })
@@ -422,8 +446,9 @@ describe('runPledges', () => {
   it('lists a live pledge with the cancel action', async () => {
     expect(await runPledges(pledgeOptions())).toBe(0)
 
+    expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges to BACKER…')
     expect(console.log).toHaveBeenCalledWith('Live pledges for BACKER on testnet:')
-    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z, pledged 1.5 ALGO, next: cancel')
+    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z, pledged 1.5 ALGO, you can: cancel')
   })
 
   it('lists a failed pledge with the refund action', async () => {
@@ -431,7 +456,7 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: refund'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: refund'))
   })
 
   it('lists a successful pledge with nothing to do', async () => {
@@ -439,7 +464,7 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: none'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('no action available'))
   })
 
   it('keeps a deleted pledge visible with the refund window closed', async () => {
@@ -448,7 +473,7 @@ describe('runPledges', () => {
     expect(await runPledges(pledgeOptions())).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining('open, deleted'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: none (refund window closed)'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('no action available (refund window closed)'))
   })
 
   it('keeps a deleted pledge refundable while its box is open', async () => {
@@ -458,7 +483,7 @@ describe('runPledges', () => {
     expect(await runPledges(pledgeOptions())).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining('failed, deleted'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: refund'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: refund'))
   })
 
   it('reports no live pledges', async () => {
@@ -497,6 +522,12 @@ describe('runPledges', () => {
       'No active wallet session. Run `kasakame login` first, or pass --address',
     )
   })
+
+  it('wraps indexer failures', async () => {
+    sdkMocks.enumerateCampaigns.mockRejectedValue(new Error('indexer down'))
+
+    await expect(runPledges(pledgeOptions())).rejects.toThrow('Could not read pledges from the indexer: indexer down')
+  })
 })
 
 describe('runCampaigns', () => {
@@ -533,16 +564,19 @@ describe('runCampaigns', () => {
 
     expect(await runCampaigns(campaignOptions())).toBe(0)
 
+    expect(console.error).toHaveBeenCalledWith('Searching testnet for campaigns created by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
     expect(console.log).toHaveBeenCalledWith(
-      '#1 "Claimed" successful (claimed), raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete',
+      '#1 "Claimed" successful (claimed), raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete',
     )
-    expect(console.log).toHaveBeenCalledWith('#2 "Funded" successful, raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: claim')
-    expect(console.log).toHaveBeenCalledWith('#3 "Failed" failed, raised 2 of 5 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete')
-    expect(console.log).toHaveBeenCalledWith('#4 "Empty" open, raised 0 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete')
-    expect(console.log).toHaveBeenCalledWith('#5 "Live" open, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: none')
     expect(console.log).toHaveBeenCalledWith(
-      '#6 "Gone" failed, deleted, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: none',
+      '#2 "Funded" successful, raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: claim',
+    )
+    expect(console.log).toHaveBeenCalledWith('#3 "Failed" failed, raised 2 of 5 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete')
+    expect(console.log).toHaveBeenCalledWith('#4 "Empty" open, raised 0 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete')
+    expect(console.log).toHaveBeenCalledWith('#5 "Live" open, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, no action available')
+    expect(console.log).toHaveBeenCalledWith(
+      '#6 "Gone" failed, deleted, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, no action available',
     )
     expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('"Other"'))
   })
@@ -556,15 +590,23 @@ describe('runCampaigns', () => {
   })
 
   it('skips ids the indexer does not know', async () => {
-    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n, 2n]))
-    sdkMocks.fetchCampaignHeader.mockImplementation((id: bigint) =>
-      id === 1n ? header({ creator: 'BACKER', raisedMicroAlgos: 0n }) : undefined,
-    )
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n, 2n, 3n]))
+    sdkMocks.fetchCampaignHeader.mockImplementation((id: bigint) => {
+      if (id === 1n) return header({ creator: 'BACKER', raisedMicroAlgos: 0n })
+      if (id === 2n) return undefined
+      throw new Error('no application found for application-id: 3')
+    })
     sdkMocks.getCampaignStatus.mockReturnValue('open')
 
     expect(await runCampaigns(campaignOptions())).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: delete'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: delete'))
+  })
+
+  it('wraps indexer failures', async () => {
+    sdkMocks.fetchCampaignHeader.mockRejectedValue(new Error('indexer down'))
+
+    await expect(runCampaigns(campaignOptions())).rejects.toThrow('Could not read campaigns from the indexer: indexer down')
   })
 })

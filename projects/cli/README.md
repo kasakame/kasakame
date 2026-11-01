@@ -18,12 +18,13 @@ node dist/index.js pledges --address <address>
 ```
 
 `pledges` lists every campaign where your address still holds a live pledge,
-with the status, deadline, amount, and the action to take: `cancel` while the
-campaign is open, `refund` once it failed, or none when it succeeded or the
+with the status, deadline, amount, and what you can do: `cancel` while the
+campaign is open, `refund` once it failed, or no action when it succeeded or the
 refund window closed. `campaigns` lists the campaigns you created, with `claim`
 or `delete` when the contract allows it.
 
-Both commands are read-only. They use the connected wallet session, the mnemonic
+Both commands are read-only. They print a search line while they scan the
+indexer, then the results. They use the connected wallet session, the mnemonic
 signer, or `--address`, and never open a signing prompt. On LocalNet and custom
 networks, pass `--vault` and `--factory` so discovery can find the campaigns.
 
