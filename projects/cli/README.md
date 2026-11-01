@@ -4,7 +4,7 @@ Escape-hatch CLI for kasakame: refund, cancel, and claim pledges by app ID,
 using a wallet app or a local Algo25 mnemonic. Public algod + indexer only; no
 backend.
 
-Status: wallet session commands (`login`, `whoami`, `logout`) are implemented;
+Status: wallet sessions and the WalletConnect signer are in place;
 refund/cancel/claim land next. See the [CLI roadmap](../../docs/roadmap.md#cli).
 
 ## Wallet session

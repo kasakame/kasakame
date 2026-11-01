@@ -1,7 +1,8 @@
+import type { WalletSession } from '@kasakame/sdk'
 import { KeyValueStorage } from '@walletconnect/keyvaluestorage'
 import { SignClient } from '@walletconnect/sign-client'
 import type { SessionTypes } from '@walletconnect/types'
-import { isValidAddress } from 'algosdk'
+import { isValidAddress, type Transaction, type TransactionSigner } from 'algosdk'
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -36,6 +37,12 @@ export interface WalletSessionInfo {
 export interface LoginResult {
   session: WalletSessionInfo
   reused: boolean
+}
+
+export interface WalletConnection {
+  info: WalletSessionInfo
+  wallet: WalletSession
+  close: () => Promise<void>
 }
 
 /**
@@ -138,6 +145,55 @@ function resolveOptions(options: WalletConnectOptions): { projectId: string; cha
     projectId: options.projectId ?? resolveProjectId(),
     chainId: options.chainId ?? TESTNET_CHAIN_ID,
     storagePath: options.storagePath ?? defaultSessionStoragePath(),
+  }
+}
+
+function createSigner(client: InstanceType<typeof SignClient>, session: SessionTypes.Struct, info: WalletSessionInfo): TransactionSigner {
+  return async (txnGroup: Transaction[], indexesToSign: number[]): Promise<Uint8Array[]> => {
+    const toSign = new Set(indexesToSign)
+    const walletTxns = txnGroup.map((txn, index) => {
+      const encoded = Buffer.from(txn.toByte()).toString('base64')
+      return toSign.has(index) && txn.sender.toString() === info.address ? { txn: encoded } : { txn: encoded, signers: [] }
+    })
+
+    const result = await client.request<(string | null)[]>({
+      topic: session.topic,
+      chainId: info.chainId,
+      request: { method: 'algo_signTxn', params: [walletTxns] },
+    })
+
+    const signed = result.filter((value): value is string => value !== null).map((value) => new Uint8Array(Buffer.from(value, 'base64')))
+    if (signed.length !== toSign.size) {
+      throw new Error(`Wallet returned ${String(signed.length)} signatures for ${String(toSign.size)} transactions`)
+    }
+    return signed
+  }
+}
+
+/**
+ * Open the stored wallet session as the SDK's `WalletSession`.
+ *
+ * @param options Overrides for the project ID, chain, and session storage.
+ * @returns The session details, SDK wallet session, and a close function.
+ */
+export async function openWalletConnection(options: WalletConnectOptions = {}): Promise<WalletConnection> {
+  const { projectId, chainId, storagePath } = resolveOptions(options)
+  const client = await createClient(projectId, storagePath)
+  try {
+    const session = selectSession(client.session.getAll(), chainId)
+    if (session === undefined) {
+      throw new Error('No active wallet session. Run `kasakame login` first.')
+    }
+
+    const info = describeSession(session)
+    return {
+      info,
+      wallet: { address: info.address, signer: createSigner(client, session, info) },
+      close: () => closeClient(client),
+    }
+  } catch (error) {
+    await closeClient(client)
+    throw error
   }
 }
 

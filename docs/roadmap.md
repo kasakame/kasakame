@@ -173,7 +173,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         wallet approval), `whoami`, `logout`; file-backed session store under
         `~/.kasakame/walletconnect/`, expiry/restore handling, and a clear "run
         login" error when no session matches the network.
-  - [ ] WalletConnect signer: wrap `algo_signTxn` (ARC-1 transaction objects,
+  - [x] WalletConnect signer: wrap `algo_signTxn` (ARC-1 transaction objects,
         base64, `signers: []` for group members the wallet does not sign) as the
         standard `TransactionSigner` the SDK already accepts. No SDK or command
         changes; one wallet approval per transaction group.

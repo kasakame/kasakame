@@ -1,5 +1,11 @@
 import type { SessionTypes } from '@walletconnect/types'
-import { encodeAddress } from 'algosdk'
+import {
+  generateAccount,
+  makeBasicAccountTransactionSigner,
+  makePaymentTxnWithSuggestedParamsFromObject,
+  signTransactionWithSigner,
+  type Transaction,
+} from 'algosdk'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +17,7 @@ import {
   describeSession,
   login,
   logout,
+  openWalletConnection,
   resolveProjectId,
   selectSession,
   validateProjectId,
@@ -31,7 +38,10 @@ vi.mock('qrcode-terminal', () => ({
   default: { generate: qrGenerate },
 }))
 
-const ADDRESS = encodeAddress(new Uint8Array(32).fill(1))
+const ACCOUNT = generateAccount()
+const OTHER_ACCOUNT = generateAccount()
+const ADDRESS = ACCOUNT.addr.toString()
+const OTHER_ADDRESS = OTHER_ACCOUNT.addr.toString()
 const METADATA = {
   name: 'Pera Wallet',
   description: 'Pera Wallet',
@@ -71,8 +81,26 @@ function fakeClient(sessions: SessionTypes.Struct[] = []) {
     },
     connect: vi.fn(),
     disconnect: vi.fn(async () => {}),
+    request: vi.fn(),
     core: { relayer: { transportClose: vi.fn(async () => {}) } },
   }
+}
+
+function makeTxn(sender: string = ADDRESS): Transaction {
+  return makePaymentTxnWithSuggestedParamsFromObject({
+    sender,
+    receiver: ADDRESS,
+    amount: 0,
+    suggestedParams: {
+      fee: 0,
+      minFee: 1000,
+      flatFee: true,
+      firstValid: 1,
+      lastValid: 1000,
+      genesisHash: new Uint8Array(32),
+      genesisID: 'testnet-v1.0',
+    },
+  })
 }
 
 beforeEach(() => {
@@ -328,5 +356,73 @@ describe('logout', () => {
 
     expect(await logout({ storagePath: '/tmp/opencode/kasakame-cli-test' })).toBe(true)
     expect(client.session.delete).toHaveBeenCalledWith(session.topic, { code: 6000, message: 'User disconnected' })
+  })
+})
+
+describe('openWalletConnection', () => {
+  it('fails without a session and closes the client', async () => {
+    const client = fakeClient()
+    signClientInit.mockResolvedValue(client)
+
+    await expect(openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })).rejects.toThrow('No active wallet session')
+    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+  })
+
+  it('returns a signer that sends algo_signTxn', async () => {
+    const client = fakeClient([makeSession()])
+    const txn = makeTxn()
+    const otherTxn = makeTxn(OTHER_ADDRESS)
+    const signed = (await signTransactionWithSigner(txn, makeBasicAccountTransactionSigner(ACCOUNT))).blob
+    client.request.mockResolvedValue([Buffer.from(signed).toString('base64'), null])
+    signClientInit.mockResolvedValue(client)
+
+    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+
+    expect(connection.info.address).toBe(ADDRESS)
+    expect(connection.wallet.address).toBe(ADDRESS)
+    await expect(connection.wallet.signer([txn, otherTxn], [0])).resolves.toEqual([signed])
+    expect(client.request).toHaveBeenCalledWith({
+      topic: 'topic-1',
+      chainId: TESTNET_CHAIN_ID,
+      request: {
+        method: 'algo_signTxn',
+        params: [
+          [{ txn: Buffer.from(txn.toByte()).toString('base64') }, { txn: Buffer.from(otherTxn.toByte()).toString('base64'), signers: [] }],
+        ],
+      },
+    })
+
+    await connection.close()
+    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+  })
+
+  it('propagates a wallet rejection', async () => {
+    const client = fakeClient([makeSession()])
+    client.request.mockRejectedValue(new Error('Request rejected by user'))
+    signClientInit.mockResolvedValue(client)
+
+    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+
+    await expect(connection.wallet.signer([makeTxn()], [0])).rejects.toThrow('Request rejected by user')
+  })
+
+  it('fails when the wallet returns no signatures', async () => {
+    const client = fakeClient([makeSession()])
+    client.request.mockResolvedValue([null])
+    signClientInit.mockResolvedValue(client)
+
+    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+
+    await expect(connection.wallet.signer([makeTxn()], [0])).rejects.toThrow('returned 0 signatures for 1 transactions')
+  })
+
+  it('does not sign transactions from another sender', async () => {
+    const client = fakeClient([makeSession()])
+    client.request.mockResolvedValue([null])
+    signClientInit.mockResolvedValue(client)
+
+    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+
+    await expect(connection.wallet.signer([makeTxn(OTHER_ADDRESS)], [0])).rejects.toThrow('returned 0 signatures for 1 transactions')
   })
 })
