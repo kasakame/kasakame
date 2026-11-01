@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runCancel, runClaim, runRefund } from './commands.js'
+import { runCancel, runClaim, runDelete, runRefund } from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
   fetchCampaignHeader: vi.fn(),
@@ -9,6 +9,7 @@ const sdkMocks = vi.hoisted(() => ({
   fetchMyLeaves: vi.fn(),
   cancelPledge: vi.fn(),
   claim: vi.fn(),
+  deleteCampaign: vi.fn(),
   refund: vi.fn(),
 }))
 const closeMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -55,6 +56,7 @@ beforeEach(() => {
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
   sdkMocks.cancelPledge.mockResolvedValue(undefined)
   sdkMocks.claim.mockResolvedValue(undefined)
+  sdkMocks.deleteCampaign.mockResolvedValue(undefined)
   sdkMocks.refund.mockResolvedValue(undefined)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
@@ -291,6 +293,109 @@ describe('runClaim', () => {
   it('requires an app id', async () => {
     await expect(runClaim({ command: 'claim', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
       'claim requires exactly one app id',
+    )
+  })
+})
+
+describe('runDelete', () => {
+  function deleteOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'delete', ...overrides })
+  }
+
+  beforeEach(() => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', status: 'claimed' })
+  })
+
+  it('deletes a claimed campaign and closes the session', async () => {
+    expect(await runDelete(deleteOptions())).toBe(0)
+
+    expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.log).toHaveBeenCalledWith('Deleted campaign 1.')
+    expect(console.log).toHaveBeenCalledWith("The campaign's schema MBR and any Factory registration deposit are back in your account.")
+    expect(console.log).not.toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('deletes a failed campaign and notes that backers keep refunding', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 2_000_000n })
+
+    expect(await runDelete(deleteOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
+  })
+
+  it('deletes a failed campaign with nothing left to refund', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 0n })
+
+    expect(await runDelete(deleteOptions())).toBe(0)
+
+    expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.log).not.toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
+  })
+
+  it('deletes a pristine open campaign before its deadline', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 0n })
+
+    expect(await runDelete(deleteOptions())).toBe(0)
+    expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
+  })
+
+  it('prints the plan in a dry run without submitting', async () => {
+    expect(await runDelete(deleteOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.deleteCampaign).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would delete campaign 1 as BACKER.')
+    expect(console.log).toHaveBeenCalledWith('Dry run: nothing submitted.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('rejects an already-deleted campaign before opening the wallet', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', deleted: true })
+
+    await expect(runDelete(deleteOptions())).rejects.toThrow('Campaign 1 was already deleted')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a funded campaign that is not claimed yet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 10_000_000n })
+
+    await expect(runDelete(deleteOptions())).rejects.toThrow('Campaign 1 reached its goal; claim it before deleting')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an open campaign with live pledges', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'BACKER', raisedMicroAlgos: 2_000_000n })
+
+    await expect(runDelete(deleteOptions())).rejects.toThrow(
+      'Campaign 1 is still open with live pledges; cancel them or wait for the deadline',
+    )
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a wallet that did not create the campaign', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, creator: 'CREATOR', status: 'claimed' })
+
+    await expect(runDelete(deleteOptions())).rejects.toThrow('Campaign 1 was created by CREATOR; only the creator can delete it')
+    expect(sdkMocks.deleteCampaign).not.toHaveBeenCalled()
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('closes the session when the deletion fails', async () => {
+    sdkMocks.deleteCampaign.mockRejectedValue(new Error('rejected'))
+
+    await expect(runDelete(deleteOptions())).rejects.toThrow('rejected')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runDelete({ command: 'delete', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'delete requires exactly one app id',
     )
   })
 })

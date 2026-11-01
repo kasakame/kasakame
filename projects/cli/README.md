@@ -6,8 +6,8 @@ only; no backend.
 
 Backers cancel or refund pledges. Creators claim or delete campaigns.
 
-Status: `refund`, `cancel`, and `claim` are implemented; `delete` lands next.
-See the [CLI roadmap](../../docs/roadmap.md#cli).
+Status: `refund`, `cancel`, `claim`, and `delete` are implemented; discovery,
+CI, and release land next. See the [CLI roadmap](../../docs/roadmap.md#cli).
 
 ## Refund (backer)
 
@@ -46,6 +46,20 @@ node dist/index.js claim <appId> --dry-run
 deadline. Only the creator can claim, and only once. Open, failed, and
 already-claimed campaigns are rejected before anything is submitted. `--dry-run`
 prints the plan without submitting.
+
+## Delete (creator)
+
+```bash
+node dist/index.js delete <appId>
+node dist/index.js delete <appId> --dry-run
+```
+
+`delete` removes a campaign and returns its schema MBR and any Factory
+registration deposit to the creator. It rejects open campaigns that still hold
+live pledges, and funded campaigns that are not claimed yet; claim the funds
+before deleting. Deleting a failed campaign is safe: backers keep refunding from
+the vault until the refund window closes. `--dry-run` prints the plan without
+submitting.
 
 ## Wallet session
 

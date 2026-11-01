@@ -126,8 +126,20 @@ describe('parseCliOptions', () => {
     expect(() => parseCliOptions(['refund', '1', '--mnemonic-file', 'mnemonic.txt'])).toThrow('--mnemonic-file requires --signer mnemonic')
   })
 
+  it('accepts delete with dry-run', () => {
+    expect(parseCliOptions(['delete', '7', '--dry-run'])).toEqual({
+      command: 'delete',
+      appId: 7n,
+      network: 'testnet',
+      signer: 'wallet',
+      vaultAppId: 774437570n,
+      factoryAppId: 774437557n,
+      dryRun: true,
+    })
+  })
+
   it('rejects dry-run outside transaction commands', () => {
-    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with refund, cancel, or claim')
+    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with refund, cancel, claim, or delete')
   })
 
   it('requires exactly one app id for transaction commands', () => {

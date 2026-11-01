@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util'
 
-export type CommandName = 'login' | 'whoami' | 'logout' | 'refund' | 'cancel' | 'claim'
+export type CommandName = 'login' | 'whoami' | 'logout' | 'refund' | 'cancel' | 'claim' | 'delete'
 export type NetworkName = 'testnet' | 'localnet' | 'custom'
 export type SignerName = 'wallet' | 'mnemonic'
 
@@ -59,7 +59,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
 
   const dryRun = values['dry-run'] ?? false
   if (dryRun && !transaction) {
-    throw new Error('--dry-run is only valid with refund, cancel, or claim')
+    throw new Error('--dry-run is only valid with refund, cancel, claim, or delete')
   }
 
   let appId: bigint | undefined
@@ -99,11 +99,19 @@ export function parseCliOptions(argv: string[]): CliOptions {
 }
 
 function isCommand(value: string | undefined): value is CommandName {
-  return value === 'login' || value === 'whoami' || value === 'logout' || value === 'refund' || value === 'cancel' || value === 'claim'
+  return (
+    value === 'login' ||
+    value === 'whoami' ||
+    value === 'logout' ||
+    value === 'refund' ||
+    value === 'cancel' ||
+    value === 'claim' ||
+    value === 'delete'
+  )
 }
 
-function isTransactionCommand(command: CommandName): command is 'refund' | 'cancel' | 'claim' {
-  return command === 'refund' || command === 'cancel' || command === 'claim'
+function isTransactionCommand(command: CommandName): command is 'refund' | 'cancel' | 'claim' | 'delete' {
+  return command === 'refund' || command === 'cancel' || command === 'claim' || command === 'delete'
 }
 
 function parseNetwork(value: string | undefined): NetworkName {

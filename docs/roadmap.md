@@ -208,7 +208,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         successful, and already-claimed campaigns; submit the single claim and
         report the result. Reuse the connection lifecycle and `--dry-run` behavior
         above.
-  - [ ] Implement creator `delete`: reject non-creators, funded campaigns that are
+  - [x] Implement creator `delete`: reject non-creators, funded campaigns that are
         not claimed yet, and open campaigns with live pledges; explain that backers
         keep refunding from the vault afterwards. Delete and unregister in one
         group and report the reclaimed MBR and registration deposit. Reuse the

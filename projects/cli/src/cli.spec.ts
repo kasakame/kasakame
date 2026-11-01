@@ -9,6 +9,7 @@ const configureCliChainMock = vi.hoisted(() => vi.fn())
 const runRefundMock = vi.hoisted(() => vi.fn())
 const runCancelMock = vi.hoisted(() => vi.fn())
 const runClaimMock = vi.hoisted(() => vi.fn())
+const runDeleteMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./walletconnect.js', () => ({
   login: loginMock,
@@ -17,7 +18,12 @@ vi.mock('./walletconnect.js', () => ({
 }))
 vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
-vi.mock('./commands.js', () => ({ runRefund: runRefundMock, runCancel: runCancelMock, runClaim: runClaimMock }))
+vi.mock('./commands.js', () => ({
+  runRefund: runRefundMock,
+  runCancel: runCancelMock,
+  runClaim: runClaimMock,
+  runDelete: runDeleteMock,
+}))
 
 const SESSION = {
   address: 'ADDRESS',
@@ -152,6 +158,14 @@ describe('run', () => {
       }),
     )
     expect(runClaimMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 5n, dryRun: true }))
+  })
+
+  it('configures the chain and runs delete', async () => {
+    runDeleteMock.mockResolvedValue(0)
+
+    expect(await run(['delete', '123'])).toBe(0)
+    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'delete', appId: 123n }))
+    expect(runDeleteMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
   })
 
   it('reports invalid arguments', async () => {

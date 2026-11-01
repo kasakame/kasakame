@@ -1,6 +1,6 @@
 import { parseCliOptions, type CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
-import { runCancel, runClaim, runRefund } from './commands.js'
+import { runCancel, runClaim, runDelete, runRefund } from './commands.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
 
@@ -13,6 +13,7 @@ Commands:
   refund <appId>   Backer: refund your pledges from a failed campaign
   cancel <appId>   Backer: cancel your pledges while a campaign is open
   claim <appId>    Creator: claim a successful campaign's funds
+  delete <appId>   Creator: delete your campaign and reclaim its deposit
 
 Options:
   --network <testnet|localnet|custom>  Network (default: testnet)
@@ -54,6 +55,9 @@ export async function run(argv: string[]): Promise<number> {
       case 'claim':
         configureCliChain(options)
         return await runClaim(options)
+      case 'delete':
+        configureCliChain(options)
+        return await runDelete(options)
     }
   } catch (error) {
     console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
