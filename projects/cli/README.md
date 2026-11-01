@@ -1,8 +1,8 @@
 # @kasakame/cli
 
-Escape-hatch CLI for kasakame: refund, cancel, and claim pledges by app ID,
-using a wallet app or a local Algo25 mnemonic. Public algod + indexer only; no
-backend.
+Escape-hatch CLI for kasakame: refund, cancel, claim, and delete campaigns by
+app ID, using a wallet app or a local Algo25 mnemonic. Public algod + indexer
+only; no backend.
 
 Status: `refund` and `cancel` are implemented; `claim` lands next. See the
 [CLI roadmap](../../docs/roadmap.md#cli).

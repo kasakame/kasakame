@@ -16,7 +16,7 @@ const PROJECT_ID_PATTERN = /^[0-9a-f]{32}$/i
 const DISCONNECT_REASON = { code: 6000, message: 'User disconnected' }
 const METADATA = {
   name: 'kasakame CLI',
-  description: 'Refund, cancel, and claim kasakame pledges',
+  description: 'Refund, cancel, claim, and delete kasakame campaigns',
   url: 'https://kasakame.com',
   icons: [],
 }

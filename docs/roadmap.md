@@ -118,8 +118,8 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
 ## CLI
 
 - [ ] **Ship the escape-hatch CLI** - `projects/cli`, published as `@kasakame/cli`
-      (`npx @kasakame/cli`): refund/cancel/claim by app ID, public algod + indexer
-      only, no backend. Canonical proof that exits never need our servers.
+      (`npx @kasakame/cli`): refund/cancel/claim/delete by app ID, public algod +
+      indexer only, no backend. Canonical proof that exits never need our servers.
 
   **Decisions**
 
@@ -156,8 +156,10 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     `--vault`/`--factory` override them; LocalNet and custom networks use
     `ALGOD_*`/`INDEXER_*`. MainNet stays out until it is deployed.
   - **Small scope:** one app id per run, `--dry-run`, one wallet approval per leaf,
-    no `delete`/`unregister`. `projects/frontend/scripts/reclaim.ts` stays as the
-    batch dev/seed cleanup tool.
+    no batch operations. `delete` is in scope so creators reclaim the campaign's
+    schema MBR and the Factory registration deposit from a terminal; backers keep
+    refunding from the vault afterwards. `projects/frontend/scripts/reclaim.ts`
+    stays as the batch dev/seed cleanup tool.
 
   **Steps**
 
@@ -197,11 +199,16 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
   - [ ] Implement `claim`: reject non-creators, campaigns that are not successful,
         and already-claimed campaigns; submit the single claim and report the
         result. Reuse the connection lifecycle and `--dry-run` behavior above.
+  - [ ] Implement `delete`: reject non-creators, funded campaigns that are not
+        claimed yet, and open campaigns with live pledges; explain that backers
+        keep refunding from the vault afterwards. Delete and unregister in one
+        group and report the reclaimed MBR and registration deposit. Reuse the
+        connection lifecycle and `--dry-run` behavior above.
   - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
         transport: happy paths, state rejections, no leaves, partial failure,
         invalid flags/network, missing/expired session, rejected approval, and
         mnemonic validation. Add a manual TestNet smoke test with Pera and Defly
-        (login → refund/cancel/claim) and with `--signer mnemonic`.
+        (login → refund/cancel/claim/delete) and with `--signer mnemonic`.
   - [ ] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
         never contacts the relay.
