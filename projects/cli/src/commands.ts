@@ -32,7 +32,7 @@ export async function runRefund(options: CliOptions): Promise<number> {
   const appId = requireAppId(options, 'refund')
   const status = await campaignStatus(appId, options.network)
   if (status === 'open') {
-    throw new Error(`Campaign ${appId.toString()} is still open; use \`kasakame cancel\` before the deadline`)
+    throw new Error(`Campaign ${appId.toString()} is still open; use \`kasakame withdraw\` before the deadline`)
   }
   if (status === 'successful') {
     throw new Error(`Campaign ${appId.toString()} succeeded; there is nothing to refund`)
@@ -42,25 +42,26 @@ export async function runRefund(options: CliOptions): Promise<number> {
 }
 
 /**
- * Cancel every live pledge of an open campaign, one wallet approval per pledge.
+ * Withdraw every live pledge of an open campaign, one wallet approval per pledge.
  *
- * Campaigns that already failed or succeeded are rejected before the wallet is touched. A failed cancellation is
- * reported and the remaining pledges are still attempted; the command exits non-zero when any failed.
+ * Campaigns that already failed or succeeded are rejected before the wallet is touched. With several live pledges,
+ * `--pledge` picks one and `--all` withdraws every one; a failed withdrawal is reported and the remaining pledges are
+ * still attempted.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
  */
-export async function runCancel(options: CliOptions): Promise<number> {
-  const appId = requireAppId(options, 'cancel')
+export async function runWithdraw(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'withdraw')
   const status = await campaignStatus(appId, options.network)
   if (status === 'failed') {
     throw new Error(`Campaign ${appId.toString()} already failed; use \`kasakame refund\` instead`)
   }
   if (status === 'successful') {
-    throw new Error(`Campaign ${appId.toString()} succeeded; its pledges can no longer be cancelled`)
+    throw new Error(`Campaign ${appId.toString()} succeeded; its pledges can no longer be withdrawn`)
   }
 
-  return spendLeaves(options, appId, { verb: 'cancel', done: 'Cancelled' }, (wallet, leaf) => cancelPledge(appId, wallet, leaf))
+  return spendLeaves(options, appId, { verb: 'withdraw', done: 'Withdrawn' }, (wallet, leaf) => cancelPledge(appId, wallet, leaf))
 }
 
 /**
@@ -181,9 +182,18 @@ async function pledgeRows(entries: CampaignEntry[], address: string): Promise<st
   for (const { header, status } of entries) {
     const leaves = await fetchMyLeaves(header.id, address)
     if (leaves.length === 0) continue
-    const total = leaves.reduce((sum, leaf) => sum + leaf.amount, 0n)
     rows.push(
-      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}, pledged ${formatAlgo(total)} ALGO, ${pledgeSuffix(header, status)}`,
+      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}`,
+    )
+    for (const leaf of leaves) {
+      rows.push(`  pledge #${String(leaf.position)}: ${formatAlgo(leaf.amount)} ALGO (txid ${leaf.txidHex})`)
+    }
+    rows.push(
+      `  ${pledgeSuffix(
+        header,
+        status,
+        leaves.map((leaf) => leaf.position),
+      )}`,
     )
   }
   return rows
@@ -257,12 +267,12 @@ async function listCampaignEntries(): Promise<CampaignEntry[]> {
   return entries.sort((a, b) => Number(a.header.id - b.header.id))
 }
 
-function pledgeSuffix(header: CampaignHeader, status: CampaignStatus): string {
+function pledgeSuffix(header: CampaignHeader, status: CampaignStatus, positions: number[]): string {
   if (status === 'successful') return 'no action available'
-  if (header.deleted) {
-    return status === 'open' ? 'no action available (refund window closed)' : 'you can: refund'
-  }
-  return status === 'open' ? 'you can: cancel' : 'you can: refund'
+  if (header.deleted && status === 'open') return 'no action available (refund window closed)'
+  const verb = status === 'open' ? 'withdraw' : 'refund'
+  if (positions.length === 1) return `you can: ${verb}`
+  return `you can: ${verb} --pledge <${positions.map(String).join('|')}> or --all`
 }
 
 function campaignSuffix(header: CampaignHeader, status: CampaignStatus): string {
@@ -358,17 +368,18 @@ async function spendLeaves(
       console.log(`No live pledges to ${label.verb} from campaign ${appId.toString()}.`)
       return 0
     }
+    const selected = selectLeaves(leaves, options, appId)
 
     if (options.dryRun) {
-      for (const leaf of leaves) {
+      for (const leaf of selected) {
         console.log(`Would ${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
       }
-      console.log(`Dry run: ${pledges(leaves.length)} would be ${label.done.toLowerCase()}.`)
+      console.log(`Dry run: ${pledges(selected.length)} would be ${label.done.toLowerCase()}.`)
       return 0
     }
 
     let failed = 0
-    for (const leaf of leaves) {
+    for (const leaf of selected) {
       try {
         announceSubmit(options)
         await spend(session.wallet, leaf)
@@ -380,14 +391,28 @@ async function spendLeaves(
     }
 
     if (failed > 0) {
-      console.error(`${label.done} ${String(leaves.length - failed)} of ${String(leaves.length)} pledges; ${String(failed)} failed.`)
+      console.error(`${label.done} ${String(selected.length - failed)} of ${String(selected.length)} pledges; ${String(failed)} failed.`)
       return 1
     }
-    console.log(`${label.done} ${pledges(leaves.length)}.`)
+    console.log(`${label.done} ${pledges(selected.length)}.`)
     return 0
   } finally {
     await session.close()
   }
+}
+
+function selectLeaves(leaves: BackerLeaf[], options: CliOptions, appId: bigint): BackerLeaf[] {
+  if (options.pledge !== undefined) {
+    const leaf = leaves.find((candidate) => candidate.position === options.pledge)
+    if (leaf === undefined) {
+      throw new Error(`No live pledge #${String(options.pledge)} in campaign ${appId.toString()}`)
+    }
+    return [leaf]
+  }
+  if (options.all === true || leaves.length === 1) {
+    return leaves
+  }
+  throw new Error(`You have ${String(leaves.length)} live pledges in campaign ${appId.toString()}; pass --pledge <position> or --all`)
 }
 
 function pledges(count: number): string {

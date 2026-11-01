@@ -14,10 +14,10 @@ describe('parseCliOptions', () => {
     })
   })
 
-  it('reads explicit network, signer, app ids, and dry-run', () => {
+  it('reads explicit network, signer, app ids, leaf, and dry-run', () => {
     expect(
       parseCliOptions([
-        'cancel',
+        'withdraw',
         '42',
         '--network',
         'localnet',
@@ -29,18 +29,49 @@ describe('parseCliOptions', () => {
         'mnemonic',
         '--mnemonic-file',
         '/tmp/mnemonic',
+        '--pledge',
+        '2',
         '--dry-run',
       ]),
     ).toEqual({
-      command: 'cancel',
+      command: 'withdraw',
       appId: 42n,
       network: 'localnet',
       signer: 'mnemonic',
       vaultAppId: 7n,
       factoryAppId: 9n,
       mnemonicFile: '/tmp/mnemonic',
+      pledge: 2,
       dryRun: true,
     })
+  })
+
+  it('reads --all for refund', () => {
+    expect(parseCliOptions(['refund', '1', '--all'])).toEqual({
+      command: 'refund',
+      appId: 1n,
+      network: 'testnet',
+      signer: 'wallet',
+      vaultAppId: 774437570n,
+      factoryAppId: 774437557n,
+      all: true,
+      dryRun: false,
+    })
+  })
+
+  it('rejects --pledge and --all together', () => {
+    expect(() => parseCliOptions(['refund', '1', '--pledge', '0', '--all'])).toThrow('--pledge and --all cannot be combined')
+  })
+
+  it('rejects pledge selection outside refund and withdraw', () => {
+    expect(() => parseCliOptions(['claim', '1', '--pledge', '0'])).toThrow('--pledge is only valid with refund or withdraw')
+    expect(() => parseCliOptions(['delete', '1', '--all'])).toThrow('--all is only valid with refund or withdraw')
+  })
+
+  it('rejects an invalid pledge', () => {
+    expect(() => parseCliOptions(['withdraw', '1', '--pledge', 'abc'])).toThrow('--pledge must be a non-negative integer')
+    expect(() => parseCliOptions(['withdraw', '1', '--pledge=-1'])).toThrow('--pledge must be a non-negative integer')
+    expect(() => parseCliOptions(['withdraw', '1', '--pledge', '99999999999999999999'])).toThrow('--pledge must be a non-negative integer')
   })
 
   it('defaults custom networks to the mnemonic signer', () => {
@@ -170,7 +201,7 @@ describe('parseCliOptions', () => {
   })
 
   it('rejects dry-run outside transaction commands', () => {
-    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with refund, cancel, claim, or delete')
+    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with refund, withdraw, claim, or delete')
   })
 
   it('requires exactly one app id for transaction commands', () => {

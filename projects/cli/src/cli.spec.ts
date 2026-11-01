@@ -7,7 +7,7 @@ const logoutMock = vi.hoisted(() => vi.fn())
 const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 const configureCliChainMock = vi.hoisted(() => vi.fn())
 const runRefundMock = vi.hoisted(() => vi.fn())
-const runCancelMock = vi.hoisted(() => vi.fn())
+const runWithdrawMock = vi.hoisted(() => vi.fn())
 const runClaimMock = vi.hoisted(() => vi.fn())
 const runDeleteMock = vi.hoisted(() => vi.fn())
 const runPledgesMock = vi.hoisted(() => vi.fn())
@@ -22,7 +22,7 @@ vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
 vi.mock('./commands.js', () => ({
   runRefund: runRefundMock,
-  runCancel: runCancelMock,
+  runWithdraw: runWithdrawMock,
   runClaim: runClaimMock,
   runDelete: runDeleteMock,
   runPledges: runPledgesMock,
@@ -135,12 +135,12 @@ describe('run', () => {
     expect(await run(['refund', '123'])).toBe(1)
   })
 
-  it('configures the chain and runs cancel', async () => {
-    runCancelMock.mockResolvedValue(0)
+  it('configures the chain and runs withdraw', async () => {
+    runWithdrawMock.mockResolvedValue(0)
 
-    expect(await run(['cancel', '123'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'cancel', appId: 123n }))
-    expect(runCancelMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+    expect(await run(['withdraw', '123'])).toBe(0)
+    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'withdraw', appId: 123n }))
+    expect(runWithdrawMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
   })
 
   it('accepts localnet mnemonic dry-runs for claim', async () => {

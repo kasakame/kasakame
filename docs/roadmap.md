@@ -118,7 +118,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
 ## CLI
 
 - [ ] **Ship the escape-hatch CLI** - `projects/cli`, published as `@kasakame/cli`
-      (`npx @kasakame/cli`): refund/cancel/claim/delete by app ID, public algod +
+      (`npx @kasakame/cli`): refund/withdraw/claim/delete by app ID, public algod +
       indexer only, no backend. Canonical proof that exits never need our servers.
 
   **Decisions**
@@ -158,9 +158,9 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     schema MBR and the Factory registration deposit from a terminal; backers keep
     refunding from the vault afterwards. `projects/frontend/scripts/reclaim.ts`
     stays as the batch dev/seed cleanup tool.
-  - **Roles are explicit.** Backers cancel or refund pledges; creators claim or
+  - **Roles are explicit.** Backers withdraw or refund pledges; creators claim or
     delete campaigns. Help text, errors, and docs use those words, so nobody
-    confuses cancelling a pledge with deleting a campaign.
+    confuses withdrawing a pledge with deleting a campaign.
   - **Discovery is read-only and comes before action.** An emergency user may
     arrive with only a wallet or its mnemonic, and no app id. `pledges` and
     `campaigns` list what the address can act on, built from the SDK's Factory
@@ -194,14 +194,18 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         mnemonic path. Both signers produce the same `WalletSession`, so commands do
         not branch.
   - [x] Implement backer `refund`: reject open or successful campaigns; for
-        failed or deleted campaigns, fetch the signer's live leaves and refund one
-        per transaction, reporting partial failures. Open one wallet connection for
-        the invocation and close it in `finally`; `--dry-run` prints the planned
-        refunds without a wallet prompt.
-  - [x] Implement backer `cancel`: reject campaigns that are not open or are past
-        the deadline; cancel the signer's live leaves one per transaction,
-        reporting partial failures. Reuse the connection lifecycle and `--dry-run`
-        behavior above.
+        failed or deleted campaigns, fetch the signer's live pledges and refund one
+        per transaction, reporting partial failures. With several live pledges,
+        `--pledge <position>` picks one and `--all` refunds every one; a single
+        pledge needs no flag. Open one wallet connection for the invocation and
+        close it in `finally`; `--dry-run` prints the planned refunds without a
+        wallet prompt.
+  - [x] Implement backer `withdraw`: reject campaigns that are not open or are
+        past the deadline; withdraw the signer's live pledges one per transaction,
+        reporting partial failures. With several live pledges, `--pledge
+        <position>` picks one and `--all` withdraws every one; a single pledge
+        needs no flag. Reuse the connection lifecycle and `--dry-run` behavior
+        above.
   - [x] Implement creator `claim`: reject non-creators, campaigns that are not
         successful, and already-claimed campaigns; submit the single claim and
         report the result. Reuse the connection lifecycle and `--dry-run` behavior
@@ -212,8 +216,8 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         group and report the reclaimed MBR and registration deposit. Reuse the
         connection lifecycle and `--dry-run` behavior above.
   - [x] Add read-only discovery: `pledges` lists the address's live pledges with
-        campaign id, title, status, deadline, total, and the action available now
-        (`cancel` while open, `refund` once failed, nothing when successful);
+        campaign id, title, status, deadline, each pledge, and the action available now
+        (`withdraw` while open, `refund` once failed, nothing when successful);
         `campaigns` lists campaigns the address created, with `claim` or `delete`
         when the contract allows. Accept `--address` for a wallet address without
         a signer, so nobody needs an app id to start.
@@ -228,11 +232,17 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         `~/.kasakame/walletconnect/testnet.json`, sign through `algo_signTxn`, and
         resolve bridges from the list the wallets publish. Drop the Reown project
         ID, the v2 relay, and the key-value storage dependency.
-  - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
-        transport: happy paths, state rejections, no leaves, partial failure,
-        invalid flags/network, missing/expired session, rejected approval, and
-        mnemonic validation. Add a manual TestNet smoke test with Pera and Defly
-        (login → refund/cancel/claim/delete) and with `--signer mnemonic`.
+  - [x] Test the command module at 100% with a mocked SDK and a fake WalletConnect
+        transport: happy paths, state rejections, no leaves, pledge selection, partial failure,
+        invalid flags/network, missing or corrupt session, rejected approval,
+        timeout, and mnemonic validation.
+  - [ ] Manual TestNet smoke with `--signer mnemonic`: the phrase from a file or
+        `KASAKAME_MNEMONIC`, never argv; claim, refund before and after a delete,
+        and delete on a fresh campaign.
+  - [x] Manual TestNet smoke with the wallet (Pera and Defly): login and account
+        switching, claim, refund before the delete, delete with live refunds,
+        refund after the delete, delete after claim, withdraw while open, and
+        every refusal.
   - [ ] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
         never contacts the bridge.

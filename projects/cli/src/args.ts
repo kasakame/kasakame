@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util'
 
-export type CommandName = 'login' | 'whoami' | 'logout' | 'pledges' | 'campaigns' | 'refund' | 'cancel' | 'claim' | 'delete'
+export type CommandName = 'login' | 'whoami' | 'logout' | 'pledges' | 'campaigns' | 'refund' | 'withdraw' | 'claim' | 'delete'
 export type NetworkName = 'testnet' | 'localnet' | 'custom'
 export type SignerName = 'wallet' | 'mnemonic'
 
@@ -8,6 +8,8 @@ export interface CliOptions {
   command: CommandName
   appId?: bigint
   address?: string
+  pledge?: number
+  all?: boolean
   network: NetworkName
   signer: SignerName
   vaultAppId?: bigint
@@ -37,6 +39,8 @@ export function parseCliOptions(argv: string[]): CliOptions {
       signer: { type: 'string' },
       'mnemonic-file': { type: 'string' },
       address: { type: 'string' },
+      pledge: { type: 'string' },
+      all: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
     },
   })
@@ -55,6 +59,17 @@ export function parseCliOptions(argv: string[]): CliOptions {
   const transaction = isTransactionCommand(command)
   const read = isReadCommand(command)
   const needsChain = transaction || read
+  const selection = command === 'refund' || command === 'withdraw'
+
+  if (values.pledge !== undefined && !selection) {
+    throw new Error('--pledge is only valid with refund or withdraw')
+  }
+  if (values.all === true && !selection) {
+    throw new Error('--all is only valid with refund or withdraw')
+  }
+  if (values.pledge !== undefined && values.all === true) {
+    throw new Error('--pledge and --all cannot be combined')
+  }
 
   if (values.address !== undefined && !read) {
     throw new Error('--address is only valid with pledges or campaigns')
@@ -67,7 +82,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
 
   const dryRun = values['dry-run'] ?? false
   if (dryRun && !transaction) {
-    throw new Error('--dry-run is only valid with refund, cancel, claim, or delete')
+    throw new Error('--dry-run is only valid with refund, withdraw, claim, or delete')
   }
 
   let appId: bigint | undefined
@@ -104,6 +119,8 @@ export function parseCliOptions(argv: string[]): CliOptions {
   if (factoryAppId !== undefined) options.factoryAppId = factoryAppId
   if (mnemonicFile !== undefined) options.mnemonicFile = mnemonicFile
   if (values.address !== undefined) options.address = values.address
+  if (values.pledge !== undefined) options.pledge = parsePledge(values.pledge)
+  if (values.all === true) options.all = true
   return options
 }
 
@@ -115,14 +132,14 @@ function isCommand(value: string | undefined): value is CommandName {
     value === 'pledges' ||
     value === 'campaigns' ||
     value === 'refund' ||
-    value === 'cancel' ||
+    value === 'withdraw' ||
     value === 'claim' ||
     value === 'delete'
   )
 }
 
-function isTransactionCommand(command: CommandName): command is 'refund' | 'cancel' | 'claim' | 'delete' {
-  return command === 'refund' || command === 'cancel' || command === 'claim' || command === 'delete'
+function isTransactionCommand(command: CommandName): command is 'refund' | 'withdraw' | 'claim' | 'delete' {
+  return command === 'refund' || command === 'withdraw' || command === 'claim' || command === 'delete'
 }
 
 function isReadCommand(command: CommandName): command is 'pledges' | 'campaigns' {
@@ -170,4 +187,15 @@ function parseFactoryAppId(value: string): bigint {
     throw new Error('--factory must be a non-negative integer')
   }
   return BigInt(value)
+}
+
+function parsePledge(value: string): number {
+  if (!/^\d+$/.test(value)) {
+    throw new Error('--pledge must be a non-negative integer')
+  }
+  const pledge = Number(value)
+  if (!Number.isSafeInteger(pledge)) {
+    throw new Error('--pledge must be a non-negative integer')
+  }
+  return pledge
 }

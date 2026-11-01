@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runCampaigns, runCancel, runClaim, runDelete, runPledges, runRefund } from './commands.js'
+import { runCampaigns, runClaim, runDelete, runPledges, runRefund, runWithdraw } from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
   enumerateCampaigns: vi.fn(),
@@ -73,7 +73,7 @@ afterEach(() => {
 
 describe('runRefund', () => {
   it('refunds every live pledge and closes the session', async () => {
-    expect(await runRefund(options())).toBe(0)
+    expect(await runRefund(options({ all: true }))).toBe(0)
 
     expect(sdkMocks.fetchCampaignHeader).toHaveBeenCalledWith(1n)
     expect(sdkMocks.getCampaignStatus).toHaveBeenCalledWith(HEADER, 2_000n)
@@ -89,8 +89,16 @@ describe('runRefund', () => {
   })
 
   it('announces the wallet approval for the wallet signer', async () => {
-    expect(await runRefund(options({ signer: 'wallet' }))).toBe(0)
+    expect(await runRefund(options({ signer: 'wallet', all: true }))).toBe(0)
     expect(console.error).toHaveBeenCalledWith('Waiting for wallet approval…')
+  })
+
+  it('refunds one selected pledge', async () => {
+    expect(await runRefund(options({ pledge: 1 }))).toBe(0)
+
+    expect(sdkMocks.refund).toHaveBeenCalledTimes(1)
+    expect(sdkMocks.refund).toHaveBeenCalledWith(1n, WALLET, leaf(1, 1n))
+    expect(console.log).toHaveBeenCalledWith('Refunded pledge #1 (0.000001 ALGO).')
   })
 
   it('prints planned refunds in a dry run without submitting', async () => {
@@ -107,7 +115,7 @@ describe('runRefund', () => {
   it('keeps going after a failed pledge and exits non-zero', async () => {
     sdkMocks.refund.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
 
-    expect(await runRefund(options())).toBe(1)
+    expect(await runRefund(options({ all: true }))).toBe(1)
 
     expect(sdkMocks.refund).toHaveBeenCalledTimes(2)
     expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
@@ -118,7 +126,7 @@ describe('runRefund', () => {
   it('reports a non-Error failure', async () => {
     sdkMocks.refund.mockRejectedValue('rejected')
 
-    expect(await runRefund(options())).toBe(1)
+    expect(await runRefund(options({ all: true }))).toBe(1)
     expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
   })
 
@@ -142,7 +150,7 @@ describe('runRefund', () => {
   it('rejects an open campaign before opening the wallet', async () => {
     sdkMocks.getCampaignStatus.mockReturnValue('open')
 
-    await expect(runRefund(options())).rejects.toThrow('Campaign 1 is still open; use `kasakame cancel` before the deadline')
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 is still open; use `kasakame withdraw` before the deadline')
     expect(openCliSessionMock).not.toHaveBeenCalled()
   })
 
@@ -182,75 +190,102 @@ describe('runRefund', () => {
   })
 })
 
-describe('runCancel', () => {
-  function cancelOptions(overrides: Partial<CliOptions> = {}): CliOptions {
-    return options({ command: 'cancel', ...overrides })
+describe('runWithdraw', () => {
+  function withdrawOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'withdraw', ...overrides })
   }
 
   beforeEach(() => {
     sdkMocks.getCampaignStatus.mockReturnValue('open')
   })
 
-  it('cancels every live pledge and closes the session', async () => {
-    expect(await runCancel(cancelOptions())).toBe(0)
+  it('withdraws every live pledge with --all and closes the session', async () => {
+    expect(await runWithdraw(withdrawOptions({ all: true }))).toBe(0)
 
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'BACKER')
     expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(2)
     expect(sdkMocks.cancelPledge).toHaveBeenNthCalledWith(1, 1n, WALLET, leaf(0, 1_500_000n))
     expect(sdkMocks.cancelPledge).toHaveBeenNthCalledWith(2, 1n, WALLET, leaf(1, 1n))
-    expect(console.log).toHaveBeenCalledWith('Cancelled pledge #0 (1.5 ALGO).')
-    expect(console.log).toHaveBeenCalledWith('Cancelled 2 pledges.')
+    expect(console.log).toHaveBeenCalledWith('Withdrawn pledge #0 (1.5 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Withdrawn pledge #1 (0.000001 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Withdrawn 2 pledges.')
     expect(console.error).toHaveBeenCalledWith('Submitting…')
     expect(closeMock).toHaveBeenCalled()
   })
 
-  it('prints planned cancellations in a dry run without submitting', async () => {
+  it('withdraws one selected pledge with --pledge', async () => {
+    expect(await runWithdraw(withdrawOptions({ pledge: 1 }))).toBe(0)
+
+    expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(1)
+    expect(sdkMocks.cancelPledge).toHaveBeenCalledWith(1n, WALLET, leaf(1, 1n))
+    expect(console.log).toHaveBeenCalledWith('Withdrawn pledge #1 (0.000001 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Withdrawn 1 pledge.')
+  })
+
+  it('withdraws a single pledge without a flag', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n)])
+
+    expect(await runWithdraw(withdrawOptions())).toBe(0)
+    expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires a selection when several pledges are live', async () => {
+    await expect(runWithdraw(withdrawOptions())).rejects.toThrow('You have 2 live pledges in campaign 1; pass --pledge <position> or --all')
+    expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown leaf', async () => {
+    await expect(runWithdraw(withdrawOptions({ pledge: 9 }))).rejects.toThrow('No live pledge #9 in campaign 1')
+    expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
+  })
+
+  it('prints planned withdrawals in a dry run without submitting', async () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_000_000n)])
 
-    expect(await runCancel(cancelOptions({ dryRun: true }))).toBe(0)
+    expect(await runWithdraw(withdrawOptions({ dryRun: true }))).toBe(0)
 
     expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
-    expect(console.log).toHaveBeenCalledWith('Would cancel pledge #0 (1 ALGO).')
-    expect(console.log).toHaveBeenCalledWith('Dry run: 1 pledge would be cancelled.')
+    expect(console.log).toHaveBeenCalledWith('Would withdraw pledge #0 (1 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Dry run: 1 pledge would be withdrawn.')
     expect(closeMock).toHaveBeenCalled()
   })
 
-  it('keeps going after a failed cancellation and exits non-zero', async () => {
+  it('keeps going after a failed withdrawal and exits non-zero', async () => {
     sdkMocks.cancelPledge.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
 
-    expect(await runCancel(cancelOptions())).toBe(1)
+    expect(await runWithdraw(withdrawOptions({ all: true }))).toBe(1)
 
     expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(2)
     expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
-    expect(console.error).toHaveBeenCalledWith('Cancelled 1 of 2 pledges; 1 failed.')
+    expect(console.error).toHaveBeenCalledWith('Withdrawn 1 of 2 pledges; 1 failed.')
   })
 
   it('reports no live pledges', async () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([])
 
-    expect(await runCancel(cancelOptions())).toBe(0)
+    expect(await runWithdraw(withdrawOptions())).toBe(0)
 
     expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
-    expect(console.log).toHaveBeenCalledWith('No live pledges to cancel from campaign 1.')
+    expect(console.log).toHaveBeenCalledWith('No live pledges to withdraw from campaign 1.')
   })
 
   it('rejects a failed campaign before opening the wallet', async () => {
     sdkMocks.getCampaignStatus.mockReturnValue('failed')
 
-    await expect(runCancel(cancelOptions())).rejects.toThrow('Campaign 1 already failed; use `kasakame refund` instead')
+    await expect(runWithdraw(withdrawOptions())).rejects.toThrow('Campaign 1 already failed; use `kasakame refund` instead')
     expect(openCliSessionMock).not.toHaveBeenCalled()
   })
 
   it('rejects a successful campaign before opening the wallet', async () => {
     sdkMocks.getCampaignStatus.mockReturnValue('successful')
 
-    await expect(runCancel(cancelOptions())).rejects.toThrow('Campaign 1 succeeded; its pledges can no longer be cancelled')
+    await expect(runWithdraw(withdrawOptions())).rejects.toThrow('Campaign 1 succeeded; its pledges can no longer be withdrawn')
     expect(openCliSessionMock).not.toHaveBeenCalled()
   })
 
   it('requires an app id', async () => {
-    await expect(runCancel({ command: 'cancel', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
-      'cancel requires exactly one app id',
+    await expect(runWithdraw({ command: 'withdraw', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'withdraw requires exactly one app id',
     )
   })
 })
@@ -443,12 +478,24 @@ describe('runPledges', () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n)])
   })
 
-  it('lists a live pledge with the cancel action', async () => {
+  it('lists a live pledge with the withdraw action', async () => {
     expect(await runPledges(pledgeOptions())).toBe(0)
 
     expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Live pledges by BACKER on testnet:')
-    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z, pledged 1.5 ALGO, you can: cancel')
+    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z')
+    expect(console.log).toHaveBeenCalledWith('  pledge #0: 1.5 ALGO (txid aa)')
+    expect(console.log).toHaveBeenCalledWith('  you can: withdraw')
+  })
+
+  it('lists every pledge with the same format', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('  pledge #0: 0.5 ALGO (txid aa)')
+    expect(console.log).toHaveBeenCalledWith('  pledge #3: 1 ALGO (txid aa)')
+    expect(console.log).toHaveBeenCalledWith('  you can: withdraw --pledge <0|3> or --all')
   })
 
   it('lists a failed pledge with the refund action', async () => {

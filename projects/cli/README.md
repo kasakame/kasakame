@@ -1,10 +1,10 @@
 # @kasakame/cli
 
-Escape-hatch CLI for kasakame: refund, cancel, claim, and delete campaigns by
-app ID, using a wallet app or a local Algo25 mnemonic. Public algod + indexer
+Escape-hatch CLI for kasakame: refund, withdraw, claim, and delete pledges and
+campaigns by app ID, using a wallet app or a local Algo25 mnemonic. Public algod + indexer
 only; no backend.
 
-Backers cancel or refund pledges. Creators claim or delete campaigns.
+Backers withdraw or refund pledges. Creators claim or delete campaigns.
 
 Status: all commands are implemented; CI and release land next. See the
 [CLI roadmap](../../docs/roadmap.md#cli).
@@ -18,8 +18,8 @@ node dist/index.js pledges --address <address>
 ```
 
 `pledges` lists every campaign where your address still holds a live pledge,
-with the status, deadline, amount, and what you can do: `cancel` while the
-campaign is open, `refund` once it failed, or no action when it succeeded or the
+with the status, deadline, each pledge, and what you can do: `withdraw` while
+the campaign is open, `refund` once it failed, or no action when it succeeded or the
 refund window closed. `campaigns` lists the campaigns you created, with `claim`
 or `delete` when the contract allows it.
 
@@ -35,24 +35,28 @@ node dist/index.js refund <appId>
 node dist/index.js refund <appId> --dry-run
 ```
 
-`refund` returns every live pledge from a failed campaign, after its deadline
+`refund` returns your live pledges from a failed campaign, after its deadline
 or after the creator deleted it. It rejects open and successful campaigns
-before the wallet connects. Each pledge needs its own wallet approval, and a
-failed refund is reported while the rest still run. `--dry-run` lists the
-pledges without submitting anything.
+before the wallet connects. With more than one live pledge, `--pledge
+<position>` refunds one and `--all` refunds every one; a single pledge needs no
+flag. Each pledge needs its own wallet approval, and a failed refund is
+reported while the rest still run. `--dry-run` lists the pledges without
+submitting anything.
 
-## Cancel (backer)
+## Withdraw (backer)
 
 ```bash
-node dist/index.js cancel <appId>
-node dist/index.js cancel <appId> --dry-run
+node dist/index.js withdraw <appId>
+node dist/index.js withdraw <appId> --dry-run
 ```
 
-`cancel` withdraws every live pledge while a campaign is still open, before its
-deadline. It rejects campaigns that already failed or succeeded; use `refund`
-after a failure. Each pledge needs its own wallet approval, and a failed
-cancellation is reported while the rest still run. `--dry-run` lists the
-pledges without submitting anything.
+`withdraw` takes back your live pledges while a campaign is still open, before
+its deadline. It rejects campaigns that already failed or succeeded; use
+`refund` after a failure. With more than one live pledge, `--pledge <position>`
+withdraws one and `--all` withdraws every one; a single pledge needs no flag.
+Each pledge needs its own wallet approval, and a failed withdrawal is reported
+while the rest still run. `--dry-run` lists the pledges without submitting
+anything.
 
 ## Claim (creator)
 

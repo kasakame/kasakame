@@ -6,7 +6,7 @@
     "email": "alessio.661@hotmail.it"
   },
   "type": "module",
-  "description": "Escape-hatch CLI for kasakame: refund, cancel, claim, and delete campaigns by app ID",
+  "description": "Escape-hatch CLI for kasakame: refund, withdraw, claim, and delete pledges and campaigns by app ID",
   "keywords": [
     "algorand",
     "algorand-blockchain",

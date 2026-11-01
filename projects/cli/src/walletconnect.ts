@@ -14,7 +14,7 @@ const APPROVAL_TIMEOUT_MS = 5 * 60_000
 const ALGORAND_CHAIN_ID = 4160
 const METADATA: IClientMeta = {
   name: 'kasakame CLI',
-  description: 'Refund, cancel, claim, and delete kasakame campaigns',
+  description: 'Refund, withdraw, claim, and delete kasakame pledges and campaigns',
   url: 'https://kasakame.com',
   icons: [],
 }
