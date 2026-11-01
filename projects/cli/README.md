@@ -6,7 +6,7 @@ only; no backend.
 
 Backers withdraw or refund pledges. Creators claim or delete campaigns.
 
-Status: all commands are implemented; CI and release land next. See the
+Status: all commands are implemented; the release workflow lands next. See the
 [CLI roadmap](../../docs/roadmap.md#cli).
 
 ## Find your pledges and campaigns

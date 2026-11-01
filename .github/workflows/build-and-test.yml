@@ -21,6 +21,7 @@ jobs:
       contracts: ${{ steps.filter.outputs.contracts }}
       sdk: ${{ steps.filter.outputs.sdk }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      cli: ${{ steps.filter.outputs.cli }}
       backend: ${{ steps.filter.outputs.backend }}
       ci: ${{ steps.filter.outputs.ci }}
       config: ${{ steps.filter.outputs.config }}
@@ -55,6 +56,10 @@ jobs:
               - 'projects/frontend/**'
               - '!**/*.md'
               - '!**/LICENSE'
+            cli:
+              - 'projects/cli/**'
+              - '!**/*.md'
+              - '!**/LICENSE'
             backend:
               - 'projects/backend/**'
               - '!**/*.md'
@@ -75,6 +80,7 @@ jobs:
               - '!projects/contracts/**'
               - '!projects/sdk/**'
               - '!projects/frontend/**'
+              - '!projects/cli/**'
               - '!projects/backend/**'
               - '!.github/**'
               - '!docs/claim-tree-protocol-reference.py'
@@ -507,6 +513,55 @@ jobs:
         run: npm run test:integration
         working-directory: projects/contracts
 
+  # CLI checks - the suite mocks the wallet transport, so this lane never
+  # contacts the WalletConnect bridge. Runs when the CLI, SDK, contracts, a
+  # shared path, or the formatting config changed; SDK/contracts changes
+  # consume the same-run `sdk-dist`, like the frontend lanes.
+  cli:
+    name: CLI lint and tests
+    needs: [changes, build-contracts, build-sdk]
+    if: always() && !failure() && !cancelled() && (needs.changes.outputs.cli == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true' || needs.changes.outputs.config == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/cli/package-lock.json
+      - name: Download the local SDK
+        if: needs.changes.outputs.local_sdk == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+      - name: Install CLI dependencies (published SDK)
+        if: needs.changes.outputs.local_sdk != 'true'
+        run: npm ci
+        working-directory: projects/cli
+      - name: Install CLI dependencies (local SDK)
+        if: needs.changes.outputs.local_sdk == 'true'
+        run: npm install --no-save --install-links "file:../sdk"
+        working-directory: projects/cli
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/cli
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/cli
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/cli
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/cli
+      - name: Build
+        run: npm run build
+        working-directory: projects/cli
+
   # Backend lane: lint/format/types plus the suite against a throwaway
   # Postgres. Independent of contracts/SDK/frontend; a formatting-config change
   # still checks it.
@@ -578,6 +633,7 @@ jobs:
       - test-frontend
       - build
       - integration-test
+      - cli
       - backend
     runs-on: ubuntu-latest
     timeout-minutes: 5

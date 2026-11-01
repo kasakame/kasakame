@@ -18,9 +18,9 @@ each open item links to the doc with the details. Design context is in
 - **Releases** - contract interface published as a `specs-v0.1.0` GitHub Release
   (ARC-56/32, TEAL, source maps); `release-specs` and `release-sdk` workflows run with
   npm OIDC trusted publishing. See [`ci.md`](ci.md).
-- **CI** - path-filtered `build-and-test` lanes, ShellCheck (repo-wide shell
-  scripts plus workflow `run:` blocks), markdown lint, and the release workflows.
-  See [`ci.md`](ci.md).
+- **CI** - path-filtered `build-and-test` lanes (including the CLI), ShellCheck
+  (repo-wide shell scripts plus workflow `run:` blocks), markdown lint, and the
+  release workflows. See [`ci.md`](ci.md).
 - **Identity and hosting** - GitHub/npm `kasakame` orgs and the `kasakame.com` domain
   are set up.
 
@@ -254,7 +254,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         switching, claim, refund before the delete, delete with live refunds,
         refund after the delete, delete after claim, withdraw while open, and
         every refusal.
-  - [ ] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
+  - [x] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
         never contacts the bridge.
   - [ ] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
