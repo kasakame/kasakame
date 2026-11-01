@@ -1,4 +1,14 @@
-import { fetchCampaignHeader, fetchChainTimestamp, fetchMyLeaves, getCampaignStatus, refund } from '@kasakame/sdk'
+import {
+  cancelPledge,
+  fetchCampaignHeader,
+  fetchChainTimestamp,
+  fetchMyLeaves,
+  getCampaignStatus,
+  refund,
+  type BackerLeaf,
+  type CampaignStatus,
+  type WalletSession,
+} from '@kasakame/sdk'
 import type { CliOptions } from './args.js'
 import { openCliSession } from './session.js'
 
@@ -12,17 +22,8 @@ import { openCliSession } from './session.js'
  * @returns Process exit code.
  */
 export async function runRefund(options: CliOptions): Promise<number> {
-  const appId = options.appId
-  if (appId === undefined) {
-    throw new Error('refund requires exactly one app id')
-  }
-
-  const header = await fetchCampaignHeader(appId)
-  if (header === undefined) {
-    throw new Error(`Campaign ${appId.toString()} not found`)
-  }
-
-  const status = getCampaignStatus(header, await fetchChainTimestamp())
+  const appId = requireAppId(options, 'refund')
+  const status = await campaignStatus(appId)
   if (status === 'open') {
     throw new Error(`Campaign ${appId.toString()} is still open; use \`kasakame cancel\` before the deadline`)
   }
@@ -30,27 +31,88 @@ export async function runRefund(options: CliOptions): Promise<number> {
     throw new Error(`Campaign ${appId.toString()} succeeded; there is nothing to refund`)
   }
 
+  return spendLeaves(options, appId, { verb: 'refund', done: 'Refunded' }, (wallet, leaf) => refund(appId, wallet, leaf))
+}
+
+/**
+ * Cancel every live pledge of an open campaign, one wallet approval per pledge.
+ *
+ * Campaigns that already failed or succeeded are rejected before the wallet is touched. A failed cancellation is
+ * reported and the remaining pledges are still attempted; the command exits non-zero when any failed.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runCancel(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'cancel')
+  const status = await campaignStatus(appId)
+  if (status === 'failed') {
+    throw new Error(`Campaign ${appId.toString()} already failed; use \`kasakame refund\` instead`)
+  }
+  if (status === 'successful') {
+    throw new Error(`Campaign ${appId.toString()} succeeded; its pledges can no longer be cancelled`)
+  }
+
+  return spendLeaves(options, appId, { verb: 'cancel', done: 'Cancelled' }, (wallet, leaf) => cancelPledge(appId, wallet, leaf))
+}
+
+function requireAppId(options: CliOptions, command: string): bigint {
+  const appId = options.appId
+  if (appId === undefined) {
+    throw new Error(`${command} requires exactly one app id`)
+  }
+  return appId
+}
+
+async function campaignStatus(appId: bigint): Promise<CampaignStatus> {
+  const header = await fetchCampaignHeader(appId)
+  if (header === undefined) {
+    throw new Error(`Campaign ${appId.toString()} not found`)
+  }
+  return getCampaignStatus(header, await fetchChainTimestamp())
+}
+
+interface SpendLabel {
+  verb: string
+  done: string
+}
+
+/**
+ * Spend every live leaf of the signer, one wallet approval per leaf, and report partial failures.
+ *
+ * @param options Parsed CLI options.
+ * @param appId Campaign application id.
+ * @param label Words for the progress and summary lines.
+ * @param spend Submits one leaf spend through the wallet session.
+ * @returns Process exit code.
+ */
+async function spendLeaves(
+  options: CliOptions,
+  appId: bigint,
+  label: SpendLabel,
+  spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<void>,
+): Promise<number> {
   const session = await openCliSession(options)
   try {
     const leaves = await fetchMyLeaves(appId, session.wallet.address)
     if (leaves.length === 0) {
-      console.log(`No live pledges to refund from campaign ${appId.toString()}.`)
+      console.log(`No live pledges to ${label.verb} from campaign ${appId.toString()}.`)
       return 0
     }
 
     if (options.dryRun) {
       for (const leaf of leaves) {
-        console.log(`Would refund pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
+        console.log(`Would ${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
       }
-      console.log(`Dry run: ${pledges(leaves.length)} would be refunded.`)
+      console.log(`Dry run: ${pledges(leaves.length)} would be ${label.done.toLowerCase()}.`)
       return 0
     }
 
     let failed = 0
     for (const leaf of leaves) {
       try {
-        await refund(appId, session.wallet, leaf)
-        console.log(`Refunded pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
+        await spend(session.wallet, leaf)
+        console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
       } catch (error) {
         failed += 1
         console.error(`Pledge #${String(leaf.position)} failed: ${error instanceof Error ? error.message : String(error)}`)
@@ -58,10 +120,10 @@ export async function runRefund(options: CliOptions): Promise<number> {
     }
 
     if (failed > 0) {
-      console.error(`Refunded ${String(leaves.length - failed)} of ${String(leaves.length)} pledges; ${String(failed)} failed.`)
+      console.error(`${label.done} ${String(leaves.length - failed)} of ${String(leaves.length)} pledges; ${String(failed)} failed.`)
       return 1
     }
-    console.log(`Refunded ${pledges(leaves.length)}.`)
+    console.log(`${label.done} ${pledges(leaves.length)}.`)
     return 0
   } finally {
     await session.close()

@@ -190,7 +190,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         transaction, reporting partial failures. Open one wallet connection for the
         invocation and close it in `finally`; `--dry-run` prints the planned refunds
         without a wallet prompt.
-  - [ ] Implement `cancel`: reject campaigns that are not open or are past the
+  - [x] Implement `cancel`: reject campaigns that are not open or are past the
         deadline; cancel the signer's live leaves one per transaction, reporting
         partial failures. Reuse the connection lifecycle and `--dry-run` behavior
         above.

@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runRefund } from './commands.js'
+import { runCancel, runRefund } from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
   fetchCampaignHeader: vi.fn(),
   fetchChainTimestamp: vi.fn(),
   getCampaignStatus: vi.fn(),
   fetchMyLeaves: vi.fn(),
+  cancelPledge: vi.fn(),
   refund: vi.fn(),
 }))
 const closeMock = vi.hoisted(() => vi.fn(async () => {}))
@@ -51,6 +52,7 @@ beforeEach(() => {
   sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
   sdkMocks.getCampaignStatus.mockReturnValue('failed')
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
+  sdkMocks.cancelPledge.mockResolvedValue(undefined)
   sdkMocks.refund.mockResolvedValue(undefined)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
@@ -145,6 +147,78 @@ describe('runRefund', () => {
   it('requires an app id', async () => {
     await expect(runRefund({ command: 'refund', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
       'refund requires exactly one app id',
+    )
+  })
+})
+
+describe('runCancel', () => {
+  function cancelOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'cancel', ...overrides })
+  }
+
+  beforeEach(() => {
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+  })
+
+  it('cancels every live pledge and closes the session', async () => {
+    expect(await runCancel(cancelOptions())).toBe(0)
+
+    expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'BACKER')
+    expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(2)
+    expect(sdkMocks.cancelPledge).toHaveBeenNthCalledWith(1, 1n, WALLET, leaf(0, 1_500_000n))
+    expect(sdkMocks.cancelPledge).toHaveBeenNthCalledWith(2, 1n, WALLET, leaf(1, 1n))
+    expect(console.log).toHaveBeenCalledWith('Cancelled pledge #0 (1.5 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Cancelled 2 pledges.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('prints planned cancellations in a dry run without submitting', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_000_000n)])
+
+    expect(await runCancel(cancelOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would cancel pledge #0 (1 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Dry run: 1 pledge would be cancelled.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('keeps going after a failed cancellation and exits non-zero', async () => {
+    sdkMocks.cancelPledge.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
+
+    expect(await runCancel(cancelOptions())).toBe(1)
+
+    expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(2)
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+    expect(console.error).toHaveBeenCalledWith('Cancelled 1 of 2 pledges; 1 failed.')
+  })
+
+  it('reports no live pledges', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([])
+
+    expect(await runCancel(cancelOptions())).toBe(0)
+
+    expect(sdkMocks.cancelPledge).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('No live pledges to cancel from campaign 1.')
+  })
+
+  it('rejects a failed campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+
+    await expect(runCancel(cancelOptions())).rejects.toThrow('Campaign 1 already failed; use `kasakame refund` instead')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a successful campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+
+    await expect(runCancel(cancelOptions())).rejects.toThrow('Campaign 1 succeeded; its pledges can no longer be cancelled')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runCancel({ command: 'cancel', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'cancel requires exactly one app id',
     )
   })
 })
