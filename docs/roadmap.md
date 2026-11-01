@@ -185,7 +185,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         Pera and Defly do not support LocalNet, so that network always uses the
         mnemonic path. Both signers produce the same `WalletSession`, so commands do
         not branch.
-  - [ ] Implement `refund`: reject open or successful campaigns; for failed or
+  - [x] Implement `refund`: reject open or successful campaigns; for failed or
         deleted campaigns, fetch the signer's live leaves and refund one per
         transaction, reporting partial failures. Open one wallet connection for the
         invocation and close it in `finally`; `--dry-run` prints the planned refunds

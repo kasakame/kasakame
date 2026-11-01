@@ -1,5 +1,6 @@
 import { parseCliOptions, type CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
+import { runRefund } from './commands.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
 
@@ -9,7 +10,7 @@ Commands:
   login            Pair a wallet over WalletConnect
   whoami           Show the connected wallet or mnemonic address
   logout           Disconnect the wallet session
-  refund <appId>   Refund live pledges from a failed campaign (planned)
+  refund <appId>   Refund live pledges from a failed campaign
   cancel <appId>   Cancel live pledges while a campaign is open (planned)
   claim <appId>    Claim a successful campaign as the creator (planned)
 
@@ -44,6 +45,9 @@ export async function run(argv: string[]): Promise<number> {
         return await runWhoami(options)
       case 'logout':
         return await runLogout()
+      case 'refund':
+        configureCliChain(options)
+        return await runRefund(options)
       default:
         configureCliChain(options)
         console.error(`Not implemented yet: ${options.command}`)

@@ -6,6 +6,7 @@ const whoamiMock = vi.hoisted(() => vi.fn())
 const logoutMock = vi.hoisted(() => vi.fn())
 const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 const configureCliChainMock = vi.hoisted(() => vi.fn())
+const runRefundMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./walletconnect.js', () => ({
   login: loginMock,
@@ -14,6 +15,7 @@ vi.mock('./walletconnect.js', () => ({
 }))
 vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
+vi.mock('./commands.js', () => ({ runRefund: runRefundMock }))
 
 const SESSION = {
   address: 'ADDRESS',
@@ -104,8 +106,10 @@ describe('run', () => {
     expect(console.log).toHaveBeenCalledWith('No active wallet session.')
   })
 
-  it('configures the chain before a planned transaction command', async () => {
-    expect(await run(['refund', '123'])).toBe(1)
+  it('configures the chain and runs refund', async () => {
+    runRefundMock.mockResolvedValue(0)
+
+    expect(await run(['refund', '123'])).toBe(0)
     expect(configureCliChainMock).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'refund',
@@ -114,7 +118,13 @@ describe('run', () => {
         signer: 'wallet',
       }),
     )
-    expect(console.error).toHaveBeenCalledWith('Not implemented yet: refund')
+    expect(runRefundMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+  })
+
+  it('propagates the refund exit code', async () => {
+    runRefundMock.mockResolvedValue(1)
+
+    expect(await run(['refund', '123'])).toBe(1)
   })
 
   it('accepts localnet mnemonic dry-runs for planned commands', async () => {

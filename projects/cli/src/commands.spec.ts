@@ -1,0 +1,150 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CliOptions } from './args.js'
+import { runRefund } from './commands.js'
+
+const sdkMocks = vi.hoisted(() => ({
+  fetchCampaignHeader: vi.fn(),
+  fetchChainTimestamp: vi.fn(),
+  getCampaignStatus: vi.fn(),
+  fetchMyLeaves: vi.fn(),
+  refund: vi.fn(),
+}))
+const closeMock = vi.hoisted(() => vi.fn(async () => {}))
+const openCliSessionMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@kasakame/sdk', () => sdkMocks)
+vi.mock('./session.js', () => ({ openCliSession: openCliSessionMock }))
+
+const WALLET = { address: 'BACKER', signer: vi.fn() }
+const HEADER = {
+  id: 1n,
+  creator: 'CREATOR',
+  title: 'Title',
+  metadataUri: 'ipfs://metadata',
+  goalMicroAlgos: 10_000_000n,
+  deadlineSeconds: 1_000n,
+  raisedMicroAlgos: 2_000_000n,
+  status: 'open' as const,
+  deleted: false,
+}
+
+function options(overrides: Partial<CliOptions> = {}): CliOptions {
+  return {
+    command: 'refund',
+    appId: 1n,
+    network: 'testnet',
+    signer: 'mnemonic',
+    dryRun: false,
+    ...overrides,
+  }
+}
+
+function leaf(position: number, amount: bigint) {
+  return { position, amount, txidHex: 'aa' }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  sdkMocks.fetchCampaignHeader.mockResolvedValue(HEADER)
+  sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
+  sdkMocks.getCampaignStatus.mockReturnValue('failed')
+  sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
+  sdkMocks.refund.mockResolvedValue(undefined)
+  openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('runRefund', () => {
+  it('refunds every live pledge and closes the session', async () => {
+    expect(await runRefund(options())).toBe(0)
+
+    expect(sdkMocks.fetchCampaignHeader).toHaveBeenCalledWith(1n)
+    expect(sdkMocks.getCampaignStatus).toHaveBeenCalledWith(HEADER, 2_000n)
+    expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'BACKER')
+    expect(sdkMocks.refund).toHaveBeenCalledTimes(2)
+    expect(sdkMocks.refund).toHaveBeenNthCalledWith(1, 1n, WALLET, leaf(0, 1_500_000n))
+    expect(sdkMocks.refund).toHaveBeenNthCalledWith(2, 1n, WALLET, leaf(1, 1n))
+    expect(console.log).toHaveBeenCalledWith('Refunded pledge #0 (1.5 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Refunded pledge #1 (0.000001 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Refunded 2 pledges.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('prints planned refunds in a dry run without submitting', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_000_000n)])
+
+    expect(await runRefund(options({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.refund).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would refund pledge #0 (1 ALGO).')
+    expect(console.log).toHaveBeenCalledWith('Dry run: 1 pledge would be refunded.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('keeps going after a failed pledge and exits non-zero', async () => {
+    sdkMocks.refund.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
+
+    expect(await runRefund(options())).toBe(1)
+
+    expect(sdkMocks.refund).toHaveBeenCalledTimes(2)
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+    expect(console.error).toHaveBeenCalledWith('Refunded 1 of 2 pledges; 1 failed.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('reports a non-Error failure', async () => {
+    sdkMocks.refund.mockRejectedValue('rejected')
+
+    expect(await runRefund(options())).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+  })
+
+  it('reports no live pledges', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([])
+
+    expect(await runRefund(options())).toBe(0)
+
+    expect(sdkMocks.refund).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('No live pledges to refund from campaign 1.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('closes the session when fetching leaves fails', async () => {
+    sdkMocks.fetchMyLeaves.mockRejectedValue(new Error('indexer down'))
+
+    await expect(runRefund(options())).rejects.toThrow('indexer down')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('rejects an open campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 is still open; use `kasakame cancel` before the deadline')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a successful campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 succeeded; there is nothing to refund')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects an unknown campaign', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue(undefined)
+
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 not found')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runRefund({ command: 'refund', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'refund requires exactly one app id',
+    )
+  })
+})
