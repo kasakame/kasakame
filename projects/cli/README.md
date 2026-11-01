@@ -88,10 +88,11 @@ node dist/index.js whoami
 node dist/index.js logout
 ```
 
-`login` prints a WalletConnect QR; scan it with Pera, Defly, or another
-Algorand WalletConnect wallet. The session is stored under
-`~/.kasakame/walletconnect/`. The package embeds the public WalletConnect
-project ID; set `KASAKAME_WALLETCONNECT_PROJECT_ID` to use your own.
+`login` prints a WalletConnect v1 QR; scan it with Pera or Defly, the protocol
+both apps support. The session is stored in
+`~/.kasakame/walletconnect/testnet.json`. The bridge comes from the list the
+wallets publish (`https://wc.perawallet.app/config.json`), with a known Pera
+bridge as fallback. No WalletConnect Cloud project or account is needed.
 
 Transaction commands default to TestNet with the embedded Factory and
 ClaimsVault app ids. `--vault`/`--factory` override them. LocalNet and custom

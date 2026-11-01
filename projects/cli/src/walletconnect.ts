@@ -1,22 +1,18 @@
-import type { WalletSession } from '@kasakame/sdk'
-import { KeyValueStorage } from '@walletconnect/keyvaluestorage'
-import { SignClient } from '@walletconnect/sign-client'
-import type { SessionTypes } from '@walletconnect/types'
-import { isValidAddress, type Transaction, type TransactionSigner } from 'algosdk'
-import { mkdirSync } from 'node:fs'
+import { WalletConnect, type IClientMeta, type ISessionStorage, type IWalletConnectSession } from '@perawallet/walletconnect'
+import type { Transaction, TransactionSigner } from 'algosdk'
+import { isValidAddress } from 'algosdk'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import qrcode from 'qrcode-terminal'
 
-// Public WalletConnect project ID; override with KASAKAME_WALLETCONNECT_PROJECT_ID.
-export const DEFAULT_WALLETCONNECT_PROJECT_ID = '14c6183ad8c1cd4e6cd696352c64dc4e'
-export const TESTNET_CHAIN_ID = 'algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'
-
-const PROJECT_ID_PATTERN = /^[0-9a-f]{32}$/i
-const DISCONNECT_REASON = { code: 6000, message: 'User disconnected' }
-const RELAY_TIMEOUT_MS = 30_000
+// Pera and Defly both pair over WalletConnect v1 and read their bridge list from the same Pera servers.
+const BRIDGE_CONFIG_URL = 'https://wc.perawallet.app/config.json'
+const FALLBACK_BRIDGE = 'https://wallet-connect-a.perawallet.app'
+const BRIDGE_TIMEOUT_MS = 10_000
 const APPROVAL_TIMEOUT_MS = 5 * 60_000
-const METADATA = {
+const ALGORAND_CHAIN_ID = 4160
+const METADATA: IClientMeta = {
   name: 'kasakame CLI',
   description: 'Refund, cancel, claim, and delete kasakame campaigns',
   url: 'https://kasakame.com',
@@ -24,15 +20,12 @@ const METADATA = {
 }
 
 export interface WalletConnectOptions {
-  projectId?: string
-  chainId?: string
+  bridge?: string
   storagePath?: string
 }
 
 export interface WalletSessionInfo {
   address: string
-  chainId: string
-  expiry: number
   walletName: string
 }
 
@@ -43,102 +36,71 @@ export interface LoginResult {
 
 export interface WalletConnection {
   info: WalletSessionInfo
-  wallet: WalletSession
+  wallet: { address: string; signer: TransactionSigner }
   close: () => Promise<void>
 }
 
-/**
- * Validate a WalletConnect project ID.
- *
- * @param projectId Project ID from the Reown dashboard.
- * @returns The same project ID.
- */
-export function validateProjectId(projectId: string): string {
-  if (!PROJECT_ID_PATTERN.test(projectId)) {
-    throw new Error('WalletConnect project ID must be 32 hexadecimal characters')
+class FileSessionStorage implements ISessionStorage {
+  constructor(private readonly file: string) {
+    mkdirSync(dirname(file), { recursive: true, mode: 0o700 })
   }
-  return projectId
+
+  getSession(): IWalletConnectSession | null {
+    try {
+      return JSON.parse(readFileSync(this.file, 'utf8')) as IWalletConnectSession
+    } catch {
+      return null
+    }
+  }
+
+  setSession(session: IWalletConnectSession): IWalletConnectSession {
+    writeFileSync(this.file, `${JSON.stringify(session)}\n`, { mode: 0o600 })
+    return session
+  }
+
+  removeSession(): void {
+    rmSync(this.file, { force: true })
+  }
 }
 
 /**
- * Resolve the WalletConnect project ID from the environment or the embedded default.
+ * Where the WalletConnect v1 session for TestNet is stored.
  *
- * @param env Environment variables to read.
- * @returns The project ID.
- */
-export function resolveProjectId(env: NodeJS.ProcessEnv = process.env): string {
-  return validateProjectId(env.KASAKAME_WALLETCONNECT_PROJECT_ID?.trim() || DEFAULT_WALLETCONNECT_PROJECT_ID)
-}
-
-/**
- * Where the WalletConnect session for TestNet is stored.
- *
- * @returns Absolute database path.
+ * @returns Absolute session file path.
  */
 export function defaultSessionStoragePath(): string {
-  return join(homedir(), '.kasakame', 'walletconnect', 'testnet')
+  return join(homedir(), '.kasakame', 'walletconnect', 'testnet.json')
+}
+
+interface SessionView {
+  accounts: string[]
+  session: IWalletConnectSession
 }
 
 /**
- * Pick the newest unexpired session for the given Algorand chain.
+ * Map a paired client to the wallet details the CLI needs.
  *
- * @param sessions Sessions restored by SignClient.
- * @param chainId Algorand CAIP-2 chain id.
- * @param nowSeconds Current UNIX timestamp in seconds.
- * @returns The newest matching session, or undefined.
+ * @param client Connected WalletConnect client.
+ * @returns The address and wallet name.
  */
-export function selectSession(
-  sessions: SessionTypes.Struct[],
-  chainId: string = TESTNET_CHAIN_ID,
-  nowSeconds: number = Math.floor(Date.now() / 1000),
-): SessionTypes.Struct | undefined {
-  return sessions
-    .filter((session) => session.expiry > nowSeconds && (session.namespaces.algorand?.chains?.includes(chainId) ?? false))
-    .sort((a, b) => b.expiry - a.expiry)[0]
-}
-
-/**
- * Map a WalletConnect session to the wallet details the CLI needs.
- *
- * @param session WalletConnect session.
- * @returns The address, chain, expiry, and wallet name.
- */
-export function describeSession(session: SessionTypes.Struct): WalletSessionInfo {
-  const namespace = session.namespaces.algorand
-  const chainId = namespace?.chains?.[0]
-  if (chainId === undefined) {
-    throw new Error('Wallet session has no Algorand chain')
-  }
-
-  const address = namespace?.accounts[0]?.split(':').pop()
+export function describeSession(client: SessionView): WalletSessionInfo {
+  const address = client.accounts[0]
   if (address === undefined || !isValidAddress(address)) {
     throw new Error('Wallet session has no valid Algorand account')
   }
-
-  return {
-    address,
-    chainId,
-    expiry: session.expiry,
-    walletName: session.peer.metadata.name,
-  }
+  return { address, walletName: client.session.peerMeta?.name ?? 'WalletConnect wallet' }
 }
 
-async function createClient(projectId: string, storagePath: string): Promise<InstanceType<typeof SignClient>> {
-  validateProjectId(projectId)
-  mkdirSync(storagePath, { recursive: true, mode: 0o700 })
-  return SignClient.init({
-    projectId,
-    metadata: METADATA,
-    storage: new KeyValueStorage({ database: storagePath }),
-    logger: 'error',
-  })
-}
-
-async function closeClient(client: InstanceType<typeof SignClient>): Promise<void> {
+async function resolveBridge(options: WalletConnectOptions): Promise<string> {
+  if (options.bridge !== undefined) return options.bridge
   try {
-    await client.core.relayer.transportClose()
+    const response = await withTimeout(fetch(BRIDGE_CONFIG_URL), BRIDGE_TIMEOUT_MS, 'Timed out reading the WalletConnect bridge list')
+    const config = (await response.json()) as { servers?: string[] }
+    const servers = config.servers ?? []
+    const index = Math.floor(Math.random() * servers.length)
+    return servers[index] ?? FALLBACK_BRIDGE
   } catch {
-    // The session is already persisted; a failed transport close must not hide the result.
+    return FALLBACK_BRIDGE
   }
 }
 
@@ -156,29 +118,30 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: s
   }
 }
 
-function resolveOptions(options: WalletConnectOptions): { projectId: string; chainId: string; storagePath: string } {
-  return {
-    projectId: options.projectId ?? resolveProjectId(),
-    chainId: options.chainId ?? TESTNET_CHAIN_ID,
-    storagePath: options.storagePath ?? defaultSessionStoragePath(),
-  }
+function createConnector(bridge: string, storagePath: string | undefined): InstanceType<typeof WalletConnect> {
+  return new WalletConnect({
+    bridge,
+    storage: new FileSessionStorage(storagePath ?? defaultSessionStoragePath()),
+    clientMeta: METADATA,
+  })
 }
 
-function createSigner(client: InstanceType<typeof SignClient>, session: SessionTypes.Struct, info: WalletSessionInfo): TransactionSigner {
+function createSigner(client: InstanceType<typeof WalletConnect>, address: string): TransactionSigner {
   return async (txnGroup: Transaction[], indexesToSign: number[]): Promise<Uint8Array[]> => {
     const toSign = new Set(indexesToSign)
     const walletTxns = txnGroup.map((txn, index) => {
       const encoded = Buffer.from(txn.toByte()).toString('base64')
-      return toSign.has(index) && txn.sender.toString() === info.address ? { txn: encoded } : { txn: encoded, signers: [] }
+      return toSign.has(index) && txn.sender.toString() === address ? { txn: encoded } : { txn: encoded, signers: [] }
     })
 
-    const result = await client.request<(string | null)[]>({
-      topic: session.topic,
-      chainId: info.chainId,
-      request: { method: 'algo_signTxn', params: [walletTxns] },
-    })
-
-    const signed = result.filter((value): value is string => value !== null).map((value) => new Uint8Array(Buffer.from(value, 'base64')))
+    const result: unknown = await client.sendCustomRequest({ method: 'algo_signTxn', params: [walletTxns] })
+    const returned = (Array.isArray(result) ? result : [result]) as unknown[]
+    const signed = returned
+      .filter((value) => value !== null)
+      .map((value) => {
+        if (typeof value === 'string') return new Uint8Array(Buffer.from(value, 'base64'))
+        return Uint8Array.from(value as number[])
+      })
     if (signed.length !== toSign.size) {
       throw new Error(`Wallet returned ${String(signed.length)} signatures for ${String(toSign.size)} transactions`)
     }
@@ -189,115 +152,105 @@ function createSigner(client: InstanceType<typeof SignClient>, session: SessionT
 /**
  * Open the stored wallet session as the SDK's `WalletSession`.
  *
- * @param options Overrides for the project ID, chain, and session storage.
+ * @param options Overrides for the bridge and session storage.
  * @returns The session details, SDK wallet session, and a close function.
  */
 export async function openWalletConnection(options: WalletConnectOptions = {}): Promise<WalletConnection> {
-  const { projectId, chainId, storagePath } = resolveOptions(options)
-  const client = await createClient(projectId, storagePath)
-  try {
-    const session = selectSession(client.session.getAll(), chainId)
-    if (session === undefined) {
-      throw new Error('No active wallet session. Run `kasakame login` first.')
-    }
+  const bridge = await resolveBridge(options)
+  const client = createConnector(bridge, options.storagePath)
+  if (!client.connected) {
+    client.transportClose()
+    throw new Error('No active wallet session. Run `kasakame login` first.')
+  }
 
-    const info = describeSession(session)
-    return {
-      info,
-      wallet: { address: info.address, signer: createSigner(client, session, info) },
-      close: () => closeClient(client),
-    }
-  } catch (error) {
-    await closeClient(client)
-    throw error
+  const info = describeSession(client)
+  return {
+    info,
+    wallet: { address: info.address, signer: createSigner(client, info.address) },
+    close: () => {
+      client.transportClose()
+      return Promise.resolve()
+    },
   }
 }
 
 /**
- * Pair a wallet over WalletConnect, reusing a valid stored session when present.
+ * Pair a wallet over WalletConnect v1, reusing a valid stored session when present.
  *
- * @param options Overrides for the project ID, chain, and session storage.
+ * @param options Overrides for the bridge and session storage.
  * @returns The connected session and whether it was reused.
  */
 export async function login(options: WalletConnectOptions = {}): Promise<LoginResult> {
-  const { projectId, chainId, storagePath } = resolveOptions(options)
-  console.error('Connecting to the WalletConnect relay…')
-  const client = await withTimeout(
-    createClient(projectId, storagePath),
-    RELAY_TIMEOUT_MS,
-    'Could not reach the WalletConnect relay. Check your connection and try again.',
-  )
+  const bridge = await resolveBridge(options)
+  const client = createConnector(bridge, options.storagePath)
   try {
-    const existing = selectSession(client.session.getAll(), chainId)
-    if (existing !== undefined) {
-      return { session: describeSession(existing), reused: true }
+    if (client.connected) {
+      return { session: describeSession(client), reused: true }
     }
 
-    const { uri, approval } = await withTimeout(
-      client.connect({
-        optionalNamespaces: {
-          algorand: { chains: [chainId], methods: ['algo_signTxn'], events: [] },
-        },
-      }),
-      RELAY_TIMEOUT_MS,
-      'WalletConnect did not return a pairing URI. Check your connection and try again.',
-    )
-    if (uri === undefined) {
-      throw new Error('WalletConnect did not return a pairing URI')
-    }
+    console.error('Connecting to the WalletConnect bridge…')
+    await client.createSession({ chainId: ALGORAND_CHAIN_ID })
+    // Pera and Defly recognize Algorand sessions from this query parameter (ARC-25).
+    const uri = `${client.uri}&algorand=true`
 
-    console.log('\nScan this QR code with Pera, Defly, or another Algorand WalletConnect wallet:\n')
+    console.log('\nScan this QR code with Pera, Defly, or another Algorand wallet:\n')
     qrcode.generate(uri, { small: true })
     console.log(`\nOr copy this pairing URI:\n${uri}\n`)
     console.error('Waiting for your wallet to approve…')
 
-    const session = await withTimeout(approval(), APPROVAL_TIMEOUT_MS, 'Timed out waiting for the wallet. Run `kasakame login` again.')
-    return { session: describeSession(session), reused: false }
+    await withTimeout(
+      new Promise<void>((resolve, reject) => {
+        client.on('connect', (error) => {
+          if (error === null) {
+            resolve()
+          } else {
+            reject(error)
+          }
+        })
+        client.on('disconnect', () => {
+          reject(new Error('The wallet disconnected. Run `kasakame login` again.'))
+        })
+      }),
+      APPROVAL_TIMEOUT_MS,
+      'Timed out waiting for the wallet. Run `kasakame login` again.',
+    )
+
+    return { session: describeSession(client), reused: false }
   } finally {
-    await closeClient(client)
+    client.transportClose()
   }
 }
 
 /**
- * Read the stored wallet session for the chain.
+ * Read the stored wallet session.
  *
- * @param options Overrides for the project ID, chain, and session storage.
- * @returns The stored session, or undefined when none matches.
+ * @param options Overrides for the bridge and session storage.
+ * @returns The stored session, or undefined when none is stored.
  */
 export async function whoami(options: WalletConnectOptions = {}): Promise<WalletSessionInfo | undefined> {
-  const { projectId, chainId, storagePath } = resolveOptions(options)
-  const client = await createClient(projectId, storagePath)
+  const bridge = await resolveBridge(options)
+  const client = createConnector(bridge, options.storagePath)
   try {
-    const session = selectSession(client.session.getAll(), chainId)
-    return session === undefined ? undefined : describeSession(session)
+    return client.connected ? describeSession(client) : undefined
   } finally {
-    await closeClient(client)
+    client.transportClose()
   }
 }
 
 /**
  * Disconnect the stored wallet session.
  *
- * @param options Overrides for the project ID, chain, and session storage.
+ * @param options Overrides for the bridge and session storage.
  * @returns True when a session was disconnected, false when there was none.
  */
 export async function logout(options: WalletConnectOptions = {}): Promise<boolean> {
-  const { projectId, chainId, storagePath } = resolveOptions(options)
-  const client = await createClient(projectId, storagePath)
+  const bridge = await resolveBridge(options)
+  const client = createConnector(bridge, options.storagePath)
   try {
-    const session = selectSession(client.session.getAll(), chainId)
-    if (session === undefined) {
-      return false
-    }
-
-    try {
-      await client.disconnect({ topic: session.topic, reason: DISCONNECT_REASON })
-    } catch {
-      // Relay unreachable: still remove the local session so logout works offline.
-      await client.session.delete(session.topic, DISCONNECT_REASON)
-    }
+    if (!client.connected) return false
+    await client.killSession()
     return true
   } finally {
-    await closeClient(client)
+    client.transportClose()
   }
 }

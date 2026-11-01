@@ -31,8 +31,6 @@ vi.mock('./commands.js', () => ({
 
 const SESSION = {
   address: 'ADDRESS',
-  chainId: 'algorand:testnet',
-  expiry: 1_700_000_000,
   walletName: 'Pera Wallet',
 }
 const MNEMONIC_WALLET = { address: 'MNEMONIC_ADDRESS', signer: vi.fn() }
@@ -68,7 +66,6 @@ describe('run', () => {
 
     expect(await run(['login'])).toBe(0)
     expect(console.log).toHaveBeenCalledWith('Connected Pera Wallet as ADDRESS.')
-    expect(console.log).toHaveBeenCalledWith('Session expires: 2023-11-14T22:13:20.000Z')
   })
 
   it('reports an already logged-in session', async () => {
@@ -84,7 +81,6 @@ describe('run', () => {
     expect(await run(['whoami'])).toBe(0)
     expect(console.log).toHaveBeenCalledWith('Wallet: Pera Wallet')
     expect(console.log).toHaveBeenCalledWith('Address: ADDRESS')
-    expect(console.log).toHaveBeenCalledWith('Chain: algorand:testnet')
   })
 
   it('shows the mnemonic address', async () => {

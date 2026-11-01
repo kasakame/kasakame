@@ -81,7 +81,6 @@ async function runLogin(): Promise<number> {
   } else {
     console.log(`Connected ${result.session.walletName} as ${result.session.address}.`)
   }
-  console.log(`Session expires: ${formatExpiry(result.session.expiry)}`)
   return 0
 }
 
@@ -102,8 +101,6 @@ async function runWhoami(options: CliOptions): Promise<number> {
 
   console.log(`Wallet: ${session.walletName}`)
   console.log(`Address: ${session.address}`)
-  console.log(`Chain: ${session.chainId}`)
-  console.log(`Session expires: ${formatExpiry(session.expiry)}`)
   return 0
 }
 
@@ -111,8 +108,4 @@ async function runLogout(): Promise<number> {
   const disconnected = await logout()
   console.log(disconnected ? 'Disconnected.' : 'No active wallet session.')
   return 0
-}
-
-function formatExpiry(expiry: number): string {
-  return new Date(expiry * 1000).toISOString()
 }

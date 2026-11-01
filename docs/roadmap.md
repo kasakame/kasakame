@@ -127,25 +127,23 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     and stores the session locally; commands reuse it and the wallet prompts for
     every transaction group, as on the website. No account keys are stored by this
     path.
-  - **WalletConnect Cloud project approved.** Register one Reown/WalletConnect
-    project; embed its public project ID in the package and allow an override via
-    `KASAKAME_WALLETCONNECT_PROJECT_ID`. The project ID is public and identifies the
-    app to the relay - it does not hold keys or funds. The free Starter plan is 1
-    project with 2.5M Reown RPC calls and 500 embedded-wallet/SIWX MAUs per month
-    (the project pauses at the cap); the CLI only uses the relay, not Reown's RPC or
-    embedded wallets, so those caps are not the binding constraint. The relay is
-    still a third-party dependency: it rate-limits shared project IDs, so document
-    the override/rotation path.
+  - **WalletConnect v1, matching the wallets.** Pera and Defly pair over
+    WalletConnect v1: their SDKs (`@perawallet/connect` and
+    `@blockshake/defly-connect`) are v1 clients, and the apps reject v2 pairing
+    URIs. The CLI uses `@perawallet/walletconnect`, the maintained v1 client Pera
+    builds on, with a file-backed session, `algorand=true` pairing URIs, and the
+    bridge list both wallets publish. No WalletConnect Cloud project or relay
+    account is needed. The bridge is still a third-party dependency; keep the
+    documented fallback.
   - **Terminal QR only for now.** `login` prints the pairing QR in the terminal
     (plus the raw `wc:` URI). A localhost page that shows the same QR is a later
     display-only option; a local browser wallet bridge (the website's Pera/Defly/
     Exodus SDKs) is not planned - it needs a browser, a local server, and a signing
     page, and only helps desktop-only users.
   - **Why WalletConnect:** it is the terminal-compatible wallet transport. Pera
-    Connect runs on WalletConnect and TxnLab's `use-wallet` adapter already
-    implements the exact `algo_signTxn` flow; there is no Algorand CLI wallet-login
-    standard yet, so use the stable protocol primitives rather than WalletConnect's
-    beta CLI wrapper.
+    Connect and Defly Connect run on WalletConnect v1 and already implement the
+    exact `algo_signTxn` flow; there is no Algorand CLI wallet-login standard yet,
+    so use the stable protocol primitives rather than a vendor-specific bridge.
   - **Both signers ship.** Wallet is the default. `--signer mnemonic` is an explicit
     opt-in on any network and the only path on LocalNet (Pera/Defly cannot target
     it). Both produce the same `WalletSession`, so commands never branch. The
@@ -224,6 +222,12 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         every rejection into a message that names the next step (`pledges`,
         `campaigns`, or the right command). Keep `--dry-run` explicit that nothing
         was submitted.
+  - [x] Switch the wallet transport to WalletConnect v1: Pera and Defly reject v2
+        pairing URIs. Use `@perawallet/walletconnect`, append `algorand=true` to
+        the pairing URI, persist the session in
+        `~/.kasakame/walletconnect/testnet.json`, sign through `algo_signTxn`, and
+        resolve bridges from the list the wallets publish. Drop the Reown project
+        ID, the v2 relay, and the key-value storage dependency.
   - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
         transport: happy paths, state rejections, no leaves, partial failure,
         invalid flags/network, missing/expired session, rejected approval, and
@@ -231,16 +235,25 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         (login → refund/cancel/claim/delete) and with `--signer mnemonic`.
   - [ ] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
-        never contacts the relay.
+        never contacts the bridge.
   - [ ] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
         provenance, and a tarball smoke test running `kasakame --help`.
   - [ ] Document: new `docs/cli.md` (install, login/logout, wallet approval,
         commands, networks, the mnemonic opt-in and its hot-key trade-off, the
-        WalletConnect project ID/relay dependency, self-hosting), plus `ci.md`,
+        WalletConnect v1 bridge dependency, self-hosting), plus `ci.md`,
         `sdk.md`, `architecture.md`, `frontend.md`, `testing.md`, `README.md`,
         `AGENTS.md`.
   - [ ] Keep `projects/frontend/scripts/reclaim.ts` as the batch dev/seed cleanup
         tool; it also deletes/unregisters, which the CLI does not.
+
+## Wallet transport
+
+- [ ] **Move the CLI and the frontend to WalletConnect v2** once Pera and Defly
+      support it. Both pair over v1 today: their SDKs (`@perawallet/connect` and
+      `@blockshake/defly-connect`) are v1 clients, so the CLI signs over v1 and the
+      frontend uses the vendor SDKs. When both apps accept v2 pairing URIs, switch
+      the CLI to `@walletconnect/sign-client` and the frontend to a v2 adapter,
+      then drop the v1 bridge dependency. Track their release notes.
 
 ## Standardization
 

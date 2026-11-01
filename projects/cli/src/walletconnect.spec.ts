@@ -1,4 +1,4 @@
-import type { SessionTypes } from '@walletconnect/types'
+import type { ISessionStorage, IWalletConnectSession } from '@perawallet/walletconnect'
 import {
   generateAccount,
   makeBasicAccountTransactionSigner,
@@ -6,86 +6,96 @@ import {
   signTransactionWithSigner,
   type Transaction,
 } from 'algosdk'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  DEFAULT_WALLETCONNECT_PROJECT_ID,
-  TESTNET_CHAIN_ID,
-  defaultSessionStoragePath,
-  describeSession,
-  login,
-  logout,
-  openWalletConnection,
-  resolveProjectId,
-  selectSession,
-  validateProjectId,
-  whoami,
-} from './walletconnect.js'
+import { defaultSessionStoragePath, describeSession, login, logout, openWalletConnection, whoami } from './walletconnect.js'
 
-const signClientInit = vi.hoisted(() => vi.fn())
-const keyValueStorage = vi.hoisted(() => vi.fn())
+const walletConnectCtor = vi.hoisted(() => vi.fn())
 const qrGenerate = vi.hoisted(() => vi.fn())
 
-vi.mock('@walletconnect/sign-client', () => ({
-  SignClient: { init: signClientInit },
-}))
-vi.mock('@walletconnect/keyvaluestorage', () => ({
-  KeyValueStorage: keyValueStorage,
-}))
-vi.mock('qrcode-terminal', () => ({
-  default: { generate: qrGenerate },
-}))
+vi.mock('@perawallet/walletconnect', () => ({ WalletConnect: walletConnectCtor }))
+vi.mock('qrcode-terminal', () => ({ default: { generate: qrGenerate } }))
 
 const ACCOUNT = generateAccount()
 const OTHER_ACCOUNT = generateAccount()
 const ADDRESS = ACCOUNT.addr.toString()
 const OTHER_ADDRESS = OTHER_ACCOUNT.addr.toString()
-const METADATA = {
-  name: 'Pera Wallet',
-  description: 'Pera Wallet',
-  url: 'https://perawallet.app',
-  icons: [],
+
+interface FakeClient {
+  connected: boolean
+  accounts: string[]
+  session: IWalletConnectSession
+  uri: string
+  chainId: number
+  storage: ISessionStorage
+  createSession: ReturnType<typeof vi.fn>
+  killSession: ReturnType<typeof vi.fn>
+  on: ReturnType<typeof vi.fn>
+  sendCustomRequest: ReturnType<typeof vi.fn>
+  transportClose: ReturnType<typeof vi.fn>
+  emit: (event: string, error: Error | null, payload?: unknown) => void
 }
 
-function makeSession(overrides: Partial<SessionTypes.Struct> = {}): SessionTypes.Struct {
+const created: FakeClient[] = []
+
+function makeSession(overrides: Partial<IWalletConnectSession> = {}): IWalletConnectSession {
   return {
-    topic: 'topic-1',
-    pairingTopic: 'pairing-1',
-    relay: { protocol: 'irn' },
-    expiry: 2_000_000_000,
-    acknowledged: true,
-    controller: 'controller',
-    namespaces: {
-      algorand: {
-        chains: [TESTNET_CHAIN_ID],
-        accounts: [`${TESTNET_CHAIN_ID}:${ADDRESS}`],
-        methods: ['algo_signTxn'],
-        events: [],
-      },
-    },
-    requiredNamespaces: {},
-    optionalNamespaces: {},
-    self: { publicKey: 'self', metadata: METADATA },
-    peer: { publicKey: 'peer', metadata: METADATA },
+    connected: true,
+    accounts: [ADDRESS],
+    chainId: 4160,
+    bridge: 'https://wallet-connect-a.perawallet.app',
+    key: 'key',
+    clientId: 'client',
+    clientMeta: { name: 'kasakame CLI', description: 'CLI', url: 'https://kasakame.com', icons: [] },
+    peerId: 'peer',
+    peerMeta: { name: 'Pera Wallet', description: 'Pera Wallet', url: 'https://perawallet.app', icons: [] },
+    handshakeId: 1,
+    handshakeTopic: 'topic-1',
     ...overrides,
   }
 }
 
-function fakeClient(sessions: SessionTypes.Struct[] = []) {
-  return {
-    session: {
-      getAll: vi.fn(() => sessions),
-      delete: vi.fn(async () => {}),
+function makeClient(storage: ISessionStorage): FakeClient {
+  const stored = storage.getSession()
+  const listeners = new Map<string, (error: Error | null, payload: unknown) => void>()
+  const client: FakeClient = {
+    connected: stored !== null,
+    accounts: stored?.accounts ?? [],
+    session: stored ?? makeSession({ connected: false, accounts: [] }),
+    uri: 'wc:test-uri',
+    chainId: 4160,
+    storage,
+    createSession: vi.fn(() => Promise.resolve()),
+    killSession: vi.fn(() => {
+      storage.removeSession()
+      return Promise.resolve()
+    }),
+    on: vi.fn((event: string, callback: (error: Error | null, payload: unknown) => void) => {
+      listeners.set(event, callback)
+    }),
+    sendCustomRequest: vi.fn(),
+    transportClose: vi.fn(),
+    emit: (event, error, payload = null) => {
+      if (event === 'connect' && error === null) {
+        const session = makeSession()
+        storage.setSession(session)
+        client.accounts = session.accounts
+        client.session = session
+      }
+      listeners.get(event)?.(error, payload)
     },
-    connect: vi.fn(),
-    disconnect: vi.fn(async () => {}),
-    request: vi.fn(),
-    core: { relayer: { transportClose: vi.fn(async () => {}) } },
   }
+  created.push(client)
+  return client
 }
 
+function lastClient(): FakeClient {
+  const client = created[created.length - 1]
+  if (client === undefined) throw new Error('no client was created')
+  return client
+}
 function makeTxn(sender: string = ADDRESS): Transaction {
   return makePaymentTxnWithSuggestedParamsFromObject({
     sender,
@@ -103,346 +113,316 @@ function makeTxn(sender: string = ADDRESS): Transaction {
   })
 }
 
+function stubBridgeConfig(servers: string[]): void {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ servers }) })),
+  )
+}
+
+let workDir: string
+let sessionPath: string
+
 beforeEach(() => {
   vi.clearAllMocks()
-  keyValueStorage.mockImplementation(function KeyValueStorageMock() {})
+  created.length = 0
+  walletConnectCtor.mockImplementation(function MockWalletConnect(options: { storage: ISessionStorage }) {
+    return makeClient(options.storage)
+  })
+  workDir = mkdtempSync(join(tmpdir(), 'kasakame-cli-'))
+  sessionPath = join(workDir, 'testnet.json')
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.unstubAllEnvs()
-})
-
-describe('validateProjectId', () => {
-  it('accepts a 32-character hex id', () => {
-    expect(validateProjectId('14c6183ad8c1cd4e6cd696352c64dc4e')).toBe('14c6183ad8c1cd4e6cd696352c64dc4e')
-  })
-
-  it('rejects anything else', () => {
-    expect(() => validateProjectId('not-a-project-id')).toThrow('32 hexadecimal characters')
-  })
-})
-
-describe('resolveProjectId', () => {
-  it('falls back to the embedded id', () => {
-    expect(resolveProjectId({})).toBe(DEFAULT_WALLETCONNECT_PROJECT_ID)
-  })
-
-  it('reads the environment override', () => {
-    expect(resolveProjectId({ KASAKAME_WALLETCONNECT_PROJECT_ID: 'a'.repeat(32) })).toBe('a'.repeat(32))
-  })
-
-  it('treats a blank override as missing', () => {
-    expect(resolveProjectId({ KASAKAME_WALLETCONNECT_PROJECT_ID: '   ' })).toBe(DEFAULT_WALLETCONNECT_PROJECT_ID)
-  })
+  rmSync(workDir, { recursive: true, force: true })
 })
 
 describe('defaultSessionStoragePath', () => {
-  it('keeps TestNet sessions under the kasakame home', () => {
-    expect(defaultSessionStoragePath()).toContain(join('.kasakame', 'walletconnect', 'testnet'))
-  })
-})
-
-describe('selectSession', () => {
-  it('returns the newest unexpired session for the chain', () => {
-    const older = makeSession({ topic: 'older', expiry: 100 })
-    const newer = makeSession({ topic: 'newer', expiry: 200 })
-
-    expect(selectSession([older, newer], TESTNET_CHAIN_ID, 50)?.topic).toBe('newer')
-  })
-
-  it('ignores expired sessions', () => {
-    expect(selectSession([makeSession({ expiry: 10 })], TESTNET_CHAIN_ID, 20)).toBeUndefined()
-  })
-
-  it('ignores other chains', () => {
-    const session = makeSession({
-      namespaces: {
-        algorand: {
-          chains: ['algorand:other'],
-          accounts: ['algorand:other:ADDRESS'],
-          methods: ['algo_signTxn'],
-          events: [],
-        },
-      },
-    })
-
-    expect(selectSession([session], TESTNET_CHAIN_ID, 1)).toBeUndefined()
-  })
-
-  it('ignores a namespace without chains', () => {
-    const session = makeSession({
-      namespaces: {
-        algorand: { accounts: [], methods: ['algo_signTxn'], events: [] },
-      },
-    })
-
-    expect(selectSession([session], TESTNET_CHAIN_ID, 1)).toBeUndefined()
-  })
-
-  it('returns undefined with no sessions', () => {
-    expect(selectSession([], TESTNET_CHAIN_ID, 1)).toBeUndefined()
+  it('keeps the TestNet session under the kasakame home', () => {
+    expect(defaultSessionStoragePath()).toContain(join('.kasakame', 'walletconnect', 'testnet.json'))
   })
 })
 
 describe('describeSession', () => {
-  it('maps the session details', () => {
-    expect(describeSession(makeSession())).toEqual({
+  it('maps the stored session details', () => {
+    expect(describeSession(makeClient({ getSession: () => makeSession(), setSession: (s) => s, removeSession: () => {} }))).toEqual({
       address: ADDRESS,
-      chainId: TESTNET_CHAIN_ID,
-      expiry: 2_000_000_000,
       walletName: 'Pera Wallet',
     })
   })
 
-  it('rejects a session without an Algorand chain', () => {
-    expect(() => describeSession(makeSession({ namespaces: {} }))).toThrow('no Algorand chain')
+  it('falls back to a generic wallet name', () => {
+    const session = makeSession({ peerMeta: null })
+    const client = makeClient({ getSession: () => session, setSession: (s) => s, removeSession: () => {} })
+
+    expect(describeSession(client).walletName).toBe('WalletConnect wallet')
   })
 
   it('rejects a session without accounts', () => {
-    const session = makeSession({
-      namespaces: {
-        algorand: { chains: [TESTNET_CHAIN_ID], accounts: [], methods: ['algo_signTxn'], events: [] },
-      },
+    const client = makeClient({
+      getSession: () => makeSession({ accounts: [] }),
+      setSession: (s) => s,
+      removeSession: () => {},
     })
 
-    expect(() => describeSession(session)).toThrow('no valid Algorand account')
+    expect(() => describeSession(client)).toThrow('no valid Algorand account')
   })
 
   it('rejects an invalid account address', () => {
-    const session = makeSession({
-      namespaces: {
-        algorand: {
-          chains: [TESTNET_CHAIN_ID],
-          accounts: [`${TESTNET_CHAIN_ID}:not-an-address`],
-          methods: ['algo_signTxn'],
-          events: [],
-        },
-      },
+    const client = makeClient({
+      getSession: () => makeSession({ accounts: ['not-an-address'] }),
+      setSession: (s) => s,
+      removeSession: () => {},
     })
 
-    expect(() => describeSession(session)).toThrow('no valid Algorand account')
+    expect(() => describeSession(client)).toThrow('no valid Algorand account')
   })
 })
 
 describe('login', () => {
-  it('reuses a valid stored session', async () => {
-    const client = fakeClient([makeSession()])
-    signClientInit.mockResolvedValue(client)
+  it('reuses a stored session', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
 
-    const result = await login({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    const result = await login({ bridge: 'https://bridge', storagePath: sessionPath })
 
     expect(result.reused).toBe(true)
     expect(result.session.address).toBe(ADDRESS)
-    expect(client.connect).not.toHaveBeenCalled()
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    expect(lastClient().createSession).not.toHaveBeenCalled()
+    expect(lastClient().transportClose).toHaveBeenCalled()
   })
 
-  it('pairs a new session and prints the QR', async () => {
-    const client = fakeClient()
-    client.connect.mockResolvedValue({
-      uri: 'wc:test-uri',
-      approval: () => Promise.resolve(makeSession({ topic: 'new-topic' })),
+  it('pairs a new session and prints the QR with algorand=true', async () => {
+    const pending = login({ bridge: 'https://bridge', storagePath: sessionPath })
+    await vi.waitFor(() => {
+      expect(lastClient().on).toHaveBeenCalled()
     })
-    signClientInit.mockResolvedValue(client)
 
-    const result = await login({
-      projectId: 'a'.repeat(32),
-      chainId: TESTNET_CHAIN_ID,
-      storagePath: '/tmp/opencode/kasakame-cli-test',
-    })
+    const client = lastClient()
+    client.emit('connect', null, { params: [{ accounts: [ADDRESS] }] })
+    const result = await pending
 
     expect(result.reused).toBe(false)
-    expect(client.connect).toHaveBeenCalledWith({
-      optionalNamespaces: {
-        algorand: { chains: [TESTNET_CHAIN_ID], methods: ['algo_signTxn'], events: [] },
-      },
-    })
-    expect(console.error).toHaveBeenCalledWith('Connecting to the WalletConnect relay…')
+    expect(client.createSession).toHaveBeenCalledWith({ chainId: 4160 })
+    expect(console.error).toHaveBeenCalledWith('Connecting to the WalletConnect bridge…')
     expect(console.error).toHaveBeenCalledWith('Waiting for your wallet to approve…')
-    expect(qrGenerate).toHaveBeenCalledWith('wc:test-uri', { small: true })
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    expect(qrGenerate).toHaveBeenCalledWith('wc:test-uri&algorand=true', { small: true })
+    expect(client.transportClose).toHaveBeenCalled()
+  })
+
+  it('propagates a wallet rejection', async () => {
+    const pending = login({ bridge: 'https://bridge', storagePath: sessionPath })
+    const assertion = expect(pending).rejects.toThrow('User rejected the pairing')
+    await vi.waitFor(() => {
+      expect(lastClient().on).toHaveBeenCalled()
+    })
+    lastClient().emit('connect', new Error('User rejected the pairing'))
+
+    await assertion
+    expect(lastClient().transportClose).toHaveBeenCalled()
+  })
+
+  it('stops when the wallet disconnects during pairing', async () => {
+    const pending = login({ bridge: 'https://bridge', storagePath: sessionPath })
+    const assertion = expect(pending).rejects.toThrow('The wallet disconnected')
+    await vi.waitFor(() => {
+      expect(lastClient().on).toHaveBeenCalled()
+    })
+    lastClient().emit('disconnect', null)
+
+    await assertion
   })
 
   it('times out waiting for the wallet approval', async () => {
     vi.useFakeTimers()
     try {
-      const client = fakeClient()
-      client.connect.mockResolvedValue({ uri: 'wc:test-uri', approval: () => new Promise(() => {}) })
-      signClientInit.mockResolvedValue(client)
-
-      const pending = login({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+      const pending = login({ bridge: 'https://bridge', storagePath: sessionPath })
       const assertion = expect(pending).rejects.toThrow('Timed out waiting for the wallet')
       await vi.advanceTimersByTimeAsync(5 * 60_000)
 
       await assertion
-      expect(client.core.relayer.transportClose).toHaveBeenCalled()
+      expect(lastClient().transportClose).toHaveBeenCalled()
     } finally {
       vi.useRealTimers()
     }
   })
 
-  it('fails when WalletConnect returns no pairing URI', async () => {
-    const client = fakeClient()
-    client.connect.mockResolvedValue({ approval: () => Promise.resolve(makeSession()) })
-    signClientInit.mockResolvedValue(client)
-
-    await expect(login({ storagePath: '/tmp/opencode/kasakame-cli-test' })).rejects.toThrow('did not return a pairing URI')
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
-  })
-
-  it('uses the embedded project id and default storage path', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'kasakame-cli-'))
+  it('uses a bridge from the Pera config and the default storage path', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'kasakame-home-'))
     vi.stubEnv('HOME', home)
-    const client = fakeClient([makeSession()])
-    signClientInit.mockResolvedValue(client)
+    stubBridgeConfig(['https://bridge-a', 'https://bridge-b'])
+    const defaultSessionFile = join(home, '.kasakame', 'walletconnect', 'testnet.json')
+    mkdirSync(dirname(defaultSessionFile), { recursive: true })
+    writeFileSync(defaultSessionFile, JSON.stringify(makeSession()))
 
     try {
       const result = await login()
 
       expect(result.reused).toBe(true)
-      expect(signClientInit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: DEFAULT_WALLETCONNECT_PROJECT_ID,
-          storage: expect.anything(),
-        }),
-      )
-      expect(defaultSessionStoragePath()).toBe(join(home, '.kasakame', 'walletconnect', 'testnet'))
+      expect(walletConnectCtor).toHaveBeenCalledWith(expect.objectContaining({ bridge: expect.stringMatching(/^https:\/\/bridge-/) }))
+      expect(defaultSessionStoragePath()).toBe(defaultSessionFile)
     } finally {
       rmSync(home, { recursive: true, force: true })
     }
   })
 
-  it('rejects an invalid project id', async () => {
-    await expect(login({ projectId: 'invalid', storagePath: '/tmp/opencode/kasakame-cli-test' })).rejects.toThrow(
-      '32 hexadecimal characters',
+  it('falls back to the known bridge when the config is unreachable', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Promise.reject(new Error('offline'))),
     )
+
+    await login({ storagePath: sessionPath })
+
+    expect(walletConnectCtor).toHaveBeenCalledWith(expect.objectContaining({ bridge: 'https://wallet-connect-a.perawallet.app' }))
   })
 
-  it('keeps the result when closing the transport fails', async () => {
-    const client = fakeClient([makeSession()])
-    client.core.relayer.transportClose.mockRejectedValue(new Error('close failed'))
-    signClientInit.mockResolvedValue(client)
+  it('falls back when the config lists no bridges', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    stubBridgeConfig([])
 
-    const result = await login({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    await login({ storagePath: sessionPath })
 
-    expect(result.reused).toBe(true)
+    expect(walletConnectCtor).toHaveBeenCalledWith(expect.objectContaining({ bridge: 'https://wallet-connect-a.perawallet.app' }))
+  })
+
+  it('falls back when the config omits the bridge list', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ json: () => Promise.resolve({}) })),
+    )
+
+    await login({ storagePath: sessionPath })
+
+    expect(walletConnectCtor).toHaveBeenCalledWith(expect.objectContaining({ bridge: 'https://wallet-connect-a.perawallet.app' }))
   })
 })
 
 describe('whoami', () => {
   it('returns the stored session', async () => {
-    const client = fakeClient([makeSession()])
-    signClientInit.mockResolvedValue(client)
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
 
-    expect(await whoami({ storagePath: '/tmp/opencode/kasakame-cli-test' })).toMatchObject({ address: ADDRESS })
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    expect(await whoami({ bridge: 'https://bridge', storagePath: sessionPath })).toEqual({
+      address: ADDRESS,
+      walletName: 'Pera Wallet',
+    })
+    expect(lastClient().transportClose).toHaveBeenCalled()
   })
 
   it('returns undefined without a session', async () => {
-    const client = fakeClient()
-    signClientInit.mockResolvedValue(client)
+    expect(await whoami({ bridge: 'https://bridge', storagePath: sessionPath })).toBeUndefined()
+    expect(lastClient().transportClose).toHaveBeenCalled()
+  })
 
-    expect(await whoami({ chainId: 'algorand:other', storagePath: '/tmp/opencode/kasakame-cli-test' })).toBeUndefined()
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+  it('treats a corrupt session file as empty', async () => {
+    writeFileSync(sessionPath, 'not json')
+
+    expect(await whoami({ bridge: 'https://bridge', storagePath: sessionPath })).toBeUndefined()
   })
 })
 
 describe('logout', () => {
-  it('disconnects the stored session', async () => {
-    const session = makeSession()
-    const client = fakeClient([session])
-    signClientInit.mockResolvedValue(client)
+  it('disconnects the stored session and removes it', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
 
-    expect(await logout({ storagePath: '/tmp/opencode/kasakame-cli-test' })).toBe(true)
-    expect(client.disconnect).toHaveBeenCalledWith({ topic: session.topic, reason: { code: 6000, message: 'User disconnected' } })
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    expect(await logout({ bridge: 'https://bridge', storagePath: sessionPath })).toBe(true)
+    expect(lastClient().killSession).toHaveBeenCalled()
+    expect(lastClient().transportClose).toHaveBeenCalled()
+    expect(await whoami({ bridge: 'https://bridge', storagePath: sessionPath })).toBeUndefined()
   })
 
   it('returns false without a session', async () => {
-    const client = fakeClient()
-    signClientInit.mockResolvedValue(client)
-
-    expect(await logout({ storagePath: '/tmp/opencode/kasakame-cli-test' })).toBe(false)
-    expect(client.disconnect).not.toHaveBeenCalled()
+    expect(await logout({ bridge: 'https://bridge', storagePath: sessionPath })).toBe(false)
+    expect(lastClient().killSession).not.toHaveBeenCalled()
   })
 
-  it('removes the local session when the relay is unreachable', async () => {
-    const session = makeSession()
-    const client = fakeClient([session])
-    client.disconnect.mockRejectedValue(new Error('relay down'))
-    signClientInit.mockResolvedValue(client)
+  it('propagates a failed disconnect', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    walletConnectCtor.mockImplementationOnce(function MockFailingWalletConnect(options: { storage: ISessionStorage }) {
+      const client = makeClient(options.storage)
+      client.killSession.mockRejectedValue(new Error('bridge down'))
+      return client
+    })
 
-    expect(await logout({ storagePath: '/tmp/opencode/kasakame-cli-test' })).toBe(true)
-    expect(client.session.delete).toHaveBeenCalledWith(session.topic, { code: 6000, message: 'User disconnected' })
+    await expect(logout({ bridge: 'https://bridge', storagePath: sessionPath })).rejects.toThrow('bridge down')
   })
 })
 
 describe('openWalletConnection', () => {
   it('fails without a session and closes the client', async () => {
-    const client = fakeClient()
-    signClientInit.mockResolvedValue(client)
-
-    await expect(openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })).rejects.toThrow('No active wallet session')
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    await expect(openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })).rejects.toThrow('No active wallet session')
+    expect(lastClient().transportClose).toHaveBeenCalled()
   })
 
   it('returns a signer that sends algo_signTxn', async () => {
-    const client = fakeClient([makeSession()])
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
     const txn = makeTxn()
     const otherTxn = makeTxn(OTHER_ADDRESS)
     const signed = (await signTransactionWithSigner(txn, makeBasicAccountTransactionSigner(ACCOUNT))).blob
-    client.request.mockResolvedValue([Buffer.from(signed).toString('base64'), null])
-    signClientInit.mockResolvedValue(client)
-
-    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    const client = lastClient()
+    client.sendCustomRequest.mockResolvedValue([Buffer.from(signed).toString('base64'), null])
 
     expect(connection.info.address).toBe(ADDRESS)
     expect(connection.wallet.address).toBe(ADDRESS)
     await expect(connection.wallet.signer([txn, otherTxn], [0])).resolves.toEqual([signed])
-    expect(client.request).toHaveBeenCalledWith({
-      topic: 'topic-1',
-      chainId: TESTNET_CHAIN_ID,
-      request: {
-        method: 'algo_signTxn',
-        params: [
-          [{ txn: Buffer.from(txn.toByte()).toString('base64') }, { txn: Buffer.from(otherTxn.toByte()).toString('base64'), signers: [] }],
-        ],
-      },
+    expect(client.sendCustomRequest).toHaveBeenCalledWith({
+      method: 'algo_signTxn',
+      params: [
+        [{ txn: Buffer.from(txn.toByte()).toString('base64') }, { txn: Buffer.from(otherTxn.toByte()).toString('base64'), signers: [] }],
+      ],
     })
 
     await connection.close()
-    expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    expect(client.transportClose).toHaveBeenCalled()
+  })
+
+  it('accepts byte-array signatures', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    const txn = makeTxn()
+    const signed = (await signTransactionWithSigner(txn, makeBasicAccountTransactionSigner(ACCOUNT))).blob
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    lastClient().sendCustomRequest.mockResolvedValue([Array.from(signed)])
+
+    await expect(connection.wallet.signer([txn], [0])).resolves.toEqual([signed])
+  })
+
+  it('accepts a single signature response', async () => {
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    const txn = makeTxn()
+    const signed = (await signTransactionWithSigner(txn, makeBasicAccountTransactionSigner(ACCOUNT))).blob
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    lastClient().sendCustomRequest.mockResolvedValue(Buffer.from(signed).toString('base64'))
+
+    await expect(connection.wallet.signer([txn], [0])).resolves.toEqual([signed])
   })
 
   it('propagates a wallet rejection', async () => {
-    const client = fakeClient([makeSession()])
-    client.request.mockRejectedValue(new Error('Request rejected by user'))
-    signClientInit.mockResolvedValue(client)
-
-    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    lastClient().sendCustomRequest.mockRejectedValue(new Error('Request rejected by user'))
 
     await expect(connection.wallet.signer([makeTxn()], [0])).rejects.toThrow('Request rejected by user')
   })
 
   it('fails when the wallet returns no signatures', async () => {
-    const client = fakeClient([makeSession()])
-    client.request.mockResolvedValue([null])
-    signClientInit.mockResolvedValue(client)
-
-    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    lastClient().sendCustomRequest.mockResolvedValue([null])
 
     await expect(connection.wallet.signer([makeTxn()], [0])).rejects.toThrow('returned 0 signatures for 1 transactions')
   })
 
   it('does not sign transactions from another sender', async () => {
-    const client = fakeClient([makeSession()])
-    client.request.mockResolvedValue([null])
-    signClientInit.mockResolvedValue(client)
-
-    const connection = await openWalletConnection({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+    writeFileSync(sessionPath, JSON.stringify(makeSession()))
+    const connection = await openWalletConnection({ bridge: 'https://bridge', storagePath: sessionPath })
+    lastClient().sendCustomRequest.mockResolvedValue([null])
 
     await expect(connection.wallet.signer([makeTxn(OTHER_ADDRESS)], [0])).rejects.toThrow('returned 0 signatures for 1 transactions')
   })
