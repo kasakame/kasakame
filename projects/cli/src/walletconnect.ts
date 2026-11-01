@@ -14,6 +14,8 @@ export const TESTNET_CHAIN_ID = 'algorand:SGO1GKSzyE7IEPItTxCByw9x8FmnrCDe'
 
 const PROJECT_ID_PATTERN = /^[0-9a-f]{32}$/i
 const DISCONNECT_REASON = { code: 6000, message: 'User disconnected' }
+const RELAY_TIMEOUT_MS = 30_000
+const APPROVAL_TIMEOUT_MS = 5 * 60_000
 const METADATA = {
   name: 'kasakame CLI',
   description: 'Refund, cancel, claim, and delete kasakame campaigns',
@@ -140,6 +142,20 @@ async function closeClient(client: InstanceType<typeof SignClient>): Promise<voi
   }
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(message))
+    }, timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 function resolveOptions(options: WalletConnectOptions): { projectId: string; chainId: string; storagePath: string } {
   return {
     projectId: options.projectId ?? resolveProjectId(),
@@ -205,18 +221,27 @@ export async function openWalletConnection(options: WalletConnectOptions = {}): 
  */
 export async function login(options: WalletConnectOptions = {}): Promise<LoginResult> {
   const { projectId, chainId, storagePath } = resolveOptions(options)
-  const client = await createClient(projectId, storagePath)
+  console.error('Connecting to the WalletConnect relay…')
+  const client = await withTimeout(
+    createClient(projectId, storagePath),
+    RELAY_TIMEOUT_MS,
+    'Could not reach the WalletConnect relay. Check your connection and try again.',
+  )
   try {
     const existing = selectSession(client.session.getAll(), chainId)
     if (existing !== undefined) {
       return { session: describeSession(existing), reused: true }
     }
 
-    const { uri, approval } = await client.connect({
-      optionalNamespaces: {
-        algorand: { chains: [chainId], methods: ['algo_signTxn'], events: [] },
-      },
-    })
+    const { uri, approval } = await withTimeout(
+      client.connect({
+        optionalNamespaces: {
+          algorand: { chains: [chainId], methods: ['algo_signTxn'], events: [] },
+        },
+      }),
+      RELAY_TIMEOUT_MS,
+      'WalletConnect did not return a pairing URI. Check your connection and try again.',
+    )
     if (uri === undefined) {
       throw new Error('WalletConnect did not return a pairing URI')
     }
@@ -224,8 +249,10 @@ export async function login(options: WalletConnectOptions = {}): Promise<LoginRe
     console.log('\nScan this QR code with Pera, Defly, or another Algorand WalletConnect wallet:\n')
     qrcode.generate(uri, { small: true })
     console.log(`\nOr copy this pairing URI:\n${uri}\n`)
+    console.error('Waiting for your wallet to approve…')
 
-    return { session: describeSession(await approval()), reused: false }
+    const session = await withTimeout(approval(), APPROVAL_TIMEOUT_MS, 'Timed out waiting for the wallet. Run `kasakame login` again.')
+    return { session: describeSession(session), reused: false }
   } finally {
     await closeClient(client)
   }

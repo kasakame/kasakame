@@ -107,6 +107,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   keyValueStorage.mockImplementation(function KeyValueStorageMock() {})
   vi.spyOn(console, 'log').mockImplementation(() => {})
+  vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 afterEach(() => {
@@ -259,8 +260,28 @@ describe('login', () => {
         algorand: { chains: [TESTNET_CHAIN_ID], methods: ['algo_signTxn'], events: [] },
       },
     })
+    expect(console.error).toHaveBeenCalledWith('Connecting to the WalletConnect relay…')
+    expect(console.error).toHaveBeenCalledWith('Waiting for your wallet to approve…')
     expect(qrGenerate).toHaveBeenCalledWith('wc:test-uri', { small: true })
     expect(client.core.relayer.transportClose).toHaveBeenCalled()
+  })
+
+  it('times out waiting for the wallet approval', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = fakeClient()
+      client.connect.mockResolvedValue({ uri: 'wc:test-uri', approval: () => new Promise(() => {}) })
+      signClientInit.mockResolvedValue(client)
+
+      const pending = login({ storagePath: '/tmp/opencode/kasakame-cli-test' })
+      const assertion = expect(pending).rejects.toThrow('Timed out waiting for the wallet')
+      await vi.advanceTimersByTimeAsync(5 * 60_000)
+
+      await assertion
+      expect(client.core.relayer.transportClose).toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('fails when WalletConnect returns no pairing URI', async () => {
