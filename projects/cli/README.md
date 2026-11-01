@@ -1,7 +1,7 @@
 # @kasakame/cli
 
 Escape-hatch CLI for kasakame: refund, withdraw, claim, and delete pledges and
-campaigns by app ID, using a wallet app or a local Algo25 mnemonic. Public algod + indexer
+campaigns by app ID, using a wallet app or a local mnemonic. Public algod + indexer
 only; no backend.
 
 Backers withdraw or refund pledges. Creators claim or delete campaigns.
@@ -116,7 +116,14 @@ ClaimsVault app ids. `--vault`/`--factory` override them. LocalNet and custom
 networks use `--signer mnemonic` (or default to it) and read `ALGOD_*` /
 `INDEXER_*`; custom networks require `ALGOD_SERVER` and `INDEXER_SERVER`.
 MainNet is not wired up yet. The mnemonic comes from `--mnemonic-file` or
-`KASAKAME_MNEMONIC`, never from the command line.
+`KASAKAME_MNEMONIC`, never from the command line. A 25-word Algo25 phrase signs
+for its own address; pass `--address` to check that it matches. A 24-word Pera
+Universal Wallet phrase derives accounts through ARC-52, so `--address` is
+required to pick which one signs:
+
+```bash
+node dist/index.js refund <appId> --signer mnemonic --mnemonic-file ./phrase.txt --address <address>
+```
 
 ## Development
 

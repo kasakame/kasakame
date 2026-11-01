@@ -71,8 +71,8 @@ export function parseCliOptions(argv: string[]): CliOptions {
     throw new Error('--pledge and --all cannot be combined')
   }
 
-  if (values.address !== undefined && !read) {
-    throw new Error('--address is only valid with pledges or campaigns')
+  if (values.address !== undefined && !read && signer !== 'mnemonic') {
+    throw new Error('--address is only valid with pledges or campaigns, or with --signer mnemonic')
   }
 
   const mnemonicFile = values['mnemonic-file']

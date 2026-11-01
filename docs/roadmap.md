@@ -146,10 +146,13 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     so use the stable protocol primitives rather than a vendor-specific bridge.
   - **Both signers ship.** Wallet is the default. `--signer mnemonic` is an explicit
     opt-in on any network and the only path on LocalNet (Pera/Defly cannot target
-    it). Both produce the same `WalletSession`, so commands never branch. The
-    mnemonic is read from a file or env, never argv, and documented as a hot key.
-  - **SDK unchanged.** It already accepts any `TransactionSigner`; the WalletConnect
-    adapter belongs to the CLI, not the chain layer.
+    it). It accepts a 25-word Algo25 phrase or a 24-word Pera Universal Wallet
+    phrase (ARC-52 derivation; `--address` picks the account). Both produce the
+    same `WalletSession`, so commands never branch. The mnemonic is read from a
+    file or env, never argv, and documented as a hot key.
+  - **SDK unchanged.** It already accepts any `TransactionSigner`; the
+    WalletConnect adapter and mnemonic decoding belong to the CLI, not the chain
+    layer.
   - **TestNet is the default**, with Factory `774437557` and ClaimsVault `774437570`.
     `--vault`/`--factory` override them; LocalNet and custom networks use
     `ALGOD_*`/`INDEXER_*`. MainNet stays out until it is deployed.
@@ -239,9 +242,14 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         transport: happy paths, state rejections, no leaves, pledge selection, partial failure,
         invalid flags/network, missing or corrupt session, rejected approval,
         timeout, and mnemonic validation.
+  - [x] Accept 24-word Pera Universal Wallet phrases: derive the account through
+        ARC-52 (Peikert/Khovratovich, accounts 0-49), require `--address` to pick
+        it, and keep 25-word Algo25 phrases working; both return the same
+        `WalletSession`.
   - [ ] Manual TestNet smoke with `--signer mnemonic`: the phrase from a file or
-        `KASAKAME_MNEMONIC`, never argv; claim, refund before and after a delete,
-        and delete on a fresh campaign.
+        `KASAKAME_MNEMONIC`, never argv; both a 25-word Algo25 phrase and a
+        24-word Pera Universal Wallet phrase with `--address`; claim, refund
+        before and after a delete, and delete on a fresh campaign.
   - [x] Manual TestNet smoke with the wallet (Pera and Defly): login and account
         switching, claim, refund before the delete, delete with live refunds,
         refund after the delete, delete after claim, withdraw while open, and

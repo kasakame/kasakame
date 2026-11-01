@@ -84,13 +84,20 @@ describe('run', () => {
   })
 
   it('shows the mnemonic address', async () => {
-    mnemonicSessionMock.mockReturnValue(MNEMONIC_WALLET)
+    mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
 
     expect(await run(['whoami', '--signer', 'mnemonic', '--mnemonic-file', '/tmp/mnemonic'])).toBe(0)
-    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic')
+    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic', undefined, undefined)
     expect(console.log).toHaveBeenCalledWith('Signer: mnemonic')
     expect(console.log).toHaveBeenCalledWith('Address: MNEMONIC_ADDRESS')
     expect(console.log).toHaveBeenCalledWith('Network: testnet')
+  })
+
+  it('passes --address to a mnemonic whoami', async () => {
+    mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
+
+    expect(await run(['whoami', '--signer', 'mnemonic', '--address', 'ADDRESS'])).toBe(0)
+    expect(mnemonicSessionMock).toHaveBeenCalledWith(undefined, undefined, 'ADDRESS')
   })
 
   it('fails when there is no session', async () => {

@@ -22,8 +22,8 @@ Options:
   --vault <appId>                      ClaimsVault app id (default: 774437570 on testnet)
   --factory <appId>                    Factory app id (default: 774437557 on testnet)
   --signer <wallet|mnemonic>           Signer (default: wallet on testnet, mnemonic otherwise)
-  --mnemonic-file <path>               Algo25 mnemonic file (or KASAKAME_MNEMONIC)
-  --address <address>                  Inspect this address (pledges, campaigns)
+  --mnemonic-file <path>               Algo25 (25-word) or Pera Universal Wallet (24-word) phrase file (or KASAKAME_MNEMONIC)
+  --address <address>                  Inspect this address, or the account a 24-word mnemonic signs for
   --pledge <position>                  Withdraw or refund one pledge (0-based)
   --all                                Withdraw or refund every live pledge
   --dry-run                            Print planned transactions without signing
@@ -88,7 +88,7 @@ async function runLogin(): Promise<number> {
 
 async function runWhoami(options: CliOptions): Promise<number> {
   if (options.signer === 'mnemonic') {
-    const wallet = mnemonicSession(options.mnemonicFile)
+    const wallet = await mnemonicSession(options.mnemonicFile, undefined, options.address)
     console.log('Signer: mnemonic')
     console.log(`Address: ${wallet.address}`)
     console.log(`Network: ${options.network}`)

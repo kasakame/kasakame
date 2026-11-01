@@ -139,8 +139,18 @@ describe('parseCliOptions', () => {
     })
   })
 
-  it('rejects --address outside reads', () => {
-    expect(() => parseCliOptions(['refund', '1', '--address', 'ADDRESS'])).toThrow('--address is only valid with pledges or campaigns')
+  it('rejects --address with a wallet-signed transaction', () => {
+    expect(() => parseCliOptions(['refund', '1', '--address', 'ADDRESS'])).toThrow(
+      '--address is only valid with pledges or campaigns, or with --signer mnemonic',
+    )
+  })
+
+  it('accepts --address to pick the account behind a 24-word mnemonic', () => {
+    expect(parseCliOptions(['refund', '1', '--signer', 'mnemonic', '--address', 'ADDRESS'])).toMatchObject({
+      command: 'refund',
+      signer: 'mnemonic',
+      address: 'ADDRESS',
+    })
   })
 
   it('requires a vault for reads outside testnet', () => {

@@ -17,7 +17,7 @@ export interface CliSession {
 export async function openCliSession(options: CliOptions): Promise<CliSession> {
   if (options.signer === 'mnemonic') {
     return {
-      wallet: mnemonicSession(options.mnemonicFile),
+      wallet: await mnemonicSession(options.mnemonicFile, undefined, options.address),
       close: () => Promise.resolve(),
     }
   }

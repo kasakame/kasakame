@@ -64,7 +64,7 @@ beforeEach(() => {
   sdkMocks.claim.mockResolvedValue(undefined)
   sdkMocks.deleteCampaign.mockResolvedValue(undefined)
   sdkMocks.refund.mockResolvedValue(undefined)
-  mnemonicSessionMock.mockReturnValue(WALLET)
+  mnemonicSessionMock.mockResolvedValue(WALLET)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
 

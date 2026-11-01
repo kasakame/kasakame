@@ -272,7 +272,7 @@ async function readAddress(options: CliOptions): Promise<string> {
     return options.address
   }
   if (options.signer === 'mnemonic') {
-    return mnemonicSession(options.mnemonicFile).address
+    return (await mnemonicSession(options.mnemonicFile, undefined, options.address)).address
   }
   const session = await whoami()
   if (session === undefined) {

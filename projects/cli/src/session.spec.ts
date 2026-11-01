@@ -27,11 +27,11 @@ beforeEach(() => {
 
 describe('openCliSession', () => {
   it('opens the mnemonic signer without a relay connection', async () => {
-    mnemonicSessionMock.mockReturnValue(WALLET)
+    mnemonicSessionMock.mockResolvedValue(WALLET)
 
-    const session = await openCliSession(options({ mnemonicFile: '/tmp/mnemonic' }))
+    const session = await openCliSession(options({ mnemonicFile: '/tmp/mnemonic', address: 'ADDRESS' }))
 
-    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic')
+    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic', undefined, 'ADDRESS')
     expect(session.wallet).toBe(WALLET)
     await session.close()
     expect(openWalletConnectionMock).not.toHaveBeenCalled()
