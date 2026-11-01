@@ -160,6 +160,14 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     schema MBR and the Factory registration deposit from a terminal; backers keep
     refunding from the vault afterwards. `projects/frontend/scripts/reclaim.ts`
     stays as the batch dev/seed cleanup tool.
+  - **Roles are explicit.** Backers cancel or refund pledges; creators claim or
+    delete campaigns. Help text, errors, and docs use those words, so nobody
+    confuses cancelling a pledge with deleting a campaign.
+  - **Discovery is read-only and comes before action.** An emergency user may
+    arrive with only a wallet or its mnemonic, and no app id. `pledges` and
+    `campaigns` list what the address can act on, built from the SDK's Factory
+    plus vault-box enumeration (which keeps deleted-but-unfinalized campaigns
+    visible). No signing session, no writes.
 
   **Steps**
 
@@ -187,23 +195,30 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         Pera and Defly do not support LocalNet, so that network always uses the
         mnemonic path. Both signers produce the same `WalletSession`, so commands do
         not branch.
-  - [x] Implement `refund`: reject open or successful campaigns; for failed or
-        deleted campaigns, fetch the signer's live leaves and refund one per
-        transaction, reporting partial failures. Open one wallet connection for the
-        invocation and close it in `finally`; `--dry-run` prints the planned refunds
-        without a wallet prompt.
-  - [x] Implement `cancel`: reject campaigns that are not open or are past the
-        deadline; cancel the signer's live leaves one per transaction, reporting
-        partial failures. Reuse the connection lifecycle and `--dry-run` behavior
+  - [x] Implement backer `refund`: reject open or successful campaigns; for
+        failed or deleted campaigns, fetch the signer's live leaves and refund one
+        per transaction, reporting partial failures. Open one wallet connection for
+        the invocation and close it in `finally`; `--dry-run` prints the planned
+        refunds without a wallet prompt.
+  - [x] Implement backer `cancel`: reject campaigns that are not open or are past
+        the deadline; cancel the signer's live leaves one per transaction,
+        reporting partial failures. Reuse the connection lifecycle and `--dry-run`
+        behavior above.
+  - [ ] Implement creator `claim`: reject non-creators, campaigns that are not
+        successful, and already-claimed campaigns; submit the single claim and
+        report the result. Reuse the connection lifecycle and `--dry-run` behavior
         above.
-  - [ ] Implement `claim`: reject non-creators, campaigns that are not successful,
-        and already-claimed campaigns; submit the single claim and report the
-        result. Reuse the connection lifecycle and `--dry-run` behavior above.
-  - [ ] Implement `delete`: reject non-creators, funded campaigns that are not
-        claimed yet, and open campaigns with live pledges; explain that backers
+  - [ ] Implement creator `delete`: reject non-creators, funded campaigns that are
+        not claimed yet, and open campaigns with live pledges; explain that backers
         keep refunding from the vault afterwards. Delete and unregister in one
         group and report the reclaimed MBR and registration deposit. Reuse the
         connection lifecycle and `--dry-run` behavior above.
+  - [ ] Add read-only discovery: `pledges` lists the address's live pledges with
+        campaign id, title, status, deadline, total, and the action available now
+        (`cancel` while open, `refund` once failed, nothing when successful);
+        `campaigns` lists campaigns the address created, with `claim` or `delete`
+        when the contract allows. Accept `--address` for a wallet address without
+        a signer, so nobody needs an app id to start.
   - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
         transport: happy paths, state rejections, no leaves, partial failure,
         invalid flags/network, missing/expired session, rejected approval, and

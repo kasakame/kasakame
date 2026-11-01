@@ -10,9 +10,9 @@ Commands:
   login            Pair a wallet over WalletConnect
   whoami           Show the connected wallet or mnemonic address
   logout           Disconnect the wallet session
-  refund <appId>   Refund live pledges from a failed campaign
-  cancel <appId>   Cancel live pledges while a campaign is open
-  claim <appId>    Claim a successful campaign as the creator (planned)
+  refund <appId>   Backer: refund your pledges from a failed campaign
+  cancel <appId>   Backer: cancel your pledges while a campaign is open
+  claim <appId>    Creator: claim a successful campaign's funds (planned)
 
 Options:
   --network <testnet|localnet|custom>  Network (default: testnet)

@@ -4,10 +4,12 @@ Escape-hatch CLI for kasakame: refund, cancel, claim, and delete campaigns by
 app ID, using a wallet app or a local Algo25 mnemonic. Public algod + indexer
 only; no backend.
 
-Status: `refund` and `cancel` are implemented; `claim` lands next. See the
-[CLI roadmap](../../docs/roadmap.md#cli).
+Backers cancel or refund pledges. Creators claim or delete campaigns.
 
-## Refund
+Status: `refund` and `cancel` are implemented; `claim` and `delete` land next.
+See the [CLI roadmap](../../docs/roadmap.md#cli).
+
+## Refund (backer)
 
 ```bash
 node dist/index.js refund <appId>
@@ -20,7 +22,7 @@ before the wallet connects. Each pledge needs its own wallet approval, and a
 failed refund is reported while the rest still run. `--dry-run` lists the
 pledges without submitting anything.
 
-## Cancel
+## Cancel (backer)
 
 ```bash
 node dist/index.js cancel <appId>
