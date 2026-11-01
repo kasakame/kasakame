@@ -1,19 +1,26 @@
+import { parseCliOptions, type CliOptions } from './args.js'
+import { configureCliChain } from './chain.js'
+import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
 
 const USAGE = `Usage: kasakame <command> [options]
 
 Commands:
   login            Pair a wallet over WalletConnect
-  whoami           Show the connected wallet and session
+  whoami           Show the connected wallet or mnemonic address
   logout           Disconnect the wallet session
-
-Planned:
-  refund <appId>   Refund live pledges from a failed campaign
-  cancel <appId>   Cancel live pledges while a campaign is open
-  claim <appId>    Claim a successful campaign as the creator
+  refund <appId>   Refund live pledges from a failed campaign (planned)
+  cancel <appId>   Cancel live pledges while a campaign is open (planned)
+  claim <appId>    Claim a successful campaign as the creator (planned)
 
 Options:
-  --help, -h       Show this help
+  --network <testnet|localnet|custom>  Network (default: testnet)
+  --vault <appId>                      ClaimsVault app id (default: 774437570 on testnet)
+  --factory <appId>                    Factory app id (default: 774437557 on testnet)
+  --signer <wallet|mnemonic>           Signer (default: wallet on testnet, mnemonic otherwise)
+  --mnemonic-file <path>               Algo25 mnemonic file (or KASAKAME_MNEMONIC)
+  --dry-run                            Print planned transactions without signing
+  --help, -h                           Show this help
 `
 
 /**
@@ -23,22 +30,23 @@ Options:
  * @returns Process exit code.
  */
 export async function run(argv: string[]): Promise<number> {
-  const command = argv[0]
-  if (command === undefined || command === '--help' || command === '-h') {
+  if (argv.length === 0 || argv.includes('--help') || argv.includes('-h')) {
     console.log(USAGE)
     return 0
   }
 
   try {
-    switch (command) {
+    const options = parseCliOptions(argv)
+    switch (options.command) {
       case 'login':
         return await runLogin()
       case 'whoami':
-        return await runWhoami()
+        return await runWhoami(options)
       case 'logout':
         return await runLogout()
       default:
-        console.error(`Not implemented yet: ${command}`)
+        configureCliChain(options)
+        console.error(`Not implemented yet: ${options.command}`)
         return 1
     }
   } catch (error) {
@@ -58,7 +66,15 @@ async function runLogin(): Promise<number> {
   return 0
 }
 
-async function runWhoami(): Promise<number> {
+async function runWhoami(options: CliOptions): Promise<number> {
+  if (options.signer === 'mnemonic') {
+    const wallet = mnemonicSession(options.mnemonicFile)
+    console.log('Signer: mnemonic')
+    console.log(`Address: ${wallet.address}`)
+    console.log(`Network: ${options.network}`)
+    return 0
+  }
+
   const session = await whoami()
   if (session === undefined) {
     console.error('No active wallet session. Run `kasakame login` first.')

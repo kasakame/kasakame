@@ -177,7 +177,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         base64, `signers: []` for group members the wallet does not sign) as the
         standard `TransactionSigner` the SDK already accepts. No SDK or command
         changes; one wallet approval per transaction group.
-  - [ ] Plumb flags and config: `parseArgs`, app-id validation, network presets
+  - [x] Plumb flags and config: `parseArgs`, app-id validation, network presets
         (`testnet` default, `mainnet` later, `localnet`/`custom` reading
         `ALGOD_*`/`INDEXER_*`), `--vault`/`--factory` overrides (TestNet defaults
         `774437570`/`774437557`), and `--signer wallet|mnemonic` (wallet default;
@@ -185,10 +185,18 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         Pera and Defly do not support LocalNet, so that network always uses the
         mnemonic path. Both signers produce the same `WalletSession`, so commands do
         not branch.
-  - [ ] Implement `refund` (failed or deleted campaigns), `cancel` (open, before the
-        deadline), and `claim` (creator, successful, not yet claimed): state
-        prechecks, one transaction per live leaf, partial-failure reporting, and
-        `--dry-run` (no wallet prompt).
+  - [ ] Implement `refund`: reject open or successful campaigns; for failed or
+        deleted campaigns, fetch the signer's live leaves and refund one per
+        transaction, reporting partial failures. Open one wallet connection for the
+        invocation and close it in `finally`; `--dry-run` prints the planned refunds
+        without a wallet prompt.
+  - [ ] Implement `cancel`: reject campaigns that are not open or are past the
+        deadline; cancel the signer's live leaves one per transaction, reporting
+        partial failures. Reuse the connection lifecycle and `--dry-run` behavior
+        above.
+  - [ ] Implement `claim`: reject non-creators, campaigns that are not successful,
+        and already-claimed campaigns; submit the single claim and report the
+        result. Reuse the connection lifecycle and `--dry-run` behavior above.
   - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
         transport: happy paths, state rejections, no leaves, partial failure,
         invalid flags/network, missing/expired session, rejected approval, and

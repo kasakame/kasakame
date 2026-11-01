@@ -4,12 +4,16 @@ import { run } from './cli.js'
 const loginMock = vi.hoisted(() => vi.fn())
 const whoamiMock = vi.hoisted(() => vi.fn())
 const logoutMock = vi.hoisted(() => vi.fn())
+const mnemonicSessionMock = vi.hoisted(() => vi.fn())
+const configureCliChainMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./walletconnect.js', () => ({
   login: loginMock,
   whoami: whoamiMock,
   logout: logoutMock,
 }))
+vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
+vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
 
 const SESSION = {
   address: 'ADDRESS',
@@ -17,9 +21,10 @@ const SESSION = {
   expiry: 1_700_000_000,
   walletName: 'Pera Wallet',
 }
+const MNEMONIC_WALLET = { address: 'MNEMONIC_ADDRESS', signer: vi.fn() }
 
 beforeEach(() => {
-  vi.resetAllMocks()
+  vi.clearAllMocks()
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -59,13 +64,23 @@ describe('run', () => {
     expect(console.log).toHaveBeenCalledWith('Already logged in as ADDRESS (Pera Wallet).')
   })
 
-  it('shows the current session', async () => {
+  it('shows the current wallet session', async () => {
     whoamiMock.mockResolvedValue(SESSION)
 
     expect(await run(['whoami'])).toBe(0)
     expect(console.log).toHaveBeenCalledWith('Wallet: Pera Wallet')
     expect(console.log).toHaveBeenCalledWith('Address: ADDRESS')
     expect(console.log).toHaveBeenCalledWith('Chain: algorand:testnet')
+  })
+
+  it('shows the mnemonic address', async () => {
+    mnemonicSessionMock.mockReturnValue(MNEMONIC_WALLET)
+
+    expect(await run(['whoami', '--signer', 'mnemonic', '--mnemonic-file', '/tmp/mnemonic'])).toBe(0)
+    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic')
+    expect(console.log).toHaveBeenCalledWith('Signer: mnemonic')
+    expect(console.log).toHaveBeenCalledWith('Address: MNEMONIC_ADDRESS')
+    expect(console.log).toHaveBeenCalledWith('Network: testnet')
   })
 
   it('fails when there is no session', async () => {
@@ -89,9 +104,43 @@ describe('run', () => {
     expect(console.log).toHaveBeenCalledWith('No active wallet session.')
   })
 
-  it('rejects a command that is not implemented yet', async () => {
-    expect(await run(['refund'])).toBe(1)
+  it('configures the chain before a planned transaction command', async () => {
+    expect(await run(['refund', '123'])).toBe(1)
+    expect(configureCliChainMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'refund',
+        appId: 123n,
+        network: 'testnet',
+        signer: 'wallet',
+      }),
+    )
     expect(console.error).toHaveBeenCalledWith('Not implemented yet: refund')
+  })
+
+  it('accepts localnet mnemonic dry-runs for planned commands', async () => {
+    expect(await run(['cancel', '5', '--network', 'localnet', '--vault', '7', '--signer', 'mnemonic', '--dry-run'])).toBe(1)
+    expect(configureCliChainMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: 'cancel',
+        appId: 5n,
+        network: 'localnet',
+        signer: 'mnemonic',
+        vaultAppId: 7n,
+        dryRun: true,
+      }),
+    )
+  })
+
+  it('reports invalid arguments', async () => {
+    expect(await run(['refund'])).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Error: refund requires exactly one app id')
+    expect(configureCliChainMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects mnemonic login', async () => {
+    expect(await run(['login', '--signer', 'mnemonic'])).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Error: login only supports --signer wallet')
+    expect(loginMock).not.toHaveBeenCalled()
   })
 
   it('prints an Error message', async () => {
