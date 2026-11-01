@@ -9,12 +9,26 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | Piece | Type | Role |
 | --- | --- | --- |
 | Campaign app | One stateful app per campaign | Enforces rules; tracks the Merkle root; holds no funds |
-| ClaimsVault | One permanent app, platform-owned | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory | One registry app, platform-owned | Registers official campaigns against the owner-configured approval hash |
+| ClaimsVault | One app per deployment | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
+| Factory | One registry app per deployment | Registers campaigns for that deployment against the deployment's owner-configured approval hash |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
 | Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
 
 Users and wallets never appear as a piece: any Algorand address with a wallet is a creator or backer. No account system exists.
+
+## Deployments
+
+A **deployment** is one Factory, one ClaimsVault, and one Campaign
+approval-program version, with its own app IDs and owner. Anyone can deploy the
+contracts and become that deployment's owner. The TestNet app IDs in this repo
+describe one deployment; other deployments use their own IDs.
+
+`Factory.isRegistered(app)` answers whether the app is registered in that
+specific Factory. Clients choose which deployments they trust by pinning the
+Factory and vault app IDs; the SDK takes `factoryAppId` and `vaultAppId` as
+config. Each Factory's owner decides which campaign program that deployment
+admits. The planned standard defines the interface and behavior and leaves the
+choice of deployment to clients.
 
 ## Creation flow
 
@@ -22,8 +36,9 @@ To open a campaign, complete these steps in order:
 
 1. Deploy a Campaign app with the vault, title, metadata URI, goal, and deadline.
 2. Pay the 18,900 µA registration deposit to the Factory.
-3. Register the app in the Factory to mark it official.
-4. Share the app ID so backers find it through the Factory listing.
+3. Register the app in the deployment's Factory so clients that trust that
+   deployment list it.
+4. Share the app ID so backers find it through the deployment's Factory listing.
 
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
 
@@ -62,6 +77,6 @@ The Factory plus the indexer already cover discovery (which campaigns exist) and
 
 ## Constraints
 
-- Discovery needs no backend. The Factory registry plus the indexer answer "which campaigns exist" today.
+- Discovery needs no backend. For a given deployment, the Factory registry plus the indexer answer "which campaigns exist" today.
 - The contract is the source of truth. The frontend computes display status from the same public state, and the contract assertions decide.
 - Pledge-time content stays frozen. `title` and `metadataUri` are immutable, so a pledge can never be re-described under the backer. Corrections ship through the creator updates feed (see [`design.md`](design.md)).

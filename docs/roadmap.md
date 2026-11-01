@@ -215,6 +215,62 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
   - [ ] Keep `projects/frontend/scripts/reclaim.ts` as the batch dev/seed cleanup
         tool; it also deletes/unregisters, which the CLI does not.
 
+## Standardization
+
+Publish the contract interface as an Algorand standard (ARC), with this repo as
+the source for the neutral reference implementation. The standard defines the
+interface and behavior. Each deployment has its own Factory + ClaimsVault, and
+clients pin the deployments they trust (see
+[Deployments](architecture.md#deployments)).
+
+### Decisions
+
+The plan settles four questions before drafting the ARC:
+
+- **Scope.** v1 covers the Campaign and ClaimsVault ABIs, box layout and status
+  values, the registry interface (`isRegistered`), and the deployment manifest.
+  The ARC leaves admission policy to each deployment and names no owner or app
+  ID.
+- **Fee.** Optional, immutable per campaign at `create`, hard-capped, charged on
+  a successful claim only (refunds stay whole). Settle this before the ABI
+  freeze; if it is not ready, ship it as an extension so the freeze stays on
+  schedule.
+- **Sponsor.** Ecosystem or Foundation. Either moves the reference repo to
+  `algorandecosystem/arcXXXX` or `algorandfoundation/arcXXXX`; Kasakame stays
+  the flagship product. Decide before the Pre-ARC discussion.
+- **Licensing.** Code stays MIT; the ARC text is public domain (ARC
+  requirement); the Kasakame name and logo stay a trademark. No patent.
+
+### Steps
+
+Complete the steps in order; the interface freeze gates the spec and the ARC
+submission.
+
+- [ ] Freeze the v1 interface: write the method, box, and status tables, set the
+      ABI-version policy, and settle the fee decision.
+- [ ] Write `docs/standard.md` from the ARC template: abstract, motivation,
+      specification, rationale, security considerations, backwards
+      compatibility, reference implementation, test vectors.
+- [ ] Define the deployment manifest: network, Factory and vault app IDs,
+      Campaign program hash, contract version, source repo. Add an SDK helper
+      that loads a manifest so clients can pin and verify a deployment.
+- [ ] Build the conformance suite: run the behavioral matrix (every method ×
+      every branch, plus the LocalNet adversarial cases) against any
+      deployment's app IDs, with fixed claim-tree vectors.
+- [ ] Check the ARC list for overlap and open the Pre-ARC discussion with the
+      required fields: problem, affected users, why an ARC, related ARCs,
+      expected adopters, reference implementation, and sponsor classification.
+- [ ] Create the neutral reference repository (`arcXXXX`) with contracts, tests,
+      deploy scripts, and an example client. Keep this repo as the product.
+- [ ] Deploy the reference implementation on TestNet with an example dApp, then
+      recruit one independent implementer. Documented adoption is the gate to
+      `Final`.
+- [ ] Open the ARC draft PR, then move through Review, Last Call, and Final with
+      the tracking issue and adoption summary. Maintain the reference
+      implementation.
+- [ ] Align the docs: link the standard from README and architecture, and
+      describe "official" as deployment-local.
+
 ## Deployment
 
 - [ ] **Frontend** - deploy the release bundle (built against the
