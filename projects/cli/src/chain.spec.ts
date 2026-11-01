@@ -16,6 +16,8 @@ const algorandMocks = vi.hoisted(() => {
   }
 })
 const configureSdkMock = vi.hoisted(() => vi.fn())
+const warningLogger = vi.hoisted(() => ({ level: 'warn' }))
+const configureConfigMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@algorandfoundation/algokit-utils', () => ({
   AlgorandClient: {
@@ -23,7 +25,9 @@ vi.mock('@algorandfoundation/algokit-utils', () => ({
     defaultLocalNet: algorandMocks.defaultLocalNet,
     fromEnvironment: algorandMocks.fromEnvironment,
   },
+  Config: { configure: configureConfigMock },
 }))
+vi.mock('@algorandfoundation/algokit-utils/types/logging', () => ({ warningConsoleLogger: warningLogger }))
 vi.mock('@kasakame/sdk', () => ({ configureSdk: configureSdkMock }))
 
 function options(overrides: Partial<CliOptions> = {}): CliOptions {
@@ -46,6 +50,12 @@ afterEach(() => {
 })
 
 describe('configureCliChain', () => {
+  it('keeps the SDK logger at warnings', () => {
+    configureCliChain(options())
+
+    expect(configureConfigMock).toHaveBeenCalledWith({ logger: warningLogger })
+  })
+
   it('configures TestNet with explicit app ids', () => {
     configureCliChain(options({ vaultAppId: 2n, factoryAppId: 3n }))
 
