@@ -24,9 +24,21 @@ refund window closed. `campaigns` lists the campaigns you created, with `claim`
 or `delete` when the contract allows it.
 
 Both commands are read-only. They print a search line while they scan the
-indexer, then the results. They use the connected wallet session, the mnemonic
+indexer, then a table. They use the connected wallet session, the mnemonic
 signer, or `--address`, and never open a signing prompt. On LocalNet and custom
 networks, pass `--vault` and `--factory` so discovery can find the campaigns.
+
+## Who can do what
+
+`pledges` and `campaigns` are read-only and permissionless: they only read chain
+state. The action column follows the address being listed. With `--address`, it
+shows what that address can do; sign in with it to run the command.
+
+- `withdraw` and `refund` need the wallet that made the pledge.
+- `claim` and `delete` need the campaign creator.
+
+The contract enforces each check, and the CLI refuses before signing when the
+signer is not the owner.
 
 ## Refund (backer)
 

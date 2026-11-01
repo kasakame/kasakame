@@ -24,6 +24,7 @@ vi.mock('./walletconnect.js', () => ({ whoami: whoamiMock }))
 vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 
 const WALLET = { address: 'BACKER', signer: vi.fn() }
+const VALID_ADDRESS = '4JBYQTVKROJEKG6IZWFAOGGAM2KH65E7JUSC3S5C4EPYOCWGZJOYIRKGRI'
 const HEADER = {
   id: 1n,
   creator: 'CREATOR',
@@ -469,8 +470,6 @@ describe('runDelete', () => {
 })
 
 describe('runPledges', () => {
-  const VALID_ADDRESS = '4JBYQTVKROJEKG6IZWFAOGGAM2KH65E7JUSC3S5C4EPYOCWGZJOYIRKGRI'
-
   function pledgeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
     return options({ command: 'pledges', ...overrides })
   }
@@ -579,6 +578,7 @@ describe('runPledges', () => {
     expect(mnemonicSessionMock).not.toHaveBeenCalled()
     expect(whoamiMock).not.toHaveBeenCalled()
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, VALID_ADDRESS)
+    expect(console.log).toHaveBeenCalledWith(`The action column shows what ${VALID_ADDRESS} can do.`)
   })
 
   it('rejects an invalid address', async () => {
@@ -667,6 +667,16 @@ describe('runCampaigns', () => {
     expect(await runCampaigns(campaignOptions())).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('No campaigns created by BACKER on testnet.')
+  })
+
+  it('labels the action column when inspecting an address', async () => {
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n]))
+    sdkMocks.fetchCampaignHeader.mockResolvedValue(header({ creator: VALID_ADDRESS, raisedMicroAlgos: 0n }))
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+
+    expect(await runCampaigns(campaignOptions({ address: VALID_ADDRESS }))).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(`The action column shows what ${VALID_ADDRESS} can do.`)
   })
 
   it('skips ids the indexer does not know', async () => {

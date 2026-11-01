@@ -178,6 +178,7 @@ export async function runPledges(options: CliOptions): Promise<number> {
     `No live pledges by ${address} on ${options.network}.`,
     ['app id', 'title', 'status', 'deadline', 'pledge', 'amount', 'action'],
     result.rows,
+    actionNote(options, address),
   )
   if (result.multiple) {
     console.log('Use --all to act on every pledge.')
@@ -244,8 +245,13 @@ export async function runCampaigns(options: CliOptions): Promise<number> {
     `No campaigns created by ${address} on ${options.network}.`,
     ['app id', 'title', 'status', 'raised / goal', 'deadline', 'action'],
     rows,
+    actionNote(options, address),
   )
   return 0
+}
+
+function actionNote(options: CliOptions, address: string): string | undefined {
+  return options.address === undefined ? undefined : `The action column shows what ${address} can do.`
 }
 
 async function readAddress(options: CliOptions): Promise<string> {
@@ -306,7 +312,7 @@ function describeStatus(header: CampaignHeader, status: CampaignStatus): string 
   return header.deleted ? `${base}, deleted` : base
 }
 
-function printTable(title: string, empty: string, headers: string[], rows: string[][]): void {
+function printTable(title: string, empty: string, headers: string[], rows: string[][], note?: string): void {
   if (rows.length === 0) {
     console.log(empty)
     return
@@ -319,6 +325,7 @@ function printTable(title: string, empty: string, headers: string[], rows: strin
       .trimEnd()
 
   console.log(`${title}:`)
+  if (note !== undefined) console.log(note)
   console.log(render(headers))
   for (const row of rows) console.log(render(row))
 }
