@@ -213,12 +213,17 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         keep refunding from the vault afterwards. Delete and unregister in one
         group and report the reclaimed MBR and registration deposit. Reuse the
         connection lifecycle and `--dry-run` behavior above.
-  - [ ] Add read-only discovery: `pledges` lists the address's live pledges with
+  - [x] Add read-only discovery: `pledges` lists the address's live pledges with
         campaign id, title, status, deadline, total, and the action available now
         (`cancel` while open, `refund` once failed, nothing when successful);
         `campaigns` lists campaigns the address created, with `claim` or `delete`
         when the contract allows. Accept `--address` for a wallet address without
         a signer, so nobody needs an app id to start.
+  - [ ] Polish command output: announce each wallet approval ("waiting for
+        approval"), print one clear success line per completed action, and turn
+        every rejection into a message that names the next step (`pledges`,
+        `campaigns`, or the right command). Keep `--dry-run` explicit that nothing
+        was submitted.
   - [ ] Test the command module at 100% with a mocked SDK and a fake WalletConnect
         transport: happy paths, state rejections, no leaves, partial failure,
         invalid flags/network, missing/expired session, rejected approval, and

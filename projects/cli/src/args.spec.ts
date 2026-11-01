@@ -85,6 +85,37 @@ describe('parseCliOptions', () => {
     })
   })
 
+  it('defaults reads to testnet with the deployed app ids', () => {
+    expect(parseCliOptions(['pledges'])).toEqual({
+      command: 'pledges',
+      network: 'testnet',
+      signer: 'wallet',
+      vaultAppId: 774437570n,
+      factoryAppId: 774437557n,
+      dryRun: false,
+    })
+  })
+
+  it('carries an inspection address for reads', () => {
+    expect(parseCliOptions(['campaigns', '--address', 'ADDRESS'])).toEqual({
+      command: 'campaigns',
+      address: 'ADDRESS',
+      network: 'testnet',
+      signer: 'wallet',
+      vaultAppId: 774437570n,
+      factoryAppId: 774437557n,
+      dryRun: false,
+    })
+  })
+
+  it('rejects --address outside reads', () => {
+    expect(() => parseCliOptions(['refund', '1', '--address', 'ADDRESS'])).toThrow('--address is only valid with pledges or campaigns')
+  })
+
+  it('requires a vault for reads outside testnet', () => {
+    expect(() => parseCliOptions(['pledges', '--network', 'localnet'])).toThrow('--vault is required on localnet')
+  })
+
   it('accepts a zero factory id', () => {
     expect(parseCliOptions(['refund', '1', '--factory', '0']).factoryAppId).toBe(0n)
   })

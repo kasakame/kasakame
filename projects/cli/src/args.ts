@@ -1,12 +1,13 @@
 import { parseArgs } from 'node:util'
 
-export type CommandName = 'login' | 'whoami' | 'logout' | 'refund' | 'cancel' | 'claim' | 'delete'
+export type CommandName = 'login' | 'whoami' | 'logout' | 'pledges' | 'campaigns' | 'refund' | 'cancel' | 'claim' | 'delete'
 export type NetworkName = 'testnet' | 'localnet' | 'custom'
 export type SignerName = 'wallet' | 'mnemonic'
 
 export interface CliOptions {
   command: CommandName
   appId?: bigint
+  address?: string
   network: NetworkName
   signer: SignerName
   vaultAppId?: bigint
@@ -35,6 +36,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
       factory: { type: 'string' },
       signer: { type: 'string' },
       'mnemonic-file': { type: 'string' },
+      address: { type: 'string' },
       'dry-run': { type: 'boolean' },
     },
   })
@@ -51,6 +53,12 @@ export function parseCliOptions(argv: string[]): CliOptions {
 
   const signer = parseSigner(values.signer, command, network)
   const transaction = isTransactionCommand(command)
+  const read = isReadCommand(command)
+  const needsChain = transaction || read
+
+  if (values.address !== undefined && !read) {
+    throw new Error('--address is only valid with pledges or campaigns')
+  }
 
   const mnemonicFile = values['mnemonic-file']
   if (mnemonicFile !== undefined && signer !== 'mnemonic') {
@@ -75,17 +83,17 @@ export function parseCliOptions(argv: string[]): CliOptions {
 
   const vaultAppId =
     values.vault === undefined
-      ? transaction && network === 'testnet'
+      ? needsChain && network === 'testnet'
         ? TESTNET_VAULT_APP_ID
         : undefined
       : parsePositiveAppId(values.vault, '--vault')
-  if (transaction && vaultAppId === undefined) {
+  if (needsChain && vaultAppId === undefined) {
     throw new Error(`--vault is required on ${network}`)
   }
 
   const factoryAppId =
     values.factory === undefined
-      ? transaction && network === 'testnet'
+      ? needsChain && network === 'testnet'
         ? TESTNET_FACTORY_APP_ID
         : undefined
       : parseFactoryAppId(values.factory)
@@ -95,6 +103,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
   if (vaultAppId !== undefined) options.vaultAppId = vaultAppId
   if (factoryAppId !== undefined) options.factoryAppId = factoryAppId
   if (mnemonicFile !== undefined) options.mnemonicFile = mnemonicFile
+  if (values.address !== undefined) options.address = values.address
   return options
 }
 
@@ -103,6 +112,8 @@ function isCommand(value: string | undefined): value is CommandName {
     value === 'login' ||
     value === 'whoami' ||
     value === 'logout' ||
+    value === 'pledges' ||
+    value === 'campaigns' ||
     value === 'refund' ||
     value === 'cancel' ||
     value === 'claim' ||
@@ -112,6 +123,10 @@ function isCommand(value: string | undefined): value is CommandName {
 
 function isTransactionCommand(command: CommandName): command is 'refund' | 'cancel' | 'claim' | 'delete' {
   return command === 'refund' || command === 'cancel' || command === 'claim' || command === 'delete'
+}
+
+function isReadCommand(command: CommandName): command is 'pledges' | 'campaigns' {
+  return command === 'pledges' || command === 'campaigns'
 }
 
 function parseNetwork(value: string | undefined): NetworkName {

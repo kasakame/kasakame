@@ -1,6 +1,6 @@
 import { parseCliOptions, type CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
-import { runCancel, runClaim, runDelete, runRefund } from './commands.js'
+import { runCampaigns, runCancel, runClaim, runDelete, runPledges, runRefund } from './commands.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
 
@@ -10,6 +10,8 @@ Commands:
   login            Pair a wallet over WalletConnect
   whoami           Show the connected wallet or mnemonic address
   logout           Disconnect the wallet session
+  pledges          List your live pledges and the action to take
+  campaigns        List campaigns you created and the action to take
   refund <appId>   Backer: refund your pledges from a failed campaign
   cancel <appId>   Backer: cancel your pledges while a campaign is open
   claim <appId>    Creator: claim a successful campaign's funds
@@ -21,6 +23,7 @@ Options:
   --factory <appId>                    Factory app id (default: 774437557 on testnet)
   --signer <wallet|mnemonic>           Signer (default: wallet on testnet, mnemonic otherwise)
   --mnemonic-file <path>               Algo25 mnemonic file (or KASAKAME_MNEMONIC)
+  --address <address>                  Inspect this address (pledges, campaigns)
   --dry-run                            Print planned transactions without signing
   --help, -h                           Show this help
 `
@@ -46,6 +49,12 @@ export async function run(argv: string[]): Promise<number> {
         return await runWhoami(options)
       case 'logout':
         return await runLogout()
+      case 'pledges':
+        configureCliChain(options)
+        return await runPledges(options)
+      case 'campaigns':
+        configureCliChain(options)
+        return await runCampaigns(options)
       case 'refund':
         configureCliChain(options)
         return await runRefund(options)

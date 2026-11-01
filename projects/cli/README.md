@@ -6,8 +6,26 @@ only; no backend.
 
 Backers cancel or refund pledges. Creators claim or delete campaigns.
 
-Status: `refund`, `cancel`, `claim`, and `delete` are implemented; discovery,
-CI, and release land next. See the [CLI roadmap](../../docs/roadmap.md#cli).
+Status: all commands are implemented; CI and release land next. See the
+[CLI roadmap](../../docs/roadmap.md#cli).
+
+## Find your pledges and campaigns
+
+```bash
+node dist/index.js pledges
+node dist/index.js campaigns
+node dist/index.js pledges --address <address>
+```
+
+`pledges` lists every campaign where your address still holds a live pledge,
+with the status, deadline, amount, and the action to take: `cancel` while the
+campaign is open, `refund` once it failed, or none when it succeeded or the
+refund window closed. `campaigns` lists the campaigns you created, with `claim`
+or `delete` when the contract allows it.
+
+Both commands are read-only. They use the connected wallet session, the mnemonic
+signer, or `--address`, and never open a signing prompt. On LocalNet and custom
+networks, pass `--vault` and `--factory` so discovery can find the campaigns.
 
 ## Refund (backer)
 

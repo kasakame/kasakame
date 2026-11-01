@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runCancel, runClaim, runDelete, runRefund } from './commands.js'
+import { runCampaigns, runCancel, runClaim, runDelete, runPledges, runRefund } from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
+  enumerateCampaigns: vi.fn(),
   fetchCampaignHeader: vi.fn(),
   fetchChainTimestamp: vi.fn(),
   getCampaignStatus: vi.fn(),
@@ -14,9 +15,13 @@ const sdkMocks = vi.hoisted(() => ({
 }))
 const closeMock = vi.hoisted(() => vi.fn(async () => {}))
 const openCliSessionMock = vi.hoisted(() => vi.fn())
+const whoamiMock = vi.hoisted(() => vi.fn())
+const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@kasakame/sdk', () => sdkMocks)
 vi.mock('./session.js', () => ({ openCliSession: openCliSessionMock }))
+vi.mock('./walletconnect.js', () => ({ whoami: whoamiMock }))
+vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 
 const WALLET = { address: 'BACKER', signer: vi.fn() }
 const HEADER = {
@@ -58,6 +63,7 @@ beforeEach(() => {
   sdkMocks.claim.mockResolvedValue(undefined)
   sdkMocks.deleteCampaign.mockResolvedValue(undefined)
   sdkMocks.refund.mockResolvedValue(undefined)
+  mnemonicSessionMock.mockReturnValue(WALLET)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
 
@@ -397,5 +403,168 @@ describe('runDelete', () => {
     await expect(runDelete({ command: 'delete', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
       'delete requires exactly one app id',
     )
+  })
+})
+
+describe('runPledges', () => {
+  const VALID_ADDRESS = '4JBYQTVKROJEKG6IZWFAOGGAM2KH65E7JUSC3S5C4EPYOCWGZJOYIRKGRI'
+
+  function pledgeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'pledges', ...overrides })
+  }
+
+  beforeEach(() => {
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n]))
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n)])
+  })
+
+  it('lists a live pledge with the cancel action', async () => {
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Live pledges for BACKER on testnet:')
+    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z, pledged 1.5 ALGO, next: cancel')
+  })
+
+  it('lists a failed pledge with the refund action', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: refund'))
+  })
+
+  it('lists a successful pledge with nothing to do', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: none'))
+  })
+
+  it('keeps a deleted pledge visible with the refund window closed', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, deleted: true })
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('open, deleted'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: none (refund window closed)'))
+  })
+
+  it('keeps a deleted pledge refundable while its box is open', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, deleted: true })
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('failed, deleted'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: refund'))
+  })
+
+  it('reports no live pledges', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([])
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('No live pledges for BACKER on testnet.')
+  })
+
+  it('inspects an explicit address without a signer', async () => {
+    expect(await runPledges(pledgeOptions({ address: VALID_ADDRESS }))).toBe(0)
+
+    expect(mnemonicSessionMock).not.toHaveBeenCalled()
+    expect(whoamiMock).not.toHaveBeenCalled()
+    expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, VALID_ADDRESS)
+  })
+
+  it('rejects an invalid address', async () => {
+    await expect(runPledges(pledgeOptions({ address: 'ADDRESS' }))).rejects.toThrow('Invalid address: ADDRESS')
+  })
+
+  it('reads the address from the stored wallet session', async () => {
+    whoamiMock.mockResolvedValue({ address: 'WALLET_ADDRESS' })
+
+    expect(await runPledges(pledgeOptions({ signer: 'wallet' }))).toBe(0)
+
+    expect(mnemonicSessionMock).not.toHaveBeenCalled()
+    expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'WALLET_ADDRESS')
+  })
+
+  it('requires a wallet session or an address', async () => {
+    whoamiMock.mockResolvedValue(undefined)
+
+    await expect(runPledges(pledgeOptions({ signer: 'wallet' }))).rejects.toThrow(
+      'No active wallet session. Run `kasakame login` first, or pass --address',
+    )
+  })
+})
+
+describe('runCampaigns', () => {
+  function campaignOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'campaigns', ...overrides })
+  }
+
+  function header(overrides: Record<string, unknown>) {
+    return { ...HEADER, ...overrides }
+  }
+
+  it('lists the action available for each creator campaign', async () => {
+    const headers = new Map<bigint, Record<string, unknown>>([
+      [1n, header({ id: 1n, title: 'Claimed', creator: 'BACKER', status: 'claimed', raisedMicroAlgos: 10_000_000n })],
+      [2n, header({ id: 2n, title: 'Funded', creator: 'BACKER', raisedMicroAlgos: 10_000_000n })],
+      [3n, header({ id: 3n, title: 'Failed', creator: 'BACKER', goalMicroAlgos: 5_000_000n, raisedMicroAlgos: 2_000_000n })],
+      [4n, header({ id: 4n, title: 'Empty', creator: 'BACKER', raisedMicroAlgos: 0n })],
+      [5n, header({ id: 5n, title: 'Live', creator: 'BACKER', raisedMicroAlgos: 2_000_000n })],
+      [6n, header({ id: 6n, title: 'Gone', creator: 'BACKER', deleted: true })],
+      [7n, header({ id: 7n, title: 'Other', creator: 'OTHER' })],
+    ])
+    const statuses = new Map<bigint, string>([
+      [1n, 'successful'],
+      [2n, 'successful'],
+      [3n, 'failed'],
+      [4n, 'open'],
+      [5n, 'open'],
+      [6n, 'failed'],
+      [7n, 'open'],
+    ])
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n, 2n, 3n, 4n, 5n, 6n, 7n]))
+    sdkMocks.fetchCampaignHeader.mockImplementation((id: bigint) => headers.get(id))
+    sdkMocks.getCampaignStatus.mockImplementation((entry: { id: bigint }) => statuses.get(entry.id))
+
+    expect(await runCampaigns(campaignOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
+    expect(console.log).toHaveBeenCalledWith(
+      '#1 "Claimed" successful (claimed), raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete',
+    )
+    expect(console.log).toHaveBeenCalledWith('#2 "Funded" successful, raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: claim')
+    expect(console.log).toHaveBeenCalledWith('#3 "Failed" failed, raised 2 of 5 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete')
+    expect(console.log).toHaveBeenCalledWith('#4 "Empty" open, raised 0 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: delete')
+    expect(console.log).toHaveBeenCalledWith('#5 "Live" open, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: none')
+    expect(console.log).toHaveBeenCalledWith(
+      '#6 "Gone" failed, deleted, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, next: none',
+    )
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('"Other"'))
+  })
+
+  it('reports no campaigns for the address', async () => {
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set())
+
+    expect(await runCampaigns(campaignOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('No campaigns created by BACKER on testnet.')
+  })
+
+  it('skips ids the indexer does not know', async () => {
+    sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n, 2n]))
+    sdkMocks.fetchCampaignHeader.mockImplementation((id: bigint) =>
+      id === 1n ? header({ creator: 'BACKER', raisedMicroAlgos: 0n }) : undefined,
+    )
+    sdkMocks.getCampaignStatus.mockReturnValue('open')
+
+    expect(await runCampaigns(campaignOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('next: delete'))
   })
 })

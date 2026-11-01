@@ -2,6 +2,7 @@ import {
   cancelPledge,
   claim,
   deleteCampaign,
+  enumerateCampaigns,
   fetchCampaignHeader,
   fetchChainTimestamp,
   fetchMyLeaves,
@@ -12,8 +13,11 @@ import {
   type CampaignStatus,
   type WalletSession,
 } from '@kasakame/sdk'
+import { isValidAddress } from 'algosdk'
 import type { CliOptions } from './args.js'
+import { mnemonicSession } from './mnemonic.js'
 import { openCliSession } from './session.js'
+import { whoami } from './walletconnect.js'
 
 /**
  * Refund every live pledge from a failed campaign, one wallet approval per pledge.
@@ -145,6 +149,121 @@ export async function runDelete(options: CliOptions): Promise<number> {
   } finally {
     await session.close()
   }
+}
+
+/**
+ * List the address's live pledges and the action each campaign allows now.
+ *
+ * Read-only: no signing session and no relay connection are opened.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runPledges(options: CliOptions): Promise<number> {
+  const address = await readAddress(options)
+  const entries = await listCampaignEntries()
+  const rows: string[] = []
+  for (const { header, status } of entries) {
+    const leaves = await fetchMyLeaves(header.id, address)
+    if (leaves.length === 0) continue
+    const total = leaves.reduce((sum, leaf) => sum + leaf.amount, 0n)
+    const next = pledgeAction(header, status)
+    rows.push(
+      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}, pledged ${formatAlgo(total)} ALGO, next: ${next ?? 'none'}`,
+    )
+  }
+
+  printRows(`Live pledges for ${address} on ${options.network}`, `No live pledges for ${address} on ${options.network}.`, rows)
+  return 0
+}
+
+/**
+ * List the campaigns the address created and the action each one allows now.
+ *
+ * Read-only: no signing session and no relay connection are opened.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runCampaigns(options: CliOptions): Promise<number> {
+  const address = await readAddress(options)
+  const entries = await listCampaignEntries()
+  const rows = entries
+    .filter(({ header }) => header.creator === address)
+    .map(({ header, status }) => {
+      const next = campaignAction(header, status)
+      return `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, raised ${formatAlgo(header.raisedMicroAlgos)} of ${formatAlgo(header.goalMicroAlgos)} ALGO, deadline ${formatDeadline(header.deadlineSeconds)}, next: ${next ?? 'none'}`
+    })
+
+  printRows(`Campaigns created by ${address} on ${options.network}`, `No campaigns created by ${address} on ${options.network}.`, rows)
+  return 0
+}
+
+async function readAddress(options: CliOptions): Promise<string> {
+  if (options.address !== undefined) {
+    if (!isValidAddress(options.address)) {
+      throw new Error(`Invalid address: ${options.address}`)
+    }
+    return options.address
+  }
+  if (options.signer === 'mnemonic') {
+    return mnemonicSession(options.mnemonicFile).address
+  }
+  const session = await whoami()
+  if (session === undefined) {
+    throw new Error('No active wallet session. Run `kasakame login` first, or pass --address')
+  }
+  return session.address
+}
+
+interface CampaignEntry {
+  header: CampaignHeader
+  status: CampaignStatus
+}
+
+async function listCampaignEntries(): Promise<CampaignEntry[]> {
+  const nowSeconds = await fetchChainTimestamp()
+  const entries: CampaignEntry[] = []
+  for (const appId of await enumerateCampaigns()) {
+    const header = await fetchCampaignHeader(appId)
+    if (header !== undefined) {
+      entries.push({ header, status: getCampaignStatus(header, nowSeconds) })
+    }
+  }
+  return entries.sort((a, b) => Number(a.header.id - b.header.id))
+}
+
+function pledgeAction(header: CampaignHeader, status: CampaignStatus): string | undefined {
+  if (status === 'successful') return undefined
+  if (header.deleted) {
+    return status === 'open' ? 'none (refund window closed)' : 'refund'
+  }
+  return status === 'open' ? 'cancel' : 'refund'
+}
+
+function campaignAction(header: CampaignHeader, status: CampaignStatus): string | undefined {
+  if (header.deleted) return undefined
+  if (header.status === 'claimed' || status === 'failed') return 'delete'
+  if (status === 'successful') return 'claim'
+  return header.raisedMicroAlgos === 0n ? 'delete' : undefined
+}
+
+function describeStatus(header: CampaignHeader, status: CampaignStatus): string {
+  const base = header.status === 'claimed' ? 'successful (claimed)' : status
+  return header.deleted ? `${base}, deleted` : base
+}
+
+function printRows(title: string, empty: string, rows: string[]): void {
+  if (rows.length === 0) {
+    console.log(empty)
+    return
+  }
+  console.log(`${title}:`)
+  for (const row of rows) console.log(row)
+}
+
+function formatDeadline(seconds: bigint): string {
+  return new Date(Number(seconds) * 1000).toISOString()
 }
 
 function requireAppId(options: CliOptions, command: string): bigint {
