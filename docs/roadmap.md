@@ -16,8 +16,8 @@ each open item links to the doc with the details. Design context is in
 - **SDK** - `@kasakame/sdk@0.1.0` published on npm; the frontend consumes the registry
   package. See [`sdk.md`](sdk.md).
 - **Releases** - contract interface published as a `specs-v0.1.0` GitHub Release
-  (ARC-56/32, TEAL, source maps); `release-specs` and `release-sdk` workflows run with
-  npm OIDC trusted publishing. See [`ci.md`](ci.md).
+  (ARC-56/32, TEAL, source maps); `release-specs`, `release-sdk`, and `release-cli`
+  workflows run with npm OIDC trusted publishing. See [`ci.md`](ci.md).
 - **CI** - path-filtered `build-and-test` lanes (including the CLI), ShellCheck
   (repo-wide shell scripts plus workflow `run:` blocks), markdown lint, and the
   release workflows. See [`ci.md`](ci.md).
@@ -257,7 +257,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
   - [x] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
         never contacts the bridge.
-  - [ ] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
+  - [x] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
         provenance, and a tarball smoke test running `kasakame --help`.
   - [ ] Document: new `docs/cli.md` (install, login/logout, wallet approval,
         commands, networks, the mnemonic opt-in and its hot-key trade-off, the

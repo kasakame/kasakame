@@ -3,8 +3,10 @@
 This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](.github/workflows/build-and-test.yml) workflow,
 a separate [`markdown-lint`](.github/workflows/markdown-lint.yml), and the
-manual [`release-specs`](.github/workflows/release-specs.yml) release - plus
-the reasoning behind the splits.
+manual [`release-specs`](.github/workflows/release-specs.yml),
+[`release-sdk`](.github/workflows/release-sdk.yml), and
+[`release-cli`](.github/workflows/release-cli.yml) releases - plus the
+reasoning behind the splits.
 
 ## Principles
 
@@ -125,6 +127,8 @@ flowchart TD
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `markdown-lint` (own workflow) | markdown or its config changed | ✅ | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
+| `release-sdk` (own workflow) | manual | ✅ | - | - | - |
+| `release-cli` (own workflow) | manual | ✅ | - | - | - |
 
 Key point: **lint/format/type-check, unit-test, markdown, and shell lint need no
 AlgoKit install**. `eslint`, `prettier`, `tsc`, `vitest`, `markdownlint-cli2`, and
@@ -356,6 +360,41 @@ version; it is not part of the SDK release.
 
 Then dispatch the workflow from `main` with `dry_run=false`.
 
+## Workflow: release-cli (separate file)
+
+Implemented at `.github/workflows/release-cli.yml`. Manual (`workflow_dispatch`)
+release of `@kasakame/cli`; no reviewer gate (single developer). The version is
+`projects/cli/package.json`; bump it in the release commit. The dispatch inputs
+mirror the SDK release:
+
+- `version`: required, without the `v` prefix; must match the package version.
+- `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
+  and the prep publish dry-run, but skips the real publish and registry check.
+
+Prerelease versions publish under the `next` dist-tag, finals under `latest`.
+
+- `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
+  never the `file:../sdk` copy, because a released CLI must ship against a
+  released SDK. It validates the input version against `package.json` and that
+  it is unpublished, then lints, formats, type-checks, runs coverage, builds,
+  inspects the packed tarball, and dry-runs the publish. Each command is its own
+  step. It uploads the tested `dist/`.
+- `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
+  `dist/`, installs the tarball into a clean consumer, checks the version and
+  `LICENSE`, and runs `kasakame --help`. It gates the publish.
+- `publish` downloads the tested `dist/`, verifies the package files and
+  version, and, when `dry_run=false`, publishes with the `next`/`latest`
+  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
+  `--provenance`. It then polls the registry for the version for up to 10
+  minutes, like the SDK release. A dry run stops before the publish and registry
+  check.
+
+Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
+Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
+`kasakame`, workflow `release-cli.yml`, and no environment. The first-publish
+window, 2FA enforcement, and token cleanup described for the SDK apply here too.
+Release the SDK first: the CLI depends on the published `@kasakame/sdk`.
+
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
@@ -391,8 +430,8 @@ order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section
   independent of the published npm package versions. The SDK pins the consumed
   specs version in `package.json` (`config.specsVersion`) and exports it as
   `SPECS_VERSION`.
-- Both release workflows validate the dispatch version against their project
-  `package.json` with `.github/scripts/check-release-version.mjs`.
+- All three release workflows validate the dispatch version against their
+  project `package.json` with `.github/scripts/check-release-version.mjs`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
@@ -407,8 +446,8 @@ order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- The `release-sdk` workflow uses npm OIDC trusted publishing; every publish
-  passes `--provenance`. Set the package's publishing access to "Require
+- `release-sdk` and `release-cli` use npm OIDC trusted publishing; every publish
+  passes `--provenance`. Set each package's publishing access to "Require
   two-factor authentication and disallow tokens" so only the trusted publisher
   can publish.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,

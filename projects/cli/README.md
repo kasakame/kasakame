@@ -6,8 +6,8 @@ only; no backend.
 
 Backers withdraw or refund pledges. Creators claim or delete campaigns.
 
-Status: all commands are implemented; the release workflow lands next. See the
-[CLI roadmap](../../docs/roadmap.md#cli).
+Status: all commands are implemented and released through the `release-cli`
+workflow. See the [CLI roadmap](../../docs/roadmap.md#cli).
 
 ## Find your pledges and campaigns
 
@@ -139,3 +139,7 @@ npm run test:coverage
 ```
 
 Node.js 24 or newer, ESM.
+
+`libsodium-wrappers-sumo` is pinned to `0.7.15` directly: `0.7.16` ships an ESM
+build that imports a file it does not publish, and `@algorandfoundation/xhd-wallet-api`
+still asks for `^0.7.13`. Drop the pin once that library accepts `0.8.x`.
