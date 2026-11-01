@@ -25,14 +25,16 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
 - `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
-  (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see the
-  [CLI roadmap](docs/roadmap.md#cli)
+  (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see
+  [`docs/cli.md`](docs/cli.md) and the [CLI roadmap](docs/roadmap.md#cli)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage; pinning and catalog planned)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) (tree math and
-  security), [`frontend.md`](docs/frontend.md), [`sdk.md`](docs/sdk.md) (SDK
-  package design and migration order), [`testing.md`](docs/testing.md),
+  security), [`frontend.md`](docs/frontend.md), [`cli.md`](docs/cli.md)
+  (escape-hatch CLI: signers, commands, networks, self-hosting),
+  [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
+  [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`roadmap.md`](docs/roadmap.md) (checklist),
   [`design.md`](docs/design.md) (product plan)

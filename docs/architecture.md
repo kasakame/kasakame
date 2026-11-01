@@ -12,6 +12,7 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | ClaimsVault | One app per deployment | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
 | Factory | One registry app per deployment | Registers campaigns for that deployment against the deployment's owner-configured approval hash |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
+| CLI | Node.js + TypeScript | Escape hatch: refund, withdraw, claim, and delete by app ID; wallet over WalletConnect v1 or a local mnemonic (see [`cli.md`](cli.md)) |
 | Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
 
 Users and wallets never appear as a piece: any Algorand address with a wallet is a creator or backer. No account system exists.
@@ -70,6 +71,7 @@ The Factory plus the indexer already cover discovery (which campaigns exist) and
 | Contracts | Algorand TypeScript (PuyaTs) via AlgoKit, TEAL + ARC-32/56 specs as build output |
 | Client SDK | AlgoKit Utils `AlgorandClient` + generated typed clients |
 | Wallet | `@txnlab/use-wallet` (Pera, Defly, Exodus; KMD on LocalNet) |
+| CLI | Node.js + `@kasakame/sdk`; WalletConnect v1 (`@perawallet/walletconnect`) or a local mnemonic |
 | Reads | `algosdk.Indexer` for app state, boxes, and transaction history |
 | Frontend tests | Vitest + Testing Library, 100% gate on components and utils |
 | Contract tests | Offline AVM emulation plus LocalNet integration (see [`testing.md`](testing.md)) |

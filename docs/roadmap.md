@@ -259,11 +259,12 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         never contacts the bridge.
   - [x] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
         provenance, and a tarball smoke test running `kasakame --help`.
-  - [ ] Document: new `docs/cli.md` (install, login/logout, wallet approval,
+  - [x] Document: new [`docs/cli.md`](cli.md) (install, login/logout, wallet approval,
         commands, networks, the mnemonic opt-in and its hot-key trade-off, the
-        WalletConnect v1 bridge dependency, self-hosting), plus `ci.md`,
-        `sdk.md`, `architecture.md`, `frontend.md`, `testing.md`, `README.md`,
-        `AGENTS.md`.
+        WalletConnect v1 bridge dependency, self-hosting), plus [`ci.md`](ci.md),
+        [`sdk.md`](sdk.md), [`architecture.md`](architecture.md),
+        [`frontend.md`](frontend.md), [`testing.md`](testing.md),
+        [`README.md`](../README.md), [`AGENTS.md`](../AGENTS.md).
   - [ ] Keep `projects/frontend/scripts/reclaim.ts` as the batch dev/seed cleanup
         tool; it also deletes/unregisters, which the CLI does not.
 

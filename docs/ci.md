@@ -253,7 +253,8 @@ outputs:
   true. Installs the published SDK with `npm ci`, or the same-run `sdk-dist` as
   a packed copy for SDK/contracts changes, then lint, format, type-check,
   `npm run test:coverage`, and `npm run build`. The suite mocks the
-  WalletConnect transport, so CI never contacts the bridge.
+  WalletConnect transport, so CI never contacts the bridge. See
+  [`cli.md`](cli.md) and the [CLI tests](testing.md#cli-tests).
 - **`integration-test`** - runs when `contracts` is true: downloads
   `contracts-artifacts`, starts LocalNet, and runs the compiled TEAL against a
   live algod.
@@ -393,7 +394,8 @@ Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-cli.yml`, and no environment. The first-publish
 window, 2FA enforcement, and token cleanup described for the SDK apply here too.
-Release the SDK first: the CLI depends on the published `@kasakame/sdk`.
+Release the SDK first: the CLI depends on the published `@kasakame/sdk`. The
+package, its signers, and its commands are documented in [`cli.md`](cli.md).
 
 ## Release and distribution
 
@@ -477,8 +479,8 @@ also gated at 100% on `src`, and its lane builds the package too. The SDK's
 suite is pure Vitest over the chain layer (claim-tree math, replay, campaign
 reads, and writes) with a 100% gate on `src`; its lane runs the codegen first
 (from the same-run artifacts with `SDK_SPECS=local`, or the pinned release) so
-the generated clients resolve at import time. All are
-described in [`testing.md`](testing.md) (contracts) and
+the generated clients resolve at import time. Test layers are described in
+[`testing.md`](testing.md) (contracts and [CLI](testing.md#cli-tests)) and
 [`frontend.md`](frontend.md) (frontend).
 
 The offline contract tests don't need the AlgoKit CLI or Docker because the

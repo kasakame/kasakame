@@ -23,6 +23,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | ClaimsVault (one, platform-owned) | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
 | Factory (one, platform-owned) | Registers campaigns against the owner-configured approval hash |
 | Frontend | Reads state from the indexer; builds transaction groups for the wallet |
+| CLI (escape hatch) | Refunds, withdrawals, claims, and deletes by app ID; wallet or mnemonic signer |
 
 A pledge is one atomic group: payment to the vault, campaign leaf append, vault inflow record. A refund rebuilds the leaf from address, amount, and payment ID, verifies it against the stored root, nulls it in place, and pays the backer. See [`docs/architecture.md`](docs/architecture.md) and [`docs/campaign.md`](docs/campaign.md).
 
@@ -63,8 +64,9 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/campaign.md`](docs/campaign.md) | Campaign contract reference: state, methods, fees |
 | [`docs/claim-tree-protocol.md`](docs/claim-tree-protocol.md) | Claim-tree math, proofs, and security analysis |
 | [`docs/frontend.md`](docs/frontend.md) | UI structure, wallet, reads, writes, metadata |
+| [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |
 | [`docs/sdk.md`](docs/sdk.md) | SDK package design and migration order |
-| [`docs/testing.md`](docs/testing.md) | Contract and frontend test strategy |
+| [`docs/testing.md`](docs/testing.md) | Contract, CLI, and frontend test strategy |
 | [`docs/ci.md`](docs/ci.md) | GitHub Actions workflows and checks |
 | [`docs/conventions.md`](docs/conventions.md) | Lint, format, and TypeScript rules |
 | [`docs/roadmap.md`](docs/roadmap.md) | Done and remaining work |

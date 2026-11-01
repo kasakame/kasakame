@@ -404,5 +404,7 @@ indexer/client services via `vi.mock`.
 ## Out of scope
 
 - Campaign metadata - implemented (hybrid, see [Campaign metadata](#campaign-metadata)) and rendered from IPFS.
+- CLI workflows - refund, withdraw, claim, and delete by app ID ship in the
+  separate `@kasakame/cli` package (see [`cli.md`](cli.md)).
 - Frontend hosting - tracked in [`roadmap.md`](roadmap.md).
 - Backend / database - optional catalog only; the indexer + Factory are the read model.

@@ -313,3 +313,23 @@ remaining questions to settle before implementing:
 TBD once the tooling is chosen, but expected under `projects/frontend/e2e/` (or a
 new top-level `e2e/`), with its own script wired into `package.json`. CI wiring
 comes later - see [`ci.md`](ci.md).
+
+## CLI tests
+
+The CLI has its own Vitest suite in `projects/cli/src/*.spec.ts`. It mocks the
+SDK and the WalletConnect transport, so it runs offline and never contacts the
+bridge. Coverage is gated at 100% across lines, branches, functions, and
+statements.
+
+The suite drives the command layer: argument validation, read tables, refund
+and withdraw selection and partial failure, the creator checks for claim and
+delete, dry runs, the wallet session lifecycle and signer handshake, mnemonic
+validation for both 25-word Algo25 and 24-word ARC-52 phrases, and the bridge
+and storage fallbacks. The `cli` job in CI runs format, lint, type-check,
+coverage, and the build (see [`ci.md`](ci.md#workflow-build-and-test)); the
+release workflow packs the tarball and runs `kasakame --help` before publishing
+(see [`ci.md`](ci.md#workflow-release-cli-separate-file)).
+
+Manual TestNet smoke remains on the [roadmap](roadmap.md#cli): both signers,
+refund before and after a delete, and delete on a fresh campaign. The CLI
+behavior is documented in [`cli.md`](cli.md).

@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; a packed local copy is installed only to test unreleased SDK changes. The escape-hatch CLI consumes the SDK too, tracked in the [CLI section](roadmap.md#cli) of the roadmap.
+Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; a packed local copy is installed only to test unreleased SDK changes. The escape-hatch CLI consumes the SDK too; see [`cli.md`](cli.md).
 
 ## Why the SDK exists
 
@@ -39,7 +39,7 @@ configureSdk({
 })
 ```
 
-The frontend calls this in `lib/algorand.ts` after building its client. The CLI builds its own client from flags or env. Every SDK read and write uses the configured session.
+The frontend calls this in `lib/algorand.ts` after building its client. The CLI builds its own client from flags or env (see [`cli.md`](cli.md)). Every SDK read and write uses the configured session.
 
 ### Read campaigns
 

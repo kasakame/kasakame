@@ -7,14 +7,18 @@ only; no backend.
 Backers withdraw or refund pledges. Creators claim or delete campaigns.
 
 Status: all commands are implemented and released through the `release-cli`
-workflow. See the [CLI roadmap](../../docs/roadmap.md#cli).
+workflow. Full documentation is in [`docs/cli.md`](../../docs/cli.md); remaining
+work is in the [CLI roadmap](../../docs/roadmap.md#cli).
+
+Install it with `npm install --global @kasakame/cli`, or run a one-off with
+`npx @kasakame/cli`. The examples below use the `kasakame` binary.
 
 ## Find your pledges and campaigns
 
 ```bash
-node dist/index.js pledges
-node dist/index.js campaigns
-node dist/index.js pledges --address <address>
+kasakame pledges
+kasakame campaigns
+kasakame pledges --address <address>
 ```
 
 `pledges` lists every campaign where the address holds a live pledge, with the
@@ -44,8 +48,8 @@ write needs the creator's or the pledge owner's wallet.
 ## Refund (backer)
 
 ```bash
-node dist/index.js refund <appId>
-node dist/index.js refund <appId> --dry-run
+kasakame refund <appId>
+kasakame refund <appId> --dry-run
 ```
 
 `refund` returns your live pledges from a failed campaign, after its deadline
@@ -59,8 +63,8 @@ submitting anything.
 ## Withdraw (backer)
 
 ```bash
-node dist/index.js withdraw <appId>
-node dist/index.js withdraw <appId> --dry-run
+kasakame withdraw <appId>
+kasakame withdraw <appId> --dry-run
 ```
 
 `withdraw` takes back your live pledges while a campaign is still open, before
@@ -74,8 +78,8 @@ anything.
 ## Claim (creator)
 
 ```bash
-node dist/index.js claim <appId>
-node dist/index.js claim <appId> --dry-run
+kasakame claim <appId>
+kasakame claim <appId> --dry-run
 ```
 
 `claim` pays a successful campaign's live total to its creator, after the
@@ -86,8 +90,8 @@ prints the plan without submitting.
 ## Delete (creator)
 
 ```bash
-node dist/index.js delete <appId>
-node dist/index.js delete <appId> --dry-run
+kasakame delete <appId>
+kasakame delete <appId> --dry-run
 ```
 
 `delete` removes a campaign and returns its schema MBR and any Factory
@@ -100,9 +104,9 @@ submitting.
 ## Wallet session
 
 ```bash
-node dist/index.js login
-node dist/index.js whoami
-node dist/index.js logout
+kasakame login
+kasakame whoami
+kasakame logout
 ```
 
 `login` prints a WalletConnect v1 QR; scan it with Pera or Defly, the protocol
@@ -122,7 +126,7 @@ Universal Wallet phrase derives accounts through ARC-52, so `--address` is
 required to pick which one signs:
 
 ```bash
-node dist/index.js refund <appId> --signer mnemonic --mnemonic-file ./phrase.txt --address <address>
+kasakame refund <appId> --signer mnemonic --mnemonic-file ./phrase.txt --address <address>
 ```
 
 ## Development
@@ -138,8 +142,5 @@ npm run format
 npm run test:coverage
 ```
 
-Node.js 24 or newer, ESM.
-
-`libsodium-wrappers-sumo` is pinned to `0.7.15` directly: `0.7.16` ships an ESM
-build that imports a file it does not publish, and `@algorandfoundation/xhd-wallet-api`
-still asks for `^0.7.13`. Drop the pin once that library accepts `0.8.x`.
+Node.js 24 or newer, ESM. The `libsodium-wrappers-sumo` pin and the release
+workflow are explained in [`docs/cli.md`](../../docs/cli.md#development).
