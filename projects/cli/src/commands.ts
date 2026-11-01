@@ -164,49 +164,56 @@ export async function runDelete(options: CliOptions): Promise<number> {
  */
 export async function runPledges(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
+  const readOnly = options.address !== undefined
   progress(`Searching ${options.network} for live pledges by ${address}…`)
 
   let result: { rows: string[][]; multiple: boolean }
   try {
-    result = await pledgeRows(await listCampaignEntries(), address)
+    result = await pledgeRows(await listCampaignEntries(), address, readOnly)
   } catch (error) {
     throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
   }
 
+  const headers = ['app id', 'title', 'status', 'deadline', 'pledge', 'amount']
+  if (!readOnly) headers.push('action')
+
   printTable(
     `Live pledges by ${address} on ${options.network}`,
     `No live pledges by ${address} on ${options.network}.`,
-    ['app id', 'title', 'status', 'deadline', 'pledge', 'amount', 'action'],
+    headers,
     result.rows,
-    actionNote(options, address),
+    readOnly ? "Read-only view; withdraw and refund need the pledge owner's wallet." : undefined,
   )
-  if (result.multiple) {
+  if (!readOnly && result.multiple) {
     console.log('Use --all to act on every pledge.')
   }
   return 0
 }
 
-async function pledgeRows(entries: CampaignEntry[], address: string): Promise<{ rows: string[][]; multiple: boolean }> {
+async function pledgeRows(entries: CampaignEntry[], address: string, readOnly: boolean): Promise<{ rows: string[][]; multiple: boolean }> {
   const rows: string[][] = []
   let multiple = false
   for (const { header, status } of entries) {
     const leaves = await fetchMyLeaves(header.id, address)
     if (leaves.length === 0) continue
-    if (leaves.length > 1) multiple = true
+    if (!readOnly && leaves.length > 1) multiple = true
 
-    const action = pledgeAction(header, status)
     for (const leaf of leaves) {
-      const selected =
-        leaves.length > 1 && (action === 'withdraw' || action === 'refund') ? `${action} --pledge ${String(leaf.position)}` : action
-      rows.push([
+      const row = [
         header.id.toString(),
         header.title,
         describeStatus(header, status),
         formatDeadline(header.deadlineSeconds),
         String(leaf.position),
         `${formatAlgo(leaf.amount)} ALGO`,
-        selected,
-      ])
+      ]
+      if (!readOnly) {
+        const action = pledgeAction(header, status)
+        const selected =
+          leaves.length > 1 && (action === 'withdraw' || action === 'refund') ? `${action} --pledge ${String(leaf.position)}` : action
+        row.push(selected)
+      }
+      rows.push(row)
     }
   }
   return { rows, multiple }
@@ -222,20 +229,27 @@ async function pledgeRows(entries: CampaignEntry[], address: string): Promise<{ 
  */
 export async function runCampaigns(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
+  const readOnly = options.address !== undefined
   progress(`Searching ${options.network} for campaigns created by ${address}…`)
+
+  const headers = ['app id', 'title', 'status', 'raised / goal', 'deadline']
+  if (!readOnly) headers.push('action')
 
   let rows: string[][]
   try {
     rows = (await listCampaignEntries())
       .filter(({ header }) => header.creator === address)
-      .map(({ header, status }) => [
-        header.id.toString(),
-        header.title,
-        describeStatus(header, status),
-        `${formatAlgo(header.raisedMicroAlgos)} / ${formatAlgo(header.goalMicroAlgos)} ALGO`,
-        formatDeadline(header.deadlineSeconds),
-        campaignAction(header, status),
-      ])
+      .map(({ header, status }) => {
+        const row = [
+          header.id.toString(),
+          header.title,
+          describeStatus(header, status),
+          `${formatAlgo(header.raisedMicroAlgos)} / ${formatAlgo(header.goalMicroAlgos)} ALGO`,
+          formatDeadline(header.deadlineSeconds),
+        ]
+        if (!readOnly) row.push(campaignAction(header, status))
+        return row
+      })
   } catch (error) {
     throw new Error(`Could not read campaigns from the indexer: ${messageOf(error)}`)
   }
@@ -243,15 +257,11 @@ export async function runCampaigns(options: CliOptions): Promise<number> {
   printTable(
     `Campaigns created by ${address} on ${options.network}`,
     `No campaigns created by ${address} on ${options.network}.`,
-    ['app id', 'title', 'status', 'raised / goal', 'deadline', 'action'],
+    headers,
     rows,
-    actionNote(options, address),
+    readOnly ? "Read-only view; claim and delete need the creator's wallet." : undefined,
   )
   return 0
-}
-
-function actionNote(options: CliOptions, address: string): string | undefined {
-  return options.address === undefined ? undefined : `The action column shows what ${address} can do.`
 }
 
 async function readAddress(options: CliOptions): Promise<string> {

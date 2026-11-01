@@ -17,11 +17,11 @@ node dist/index.js campaigns
 node dist/index.js pledges --address <address>
 ```
 
-`pledges` lists every campaign where your address still holds a live pledge,
-with the status, deadline, each pledge, and what you can do: `withdraw` while
-the campaign is open, `refund` once it failed, or no action when it succeeded or the
-refund window closed. `campaigns` lists the campaigns you created, with `claim`
-or `delete` when the contract allows it.
+`pledges` lists every campaign where the address holds a live pledge, with the
+status, deadline, and each pledge. `campaigns` lists the campaigns the address
+created. Without `--address`, the tables also show the action the signer can
+run: `withdraw` while open, `refund` once failed. With `--address`, they show
+state only.
 
 Both commands are read-only. They print a search line while they scan the
 indexer, then a table. They use the connected wallet session, the mnemonic
@@ -30,15 +30,16 @@ networks, pass `--vault` and `--factory` so discovery can find the campaigns.
 
 ## Who can do what
 
-`pledges` and `campaigns` are read-only and permissionless: they only read chain
-state. The action column follows the address being listed. With `--address`, it
-shows what that address can do; sign in with it to run the command.
+Reads are permissionless: `pledges` and `campaigns` only read chain state.
 
-- `withdraw` and `refund` need the wallet that made the pledge.
-- `claim` and `delete` need the campaign creator.
+- `withdraw` and `refund` have no creator gate, but the Merkle proof is built
+  from the caller's address. Only the wallet that made the pledge can produce
+  it; nobody can withdraw someone else's pledge.
+- `claim` and `delete` are creator-only.
 
-The contract enforces each check, and the CLI refuses before signing when the
-signer is not the owner.
+Without `--address`, discovery uses the signer's address and shows the actions
+that signer can run. With `--address`, it is a state-only read-only view: every
+write needs the creator's or the pledge owner's wallet.
 
 ## Refund (backer)
 

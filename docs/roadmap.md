@@ -165,7 +165,9 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
     arrive with only a wallet or its mnemonic, and no app id. `pledges` and
     `campaigns` list what the address can act on, built from the SDK's Factory
     plus vault-box enumeration (which keeps deleted-but-unfinalized campaigns
-    visible). No signing session, no writes.
+    visible). No signing session, no writes. Without `--address`, the action
+    column shows what the signer can run. With `--address`, the view is
+    state-only: every write needs the creator's or the pledge owner's wallet.
 
   **Steps**
 
@@ -216,11 +218,12 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         group and report the reclaimed MBR and registration deposit. Reuse the
         connection lifecycle and `--dry-run` behavior above.
   - [x] Add read-only discovery: `pledges` lists the address's live pledges with
-        campaign id, title, status, deadline, each pledge, and the action available now
-        (`withdraw` while open, `refund` once failed, nothing when successful);
-        `campaigns` lists campaigns the address created, with `claim` or `delete`
-        when the contract allows. Accept `--address` for a wallet address without
-        a signer, so nobody needs an app id to start.
+        campaign id, title, status, deadline, and each pledge; `campaigns` lists
+        the campaigns the address created. Without `--address`, the signer view
+        shows the actions it can run (`withdraw`/`refund` for its pledges,
+        `claim`/`delete` for its campaigns). With `--address`, both views are
+        state-only. Accept `--address` for a wallet address without a signer, so
+        nobody needs an app id to start.
   - [x] Polish command output: announce each wallet approval ("waiting for
         approval"), print one clear success line per completed action, and turn
         every rejection into a message that names the next step (`pledges`,

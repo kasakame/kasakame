@@ -572,13 +572,26 @@ describe('runPledges', () => {
     expect(console.log).toHaveBeenCalledWith('No live pledges by BACKER on testnet.')
   })
 
-  it('inspects an explicit address without a signer', async () => {
+  it('shows a state-only view for an explicit address', async () => {
     expect(await runPledges(pledgeOptions({ address: VALID_ADDRESS }))).toBe(0)
 
     expect(mnemonicSessionMock).not.toHaveBeenCalled()
     expect(whoamiMock).not.toHaveBeenCalled()
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, VALID_ADDRESS)
-    expect(console.log).toHaveBeenCalledWith(`The action column shows what ${VALID_ADDRESS} can do.`)
+    expect(console.log).toHaveBeenCalledWith("Read-only view; withdraw and refund need the pledge owner's wallet.")
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^app id\s+title\s+status\s+deadline\s+pledge\s+amount$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO$/))
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringMatching(/\swithdraw$/))
+  })
+
+  it('hides pledge actions in a read-only view with several pledges', async () => {
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
+
+    expect(await runPledges(pledgeOptions({ address: VALID_ADDRESS }))).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO$/))
+    expect(console.log).not.toHaveBeenCalledWith('Use --all to act on every pledge.')
   })
 
   it('rejects an invalid address', async () => {
@@ -669,14 +682,17 @@ describe('runCampaigns', () => {
     expect(console.log).toHaveBeenCalledWith('No campaigns created by BACKER on testnet.')
   })
 
-  it('labels the action column when inspecting an address', async () => {
+  it('hides creator actions in a read-only view', async () => {
     sdkMocks.enumerateCampaigns.mockResolvedValue(new Set([1n]))
     sdkMocks.fetchCampaignHeader.mockResolvedValue(header({ creator: VALID_ADDRESS, raisedMicroAlgos: 0n }))
     sdkMocks.getCampaignStatus.mockReturnValue('open')
 
     expect(await runCampaigns(campaignOptions({ address: VALID_ADDRESS }))).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(`The action column shows what ${VALID_ADDRESS} can do.`)
+    expect(console.log).toHaveBeenCalledWith("Read-only view; claim and delete need the creator's wallet.")
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^app id\s+title\s+status\s+raised \/ goal\s+deadline$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+0 \/ 10 ALGO\s+1970-01-01 00:16 UTC$/))
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringMatching(/\sdelete$/))
   })
 
   it('skips ids the indexer does not know', async () => {
