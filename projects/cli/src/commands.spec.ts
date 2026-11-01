@@ -84,13 +84,15 @@ describe('runRefund', () => {
     expect(console.log).toHaveBeenCalledWith('Refunded pledge #0 (1.5 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Refunded pledge #1 (0.000001 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Refunded 2 pledges.')
-    expect(console.error).toHaveBeenCalledWith('Submitting…')
+    expect(console.error).toHaveBeenCalledWith('2 pledges selected; each is a separate transaction.')
+    expect(console.error).toHaveBeenCalledWith('Submitting: refund pledge #0 (1.5 ALGO)…')
     expect(closeMock).toHaveBeenCalled()
   })
 
   it('announces the wallet approval for the wallet signer', async () => {
     expect(await runRefund(options({ signer: 'wallet', all: true }))).toBe(0)
-    expect(console.error).toHaveBeenCalledWith('Waiting for wallet approval…')
+    expect(console.error).toHaveBeenCalledWith('2 pledges selected; your wallet asks for approval on each one.')
+    expect(console.error).toHaveBeenCalledWith('Waiting for wallet approval: refund pledge #0 (1.5 ALGO)…')
   })
 
   it('refunds one selected pledge', async () => {
@@ -209,7 +211,8 @@ describe('runWithdraw', () => {
     expect(console.log).toHaveBeenCalledWith('Withdrawn pledge #0 (1.5 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Withdrawn pledge #1 (0.000001 ALGO).')
     expect(console.log).toHaveBeenCalledWith('Withdrawn 2 pledges.')
-    expect(console.error).toHaveBeenCalledWith('Submitting…')
+    expect(console.error).toHaveBeenCalledWith('2 pledges selected; each is a separate transaction.')
+    expect(console.error).toHaveBeenCalledWith('Submitting: withdraw pledge #0 (1.5 ALGO)…')
     expect(closeMock).toHaveBeenCalled()
   })
 
@@ -305,7 +308,7 @@ describe('runClaim', () => {
 
     expect(sdkMocks.claim).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Claimed campaign 1; the vault paid its live total to BACKER.')
-    expect(console.error).toHaveBeenCalledWith('Submitting…')
+    expect(console.error).toHaveBeenCalledWith('Submitting: claim campaign 1…')
     expect(closeMock).toHaveBeenCalled()
   })
 
@@ -377,7 +380,7 @@ describe('runDelete', () => {
     expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Deleted campaign 1.')
     expect(console.log).toHaveBeenCalledWith("The campaign's schema MBR and any Factory registration deposit are back in your account.")
-    expect(console.error).toHaveBeenCalledWith('Submitting…')
+    expect(console.error).toHaveBeenCalledWith('Submitting: delete campaign 1…')
     expect(console.log).not.toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
     expect(closeMock).toHaveBeenCalled()
   })
@@ -483,9 +486,8 @@ describe('runPledges', () => {
 
     expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Live pledges by BACKER on testnet:')
-    expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z')
-    expect(console.log).toHaveBeenCalledWith('  pledge #0: 1.5 ALGO (txid aa)')
-    expect(console.log).toHaveBeenCalledWith('  you can: withdraw')
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^app id\s+title\s+status\s+deadline\s+pledge\s+amount\s+action$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+withdraw$/))
   })
 
   it('lists every pledge with the same format', async () => {
@@ -493,9 +495,13 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith('  pledge #0: 0.5 ALGO (txid aa)')
-    expect(console.log).toHaveBeenCalledWith('  pledge #3: 1 ALGO (txid aa)')
-    expect(console.log).toHaveBeenCalledWith('  you can: withdraw --pledge <0|3> or --all')
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+withdraw --pledge 0$/),
+    )
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO\s+withdraw --pledge 3$/),
+    )
+    expect(console.log).toHaveBeenCalledWith('Use --all to act on every pledge.')
   })
 
   it('lists a failed pledge with the refund action', async () => {
@@ -503,7 +509,31 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: refund'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+failed\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+refund$/))
+  })
+
+  it('marks each refundable pledge when several are live', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('failed')
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+failed\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+refund --pledge 0$/),
+    )
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+failed\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO\s+refund --pledge 3$/),
+    )
+  })
+
+  it('keeps every successful pledge visible with no action', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+    sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
+
+    expect(await runPledges(pledgeOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+-$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO\s+-$/))
   })
 
   it('lists a successful pledge with nothing to do', async () => {
@@ -511,7 +541,7 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('no action available'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+-$/))
   })
 
   it('keeps a deleted pledge visible with the refund window closed', async () => {
@@ -519,8 +549,9 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('open, deleted'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('no action available (refund window closed)'))
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+open, deleted\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+window closed$/),
+    )
   })
 
   it('keeps a deleted pledge refundable while its box is open', async () => {
@@ -529,8 +560,9 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('failed, deleted'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: refund'))
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/^1\s+Title\s+failed, deleted\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+refund$/),
+    )
   })
 
   it('reports no live pledges', async () => {
@@ -613,19 +645,20 @@ describe('runCampaigns', () => {
 
     expect(console.error).toHaveBeenCalledWith('Searching testnet for campaigns created by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^app id\s+title\s+status\s+raised \/ goal\s+deadline\s+action$/))
     expect(console.log).toHaveBeenCalledWith(
-      '#1 "Claimed" successful (claimed), raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete',
+      expect.stringMatching(/^1\s+Claimed\s+successful \(claimed\)\s+10 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+delete$/),
     )
     expect(console.log).toHaveBeenCalledWith(
-      '#2 "Funded" successful, raised 10 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: claim',
+      expect.stringMatching(/^2\s+Funded\s+successful\s+10 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+claim$/),
     )
-    expect(console.log).toHaveBeenCalledWith('#3 "Failed" failed, raised 2 of 5 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete')
-    expect(console.log).toHaveBeenCalledWith('#4 "Empty" open, raised 0 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, you can: delete')
-    expect(console.log).toHaveBeenCalledWith('#5 "Live" open, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, no action available')
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^3\s+Failed\s+failed\s+2 \/ 5 ALGO\s+1970-01-01 00:16 UTC\s+delete$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^4\s+Empty\s+open\s+0 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+delete$/))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^5\s+Live\s+open\s+2 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+-$/))
     expect(console.log).toHaveBeenCalledWith(
-      '#6 "Gone" failed, deleted, raised 2 of 10 ALGO, deadline 1970-01-01T00:16:40.000Z, no action available',
+      expect.stringMatching(/^6\s+Gone\s+failed, deleted\s+2 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+-$/),
     )
-    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('"Other"'))
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Other'))
   })
 
   it('reports no campaigns for the address', async () => {
@@ -648,7 +681,7 @@ describe('runCampaigns', () => {
     expect(await runCampaigns(campaignOptions())).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('you can: delete'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+0 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+delete$/))
   })
 
   it('wraps indexer failures', async () => {

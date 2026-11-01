@@ -98,7 +98,7 @@ export async function runClaim(options: CliOptions): Promise<number> {
       return 0
     }
 
-    announceSubmit(options)
+    announceSubmit(options, `claim campaign ${appId.toString()}`)
     await claim(appId, session.wallet)
     console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
     return 0
@@ -141,7 +141,7 @@ export async function runDelete(options: CliOptions): Promise<number> {
       return 0
     }
 
-    announceSubmit(options)
+    announceSubmit(options, `delete campaign ${appId.toString()}`)
     await deleteCampaign(appId, session.wallet)
     console.log(`Deleted campaign ${appId.toString()}.`)
     if (status === 'failed' && header.raisedMicroAlgos > 0n) {
@@ -166,37 +166,49 @@ export async function runPledges(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
   progress(`Searching ${options.network} for live pledges by ${address}…`)
 
-  let rows: string[]
+  let result: { rows: string[][]; multiple: boolean }
   try {
-    rows = await pledgeRows(await listCampaignEntries(), address)
+    result = await pledgeRows(await listCampaignEntries(), address)
   } catch (error) {
     throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
   }
 
-  printRows(`Live pledges by ${address} on ${options.network}`, `No live pledges by ${address} on ${options.network}.`, rows)
+  printTable(
+    `Live pledges by ${address} on ${options.network}`,
+    `No live pledges by ${address} on ${options.network}.`,
+    ['app id', 'title', 'status', 'deadline', 'pledge', 'amount', 'action'],
+    result.rows,
+  )
+  if (result.multiple) {
+    console.log('Use --all to act on every pledge.')
+  }
   return 0
 }
 
-async function pledgeRows(entries: CampaignEntry[], address: string): Promise<string[]> {
-  const rows: string[] = []
+async function pledgeRows(entries: CampaignEntry[], address: string): Promise<{ rows: string[][]; multiple: boolean }> {
+  const rows: string[][] = []
+  let multiple = false
   for (const { header, status } of entries) {
     const leaves = await fetchMyLeaves(header.id, address)
     if (leaves.length === 0) continue
-    rows.push(
-      `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, deadline ${formatDeadline(header.deadlineSeconds)}`,
-    )
+    if (leaves.length > 1) multiple = true
+
+    const action = pledgeAction(header, status)
     for (const leaf of leaves) {
-      rows.push(`  pledge #${String(leaf.position)}: ${formatAlgo(leaf.amount)} ALGO (txid ${leaf.txidHex})`)
+      const selected =
+        leaves.length > 1 && (action === 'withdraw' || action === 'refund') ? `${action} --pledge ${String(leaf.position)}` : action
+      rows.push([
+        header.id.toString(),
+        header.title,
+        describeStatus(header, status),
+        formatDeadline(header.deadlineSeconds),
+        String(leaf.position),
+        `${formatAlgo(leaf.amount)} ALGO`,
+        selected,
+      ])
     }
-    rows.push(
-      `  ${pledgeSuffix(
-        header,
-        status,
-        leaves.map((leaf) => leaf.position),
-      )}`,
-    )
   }
-  return rows
+  return { rows, multiple }
 }
 
 /**
@@ -211,19 +223,28 @@ export async function runCampaigns(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
   progress(`Searching ${options.network} for campaigns created by ${address}…`)
 
-  let rows: string[]
+  let rows: string[][]
   try {
     rows = (await listCampaignEntries())
       .filter(({ header }) => header.creator === address)
-      .map(
-        ({ header, status }) =>
-          `#${header.id.toString()} "${header.title}" ${describeStatus(header, status)}, raised ${formatAlgo(header.raisedMicroAlgos)} of ${formatAlgo(header.goalMicroAlgos)} ALGO, deadline ${formatDeadline(header.deadlineSeconds)}, ${campaignSuffix(header, status)}`,
-      )
+      .map(({ header, status }) => [
+        header.id.toString(),
+        header.title,
+        describeStatus(header, status),
+        `${formatAlgo(header.raisedMicroAlgos)} / ${formatAlgo(header.goalMicroAlgos)} ALGO`,
+        formatDeadline(header.deadlineSeconds),
+        campaignAction(header, status),
+      ])
   } catch (error) {
     throw new Error(`Could not read campaigns from the indexer: ${messageOf(error)}`)
   }
 
-  printRows(`Campaigns created by ${address} on ${options.network}`, `No campaigns created by ${address} on ${options.network}.`, rows)
+  printTable(
+    `Campaigns created by ${address} on ${options.network}`,
+    `No campaigns created by ${address} on ${options.network}.`,
+    ['app id', 'title', 'status', 'raised / goal', 'deadline', 'action'],
+    rows,
+  )
   return 0
 }
 
@@ -267,19 +288,17 @@ async function listCampaignEntries(): Promise<CampaignEntry[]> {
   return entries.sort((a, b) => Number(a.header.id - b.header.id))
 }
 
-function pledgeSuffix(header: CampaignHeader, status: CampaignStatus, positions: number[]): string {
-  if (status === 'successful') return 'no action available'
-  if (header.deleted && status === 'open') return 'no action available (refund window closed)'
-  const verb = status === 'open' ? 'withdraw' : 'refund'
-  if (positions.length === 1) return `you can: ${verb}`
-  return `you can: ${verb} --pledge <${positions.map(String).join('|')}> or --all`
+function pledgeAction(header: CampaignHeader, status: CampaignStatus): string {
+  if (status === 'successful') return '-'
+  if (header.deleted && status === 'open') return 'window closed'
+  return status === 'open' ? 'withdraw' : 'refund'
 }
 
-function campaignSuffix(header: CampaignHeader, status: CampaignStatus): string {
-  if (header.deleted) return 'no action available'
-  if (header.status === 'claimed' || status === 'failed') return 'you can: delete'
-  if (status === 'successful') return 'you can: claim'
-  return header.raisedMicroAlgos === 0n ? 'you can: delete' : 'no action available'
+function campaignAction(header: CampaignHeader, status: CampaignStatus): string {
+  if (header.deleted) return '-'
+  if (header.status === 'claimed' || status === 'failed') return 'delete'
+  if (status === 'successful') return 'claim'
+  return header.raisedMicroAlgos === 0n ? 'delete' : '-'
 }
 
 function describeStatus(header: CampaignHeader, status: CampaignStatus): string {
@@ -287,25 +306,34 @@ function describeStatus(header: CampaignHeader, status: CampaignStatus): string 
   return header.deleted ? `${base}, deleted` : base
 }
 
-function printRows(title: string, empty: string, rows: string[]): void {
+function printTable(title: string, empty: string, headers: string[], rows: string[][]): void {
   if (rows.length === 0) {
     console.log(empty)
     return
   }
+  const widths = headers.map((header, index) => Math.max(header.length, ...rows.map((row) => (row[index] as string).length)))
+  const render = (cells: string[]): string =>
+    cells
+      .map((cell, index) => (index === cells.length - 1 ? cell : cell.padEnd(widths[index] as number)))
+      .join('  ')
+      .trimEnd()
+
   console.log(`${title}:`)
-  for (const row of rows) console.log(row)
+  console.log(render(headers))
+  for (const row of rows) console.log(render(row))
 }
 
 function formatDeadline(seconds: bigint): string {
-  return new Date(Number(seconds) * 1000).toISOString()
+  const iso = new Date(Number(seconds) * 1000).toISOString()
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`
 }
 
 function progress(message: string): void {
   console.error(message)
 }
 
-function announceSubmit(options: CliOptions): void {
-  progress(options.signer === 'wallet' ? 'Waiting for wallet approval…' : 'Submitting…')
+function announceSubmit(options: CliOptions, phrase: string): void {
+  progress(options.signer === 'wallet' ? `Waiting for wallet approval: ${phrase}…` : `Submitting: ${phrase}…`)
 }
 
 function messageOf(error: unknown): string {
@@ -378,10 +406,18 @@ async function spendLeaves(
       return 0
     }
 
+    if (selected.length > 1) {
+      progress(
+        options.signer === 'wallet'
+          ? `${pledges(selected.length)} selected; your wallet asks for approval on each one.`
+          : `${pledges(selected.length)} selected; each is a separate transaction.`,
+      )
+    }
+
     let failed = 0
     for (const leaf of selected) {
       try {
-        announceSubmit(options)
+        announceSubmit(options, `${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO)`)
         await spend(session.wallet, leaf)
         console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
       } catch (error) {
