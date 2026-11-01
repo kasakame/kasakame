@@ -163,7 +163,7 @@ export async function runDelete(options: CliOptions): Promise<number> {
  */
 export async function runPledges(options: CliOptions): Promise<number> {
   const address = await readAddress(options)
-  progress(`Searching ${options.network} for live pledges to ${address}…`)
+  progress(`Searching ${options.network} for live pledges by ${address}…`)
 
   let rows: string[]
   try {
@@ -172,7 +172,7 @@ export async function runPledges(options: CliOptions): Promise<number> {
     throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
   }
 
-  printRows(`Live pledges for ${address} on ${options.network}`, `No live pledges for ${address} on ${options.network}.`, rows)
+  printRows(`Live pledges by ${address} on ${options.network}`, `No live pledges by ${address} on ${options.network}.`, rows)
   return 0
 }
 

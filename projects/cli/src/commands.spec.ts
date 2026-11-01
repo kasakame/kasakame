@@ -446,8 +446,8 @@ describe('runPledges', () => {
   it('lists a live pledge with the cancel action', async () => {
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges to BACKER…')
-    expect(console.log).toHaveBeenCalledWith('Live pledges for BACKER on testnet:')
+    expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges by BACKER…')
+    expect(console.log).toHaveBeenCalledWith('Live pledges by BACKER on testnet:')
     expect(console.log).toHaveBeenCalledWith('#1 "Title" open, deadline 1970-01-01T00:16:40.000Z, pledged 1.5 ALGO, you can: cancel')
   })
 
@@ -491,7 +491,7 @@ describe('runPledges', () => {
 
     expect(await runPledges(pledgeOptions())).toBe(0)
 
-    expect(console.log).toHaveBeenCalledWith('No live pledges for BACKER on testnet.')
+    expect(console.log).toHaveBeenCalledWith('No live pledges by BACKER on testnet.')
   })
 
   it('inspects an explicit address without a signer', async () => {
