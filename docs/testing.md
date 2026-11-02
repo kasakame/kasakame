@@ -134,7 +134,8 @@ files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 36 campaign +
-57 vault + 17 factory + 2 deployer tests, all green with 100% line/branch/function coverage).
+57 vault + 22 factory + 2 deployer + 5 refund-window parser tests, all green with 100%
+line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money
 ledger, µA-exact, for every actor involved: balance and minimum-balance deltas
@@ -163,7 +164,7 @@ Factory + ClaimsVault + Campaign.
 | 2 | pledge → cancel → refund lifecycle, differentially verified | Four pledges (one re-pledge) with per-step root/n/raised + `paidIn`; forged-frontier rejection; pre-deadline cancel; non-sequential post-deadline refunds to zero; double-refund rejection |
 | 3 | unregistered campaigns cannot touch the vault | First-touch `credit` fails with `campaign not registered`; no box is created |
 | 4 | inner-only vault methods reject top-level callers | Direct `payBack`/`payClaim`/`settle`/`notifyDelete` fail with `not the campaign app` - the payout authority is unusable off the campaign path |
-| 5 | successful claim pays the creator exactly, then deletes O(1) | Goal reached → creator paid the full live total; box `Claimed`; `notifyDelete` releases the box; unregister returns the deposit |
+| 5 | successful claim pays the creator exactly, then deletes O(1) | Goal reached → creator paid the full live total; box `Claimed`; unregister (while the app exists) returns the deposit; `delete` releases the box |
 | 6 | failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual | `settle` writes root/N/`Failed`; permissionless `vault.refund` pays post-delete; early `finalize` rejected; post-window residual goes to the sweep target and the box is gone |
 | 7 | pristine and all-cancelled campaigns delete cleanly | No-box delete settles as a no-op; fully-cancelled delete settles to `Failed` with nothing owed |
 | 8 | settleOpen lets a stranger settle a vanished-creator campaign | Permissionless settle from live globals; the campaign path then rejects (box not open) and the vault path serves refunds |
@@ -259,7 +260,7 @@ Factory + ClaimsVault + Campaign.
 | `notifyDelete` | success / non-campaign caller / unknown / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete / unknown / not failed / window open (all LocalNet) | ✅ |
 | `Factory.register` | success / unconfigured hash / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
-| `Factory.unregister` | success (deposit back) / unregistered / non-creator | ✅ |
+| `Factory.unregister` | success (pristine / failed / claimed / failed-in-fact) / live rejection / missing state / unregistered / non-creator | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
 ## Browser E2E / acceptance tests

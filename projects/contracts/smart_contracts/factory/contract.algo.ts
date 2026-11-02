@@ -28,6 +28,11 @@ import {
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
 const REGISTER_MBR = 18_900
 
+// Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
+const CAMPAIGN_OPEN = Uint64(0)
+const CAMPAIGN_FAILED = Uint64(1)
+const CAMPAIGN_CLAIMED = Uint64(2)
+
 export class Factory extends Contract {
   /** The platform owner - the only account allowed to configure the official approval hash. */
   owner = GlobalState<Account>()
@@ -97,8 +102,11 @@ export class Factory extends Contract {
   /**
    * Unregister a campaign and recover the registration deposit.
    *
-   * Only the registered creator may call; the registration box is deleted (freeing its minimum balance on the Factory account) and the
-   * deposit is paid back to the creator. Callers unregister when their campaign app has been deleted.
+   * Only the registered creator may call; the registration box is deleted (freeing its minimum balance on the Factory
+   * account) and the deposit is paid back to the creator. The campaign app must still exist and be settled (`Failed` or
+   * `Claimed`), pristine (`Open` with `raised == 0`), or failed-in-fact (`Open`, deadline passed, `raised < goal`). A
+   * live campaign cannot delist itself while it can still take pledges. Callers unregister **before** deleting the app
+   * (the SDK does this); a deleted app's state cannot be read, so its deposit would be stuck.
    *
    * @param app The registered Campaign application.
    */
@@ -106,6 +114,17 @@ export class Factory extends Contract {
   unregister(app: Application): void {
     assert(this.registered(app.id).exists, 'campaign is not registered')
     assert(this.registered(app.id).value === Txn.sender, 'only the campaign creator can unregister')
+
+    const status = op.AppGlobal.getExUint64(app, Bytes('status'))
+    const deadline = op.AppGlobal.getExUint64(app, Bytes('deadline'))
+    const raised = op.AppGlobal.getExUint64(app, Bytes('raised'))
+    const goal = op.AppGlobal.getExUint64(app, Bytes('goal'))
+    assert(status[1] && deadline[1] && raised[1] && goal[1], 'campaign state missing')
+
+    const settled = status[0] === CAMPAIGN_FAILED || status[0] === CAMPAIGN_CLAIMED
+    const pristine = status[0] === CAMPAIGN_OPEN && raised[0] === Uint64(0)
+    const failedInFact = status[0] === CAMPAIGN_OPEN && Global.latestTimestamp >= deadline[0] && raised[0] < goal[0]
+    assert(settled || pristine || failedInFact, 'campaign is still live')
 
     this.registered(app.id).delete()
 

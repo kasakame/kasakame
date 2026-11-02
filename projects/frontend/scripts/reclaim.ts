@@ -14,7 +14,7 @@ import { appIdFromEnv } from '../src/utils/network/getAlgoClientConfigs'
  * Reclaim demo/test campaign funds and remove the campaigns from the browse list.
  *
  * For each campaign: route by on-chain state (claim when funded, refund/cancel known backers' leaves when
- * failed/open), then creator-`delete()` + factory-`unregister()`. Leaves from accounts without keys (e.g. manual
+ * failed/open), then factory-`unregister()` + creator-`delete()`. Leaves from accounts without keys (e.g. manual
  * pledges from your own wallet) cannot be touched - they are reported with amounts so you can see them and refund
  * through the UI. Action failures are reported, never fatal (a rejection is also how the bad paths show up).
  *

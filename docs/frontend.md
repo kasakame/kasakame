@@ -312,7 +312,7 @@ target) once settled:
 | `refund()` / `cancelPledge()` | 1 app call + 1 OpUp iteration + 1 inner app call + 1 inner payment | ≈ 0.004 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 OpUp iteration + 1 inner payment | ≈ 0.004 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
-| `delete()` + `unregister()` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
+| `unregister()` + `delete()` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
 
 ## Edge cases & gotchas
 

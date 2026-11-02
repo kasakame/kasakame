@@ -359,6 +359,34 @@ submission.
 - [ ] Align the docs: link the standard from README and architecture, and
       describe "official" as deployment-local.
 
+## Contract hardening
+
+- [ ] **Factory vault binding.** Store the official ClaimsVault app id in the Factory
+      (owner-set after the vault exists, because the Factory must be created first) and
+      reject a `register` whose campaign `vault` global differs. This makes the Factory
+      listing itself trustworthy. Today the SDK pins the vault and `Campaign.pledge`
+      rejects a wrong receiver, so the official client is safe, but the registry can
+      list a campaign that cannot be pledged through it.
+- [ ] **Pledge/credit pairing decision.** Decide whether to require the matching
+      `Vault.credit` in the same group as `Campaign.pledge`. Without it, an uncredited
+      pledge strands the payer's funds and can dilute other backers' refunds by the
+      uncredited amount (griefing, no direct profit). Enforcing it couples the campaign
+      to the vault call's group position and args.
+- [ ] **Successful-campaign liveness decision.** Decide whether to add a long-stop for
+      a successful campaign whose creator never claims. Today the funds and the vault
+      box MBR stay put; the creator is economically motivated to claim, but a lost key
+      or a malicious creator can strand them. Options: leave as is, or add a
+      permissionless `refundUnclaimed` after a generous timeout (changes success
+      semantics).
+- [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
+      `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only;
+      the SDK/docs/tests unregister before deleting the app.
+- [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
+      vault deploy config and the parser is tested, so a misconfiguration cannot overflow
+      `settledAt + refundWindow`.
+- [x] **Payment-reuse regression tests.** Unit and LocalNet groups cover duplicate
+      `credit`, duplicate `pledge`, and duplicate `register` with one payment.
+
 ## Deployment
 
 - [ ] **Frontend** - deploy the release bundle (built against the

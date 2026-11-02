@@ -1,7 +1,8 @@
-import { Bytes } from '@algorandfoundation/algorand-typescript'
+import { Bytes, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { Campaign } from '../campaign/contract.algo'
 import { Factory } from './contract.algo'
 
 /**
@@ -51,6 +52,31 @@ describe('Factory', () => {
     ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender })]).execute(() => {
       contract.register(app, ctx.any.txn.payment({ sender, receiver: factoryAddress, amount: REGISTER_MBR }))
     })
+  }
+
+  /**
+   * A real Campaign app with the given globals, registered directly in the Factory's box map.
+   *
+   * `unregister` reads the campaign's state; this helper avoids recomputing the compiled Campaign hash just to register
+   * the fixture app.
+   *
+   * @param contract The factory.
+   * @param fields The campaign globals that gate unregistration.
+   * @param fields.status Campaign status: 0 Open, 1 Failed, 2 Claimed.
+   * @param fields.raised Live pledge total.
+   * @param fields.goal Funding target.
+   * @param fields.deadline Deadline timestamp.
+   * @returns The registered campaign app.
+   */
+  function registeredCampaign(contract: Factory, fields: { status: number; raised: number; goal: number; deadline: number }): Application {
+    const campaign = ctx.contract.create(Campaign)
+    campaign.status.value = fields.status
+    campaign.raised.value = fields.raised
+    campaign.goal.value = fields.goal
+    campaign.deadline.value = fields.deadline
+    const app = ctx.ledger.getApplicationForContract(campaign)
+    contract.registered(app.id).value = ctx.defaultSender
+    return app
   }
 
   /**
@@ -234,17 +260,15 @@ describe('Factory', () => {
   })
 
   describe('unregister', () => {
-    test('returns the deposit and removes the registration', () => {
+    test('returns the deposit and removes the registration for a pristine campaign', () => {
       const factory = createFactory()
-      setHash(factory)
-      const app = campaignApp()
-      registerAs(factory, app)
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
 
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
         factory.unregister(app)
       })
 
-      expect(factory.registered(FAKE_APP_ID).exists).toBe(false)
+      expect(factory.registered(app.id).exists).toBe(false)
       const payout = ctx.txn.lastGroup.lastItxnGroup().getPaymentInnerTxn()
       expect(payout.receiver).toEqual(ctx.defaultSender)
       expect(payout.amount).toEqual(REGISTER_MBR)
@@ -262,15 +286,68 @@ describe('Factory', () => {
 
     test('rejects a non-creator unregistering a campaign', () => {
       const factory = createFactory()
-      setHash(factory)
-      const app = campaignApp()
-      registerAs(factory, app)
+      const app = registeredCampaign(factory, { status: 2, raised: 1000, goal: 1000, deadline: 0 })
 
       const other = ctx.any.account()
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
         expect(() => {
           factory.unregister(app)
         }).toThrow('only the campaign creator can unregister')
+      })
+    })
+
+    test('rejects unregistering a live campaign', () => {
+      ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('campaign is still live')
+      })
+    })
+
+    test('allows a failed-in-fact campaign', () => {
+      ctx.ledger.patchGlobalData({ latestTimestamp: 2_000 })
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        factory.unregister(app)
+      })
+      expect(factory.registered(app.id).exists).toBe(false)
+    })
+
+    test('allows a failed campaign', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 1, raised: 100, goal: 1000, deadline: 2_000 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        factory.unregister(app)
+      })
+      expect(factory.registered(app.id).exists).toBe(false)
+    })
+
+    test('allows a claimed campaign', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 2, raised: 1000, goal: 1000, deadline: 2_000 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        factory.unregister(app)
+      })
+      expect(factory.registered(app.id).exists).toBe(false)
+    })
+
+    test('rejects an app whose campaign state is missing', () => {
+      const factory = createFactory()
+      const app = campaignApp()
+      factory.registered(app.id).value = ctx.defaultSender
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('campaign state missing')
       })
     })
   })

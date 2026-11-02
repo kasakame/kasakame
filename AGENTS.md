@@ -184,6 +184,10 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     `Factory.register` must be the group's final transaction. The contracts
     reject other shapes; the positions are what stop one payment from backing
     several pledges, credits, or registrations.
+  - `Factory.unregister` requires the campaign app to still exist and be settled
+    (`Claimed`/`Failed`), pristine (`Open`, `raised == 0`), or failed-in-fact.
+    Unregister **before** deleting the app: a deleted app's globals are
+    unreadable, so its registration deposit would be stuck.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

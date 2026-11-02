@@ -25,7 +25,7 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   `register` verifies the campaign program hash and the creator identity; refundable 18,900 µA deposit.
 - **Transaction groups:** pledge `[Payment→vault, Campaign.pledge, Vault.credit]`; cancel/refund carry one leaf proof each;
   claim and delete are single app calls with inner vault calls.
-- **MBR (current):** creator ≈ 0.24 ALGO (app + schema + registration, recoverable O(1) via `delete()` + `unregister()`);
+- **MBR (current):** creator ≈ 0.24 ALGO (app + schema + registration, recoverable O(1) via `unregister()` + `delete()`);
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete` or `finalize`; backer 0 (no opt-ins exist).
 
 ### AVM facts relied on (verified)
@@ -304,7 +304,9 @@ to the live pledge total because cancels were balanced); pay creator (`Txn.sende
 `[Campaign.delete()]` (creator): requires `status == CLAIMED` (or `FAILED`, or `raised == 0`); inner `vault.notifyDelete(app)` which
 asserts `status == CLAIMED` and `paidInOf == paidOutOf`, then deletes the box (recovering the 32,100 µA) - **O(1), vault parks nothing
 for successful campaigns**. `notifyDelete` is a no-op when the box was already released, so deletion still works after a
-permissionless cleanup. Creator then `factory.unregister(app)`.
+permissionless cleanup. The creator unregisters **before** deleting the app: `Factory.unregister` reads the campaign's
+`status`/`raised`/`goal`/`deadline` and rejects a live campaign; a deleted app's state is unreadable. The SDK builds
+`[unregister, delete]` as one atomic group.
 
 `[Vault.releaseClaimed(app)]` (**permissionless**): asserts the box is `CLAIMED` with `paidInOf == paidOutOf`, then deletes it. This
 recovers the box's 32,100 µA even when a creator claims and then never deletes the campaign, so claimed boxes cannot pin the vault's
@@ -344,7 +346,7 @@ vault/factory app ids plus the campaign app id.
 Exactly as §9: campaign = 10 global slots; vault = one 65-byte box per campaign
 (live and failed; deleted on claim-finalization or finalize). **No local state, no ASA, no per-backer storage anywhere.** Campaign
 account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×25,000 + 6×3,500 = 121,000) + registration
-(18,900) ≈ 0.24 ALGO, fully recovered at `delete()` + `unregister()`; vault = 32,100 µA per live/failed campaign, recovered via
+(18,900) ≈ 0.24 ALGO, fully recovered at `unregister()` + `delete()`; vault = 32,100 µA per live/failed campaign, recovered via
 `notifyDelete`/`finalize`; backer = **0**.
 
 ## 11. Accounting and solvency
@@ -431,7 +433,9 @@ window, never exercised a right they were offered at pledge time; the alternativ
 If the platform wants zero self-enrichment optics, `sweepTarget` can be a documented community fund - a governance decision, not a protocol change.
 
 **Deployed choice:** `sweepTarget` is the platform treasury.
-The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). Rationale:
+The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault
+deploy script caps `REFUND_WINDOW_SECONDS` at 10 years so a misconfiguration cannot overflow `settledAt + refundWindow`.
+Rationale:
 residuals will be dust; a future vault can point at a community fund instead - the address is a vault-creation parameter,
 so no contract change is needed either way. The creator as sweep target was rejected (rewards failure, looks like a backdoor).
 

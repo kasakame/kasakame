@@ -44,6 +44,10 @@ To open a campaign, complete these steps in order:
 The registration group is `[deposit payment, Factory.register]` with `register` as the final transaction. The contract rejects
 other shapes, so one deposit cannot register more than one campaign.
 
+`Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
+failed-in-fact (`Open`, deadline passed, `raised < goal`); a live campaign cannot delist itself. The campaign app must still
+exist when unregistering, so clients unregister **before** deleting it.
+
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
 
 ## Escrow and vault
@@ -59,7 +63,7 @@ The vault account therefore holds the full pool of live pledges plus parked box 
 | Success | Creator calls `claim()` after the deadline with the goal met | Vault pays the creator the full live total; the box closes as `Claimed` |
 | Failure | First `refund()` after the deadline with the goal missed | Box settles as `Failed`; each backer refunds their own leaves from the vault |
 | Pre-deadline exit | Backer calls `cancelPledge()` while the campaign is open | Leaf nulls in place; vault pays the backer |
-| Creator delete | Creator calls `delete()` on a settled campaign | Settles through the vault, closes the escrow, unregisters from the Factory |
+| Creator delete | Creator calls `delete()` on a settled campaign | Unregisters from the Factory first (settled/pristine/failed-in-fact only), then settles through the vault, closes the escrow, and deletes |
 
 Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a permissionless `finalize()` sweeps the residual to the configured treasury. A backer who never acts before deletion refunds straight from the vault with the same proofs.
 

@@ -559,8 +559,23 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     expect(box.status).toEqual(3)
     expect(box.paidOut).toEqual(box.paidIn)
 
-    // Delete: notifyDelete releases the box (32,100 MBR back to the pool), escrow closes to the creator.
+    // Unregister returns the factory deposit while the campaign is Claimed (the app must still exist).
+    const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: caddr }).getAppClientById({
+      appId: factoryId,
+    })
     const balC1 = await balanceOf(caddr)
+    await factoryClient.send.call({
+      method: 'unregister(uint64)void',
+      args: [appId],
+      sender: caddr,
+      appReferences: [appId],
+      extraFee: microAlgos(FEE),
+      suppressLog: true,
+    })
+    expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER)
+
+    // Delete: notifyDelete releases the box (32,100 MBR back to the pool), escrow closes to the creator.
+    const balC2 = await balanceOf(caddr)
     await appClient.send.delete({
       method: 'delete()void',
       sender: caddr,
@@ -571,22 +586,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     })
     expect(await boxExists(appId)).toEqual(false)
     // The escrow never held funds, so deletion only costs its fees.
-    expect(await balanceOf(caddr)).toEqual(balC1 - FEE_DELETE_SETTLED)
-
-    // Unregister returns the factory deposit.
-    const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: caddr }).getAppClientById({
-      appId: factoryId,
-    })
-    const balC2 = await balanceOf(caddr)
-    await factoryClient.send.call({
-      method: 'unregister(uint64)void',
-      args: [appId],
-      sender: caddr,
-      appReferences: [appId],
-      extraFee: microAlgos(FEE),
-      suppressLog: true,
-    })
-    expect(await balanceOf(caddr)).toEqual(balC2 + REGISTER_MBR - FEE_UNREGISTER)
+    expect(await balanceOf(caddr)).toEqual(balC2 - FEE_DELETE_SETTLED)
   })
 
   test('failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual', async () => {
