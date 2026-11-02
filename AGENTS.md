@@ -17,7 +17,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
     `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured approval hash and official vault, `setApprovalHash`,
+    registry (owner-configured program hash and official vault, `setApprovalHash`,
     `setVault`, `register`/`unregister`, readonly `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
@@ -191,10 +191,12 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     also be final. `Factory.unregister` must be immediately followed by the
     campaign's `delete()`, and the campaign's `delete()` requires that
     `unregister` immediately before it (when the campaign's vault has a Factory
-    binding). The contracts reject other shapes; the positions stop one payment
-    from backing several pledges, credits, or registrations, stop a pledge from
-    being left uncredited, stop a credit without a pledge (donations), and make
-    delisting and deletion one operation.
+    binding). The paired calls must be `NoOp`: a `ClearState` call runs the
+    clear-state program instead of the method, so it can satisfy an app-id/selector
+    check without executing the paired logic. The contracts reject other shapes; the
+    positions stop one payment from backing several pledges, credits, or
+    registrations, stop a pledge from being left uncredited, stop a credit without a
+    pledge (donations), and make delisting and deletion one operation.
   - `Factory.unregister` requires the campaign creator. A registered campaign
     must exist and be settled (`Claimed`/`Failed`), pristine (`Open`,
     `raised == 0`), or failed-in-fact; an unregistered campaign is a no-op, so the

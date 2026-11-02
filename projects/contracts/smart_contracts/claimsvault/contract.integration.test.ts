@@ -97,12 +97,16 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       suppressLog: true,
     })
 
-    const campaignTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-    const compiled = await algorand.app.compileTeal(campaignTeal)
-    const approvalHash = createHash('sha256').update(compiled.compiledBase64ToBytes).digest()
+    const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
+    const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
+    const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
+    const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
+    const programHash = createHash('sha256')
+      .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
+      .digest()
     await factoryClient.send.call({
       method: 'setApprovalHash(byte[])void',
-      args: [approvalHash],
+      args: [programHash],
       sender: owner.addr,
       suppressLog: true,
     })

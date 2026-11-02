@@ -4,6 +4,7 @@ import {
   Contract,
   Global,
   GlobalState,
+  OnCompleteAction,
   OpUpFeeSource,
   TransactionType,
   Txn,
@@ -136,7 +137,8 @@ export class Campaign extends Contract {
    * The caller submits this app call in a group with a payment from their own account **to the vault** (the pooled
    * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The payment
    * must be the transaction immediately before this call, and the vault's `credit` must be the transaction immediately
-   * after it, for this campaign and the same amount - so a pledge can never be left uncredited. The caller
+   * after it, for this campaign and the same amount - so a pledge can never be left uncredited. The credit must be a
+   * NoOp call: a ClearState call runs the clear-state program and would bypass the credit method. The caller
    * supplies the frontier (peaks ascending, 32 bytes each); the contract authenticates it with `fold` against the
    * stored root, derives the leaf from the in-group payment (`sender ‖ amount ‖ txnId` - never caller-supplied), runs
    * the merge cascade, and stores the new root. N == 0 takes the empty-frontier branch.
@@ -182,6 +184,7 @@ export class Campaign extends Contract {
     const creditCall = gtxn.ApplicationCallTxn(creditIndex)
     assert(creditCall.appId === this.vault.value, 'credit must call the vault')
     assert(creditCall.sender === Txn.sender, 'credit must come from the pledger')
+    assert(creditCall.onCompletion === OnCompleteAction.NoOp, 'credit must be a NoOp call')
     assert(creditCall.numAppArgs === Uint64(3), 'credit args mismatch')
     assert(creditCall.appArgs(Uint64(0)) === VAULT_CREDIT_SELECTOR, 'credit selector mismatch')
     assert(creditCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'credit app mismatch')
@@ -278,8 +281,9 @@ export class Campaign extends Contract {
    * - **Open with N > 0 but `raised == 0`** (everything cancelled) - settled like a failure; nothing is owed.
    *
    * When the campaign's vault has a Factory binding, the previous transaction must be the Factory's `unregister` for this
-   * campaign; the Factory enforces the other side (the delete must immediately follow unregister). Delisting and deletion
-   * are therefore one atomic operation, and a raw delete of an official campaign is rejected.
+   * campaign (a NoOp call - ClearState would bypass it); the Factory enforces the other side (the delete must immediately
+   * follow unregister). Delisting and deletion are therefore one atomic operation, and a raw delete of an official
+   * campaign is rejected.
    */
   @abimethod({ allowActions: 'DeleteApplication' })
   delete(): void {
@@ -295,6 +299,7 @@ export class Campaign extends Contract {
       const unregisterCall = gtxn.ApplicationCallTxn(unregisterIndex)
       assert(unregisterCall.appId.id === vaultFactory[0], 'unregister must call the Factory')
       assert(unregisterCall.sender === Txn.sender, 'unregister must come from the creator')
+      assert(unregisterCall.onCompletion === OnCompleteAction.NoOp, 'unregister must be a NoOp call')
       assert(unregisterCall.numAppArgs === Uint64(2), 'unregister args mismatch')
       assert(unregisterCall.appArgs(Uint64(0)) === FACTORY_UNREGISTER_SELECTOR, 'unregister selector mismatch')
       assert(unregisterCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'unregister app mismatch')

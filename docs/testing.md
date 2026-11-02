@@ -248,13 +248,13 @@ Factory + ClaimsVault + Campaign.
 | Method | Branch | Covered? |
 | --- | --- | --- |
 | `create` | success / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
-| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) | ✅ |
+| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
-| `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding unregister / raw delete rejection | ✅ |
+| `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
 | `ClaimsVault.create` | success / zero window | ✅ |
-| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment | ✅ (+ first-touch happy path on LocalNet) |
+| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
 | `payClaim` | success (derived amount) / non-campaign caller / unknown / closed box / empty payout | ✅ |
 | `settle` | success / already failed (no-op) / missing box (no-op) / claimed / non-campaign caller / bad root | ✅ |
@@ -263,7 +263,7 @@ Factory + ClaimsVault + Campaign.
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
 | `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
-| `Factory.register` | success / unconfigured hash / unconfigured vault / wrong vault / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
+| `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
 | `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 

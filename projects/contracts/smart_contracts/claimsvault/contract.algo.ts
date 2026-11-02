@@ -5,6 +5,7 @@ import {
   Contract,
   Global,
   GlobalState,
+  OnCompleteAction,
   OpUpFeeSource,
   TransactionType,
   Txn,
@@ -97,10 +98,11 @@ export class ClaimsVault extends Contract {
    *
    * Permissionless top-level call, always grouped as `[Payment, Campaign.pledge, Vault.credit]`: the payment is
    * immediately before the pledge, and the pledge is immediately before this call (the group's final transaction).
-   * The vault checks the pledge shape itself, so a credit without a pledge is rejected: every inflow belongs to a
-   * backer leaf and counts toward the campaign's goal. The payment is **independently verified**: the vault scans its
-   * own group for a payment from the caller to the vault for `amount`. On first touch the campaign must be
-   * Factory-registered, so an unregistered campaign can never open a box.
+   * The pledge must be a NoOp call (a ClearState call would bypass the pledge method). The vault checks the pledge shape
+   * itself, so a credit without a pledge is rejected: every inflow belongs to a backer leaf and counts toward the
+   * campaign's goal. The payment is **independently verified**: the vault scans its own group for a payment from the
+   * caller to the vault for `amount`. On first touch the campaign must be Factory-registered, so an unregistered
+   * campaign can never open a box.
    *
    * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
    * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
@@ -122,6 +124,7 @@ export class ClaimsVault extends Contract {
     const pledgeCall = gtxn.ApplicationCallTxn(pledgeIndex)
     assert(pledgeCall.appId.id === app.id, 'credit pledge app mismatch')
     assert(pledgeCall.sender === Txn.sender, 'credit pledge sender mismatch')
+    assert(pledgeCall.onCompletion === OnCompleteAction.NoOp, 'credit pledge must be a NoOp call')
     assert(pledgeCall.numAppArgs === Uint64(2), 'credit pledge args mismatch')
     assert(pledgeCall.appArgs(Uint64(0)) === CAMPAIGN_PLEDGE_SELECTOR, 'credit pledge selector mismatch')
 

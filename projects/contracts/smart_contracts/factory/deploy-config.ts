@@ -9,9 +9,10 @@ import { resolveDeployerAccount } from '../deployer'
 /**
  * Deploys the platform's `Factory` application - the canonical campaign registry.
  *
- * The deployer is the Factory owner (the only account allowed to configure the official approval hash). The Factory's application account
+ * The deployer is the Factory owner (the only account allowed to configure the official program hash). The Factory's application account
  * is funded with 1 ALGO (the platform storage reserve: the account base plus headroom for registration deposits), and the official hash is
- * set to the SHA-256 of the compiled `Campaign` approval program so `register()` can tell official campaigns apart from copies.
+ * set to the SHA-256 of the compiled `Campaign` approval **and clear-state** programs so `register()` can tell official campaigns apart
+ * from copies.
  *
  * @returns The deployed Factory's app id - configure it as `VITE_FACTORY_APP_ID` in the frontend.
  */
@@ -39,14 +40,18 @@ export async function deploy() {
     amount: microAlgos(1_000_000n),
   })
 
-  // The official Campaign approval-program hash: SHA-256 over the compiled approval program, exactly what `register()` verifies.
-  const campaignTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-  const compiled = await algorand.app.compileTeal(campaignTeal)
-  const approvalHash = createHash('sha256').update(compiled.compiledBase64ToBytes).digest()
+  // The official Campaign program hash: SHA-256 over the compiled approval + clear-state programs, exactly what `register()` verifies.
+  const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
+  const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
+  const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
+  const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
+  const programHash = createHash('sha256')
+    .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
+    .digest()
 
   await appClient.send.call({
     method: 'setApprovalHash(byte[])void',
-    args: [approvalHash],
+    args: [programHash],
     sender: deployer.addr,
   })
 

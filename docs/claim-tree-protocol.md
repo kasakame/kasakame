@@ -21,14 +21,15 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   (`paidIn`, `paidOut`, `root`, `N`, `status`, `settledAt`). Methods: `credit`, `payBack`, `payClaim`, `settle`, `settleOpen`,
   `refund`, `notifyDelete`, `releaseClaimed`, `finalize`. Payout amounts are per-campaign capped by verified inflows
   (`amount <= paidIn - paidOut`); inner payouts are gated on the campaign app caller; vault refunds work after campaign deletion.
-- **Factory** (`smart_contracts/factory/contract.algo.ts`) - registration registry only: `owner`, `approvalHash`, `vault`,
-  `registered` BoxMap; `register` verifies the campaign program hash, the campaign's `vault` global (the owner-bound official
-  vault), and the creator identity; refundable 18,900 µA deposit.
+- **Factory** (`smart_contracts/factory/contract.algo.ts`) - registration registry only: `owner`, `approvalHash` (SHA-256
+  over the approval + clear-state programs), `vault`, `registered` BoxMap; `register` verifies the campaign program hash, the
+  campaign's `vault` global (the owner-bound official vault), and the creator identity; refundable 18,900 µA deposit.
 - **Transaction groups:** pledge `[Payment→vault, Campaign.pledge, Vault.credit]` (payment immediately before the pledge,
   credit immediately after it and final; the vault requires the pledge before the credit); cleanup
   `[Factory.unregister, Campaign.delete]` (the Factory requires the delete immediately after; the campaign requires the
   unregister immediately before when its vault has a Factory binding); cancel/refund carry one leaf proof each; claim is a
-  single app call with an inner vault call.
+  single app call with an inner vault call. Every paired call must be a `NoOp` app call: `ClearState` runs the clear-state
+  program instead of the method, so it can satisfy a selector check without executing the paired logic.
 - **MBR (current):** creator ≈ 0.24 ALGO (app + schema + registration, recoverable O(1) via the atomic
   `[unregister, delete]` group);
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer 0 (no
@@ -252,20 +253,22 @@ Group: `[Payment (backer → vault, amount a, note optional), Campaign.pledge(pa
 makes the order safe - if any of the three fails, nothing is written). Those positions are load-bearing: a transaction can
 appear only once in a group, so the payment-before-pledge rule gives each pledge a distinct payment, the credit-immediately-
 after rule pairs every pledge with its own inflow, the credit-last rule gives each credit a distinct payment, and the vault
-requires the pledge immediately before the credit. A standalone credit is rejected, so every payer is a backer and every inflow
+requires the pledge immediately before the credit. Both calls must be `NoOp` (a `ClearState` call would bypass the method).
+A standalone credit is rejected, so every payer is a backer and every inflow
 counts toward the goal. Without these guards one payment could back several pledges or credits and inflate `paidInOf` past the
 vault's actual balance, or a pledge could be left uncredited.
 
 `Campaign.pledge` checks: deadline not passed; `status == OPEN`; `payment.receiver == vault.address`; `payment.sender == Txn.sender`;
 `payment.amount > 0`; `payment.groupIndex == Txn.groupIndex − 1`; `Txn.sender != creator`; `frontier.length == 32·popcount(N)`;
-and the next transaction is `Vault.credit(app, amount)` for this campaign (selector, app id, sender, and amount are asserted).
+and the next transaction is `Vault.credit(app, amount)` for this campaign (selector, app id, sender, NoOp, and amount are
+asserted).
 Computes `leaf = H(0x01 ‖ sender ‖ amount ‖ payment.txnId)`; asserts `leaf ≠ Z`; authenticates the frontier (§4); updates `root, N`;
 `raised += amount`. No inner calls (a self inner call for budget would be illegal reentrancy - see §14 for the `ensureBudget`
 mechanism instead).
 
 `Vault.credit` (top-level, backer-signed) checks: `Txn.groupIndex == Global.groupSize − 1` (the credit is the group's final
 transaction); the transaction immediately before it is `Campaign.pledge` for this `app` and caller (selector, app id, sender,
-and arg count are asserted), so a credit without a pledge is rejected and every inflow has a backer leaf; the vault box for
+NoOp, and arg count are asserted), so a credit without a pledge is rejected and every inflow has a backer leaf; the vault box for
 `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges after settlement); if the box is absent: inner-call
 `factory.isRegistered(app)` (result must be true; the Factory only registers campaigns whose `vault` global is the owner-bound
 official vault) before creating it; **independently verify the payment**: scan the caller's own group (`gtxn` - fully visible
@@ -320,7 +323,8 @@ to the live pledge total because cancels were balanced); pay creator (`Txn.sende
 asserts `status == CLAIMED` and `paidInOf == paidOutOf`, then deletes the box (recovering the 32,100 µA) - **O(1), vault parks nothing
 for successful campaigns**. `notifyDelete` is a no-op when the box was already released, so deletion still works after a
 permissionless cleanup. When the campaign's vault has a Factory binding, `delete()` requires the Factory's `unregister` to be the
-immediately preceding transaction; the Factory requires the delete to be the immediately following one. The group is exactly
+immediately preceding transaction (a `NoOp` call; `ClearState` would bypass it); the Factory requires the delete to be the
+immediately following one. The group is exactly
 `[Factory.unregister(app), Campaign.delete()]`, so delisting and deletion are one operation and a raw delete of an official
 campaign is rejected. Unregister reads the campaign's `status`/`raised`/`goal`/`deadline` and rejects a live campaign; the delete
 then settles/releases the box. Zero-pledge and all-cancelled campaigns clean up immediately. An unregistered campaign's
@@ -574,14 +578,16 @@ real consensus, including the races of §7.
 | 26 | Finalize race | window + status assertions; absent-box reject | app checks |
 | 27 | Repeated finalize | box absent after first | app checks |
 | 28 | Malicious indexer data | the indexer is never trusted: every supplied structure (frontier, path) is authenticated by the contract against on-chain state; wrong indexer data only causes a rejected transaction and a retry | SHA + app checks |
-| 29 | `credit` without a matching `pledge` | rejected: `credit` requires the campaign's `pledge` as the immediately preceding transaction, so every inflow has a backer leaf and counts toward `raised`/the goal. A donor can pledge and choose not to refund. | app checks |
+| 29 | `credit` without a matching `pledge` | rejected: `credit` requires the campaign's `pledge` as the immediately preceding NoOp transaction, so every inflow has a backer leaf and counts toward `raised`/the goal. A donor can pledge and choose not to refund. | app checks |
 | 29a | One payment reused for several pledges or credits | `pledge` requires the payment immediately before it and `credit` must be the group's final transaction; a transaction can appear only once per group, so each payment backs at most one pledge and one credit - `paidInOf` cannot be inflated by replaying a payment | app checks + AVM group shape |
 | 30 | Inner self-call for budget (`self.reserve()`) | forbidden by consensus (reentrancy); heavy methods use `ensureBudget` OpUp creates instead (§14) | AVM |
 | 31 | `credit` under another campaign's box | the box is keyed by the caller-supplied app id and creation is registration-gated; misattribution locks the caller's own funds under that campaign's cap | app checks |
 | 32 | `credit` after the campaign app is deleted or settled | a deleted or settled campaign cannot produce a valid `pledge`, and `credit` requires the pledge immediately before it, so no box can be created; an existing `FAILED`/`CLAIMED` box rejects credit | app checks + AVM |
 | 33 | Campaign registered with a different vault | the Factory stores the official vault id and `register` reads the campaign's `vault` global; a mismatch is rejected. Clients also pin the vault and `pledge` checks the payment receiver. | app checks |
-| 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction, and the campaign requires the `unregister` immediately before it; delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
+| 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction, and the campaign requires the `unregister` immediately before it (NoOp on both sides); delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
 | 35 | Raw delete leaves the registration behind | `Campaign.delete` requires the Factory's `unregister` immediately before it when the vault has a Factory binding; a standalone delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op so the same cleanup group still works. | app checks + AVM group shape |
+| 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
+| 37 | Custom clear-state program | `Factory.register` hashes the approval program concatenated with the clear-state program; a copy with a custom clear program is rejected, so it cannot rewrite campaign globals through `ClearState` | SHA + app checks |
 
 ## 18. Six-requirement scorecard
 

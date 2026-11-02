@@ -95,13 +95,15 @@ describe('Factory (localnet)', () => {
   }
 
   /**
-   * The SHA-256 of the deployed Campaign's approval program, exactly what the Factory verifies.
+   * The SHA-256 of the deployed Campaign's approval + clear-state programs, exactly what the Factory verifies.
    *
    * @param appId The deployed Campaign's application id.
    */
   async function campaignApprovalHash(appId: bigint): Promise<Uint8Array> {
     const info = await algorand.app.getById(appId)
-    return createHash('sha256').update(info.approvalProgram).digest()
+    return createHash('sha256')
+      .update(Buffer.concat([Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram)]))
+      .digest()
   }
 
   /**
@@ -334,7 +336,7 @@ describe('Factory (localnet)', () => {
           appReferences: [campaignClient.appId],
           suppressLog: true,
         }),
-      ).rejects.toThrow(/official approval hash not configured/)
+      ).rejects.toThrow(/official program hash not configured/)
 
       const hash = await campaignApprovalHash(campaignClient.appId)
       await factoryClient.send.call({
@@ -377,7 +379,7 @@ describe('Factory (localnet)', () => {
         sender: stranger.addr,
         suppressLog: true,
       }),
-    ).rejects.toThrow(/only the owner can set the approval hash/)
+    ).rejects.toThrow(/only the owner can set the program hash/)
 
     // Configure + register properly.
     const hash = await campaignApprovalHash(campaignClient.appId)

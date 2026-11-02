@@ -20,8 +20,9 @@ import {
  * Factory - the canonical, on-chain registry for kasakame campaigns.
  *
  * The Factory is **not** a shared escrow: every campaign keeps its own application account and its own funds. The Factory's only job is
- * authenticity and registration - it verifies that a new `Campaign` app runs the official kasakame approval program (by SHA-256 hash) and
- * records `app id → creator`, so the frontend can tell official campaigns apart from arbitrary copies of the contract.
+ * authenticity and registration - it verifies that a new `Campaign` app runs the official kasakame approval **and clear-state**
+ * programs (by SHA-256 hash) and records `app id → creator`, so the frontend can tell official campaigns apart from arbitrary copies
+ * of the contract.
  *
  * Registration costs a small, refundable deposit (the registration box's minimum balance, ~0.019 ALGO), paid to the Factory account and
  * returned by `unregister()` in the same atomic group as the campaign's `delete()`. The Factory takes no part in pledging, refunding, or
@@ -40,10 +41,10 @@ const CAMPAIGN_CLAIMED = Uint64(2)
 const CAMPAIGN_DELETE_SELECTOR = Bytes.fromHex('24378d3c')
 
 export class Factory extends Contract {
-  /** The platform owner - the only account allowed to configure the official approval hash and vault. */
+  /** The platform owner - the only account allowed to configure the official program hash and vault. */
   owner = GlobalState<Account>()
 
-  /** SHA-256 of the official Campaign approval program; set by the owner. Empty until configured. */
+  /** SHA-256 of the official Campaign approval program concatenated with its clear-state program; set by the owner. */
   approvalHash = GlobalState<bytes>()
 
   /** The official ClaimsVault app id; set once by the owner after the vault is deployed. 0 until configured. */
@@ -66,17 +67,19 @@ export class Factory extends Contract {
   }
 
   /**
-   * Set the official Campaign approval-program hash.
+   * Set the official Campaign program hash.
    *
-   * Owner only. Registration is refused until this is configured. Updating the hash (e.g. after a contract upgrade) makes old program
-   * versions unregisterable while existing registrations stay.
+   * Owner only. Registration is refused until this is configured. The SHA-256 digest covers the approval program **and** the
+   * clear-state program, so a copy with a custom clear program cannot be registered. Updating the hash (e.g. after a contract
+   * upgrade) makes old program versions unregisterable while existing registrations stay. The method name is historical; the
+   * stored value is the program hash over both programs.
    *
-   * @param hash The SHA-256 digest of the official Campaign approval program.
+   * @param hash The SHA-256 digest of the official Campaign approval + clear-state programs.
    */
   @abimethod()
   setApprovalHash(hash: bytes): void {
-    assert(Txn.sender === this.owner.value, 'only the owner can set the approval hash')
-    assert(hash.length === 32, 'approval hash must be 32 bytes')
+    assert(Txn.sender === this.owner.value, 'only the owner can set the program hash')
+    assert(hash.length === 32, 'program hash must be 32 bytes')
     this.approvalHash.value = hash
   }
 
@@ -101,29 +104,29 @@ export class Factory extends Contract {
   /**
    * Register a newly created Campaign app.
    *
-   * Anyone may call, but only the campaign's creator can register it: the calling application's approval program must hash to the official
-   * `approvalHash`, its `vault` global must be the official `vault`, and its creator must be the caller. The caller pays a
-   * refundable deposit covering the registration box's minimum balance; `unregister()` returns it when the campaign is
-   * deleted.
+   * Anyone may call, but only the campaign's creator can register it: the calling application's approval and clear-state programs
+   * must hash to the official `approvalHash`, its `vault` global must be the official `vault`, and its creator must be the caller.
+   * The caller pays a refundable deposit covering the registration box's minimum balance; `unregister()` returns it when the
+   * campaign is deleted.
    *
    * `register` must be the final transaction in the group. A payment can only appear once in one group, so this makes each
    * registration consume a distinct deposit: without it one payment could register several campaigns and drain the Factory's
    * minimum-balance buffer through repeated `unregister()` calls.
    *
-   * @param app The deployed Campaign application (its approval program and vault are verified).
+   * @param app The deployed Campaign application (its approval + clear-state programs and vault are verified).
    * @param payment Payment from the caller to the Factory account, covering the registration deposit.
    */
   @abimethod()
   register(app: Application, payment: gtxn.PaymentTxn): void {
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'register must be the final transaction in the group')
-    assert(this.approvalHash.value.length === 32, 'official approval hash not configured')
+    assert(this.approvalHash.value.length === 32, 'official program hash not configured')
     assert(this.vault.value !== Uint64(0), 'official vault not configured')
     assert(app.creator === Txn.sender, 'only the campaign creator can register')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the factory')
     assert(payment.amount >= REGISTER_MBR, 'registration deposit too small')
     assert(!this.registered(app.id).exists, 'campaign already registered')
-    assert(op.sha256(app.approvalProgram) === this.approvalHash.value, 'not an official kasakame campaign')
+    assert(op.sha256(app.approvalProgram.concat(app.clearStateProgram)) === this.approvalHash.value, 'not an official kasakame campaign')
     const campaignVault = op.AppGlobal.getExUint64(app, Bytes('vault'))
     assert(campaignVault[1] && campaignVault[0] === this.vault.value, 'campaign vault is not the official vault')
 

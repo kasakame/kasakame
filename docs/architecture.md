@@ -10,7 +10,7 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | --- | --- | --- |
 | Campaign app | One stateful app per campaign | Enforces rules; tracks the Merkle root; holds no funds |
 | ClaimsVault | One app per deployment | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory | One registry app per deployment | Registers campaigns against the deployment's owner-configured approval hash and official vault |
+| Factory | One registry app per deployment | Registers campaigns against the deployment's owner-configured program hash and official vault |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
 | CLI | Node.js + TypeScript | Escape hatch: refund, withdraw, claim, and delete by app ID; wallet over WalletConnect v1 or a local mnemonic (see [`cli.md`](cli.md)) |
 | Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
@@ -53,8 +53,8 @@ rejects a campaign bound to any vault other than the Factory's official one.
 
 `Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
 failed-in-fact (`Open`, deadline passed, `raised < goal`), and it requires the campaign's `delete()` to be the immediately
-following transaction in the same atomic group. The campaign's side requires that `unregister` immediately before `delete`
-when its vault has a Factory binding, so a raw delete of an official campaign is rejected. Delisting and deletion are
+following transaction in the same atomic group. The campaign's side requires that `unregister` (a NoOp call) immediately before
+`delete` when its vault has a Factory binding, so a raw delete of an official campaign is rejected. Delisting and deletion are
 therefore one operation: a delisted campaign can never remain live, and zero-pledge or all-cancelled campaigns clean up
 immediately. Unregister runs first because the campaign state must be read before the app is deleted. An unregistered
 campaign's `unregister` is a no-op (still shaped with the delete next), so the same group cleans up a registration that never
@@ -64,7 +64,7 @@ The frontend chains steps 1 through 3 into a single user action (see [`frontend.
 
 ## Escrow and vault
 
-Campaign escrows are never funded and hold nothing. Every pledge payment goes to the vault app account. Each pledge appends one receipt leaf to the campaign's incremental Merkle tree ([`claim-tree-protocol.md`](claim-tree-protocol.md)) and records the inflow in the vault's per-campaign box. `Vault.credit` requires the campaign's `pledge` as the immediately preceding transaction, so every inflow has a backer leaf and there are no standalone donations. There is no per-backer on-chain state anywhere.
+Campaign escrows are never funded and hold nothing. Every pledge payment goes to the vault app account. Each pledge appends one receipt leaf to the campaign's incremental Merkle tree ([`claim-tree-protocol.md`](claim-tree-protocol.md)) and records the inflow in the vault's per-campaign box. `Vault.credit` requires the campaign's `pledge` as the immediately preceding transaction, and both calls must be `NoOp` (`ClearState` bypasses the method), so every inflow has a backer leaf and there are no standalone donations. There is no per-backer on-chain state anywhere.
 
 The vault account therefore holds the full pool of live pledges plus parked box minimum balances (32,100 µA per live or failed campaign box). Every outflow passes a balance guard: a payout never exceeds the campaign's verified inflows minus its verified outflows.
 

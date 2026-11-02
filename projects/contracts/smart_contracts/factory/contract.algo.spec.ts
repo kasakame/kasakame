@@ -9,7 +9,7 @@ import { Factory } from './contract.algo'
 /**
  * Behavioral tests for the Factory registry, run against the offline AVM emulation provided by `algorand-typescript-testing`.
  *
- * `register()` verifies the campaign app's approval-program hash against the owner-configured official hash. The full LocalNet round trip
+ * `register()` verifies the campaign app's approval + clear-state program hash against the owner-configured official hash. The full LocalNet round trip
  * (deploy a real Campaign, hash its compiled program, register, unregister) lives in `factory.integration.test.ts`; here every guard branch
  * is covered offline with a synthetic application whose program hash is precomputed in the test.
  */
@@ -67,13 +67,15 @@ describe('Factory', () => {
   }
 
   /**
-   * The SHA-256 of a real Campaign app's approval program, exactly what `register` verifies.
+   * The SHA-256 of a real Campaign app's approval + clear-state programs, exactly what `register` verifies.
    *
    * @param contract The factory.
    * @param app The real Campaign app.
    */
   function setCampaignHash(contract: Factory, app: Application) {
-    const hash = createHash('sha256').update(toExternalValue(app.approvalProgram)).digest('base64')
+    const hash = createHash('sha256')
+      .update(Buffer.concat([toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram)]))
+      .digest('base64')
     setHash(contract, Bytes.fromBase64(hash))
   }
 
@@ -96,9 +98,15 @@ describe('Factory', () => {
    *
    * @param creator The campaign app's creator.
    * @param program The app's approval program.
+   * @param clearProgram The app's clear-state program.
    */
-  function campaignApp(creator = ctx.defaultSender, program = FAKE_PROGRAM) {
-    return ctx.any.application({ applicationId: FAKE_APP_ID, creator, approvalProgram: Bytes(program) })
+  function campaignApp(creator = ctx.defaultSender, program = FAKE_PROGRAM, clearProgram = new Uint8Array()) {
+    return ctx.any.application({
+      applicationId: FAKE_APP_ID,
+      creator,
+      approvalProgram: Bytes(program),
+      clearStateProgram: Bytes(clearProgram),
+    })
   }
 
   function registerAs(contract: Factory, app: ReturnType<typeof campaignApp>, sender = ctx.defaultSender) {
@@ -155,7 +163,7 @@ describe('Factory', () => {
   }
 
   describe('create', () => {
-    test('sets the deployer as owner and leaves the approval hash and vault empty', () => {
+    test('sets the deployer as owner and leaves the program hash and vault empty', () => {
       const factory = createFactory()
       expect(factory.owner.value).toEqual(ctx.defaultSender)
       expect(factory.approvalHash.value).toEqual(Bytes(''))
@@ -164,7 +172,7 @@ describe('Factory', () => {
   })
 
   describe('setApprovalHash', () => {
-    test('stores the official approval hash', () => {
+    test('stores the official program hash', () => {
       const factory = createFactory()
       setHash(factory)
       expect(factory.approvalHash.value).toEqual(Bytes.fromBase64(FAKE_PROGRAM_HASH))
@@ -176,7 +184,7 @@ describe('Factory', () => {
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
         expect(() => {
           factory.setApprovalHash(Bytes.fromBase64(FAKE_PROGRAM_HASH))
-        }).toThrow('only the owner can set the approval hash')
+        }).toThrow('only the owner can set the program hash')
       })
     })
 
@@ -184,7 +192,7 @@ describe('Factory', () => {
       const factory = createFactory()
       expect(() => {
         factory.setApprovalHash(Bytes('too short'))
-      }).toThrow('approval hash must be 32 bytes')
+      }).toThrow('program hash must be 32 bytes')
     })
   })
 
@@ -246,7 +254,7 @@ describe('Factory', () => {
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
           factory.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: factoryAddress, amount: REGISTER_MBR }))
-        }).toThrow('official approval hash not configured')
+        }).toThrow('official program hash not configured')
       })
     })
 
@@ -302,6 +310,18 @@ describe('Factory', () => {
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp(ctx.defaultSender, new Uint8Array([0x62, 0x61, 0x64]))
+
+      expect(() => {
+        registerAs(factory, app)
+      }).toThrow('not an official kasakame campaign')
+    })
+
+    test('rejects a campaign with a custom clear-state program', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      setHash(factory)
+      const app = campaignApp(ctx.defaultSender, FAKE_PROGRAM, new Uint8Array([0x62, 0x61, 0x64]))
 
       expect(() => {
         registerAs(factory, app)

@@ -278,11 +278,12 @@ describe('Campaign', () => {
       const pledgeCall = ctx.any.txn.applicationCall({ appId: contract, sender: backer })
       const other = ctx.any.account()
       const otherApp = ctx.any.application({ applicationId: 999 })
-      const credit = (overrides: { appId?: Application; sender?: Account; appArgs?: unknown[] } = {}) =>
+      const credit = (overrides: { appId?: Application; sender?: Account; appArgs?: unknown[]; onCompletion?: OnCompleteAction } = {}) =>
         ctx.any.txn.applicationCall({
           appId: overrides.appId ?? contract.vault.value,
           sender: overrides.sender ?? backer,
           appArgs: overrides.appArgs ?? [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(100)],
+          onCompletion: overrides.onCompletion ?? OnCompleteAction.NoOp,
         })
 
       const cases: { group: unknown[]; expected: string }[] = [
@@ -293,6 +294,7 @@ describe('Campaign', () => {
         },
         { group: [pay, pledgeCall, credit({ appId: otherApp })], expected: 'credit must call the vault' },
         { group: [pay, pledgeCall, credit({ sender: other })], expected: 'credit must come from the pledger' },
+        { group: [pay, pledgeCall, credit({ onCompletion: OnCompleteAction.ClearState })], expected: 'credit must be a NoOp call' },
         {
           group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId)] })],
           expected: 'credit args mismatch',
@@ -700,6 +702,30 @@ describe('Campaign', () => {
           expect(() => {
             contract.delete()
           }).toThrow('unregister app mismatch')
+        })
+    })
+
+    test('rejects a ClearState unregister before delete', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const wrong = ctx.any.txn.applicationCall({
+        appId: factoryApp,
+        sender: ctx.defaultSender,
+        onCompletion: OnCompleteAction.ClearState,
+        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)],
+      })
+      ctx.txn
+        .createScope(
+          [
+            wrong,
+            ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender, onCompletion: OnCompleteAction.DeleteApplication }),
+          ],
+          1,
+        )
+        .execute(() => {
+          expect(() => {
+            contract.delete()
+          }).toThrow('unregister must be a NoOp call')
         })
     })
 

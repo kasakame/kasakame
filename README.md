@@ -21,7 +21,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | --- | --- |
 | Campaign app (one per campaign) | Enforces rules; appends and nulls Merkle leaves; holds no funds |
 | ClaimsVault (one, platform-owned) | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory (one, platform-owned) | Registers campaigns against the owner-configured approval hash |
+| Factory (one, platform-owned) | Registers campaigns against the owner-configured program hash |
 | Frontend | Reads state from the indexer; builds transaction groups for the wallet |
 | CLI (escape hatch) | Refunds, withdrawals, claims, and deletes by app ID; wallet or mnemonic signer |
 

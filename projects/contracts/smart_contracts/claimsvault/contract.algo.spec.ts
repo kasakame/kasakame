@@ -1,5 +1,5 @@
 import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
-import { Bytes } from '@algorandfoundation/algorand-typescript'
+import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
@@ -304,6 +304,32 @@ describe('ClaimsVault', () => {
             }).toThrow(expected)
           })
       }
+    })
+
+    test('rejects a ClearState pledge call', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      const pledge = ctx.any.txn.applicationCall({
+        appId: app,
+        sender: caller,
+        onCompletion: OnCompleteAction.ClearState,
+        appArgs: [PLEDGE_SELECTOR, dummyBytes],
+      })
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledge,
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('credit pledge must be a NoOp call')
+        })
     })
 
     test('rejects a box that is not open', () => {
