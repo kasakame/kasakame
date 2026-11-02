@@ -37,7 +37,7 @@
     "@algorandfoundation/algorand-typescript-testing": "^1.2.0",
     "@algorandfoundation/puya-ts": "^1.0.1",
     "@algorandfoundation/xhd-wallet-api": "^1.0.3",
-    "@eslint/js": "^9.39.5",
+    "@eslint/js": "^10.0.1",
     "@rollup/plugin-typescript": "^12.3.1",
     "@tsconfig/node24": "^24.0.0",
     "@vitest/coverage-v8": "^5.0.5",
