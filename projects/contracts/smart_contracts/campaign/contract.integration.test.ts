@@ -370,6 +370,35 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     expect(box.paidOut).toEqual(box.paidIn - BigInt(exp.raised))
   }
 
+  /**
+   * Delete a campaign through the required atomic `[unregister, delete]` group.
+   *
+   * @param appId The campaign application id.
+   * @param creatorAddr The campaign creator.
+   */
+  async function deleteCampaign(appId: bigint, creatorAddr: string): Promise<void> {
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId: factoryId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
+      args: [appId],
+      sender: creatorAddr,
+      appReferences: [appId],
+      extraFee: microAlgos(FEE),
+    })
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creatorAddr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+    })
+    await composer.send({ suppressLog: true })
+  }
+
   test('embedded vault selectors match the vault ARC-56', () => {
     const approval = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
     for (const method of [
@@ -599,26 +628,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
 
     // Unregister and delete in one atomic group: the Factory requires the delete immediately after it.
     const balC1 = await balanceOf(caddr)
-    const composer = algorand.send.newGroup()
-    composer.addAppCallMethodCall({
-      appId: factoryId,
-      method: ABIMethod.fromSignature('unregister(uint64)void'),
-      args: [appId],
-      sender: caddr,
-      appReferences: [appId],
-      extraFee: microAlgos(FEE),
-    })
-    composer.addAppCallMethodCall({
-      appId,
-      method: ABIMethod.fromSignature('delete()void'),
-      args: [],
-      sender: caddr,
-      onComplete: OnApplicationComplete.DeleteApplicationOC,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-    })
-    await composer.send({ suppressLog: true })
+    await deleteCampaign(appId, caddr)
     expect(await boxExists(appId)).toEqual(false)
     // Deposit returned; delete releases the box and closes the escrow (the escrow never held funds).
     expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER - FEE_DELETE_SETTLED)
@@ -639,19 +649,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     await advanceTime(900)
 
     // Creator deletes the failed campaign: settle writes root/N + FAILED into the vault box.
-    // Note: built via the manual composer (appClient.send.delete mis-encodes this call); same pattern as pledge().
-    const deleteComposer = algorand.send.newGroup()
-    deleteComposer.addAppCallMethodCall({
-      appId,
-      method: ABIMethod.fromSignature('delete()void'),
-      args: [],
-      sender: caddr,
-      onComplete: OnApplicationComplete.DeleteApplicationOC,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-    })
-    await deleteComposer.send({ suppressLog: true })
+    await deleteCampaign(appId, caddr)
     const settled = await boxOf(appId)
     expect(settled.status).toEqual(2)
     expect(settled.n).toEqual(2n)
@@ -699,29 +697,15 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     // Pristine: no box exists, so settle is a no-op; the escrow (holding nothing) closes to the creator.
     const pristine = await deployCampaign(caddr)
     const balP0 = await balanceOf(caddr)
-    await pristine.appClient.send.delete({
-      method: 'delete()void',
-      sender: caddr,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(pristine.appId)],
-      extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
-    })
-    expect(await balanceOf(caddr)).toEqual(balP0 - FEE_DELETE_SETTLED)
+    await deleteCampaign(pristine.appId, caddr)
+    expect(await balanceOf(caddr)).toEqual(balP0 + REGISTER_MBR - FEE_UNREGISTER - FEE_DELETE_SETTLED)
     expect(await boxExists(pristine.appId)).toEqual(false)
 
     // All cancelled: the box settles to FAILED with nothing owed.
     const { appClient, appId } = await deployCampaign(caddr)
     const txid = await pledge(appClient, appId, addr, 1n * ALGO)
     await spend(appClient, appId, addr, 0, 1n * ALGO, txid, 'cancelPledge(uint64,uint64,byte[],byte[])void')
-    await appClient.send.delete({
-      method: 'delete()void',
-      sender: caddr,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
-    })
+    await deleteCampaign(appId, caddr)
     const box = await boxOf(appId)
     expect(box.status).toEqual(2)
     expect(box.paidIn).toEqual(box.paidOut)

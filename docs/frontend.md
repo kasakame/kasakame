@@ -263,7 +263,9 @@ concurrent spend moved the root).
 Delete sends unregister and delete in a single atomic group, so you approve
 once. Unregister runs first: every app reference resolves while the campaign
 app still exists, and the Factory requires its `delete()` to be the immediately
-following transaction (delisting and deletion are one operation).
+following transaction. The campaign requires the unregister immediately before
+its delete, so a raw delete is rejected; an unregistered campaign's unregister
+no-ops, and the same group still cleans it up.
 
 ```ts
 const composer = algorand.send.newGroup()

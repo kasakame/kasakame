@@ -189,16 +189,20 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     must be immediately after the pledge and the group's final transaction, and
     the vault requires that pledge immediately before it. `Factory.register` must
     also be final. `Factory.unregister` must be immediately followed by the
-    campaign's `delete()` in the same atomic group. The contracts reject other
-    shapes; the positions stop one payment from backing several pledges, credits,
-    or registrations, stop a pledge from being left uncredited, stop a credit
-    without a pledge (donations), and make delisting and deletion one operation.
-  - `Factory.unregister` requires the campaign app to still exist and be settled
-    (`Claimed`/`Failed`), pristine (`Open`, `raised == 0`), or failed-in-fact.
-    The campaign's `delete()` must be the immediately following transaction:
+    campaign's `delete()`, and the campaign's `delete()` requires that
+    `unregister` immediately before it (when the campaign's vault has a Factory
+    binding). The contracts reject other shapes; the positions stop one payment
+    from backing several pledges, credits, or registrations, stop a pledge from
+    being left uncredited, stop a credit without a pledge (donations), and make
+    delisting and deletion one operation.
+  - `Factory.unregister` requires the campaign creator. A registered campaign
+    must exist and be settled (`Claimed`/`Failed`), pristine (`Open`,
+    `raised == 0`), or failed-in-fact; an unregistered campaign is a no-op, so the
+    same cleanup group also handles a registration that never landed. The
+    campaign's `delete()` must be the immediately following transaction:
     unregister reads the state first, the delete then settles/releases the box.
-    A deleted app's globals are unreadable, so a standalone unregister is
-    rejected; the SDK/CLI/scripts build `[unregister, delete]` as one group.
+    The campaign's side enforces the reverse (unregister immediately before), so
+    a raw delete of an official campaign is rejected.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

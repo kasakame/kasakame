@@ -210,6 +210,43 @@ describe('Factory (localnet)', () => {
     expect(factoryAfterUnregister.minBalance).toEqual(factoryBefore.minBalance)
   })
 
+  test('an unregistered campaign cleans up through the same [unregister, delete] group', { timeout: 120_000 }, async () => {
+    const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const { factoryClient, vaultId } = await deployFactory(owner.addr.toString())
+    const campaignClient = await deployCampaign(creator.addr.toString(), vaultId)
+
+    // No registration: unregister is a no-op, but the group still has to be shaped like the registered case.
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId: factoryClient.appId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
+      args: [campaignClient.appId],
+      sender: creator.addr,
+      appReferences: [campaignClient.appId],
+      extraFee: microAlgos(TXN_FEE),
+    })
+    composer.addAppCallMethodCall({
+      appId: campaignClient.appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creator.addr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      extraFee: microAlgos(2n * TXN_FEE),
+    })
+    await composer.send({ suppressLog: true })
+
+    await expect(algorand.app.getById(campaignClient.appId)).rejects.toThrow()
+    const stillRegistered = await factoryClient.send.call({
+      method: 'isRegistered(uint64)bool',
+      args: [campaignClient.appId],
+      sender: owner.addr,
+      suppressLog: true,
+    })
+    expect(Boolean(stillRegistered.return)).toBe(false)
+  })
+
   test('an impostor copy of the Campaign contract cannot register', { timeout: 120_000 }, async () => {
     const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })

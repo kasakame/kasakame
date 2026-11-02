@@ -449,13 +449,33 @@ describe('Factory', () => {
       expect(factory.registered(app.id).exists).toBe(false)
     })
 
-    test('rejects an unregistered campaign', () => {
+    test('requires the delete pair even for an unregistered campaign', () => {
       const factory = createFactory()
       const app = campaignApp()
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
           factory.unregister(app)
-        }).toThrow('campaign is not registered')
+        }).toThrow('delete must follow unregister')
+      })
+    })
+
+    test('no-ops for an unregistered campaign in the cleanup group', () => {
+      const factory = createFactory()
+      const app = campaignApp()
+
+      unregisterWithDelete(factory, app)
+      expect(factory.registered(app.id).exists).toBe(false)
+    })
+
+    test('rejects a non-creator unregistering an unregistered campaign', () => {
+      const factory = createFactory()
+      const app = campaignApp()
+      const other = ctx.any.account()
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('only the campaign creator can unregister')
       })
     })
 

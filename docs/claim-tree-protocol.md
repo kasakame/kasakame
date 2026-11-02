@@ -26,8 +26,9 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   vault), and the creator identity; refundable 18,900 µA deposit.
 - **Transaction groups:** pledge `[Payment→vault, Campaign.pledge, Vault.credit]` (payment immediately before the pledge,
   credit immediately after it and final; the vault requires the pledge before the credit); cleanup
-  `[Factory.unregister, Campaign.delete]` (the Factory requires the delete immediately after); cancel/refund carry one leaf
-  proof each; claim and delete are single app calls with inner vault calls.
+  `[Factory.unregister, Campaign.delete]` (the Factory requires the delete immediately after; the campaign requires the
+  unregister immediately before when its vault has a Factory binding); cancel/refund carry one leaf proof each; claim is a
+  single app call with an inner vault call.
 - **MBR (current):** creator ≈ 0.24 ALGO (app + schema + registration, recoverable O(1) via the atomic
   `[unregister, delete]` group);
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer 0 (no
@@ -318,10 +319,12 @@ to the live pledge total because cancels were balanced); pay creator (`Txn.sende
 `[Campaign.delete()]` (creator): requires `status == CLAIMED` (or `FAILED`, or `raised == 0`); inner `vault.notifyDelete(app)` which
 asserts `status == CLAIMED` and `paidInOf == paidOutOf`, then deletes the box (recovering the 32,100 µA) - **O(1), vault parks nothing
 for successful campaigns**. `notifyDelete` is a no-op when the box was already released, so deletion still works after a
-permissionless cleanup. The Factory requires the campaign's `delete()` to be the immediately following transaction in the same
-atomic group: `[Factory.unregister(app), Campaign.delete()]`. Unregister reads the campaign's `status`/`raised`/`goal`/`deadline`
-and rejects a live campaign; the delete then settles/releases the box. Delisting and deletion are one operation, so a successful
-unregister can never leave a live campaign outside the registry; zero-pledge and all-cancelled campaigns clean up immediately.
+permissionless cleanup. When the campaign's vault has a Factory binding, `delete()` requires the Factory's `unregister` to be the
+immediately preceding transaction; the Factory requires the delete to be the immediately following one. The group is exactly
+`[Factory.unregister(app), Campaign.delete()]`, so delisting and deletion are one operation and a raw delete of an official
+campaign is rejected. Unregister reads the campaign's `status`/`raised`/`goal`/`deadline` and rejects a live campaign; the delete
+then settles/releases the box. Zero-pledge and all-cancelled campaigns clean up immediately. An unregistered campaign's
+`unregister` is a no-op (still shaped with the delete next), so the same group cleans up a registration that never landed.
 
 `[Vault.releaseClaimed(app)]` (**permissionless**): asserts the box is `CLAIMED` with `paidInOf == paidOutOf`, then deletes it. This
 recovers the box's 32,100 µA even when a creator claims and then never deletes the campaign, so claimed boxes cannot pin the vault's
@@ -566,7 +569,7 @@ real consensus, including the races of §7.
 | 21 | Pooled vault insolvency | per-campaign guard: outflows ≤ that campaign's verified inflows | app checks |
 | 22 | Malicious creator | cannot touch `paidInOf`/`paidOutOf` or the root; claim pays only the derived balance; delete cannot steal pledges (`raised > 0` guard) | app checks |
 | 23 | Malicious backer | all refund powers reduce to proving their own committed leaf | SHA + app checks |
-| 24 | Abandoned campaign | `raised == 0` delete; `settleOpen`; no stranded state | app checks |
+| 24 | Abandoned campaign | `raised == 0` cleanup via the atomic `[unregister, delete]` group; `settleOpen`; no stranded state | app checks + AVM group shape |
 | 25 | Deletion race | atomic groups; box state transitions are asserted, never blind-written | AVM atomicity |
 | 26 | Finalize race | window + status assertions; absent-box reject | app checks |
 | 27 | Repeated finalize | box absent after first | app checks |
@@ -577,7 +580,8 @@ real consensus, including the races of §7.
 | 31 | `credit` under another campaign's box | the box is keyed by the caller-supplied app id and creation is registration-gated; misattribution locks the caller's own funds under that campaign's cap | app checks |
 | 32 | `credit` after the campaign app is deleted or settled | a deleted or settled campaign cannot produce a valid `pledge`, and `credit` requires the pledge immediately before it, so no box can be created; an existing `FAILED`/`CLAIMED` box rejects credit | app checks + AVM |
 | 33 | Campaign registered with a different vault | the Factory stores the official vault id and `register` reads the campaign's `vault` global; a mismatch is rejected. Clients also pin the vault and `pledge` checks the payment receiver. | app checks |
-| 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction; delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
+| 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction, and the campaign requires the `unregister` immediately before it; delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
+| 35 | Raw delete leaves the registration behind | `Campaign.delete` requires the Factory's `unregister` immediately before it when the vault has a Factory binding; a standalone delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op so the same cleanup group still works. | app checks + AVM group shape |
 
 ## 18. Six-requirement scorecard
 

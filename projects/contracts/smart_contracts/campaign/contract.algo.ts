@@ -62,6 +62,10 @@ const VAULT_NOTIFY_DELETE_SELECTOR = Bytes.fromHex('87060e1d') // notifyDelete(u
 // ARC-4 selector for the top-level Vault.credit(uint64,uint64)void that must immediately follow every pledge.
 const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb') // credit(uint64,uint64)void
 
+// ARC-4 selector for Factory.unregister(uint64)void; the previous transaction must be this call when the campaign's vault
+// has a Factory binding, so delisting and deletion are one atomic operation.
+const FACTORY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277') // unregister(uint64)void
+
 export class Campaign extends Contract {
   /** Address of the creator - the only account allowed to claim and delete. */
   creator = GlobalState<Account>()
@@ -270,12 +274,31 @@ export class Campaign extends Contract {
    *   failed settlement with the final root/N (`settle`), after which backers keep refunding **directly from the
    *   vault** until the window closes; `finalize` later recovers the box.
    * - **Pristine** (Open with `raised == 0`) - `settle` runs unconditionally and no-ops when no box exists; if a
-   *   stray no-pledge inflow created one, it settles to Failed so `finalize` can recover it instead of stranding it.
+   *   legacy no-pledge inflow created one, it settles to Failed so `finalize` can recover it instead of stranding it.
    * - **Open with N > 0 but `raised == 0`** (everything cancelled) - settled like a failure; nothing is owed.
+   *
+   * When the campaign's vault has a Factory binding, the previous transaction must be the Factory's `unregister` for this
+   * campaign; the Factory enforces the other side (the delete must immediately follow unregister). Delisting and deletion
+   * are therefore one atomic operation, and a raw delete of an official campaign is rejected.
    */
   @abimethod({ allowActions: 'DeleteApplication' })
   delete(): void {
     assert(Txn.sender === this.creator.value, 'only the creator can delete')
+
+    // The vault records the official Factory. If this is a real deployment, the previous transaction must be the
+    // Factory's unregister for this campaign, so the registration cannot be left behind by a raw delete.
+    const vaultFactory = op.AppGlobal.getExUint64(this.vault.value, Bytes('factory'))
+    if (vaultFactory[1]) {
+      assert(Txn.groupIndex > Uint64(0), 'unregister must precede delete')
+      const unregisterIndex: uint64 = Txn.groupIndex - Uint64(1)
+      assert(gtxn.Transaction(unregisterIndex).type === TransactionType.ApplicationCall, 'unregister must precede delete')
+      const unregisterCall = gtxn.ApplicationCallTxn(unregisterIndex)
+      assert(unregisterCall.appId.id === vaultFactory[0], 'unregister must call the Factory')
+      assert(unregisterCall.sender === Txn.sender, 'unregister must come from the creator')
+      assert(unregisterCall.numAppArgs === Uint64(2), 'unregister args mismatch')
+      assert(unregisterCall.appArgs(Uint64(0)) === FACTORY_UNREGISTER_SELECTOR, 'unregister selector mismatch')
+      assert(unregisterCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'unregister app mismatch')
+    }
 
     const failedInFact =
       this.status.value === STATUS_OPEN && Global.latestTimestamp >= this.deadline.value && this.raised.value < this.goal.value

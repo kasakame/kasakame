@@ -166,7 +166,7 @@ Factory + ClaimsVault + Campaign.
 | 4 | inner-only vault methods reject top-level callers | Direct `payBack`/`payClaim`/`settle`/`notifyDelete` fail with `not the campaign app` - the payout authority is unusable off the campaign path |
 | 5 | successful claim pays the creator exactly, then deletes O(1) | Goal reached → creator paid the full live total; box `Claimed`; atomic `[unregister, delete]` returns the deposit, releases the box, and deletes the app |
 | 6 | failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual | `settle` writes root/N/`Failed`; permissionless `vault.refund` pays post-delete; early `finalize` with a residual is rejected; post-window residual goes to the sweep target and the box is gone |
-| 7 | pristine and all-cancelled campaigns delete cleanly | No-box delete settles as a no-op; fully-cancelled delete settles to `Failed` with nothing owed; `finalize` releases the balanced box immediately |
+| 7 | pristine and all-cancelled campaigns delete cleanly | Both clean up through the atomic `[unregister, delete]` group; no-box settle no-ops; fully-cancelled delete settles to `Failed` with nothing owed; `finalize` releases the balanced box immediately |
 | 8 | settleOpen lets a stranger settle a vanished-creator campaign | Permissionless settle from live globals; the campaign path then rejects (box not open) and the vault path serves refunds |
 | 9 | a pledge without the matching vault credit is rejected | `pledge` requires the vault credit immediately next; the group is rejected and n/raised stay 0 |
 
@@ -178,11 +178,11 @@ Factory + ClaimsVault + Campaign.
 | 11 | two campaigns share the pool with per-campaign isolation | Draining campaign A leaves B's box (root, `paidOut` 0) untouched; the pool holds exactly B's live pledge |
 | 12 | settleOpen + vault refunds + zero-residual finalize | Stranger settlement; direct refund + double-refund rejection; `finalize` with nothing left deletes the box with no payment even before the window and frees the MBR |
 | 13 | a credit without a pledge is rejected (spec §17 #29) | The vault requires the campaign pledge immediately before `credit`; the group is rejected and no box is created |
-| 14 | a deleted campaign cannot be pledged, so it cannot be credited | A pledge group to a deleted-but-still-registered app fails at the pledge call; no box is created |
+| 14 | a deleted campaign cannot be pledged, so it cannot be credited | The pristine campaign is deleted through the atomic cleanup group (registration removed); a pledge group to the deleted app fails at the pledge call; no box is created |
 | 15 | releaseClaimed recovers a claimed box permissionlessly; delete still works | A stranger deletes the Claimed box and frees its MBR; the creator's later `delete` succeeds because `notifyDelete` is a no-op |
 | 16 | one payment cannot back two credits in one group | The first `credit` is not the group's final transaction (and the second has no preceding pledge); the whole group is rejected and no box is created |
 
-### `smart_contracts/factory/contract.integration.test.ts` (5 tests)
+### `smart_contracts/factory/contract.integration.test.ts` (6 tests)
 
 | # | Test | Verifies |
 | --- | --- | --- |
@@ -191,6 +191,7 @@ Factory + ClaimsVault + Campaign.
 | 19 | a campaign bound to a different vault cannot register | The Factory's vault binding rejects a campaign whose `vault` global differs |
 | 20 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
 | 21 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
+| 22 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
 
 ## API cheat sheet (learned the hard way)
 
@@ -251,7 +252,7 @@ Factory + ClaimsVault + Campaign.
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
-| `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges | ✅ |
+| `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding unregister / raw delete rejection | ✅ |
 | `ClaimsVault.create` | success / zero window | ✅ |
 | `credit` | preceding pledge required / wrong pledge app/sender/args/selector / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
@@ -263,7 +264,7 @@ Factory + ClaimsVault + Campaign.
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
 | `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
 | `Factory.register` | success / unconfigured hash / unconfigured vault / wrong vault / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
-| `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / live rejection / missing state / unregistered / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
+| `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
 ## Browser E2E / acceptance tests

@@ -4,7 +4,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { ABIMethod, decodeAddress } from 'algosdk'
+import { ABIMethod, OnApplicationComplete, decodeAddress } from 'algosdk'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -254,6 +254,35 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
   }
 
   /**
+   * Delete a campaign through the required atomic `[unregister, delete]` group.
+   *
+   * @param appId The campaign application id.
+   * @param creatorAddr The campaign creator.
+   */
+  async function deleteCampaign(appId: bigint, creatorAddr: string): Promise<void> {
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId: factoryId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
+      args: [appId],
+      sender: creatorAddr,
+      appReferences: [appId],
+      extraFee: microAlgos(FEE),
+    })
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creatorAddr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+    })
+    await composer.send({ suppressLog: true })
+  }
+
+  /**
    * Pledge through `[pay, campaign.pledge, vault.credit]`, tracking the tree. Returns the payment TxID (hex).
    *
    * @param appId The campaign application id.
@@ -500,17 +529,10 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
   test('a deleted campaign cannot be pledged, so it cannot be credited', async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const { appClient, appId } = await deployCampaign(creator.addr.toString())
+    const { appId } = await deployCampaign(creator.addr.toString())
 
-    // Delete the pristine campaign without unregistering: the Factory registration remains, the app is gone.
-    await appClient.send.delete({
-      method: 'delete()void',
-      sender: creator.addr,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
-    })
+    // Delete the pristine campaign through the atomic cleanup group: the registration is removed and the app is gone.
+    await deleteCampaign(appId, creator.addr.toString())
     expect(await boxExists(appId)).toEqual(false)
 
     // A pledge group must fail at the pledge call (the app is gone), so the credit can never create a box for it.
@@ -575,13 +597,6 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin0 - BOX_MBR)
 
     // The campaign's creator can still delete: notifyDelete is a no-op once the box is gone.
-    await appClient.send.delete({
-      method: 'delete()void',
-      sender: creator.addr,
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
-    })
+    await deleteCampaign(appId, creator.addr.toString())
   })
 })

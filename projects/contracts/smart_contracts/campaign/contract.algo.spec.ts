@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Campaign } from './contract.algo'
 
 /**
@@ -24,7 +25,9 @@ const DEADLINE = 2_000
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
+const FACTORY_APP_ID = 7
 const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb')
+const FACTORY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277')
 const ORACLE = path.resolve(__dirname, '../oracle.py')
 
 describe('Campaign', () => {
@@ -68,6 +71,25 @@ describe('Campaign', () => {
     const contract = ctx.contract.create(Campaign)
     contract.create(vaultApp(), TITLE, METADATA_URI, goal, deadline)
     return contract
+  }
+
+  /**
+   * A campaign bound to a real ClaimsVault with a Factory binding, for the delete group-shape check.
+   *
+   * @param factoryAppId The Factory app id the vault points at.
+   * @returns The campaign, its Factory app, and the campaign app id.
+   */
+  function createCampaignWithFactory(factoryAppId = FACTORY_APP_ID) {
+    const vault = ctx.contract.create(ClaimsVault)
+    // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
+    ;(vault.factory as unknown as { value: unknown }).value = factoryAppId
+    const contract = ctx.contract.create(Campaign)
+    contract.create(ctx.ledger.getApplicationForContract(vault), TITLE, METADATA_URI, GOAL, DEADLINE)
+    return {
+      contract,
+      factoryApp: ctx.any.application({ applicationId: factoryAppId }),
+      campaignId: toExternalValue(ctx.ledger.getApplicationForContract(contract).id),
+    }
   }
 
   function rootHex(contract: Campaign): string {
@@ -624,6 +646,62 @@ describe('Campaign', () => {
         ctx.any.txn.applicationCall({ appId: contract, sender, onCompletion: OnCompleteAction.DeleteApplication }),
       ])
     }
+
+    /**
+     * The required `[Factory.unregister, Campaign.delete]` group for a Factory-bound vault.
+     *
+     * @param contract The campaign.
+     * @param factoryApp The Factory app the vault points at.
+     * @param sender The creator.
+     * @returns The two group transactions.
+     */
+    function deleteGroup(contract: Campaign, factoryApp: ReturnType<typeof ctx.any.application>, sender = ctx.defaultSender) {
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      return [
+        ctx.any.txn.applicationCall({ appId: factoryApp, sender, appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)] }),
+        ctx.any.txn.applicationCall({ appId: contract, sender, onCompletion: OnCompleteAction.DeleteApplication }),
+      ]
+    }
+
+    test('requires the Factory unregister immediately before delete', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      ctx.txn.createScope(deleteGroup(contract, factoryApp), 1).execute(() => {
+        contract.delete()
+      })
+
+      expect(firstInnerSelector()).toEqual('09200848')
+    })
+
+    test('rejects a raw delete when the vault has a Factory binding', () => {
+      const { contract } = createCampaignWithFactory()
+      deleteScope(contract, ctx.defaultSender).execute(() => {
+        expect(() => {
+          contract.delete()
+        }).toThrow('unregister must precede delete')
+      })
+    })
+
+    test('rejects an unregister for another campaign', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      const wrong = ctx.any.txn.applicationCall({
+        appId: factoryApp,
+        sender: ctx.defaultSender,
+        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(999_999)],
+      })
+      ctx.txn
+        .createScope(
+          [
+            wrong,
+            ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender, onCompletion: OnCompleteAction.DeleteApplication }),
+          ],
+          1,
+        )
+        .execute(() => {
+          expect(() => {
+            contract.delete()
+          }).toThrow('unregister app mismatch')
+        })
+    })
 
     test('rejects a non-creator caller', () => {
       const contract = createCampaign()

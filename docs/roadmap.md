@@ -387,10 +387,13 @@ submission.
       notifications may remind the creator later. See [`design.md`](design.md).
 - [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
       `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only.
-      It requires the campaign's `delete()` as the immediately following transaction, so
-      delisting and deletion are one atomic operation; zero-pledge and all-cancelled
-      campaigns clean up immediately, and no delisted campaign can remain live. The SDK,
-      scripts, docs, and tests build `[unregister, delete]` as one group.
+      It requires the campaign's `delete()` as the immediately following transaction, and
+      the campaign's `delete()` requires that `unregister` immediately before it when its
+      vault has a Factory binding, so delisting and deletion are one atomic operation and a
+      raw delete of an official campaign is rejected. Zero-pledge and all-cancelled campaigns
+      clean up immediately, no delisted campaign can remain live, and an unregistered
+      campaign's `unregister` no-ops so the same group handles failed registrations. The
+      SDK, scripts, docs, and tests build `[unregister, delete]` as one group.
 - [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
       vault deploy config and the parser is tested, so a misconfiguration cannot overflow
       `settledAt + refundWindow`.

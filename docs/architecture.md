@@ -53,9 +53,12 @@ rejects a campaign bound to any vault other than the Factory's official one.
 
 `Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
 failed-in-fact (`Open`, deadline passed, `raised < goal`), and it requires the campaign's `delete()` to be the immediately
-following transaction in the same atomic group. Delisting and deletion are therefore one operation: a delisted campaign can
-never remain live, and zero-pledge or all-cancelled campaigns clean up immediately. Unregister runs first because the campaign
-state must be read before the app is deleted.
+following transaction in the same atomic group. The campaign's side requires that `unregister` immediately before `delete`
+when its vault has a Factory binding, so a raw delete of an official campaign is rejected. Delisting and deletion are
+therefore one operation: a delisted campaign can never remain live, and zero-pledge or all-cancelled campaigns clean up
+immediately. Unregister runs first because the campaign state must be read before the app is deleted. An unregistered
+campaign's `unregister` is a no-op (still shaped with the delete next), so the same group cleans up a registration that never
+landed.
 
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
 
@@ -72,7 +75,7 @@ The vault account therefore holds the full pool of live pledges plus parked box 
 | Success | Creator calls `claim()` after the deadline with the goal met | Vault pays the creator the full live total; the box closes as `Claimed` |
 | Failure | First `refund()` after the deadline with the goal missed | Box settles as `Failed`; each backer refunds their own leaves from the vault |
 | Pre-deadline exit | Backer calls `cancelPledge()` while the campaign is open | Leaf nulls in place; vault pays the backer |
-| Creator delete | Creator submits `[Factory.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit; delete settles through the vault, closes the escrow, and deletes the app |
+| Creator delete | Creator submits `[Factory.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit (no-op if unregistered); the campaign requires that unregister immediately before, then delete settles through the vault, closes the escrow, and deletes the app |
 
 Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a permissionless `finalize()` sweeps the residual to the configured treasury; a fully paid-out box can be finalized immediately. A backer who never acts before deletion refunds straight from the vault with the same proofs.
 
