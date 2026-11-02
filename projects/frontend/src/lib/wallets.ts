@@ -1,9 +1,9 @@
+import { pera } from '@perawallet/use-wallet-pera'
 import type { WalletAdapterConfig } from '@txnlab/use-wallet'
 import { WalletManager } from '@txnlab/use-wallet'
 import { defly } from '@txnlab/use-wallet-defly'
 import { exodus } from '@txnlab/use-wallet-exodus'
 import { kmd } from '@txnlab/use-wallet-kmd'
-import { pera } from '@txnlab/use-wallet-pera'
 import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } from '../utils/network/getAlgoClientConfigs'
 
 let cachedManager: WalletManager | undefined

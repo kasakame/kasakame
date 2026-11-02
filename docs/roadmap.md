@@ -140,21 +140,23 @@ Follow-ups after the 11-job build-and-test restructure:
 - [x] **Verify frontend group #31** - `@txnlab/use-wallet` 5.1.1; local
       type-check, lint, format, 311 tests, and the TestNet build pass. The
       dependency tree still uses WalletConnect v1 through the vendor adapters.
-- [ ] **Merge frontend group #31** - test a real Pera, Defly, and Exodus
-      handshake on TestNet or LocalNet first; CI mocks the wallet context.
-- [ ] **Migrate the Pera adapter** - replace `@txnlab/use-wallet-pera@5.0.1`
-      with `@perawallet/use-wallet-pera@1.0.0`; the `pera()` API is unchanged,
-      but the wallet handshake needs a browser test.
-- [ ] **Split the CLI update** - take `@perawallet/walletconnect` 1.0.3
-      separately; ignore `libsodium-wrappers-sumo` 0.8.x until
-      `@algorandfoundation/xhd-wallet-api` supports it.
-- [ ] **Remove the deprecated Jest DOM types** - drop
+- [x] **Merge frontend group #31** - merged; real Pera, Defly, and Exodus
+      handshakes verified on TestNet. CI mocks the wallet context.
+- [ ] **Migrate the Pera adapter** - package and import migrated to
+      `@perawallet/use-wallet-pera@1.0.0`; local checks pass. The `pera()` API is
+      unchanged, but the wallet handshake still needs a browser test.
+- [x] **Split the CLI update** - took `@perawallet/walletconnect` 1.0.3
+      separately; ignored `libsodium-wrappers-sumo` 0.7.16 and 0.8.x in the CLI
+      until `@algorandfoundation/xhd-wallet-api` supports 0.8.
+- [x] **Remove the deprecated Jest DOM types** - dropped
       `@types/testing-library__jest-dom`; `@testing-library/jest-dom@7` ships
-      its own types. Close Dependabot #34.
-- [ ] **Add Dependabot ignore rules** - major TypeScript, ESLint,
+      its own types.
+- [x] **Add Dependabot ignore rules** - major TypeScript, ESLint,
       `@eslint/js`, `@types/node` (where used), and React family updates;
-      ignore libsodium 0.7.16 and 0.8.x in the CLI. Close the existing major
-      PRs with `@dependabot ignore this major version`.
+      ignore libsodium 0.7.16 and 0.8.x in the CLI.
+- [ ] **Close superseded Dependabot PRs** - close the 20 open PRs (#12-#35);
+      the frontend group #31 is merged and every other open PR is blocked or
+      superseded.
 - [ ] **React 19** - upgrade `react`, `react-dom`, both type packages,
       `notistack@3.0.2`, and the wallet group; run the suite and a browser
       smoke test. Recommended after #31, not urgent.

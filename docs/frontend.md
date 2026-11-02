@@ -357,8 +357,9 @@ target) once settled:
 ## Wallet integration
 
 `App.tsx` builds a `WalletManager`
-(`@txnlab/use-wallet-react`) with Pera + Defly + Exodus (mainnet/testnet) or KMD
-(localnet, driven by `VITE_ALGOD_NETWORK === 'localnet'`). Components consume
+(`@txnlab/use-wallet-react`) with Pera (`@perawallet/use-wallet-pera`), Defly,
+and Exodus (mainnet/testnet) or KMD (localnet, driven by
+`VITE_ALGOD_NETWORK === 'localnet'`). Components consume
 `useWallet()` for `activeAddress`, `activeWallet`, `transactionSigner`, and `wallets`.
 
 ## Formatting & units

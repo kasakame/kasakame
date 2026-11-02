@@ -89,7 +89,7 @@ The Factory plus the indexer already cover discovery (which campaigns exist) and
 | --- | --- |
 | Contracts | Algorand TypeScript (PuyaTs) via AlgoKit, TEAL + ARC-32/56 specs as build output |
 | Client SDK | AlgoKit Utils `AlgorandClient` + generated typed clients |
-| Wallet | `@txnlab/use-wallet` (Pera, Defly, Exodus; KMD on LocalNet) |
+| Wallet | `@txnlab/use-wallet` + `@perawallet/use-wallet-pera` (Pera, Defly, Exodus; KMD on LocalNet) |
 | CLI | Node.js + `@kasakame/sdk`; WalletConnect v1 (`@perawallet/walletconnect`) or a local mnemonic |
 | Reads | `algosdk.Indexer` for app state, boxes, and transaction history |
 | Frontend tests | Vitest + Testing Library, 100% gate on components and utils |

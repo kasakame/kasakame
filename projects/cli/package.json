@@ -57,7 +57,7 @@
     "@algorandfoundation/algokit-utils": "^9.0.0",
     "@algorandfoundation/xhd-wallet-api": "^1.0.3",
     "@kasakame/sdk": "^0.1.0",
-    "@perawallet/walletconnect": "^1.0.2",
+    "@perawallet/walletconnect": "^1.0.3",
     "algosdk": "^3.9.0",
     "bip39": "^3.1.2",
     "libsodium-wrappers-sumo": "0.7.15",
