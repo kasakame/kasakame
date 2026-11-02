@@ -261,6 +261,7 @@ Factory + ClaimsVault + Campaign.
 | `vault.refund` | success differentially (LocalNet) / unknown / not failed / window closed / unknown position / bad txid+path / proof mismatch / insufficient | ✅ |
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete / unknown / not failed / window open (all LocalNet) | ✅ |
+| `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
 | `Factory.register` | success / unconfigured hash / unconfigured vault / wrong vault / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
 | `Factory.unregister` | success (pristine / failed / claimed / failed-in-fact) / live rejection / missing state / unregistered / non-creator | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |

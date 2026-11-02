@@ -373,7 +373,9 @@ submission.
 
 - [x] **Factory vault binding.** The Factory stores the official ClaimsVault app id
       (owner-set once after the vault exists) and `register` rejects a campaign whose
-      `vault` global differs. The deploy script binds the vault; tests cover the binding.
+      `vault` global differs. `setVault` also requires the vault's `factory` global to
+      point back at the same Factory, so a wrong or foreign vault cannot be bound. The
+      deploy script binds the vault; tests cover the binding.
 - [x] **Pledge/credit pairing.** `Campaign.pledge` requires the vault's `credit` as the
       immediate next transaction, for the same campaign and amount. An uncredited pledge
       can no longer create a leaf or dilute other backers' refunds; the SDK group already
@@ -384,7 +386,7 @@ submission.
       notifications may remind the creator later. See [`design.md`](design.md).
 - [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
       `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only;
-      the SDK/docs/tests unregister before deleting the app.
+      the SDK, scripts, docs, and tests unregister before deleting the app.
 - [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
       vault deploy config and the parser is tested, so a misconfiguration cannot overflow
       `settledAt + refundWindow`.

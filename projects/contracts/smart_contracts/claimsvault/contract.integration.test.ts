@@ -132,6 +132,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       method: 'setVault(uint64)void',
       args: [vaultId],
       sender: owner.addr,
+      appReferences: [vaultId],
       suppressLog: true,
     })
   })

@@ -78,7 +78,8 @@ export class Factory extends Contract {
    * Bind the official ClaimsVault to this Factory.
    *
    * Owner only, once. The Factory is deployed before the vault (the vault's `create` records the Factory id), so this is
-   * set after the vault exists. `register` then rejects campaigns whose `vault` global differs.
+   * set after the vault exists. The vault must point back at this Factory, so a wrong or foreign vault cannot be bound
+   * permanently. `register` then rejects campaigns whose `vault` global differs.
    *
    * @param vault The official ClaimsVault application.
    */
@@ -86,6 +87,8 @@ export class Factory extends Contract {
   setVault(vault: Application): void {
     assert(Txn.sender === this.owner.value, 'only the owner can set the vault')
     assert(this.vault.value === Uint64(0), 'vault already set')
+    const vaultFactory = op.AppGlobal.getExUint64(vault, Bytes('factory'))
+    assert(vaultFactory[1] && vaultFactory[0] === Global.currentApplicationId.id, 'vault is not bound to this factory')
     this.vault.value = vault.id
   }
 

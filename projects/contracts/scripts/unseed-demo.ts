@@ -4,9 +4,11 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * Remove campaigns created by `seed-demo.ts`: creator-signed `delete()` (skipped when live pledges forbid it) followed
- * by `unregister()`, which drops the campaign from the browse list either way. Reads `.seed-state.<network>.json` and clears
- * entries that fully unregister; anything left is reported for a later retry (e.g. after its deadline passes).
+ * Remove campaigns created by `seed-demo.ts`: creator-signed `unregister()` then `delete()` in one atomic group.
+ * Unregister runs first because it reads the campaign's on-chain state, which a deleted app cannot provide; the group
+ * drops the campaign from the browse list and recovers the registration deposit. Reads `.seed-state.<network>.json` and
+ * clears entries that fully clean up; anything left (e.g. a campaign that still has live pledges) is reported for a
+ * later retry after its deadline passes.
  *
  * Same environment rules as the seed script: `npm run unseed:localnet` loads `.env.localnet`, `npm run unseed:testnet` loads `.env.testnet`.
  *
@@ -52,7 +54,16 @@ void (async () => {
     const appId = BigInt(entry.appId)
     const creator = await algorand.account.fromEnvironment(entry.creator)
     try {
+      // One atomic group: unregister first (it reads the campaign's state), then delete.
       const composer = algorand.send.newGroup()
+      composer.addAppCallMethodCall({
+        appId: factoryId,
+        method: ABIMethod.fromSignature('unregister(uint64)void'),
+        args: [appId],
+        sender: creator.addr,
+        appReferences: [appId],
+        extraFee: microAlgos(1_000n),
+      })
       composer.addAppCallMethodCall({
         appId,
         method: ABIMethod.fromSignature('delete()void'),
@@ -64,25 +75,9 @@ void (async () => {
         extraFee: microAlgos(2_000n),
       })
       await composer.send()
-      console.log(`deleted campaign ${entry.appId}`)
+      console.log(`unregistered and deleted campaign ${entry.appId}`)
     } catch (error) {
-      console.log(`delete skipped for ${entry.appId} (live pledges?): ${(error as Error).message}`)
-    }
-
-    try {
-      const composer = algorand.send.newGroup()
-      composer.addAppCallMethodCall({
-        appId: factoryId,
-        method: ABIMethod.fromSignature('unregister(uint64)void'),
-        args: [appId],
-        sender: creator.addr,
-        appReferences: [appId],
-        extraFee: microAlgos(1_000n),
-      })
-      await composer.send()
-      console.log(`unregistered campaign ${entry.appId}`)
-    } catch (error) {
-      console.log(`unregister failed for ${entry.appId}: ${(error as Error).message}`)
+      console.log(`skipped ${entry.appId} (still live?): ${(error as Error).message}`)
       remaining.push(entry)
     }
   }

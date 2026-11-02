@@ -131,6 +131,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       method: 'setVault(uint64)void',
       args: [vaultId],
       sender: owner.addr,
+      appReferences: [vaultId],
       suppressLog: true,
     })
   })

@@ -3,6 +3,7 @@ import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algor
 import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
+import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Factory } from './contract.algo'
 
 /**
@@ -20,7 +21,7 @@ const FAKE_APP_ID = 1234
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
 const FAKE_PROGRAM_HASH = createHash('sha256').update(FAKE_PROGRAM).digest('base64')
 
-// The official vault app id used by the Factory binding tests.
+// A non-official vault app id for mismatch tests.
 const VAULT_APP_ID = 777
 
 describe('Factory', () => {
@@ -41,9 +42,18 @@ describe('Factory', () => {
     contract.setApprovalHash(hash)
   }
 
-  /** The official vault fixture; create it once per test and reuse the same value. */
-  function vaultApp() {
-    return ctx.any.application({ applicationId: VAULT_APP_ID })
+  /**
+   * A real ClaimsVault bound back to the given Factory, so `setVault` can verify the binding.
+   *
+   * @param factory The Factory the vault must point at.
+   * @returns The deployed vault application.
+   */
+  function vaultApp(factory: Factory): Application {
+    const vault = ctx.contract.create(ClaimsVault)
+    vault.create(ctx.ledger.getApplicationForContract(factory), ctx.defaultSender, 1)
+    // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
+    ;(vault.factory as unknown as { value: unknown }).value = ctx.ledger.getApplicationForContract(factory).id
+    return ctx.ledger.getApplicationForContract(vault)
   }
 
   /**
@@ -174,9 +184,9 @@ describe('Factory', () => {
   describe('setVault', () => {
     test('stores the official vault once', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
-      expect(factory.vault.value).toEqual(VAULT_APP_ID)
+      expect(factory.vault.value).toEqual(vault.id)
       expect(() => {
         factory.setVault(vault)
       }).toThrow('vault already set')
@@ -184,7 +194,7 @@ describe('Factory', () => {
 
     test('rejects a non-owner caller', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       const other = ctx.any.account()
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
         expect(() => {
@@ -192,12 +202,28 @@ describe('Factory', () => {
         }).toThrow('only the owner can set the vault')
       })
     })
+
+    test('rejects a vault bound to a different factory', () => {
+      const factory = createFactory()
+      const otherFactory = createFactory()
+      const vault = vaultApp(otherFactory)
+      expect(() => {
+        factory.setVault(vault)
+      }).toThrow('vault is not bound to this factory')
+    })
+
+    test('rejects a vault with no factory binding', () => {
+      const factory = createFactory()
+      expect(() => {
+        factory.setVault(ctx.any.application({ applicationId: VAULT_APP_ID }))
+      }).toThrow('vault is not bound to this factory')
+    })
   })
 
   describe('register', () => {
     test('registers an official campaign bound to the official vault', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       const app = realCampaign(vault)
       setCampaignHash(factory, app)
@@ -219,7 +245,7 @@ describe('Factory', () => {
 
     test('rejects registration before the official vault is configured', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       const app = realCampaign(vault)
       setCampaignHash(factory, app)
 
@@ -230,7 +256,7 @@ describe('Factory', () => {
 
     test('rejects a campaign pointing at a different vault', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       const otherVault = ctx.any.application({ applicationId: VAULT_APP_ID + 1 })
       setVault(factory, vault)
       const app = realCampaign(otherVault)
@@ -243,7 +269,7 @@ describe('Factory', () => {
 
     test('rejects a non-creator registering someone else’s campaign', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       setHash(factory)
       const other = ctx.any.account()
@@ -265,7 +291,7 @@ describe('Factory', () => {
 
     test('rejects an impostor copy of the Campaign contract', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp(ctx.defaultSender, new Uint8Array([0x62, 0x61, 0x64]))
@@ -277,7 +303,7 @@ describe('Factory', () => {
 
     test('rejects a deposit below the registration minimum balance', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp()
@@ -292,7 +318,7 @@ describe('Factory', () => {
 
     test('rejects a deposit paid by someone else', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp()
@@ -310,7 +336,7 @@ describe('Factory', () => {
 
     test('rejects a deposit paid to the wrong receiver', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp()
@@ -324,7 +350,7 @@ describe('Factory', () => {
 
     test('rejects double registration of the same campaign', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       const app = realCampaign(vault)
       setCampaignHash(factory, app)
@@ -337,7 +363,7 @@ describe('Factory', () => {
 
     test('rejects reusing one payment for a second registration in the same group', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       const appA = realCampaign(vault)
       const appB = realCampaign(vault)
@@ -460,7 +486,7 @@ describe('Factory', () => {
   describe('isRegistered', () => {
     test('reflects registration state', () => {
       const factory = createFactory()
-      const vault = vaultApp()
+      const vault = vaultApp(factory)
       setVault(factory, vault)
       const app = realCampaign(vault)
       setCampaignHash(factory, app)

@@ -93,7 +93,7 @@ void (async () => {
       continue
     }
     if (campaign.deleted === true) {
-      leftover(`#${id}: already deleted on-chain (unregister manually if still listed)`)
+      leftover(`#${id}: already deleted on-chain; its registration deposit is stranded (unregister needs the app state)`)
       continue
     }
 

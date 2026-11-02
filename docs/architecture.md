@@ -29,7 +29,8 @@ specific Factory. Clients choose which deployments they trust by pinning the
 Factory and vault app IDs; the SDK takes `factoryAppId` and `vaultAppId` as
 config. Each Factory's owner decides which campaign program that deployment
 admits, and binds the deployment's official ClaimsVault with `setVault` (owner-only,
-one-time) after the vault is deployed. The planned standard defines the interface
+one-time) after the vault is deployed; the vault must point back at the same Factory,
+so a wrong or foreign vault cannot be bound. The planned standard defines the interface
 and behavior and leaves the choice of deployment to clients.
 
 Deployment setup order: deploy the Factory, deploy the ClaimsVault with the Factory

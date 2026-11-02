@@ -86,6 +86,7 @@ export async function deploy() {
   })
 
   // Bind the vault to the Factory (owner-only, one-time). The Factory is deployed first, so the binding happens here.
+  // The vault must be a foreign app: `setVault` reads its `factory` global and requires it to point back at this Factory.
   const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
     appId: BigInt(factoryId),
   })
@@ -93,6 +94,7 @@ export async function deploy() {
     method: 'setVault(uint64)void',
     args: [appClient.appId],
     sender: deployer.addr,
+    appReferences: [appClient.appId],
     suppressLog: true,
   })
 
