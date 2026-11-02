@@ -128,11 +128,11 @@ Follow-ups after the 11-job build-and-test restructure:
       `sdk-dist`.
 - [x] **Caching doc wording** - `setup-node` caches the npm cache, not
       `node_modules`; `npm ci` still installs from it.
-- [ ] **Cache AlgoKit** - cache pipx installs keyed by `2.10.2` in
+- [x] **Cache AlgoKit** - cache pipx installs keyed by `2.10.2` in
       `compile-contracts` and `integration-test` (optional).
-- [ ] **Manual full CI** - add `workflow_dispatch` with an explicit
+- [x] **Manual full CI** - add `workflow_dispatch` with an explicit
       paths-filter base (optional).
-- [ ] **ShellCheck sources** - add `-x` if tracked scripts source other files
+- [x] **ShellCheck sources** - add `-x` if tracked scripts source other files
       (optional).
 
 ## SDK

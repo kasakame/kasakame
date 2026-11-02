@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -31,15 +32,15 @@ jobs:
       markdown: ${{ steps.filter.outputs.markdown }}
       shell: ${{ steps.filter.outputs.shell }}
       workspace: ${{ steps.filter.outputs.workspace }}
-      run_repo_lint: ${{ steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
-      run_compile_contracts: ${{ steps.filter.outputs.contracts == 'true' }}
-      run_check_contracts: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_build_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
-      run_check_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_frontend: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_cli: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_backend: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_integration: ${{ steps.filter.outputs.contracts == 'true' }}
+      run_repo_lint: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
+      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' }}
+      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
+      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -47,12 +48,15 @@ jobs:
           fetch-depth: 0
       - name: Detect changed paths
         id: filter
+        if: github.event_name != 'workflow_dispatch'
         uses: dorny/paths-filter@v4.0.3
         with:
           # PRs use the changed-files API; pushes diff against the previous
-          # commit on main. `ci`, `shell`, and `markdown` have their own lanes;
-          # `workspace` catches every other root path and fails open to the
-          # verification lanes, never to compile-contracts or integration.
+          # commit on main. Manual dispatch skips detection and forces every
+          # run_* output, so a dispatch executes the full graph.
+          # `ci`, `shell`, and `markdown` have their own lanes; `workspace`
+          # catches every other root path and fails open to the verification
+          # lanes, never to compile-contracts or integration.
           base: ${{ github.event_name == 'push' && github.ref || '' }}
           predicate-quantifier: some-with-excludes
           filters: |
@@ -119,19 +123,19 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
       - name: Run actionlint
-        if: ${{ !cancelled() && needs.changes.outputs.ci == 'true' }}
+        if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.ci == 'true') }}
         run: |
           docker run --rm \
             -v "$PWD:/repo" \
             -w /repo \
             rhysd/actionlint:1.7.12
       - name: Run shellcheck
-        if: ${{ !cancelled() && needs.changes.outputs.shell == 'true' }}
+        if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.shell == 'true') }}
         run: |
           shellcheck --version
-          git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck
+          git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck -x
       - name: Run markdownlint
-        if: ${{ !cancelled() && needs.changes.outputs.markdown == 'true' }}
+        if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.markdown == 'true') }}
         run: npx --yes markdownlint-cli2@0.23.2
 
   # Compile the contracts once, only when the contracts changed. The artifact
@@ -157,8 +161,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
       - name: Install AlgoKit CLI
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           if ! command -v algokit >/dev/null 2>&1; then
             pipx install algokit==2.10.2
           fi
@@ -241,7 +252,7 @@ jobs:
           cache-dependency-path: projects/sdk/package-lock.json
 
       - name: Download contract artifacts
-        if: needs.changes.outputs.contracts == 'true'
+        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
         uses: actions/download-artifact@v8
         with:
           name: contracts-artifacts
@@ -255,7 +266,7 @@ jobs:
         run: npm run build
         working-directory: projects/sdk
         env:
-          SDK_SPECS: ${{ needs.changes.outputs.contracts == 'true' && 'local' || 'release' }}
+          SDK_SPECS: ${{ (github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true') && 'local' || 'release' }}
 
       - name: Upload generated clients
         uses: actions/upload-artifact@v7
@@ -534,8 +545,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
       - name: Install AlgoKit CLI
         run: |
+          export PATH="$HOME/.local/bin:$PATH"
           if ! command -v algokit >/dev/null 2>&1; then
             pipx install algokit==2.10.2
           fi

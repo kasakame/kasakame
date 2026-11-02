@@ -64,15 +64,16 @@ reasoning behind the splits.
   projects sequentially.
 - **Repo checks cover workflows, shell scripts, and Markdown.** The
   `repo-lint` job runs actionlint for `.github/**`, the runner's preinstalled
-  ShellCheck over every tracked `.sh`/`.bash` file via `git ls-files`, and
-  markdownlint. Each step is conditional on its filter and independent, so one
-  failure does not hide the others. Workflow `run:` blocks are covered by
-  actionlint's bundled ShellCheck.
+  ShellCheck over every tracked `.sh`/`.bash` file via `git ls-files`
+  (`shellcheck -x` follows sourced files), and markdownlint. Each step is
+  conditional on its filter and independent, so one failure does not hide the
+  others. Workflow `run:` blocks are covered by actionlint's bundled ShellCheck.
 - **Run once per change.** The workflow triggers on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
   `push` and `pull_request` events and run everything twice. Superseded PR runs
-  are cancelled; `main` runs finish. Every `build-and-test` job has a
-  `timeout-minutes` bound.
+  are cancelled; `main` runs finish. Manual `workflow_dispatch` skips change
+  detection and forces the full graph for debugging. Every `build-and-test` job
+  has a `timeout-minutes` bound.
 
 ## Job graph
 
@@ -205,7 +206,9 @@ release.
 Implemented at `.github/workflows/build-and-test.yml`. Eleven jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
-on the branch (`github.ref` as the base on pushes). The workflow defaults to
+on the branch (`github.ref` as the base on pushes). Manual dispatch skips
+change detection and forces every `run_*` output, so it executes the full
+graph. The workflow defaults to
 `permissions: contents: read`; `changes` adds `pull-requests: read` for the PR
 changed-files API. No job needs repository write access. Licenses are excluded
 from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
@@ -236,6 +239,8 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_cli` - `contracts || sdk || cli || workspace`.
 - `run_check_backend` - `backend || workspace`.
 - `run_integration` - `contracts`.
+
+Every `run_*` output is true on a manual `workflow_dispatch`.
 
 - **`changes`** - checkout with `fetch-depth: 0`, the paths-filter action, and
   the outputs; no Node setup, seconds of work.
@@ -517,9 +522,11 @@ and caches:
   (`build-sdk` uses the SDK lockfile; the frontend and CLI jobs use their own
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
-- **AlgoKit (Python)** - installed fresh via `pipx` in the `compile-contracts`
-  and `integration-test` jobs (not cached). The install is fast relative to the
-  Docker container startup that dominates the integration job.
+- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts` and
+  `integration-test` jobs. `~/.local` is cached by AlgoKit version, Python
+  version, and runner OS, so a cache hit skips the install entirely. The install
+  is fast relative to the Docker container startup that dominates the
+  integration job.
 
 The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
