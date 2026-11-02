@@ -24,12 +24,19 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       backend: ${{ steps.filter.outputs.backend }}
       ci: ${{ steps.filter.outputs.ci }}
-      config: ${{ steps.filter.outputs.config }}
       oracle: ${{ steps.filter.outputs.oracle }}
       markdown: ${{ steps.filter.outputs.markdown }}
       shell: ${{ steps.filter.outputs.shell }}
-      shared: ${{ steps.filter.outputs.shared }}
-      local_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
+      workspace: ${{ steps.filter.outputs.workspace }}
+      run_repo_lint: ${{ steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
+      run_compile_contracts: ${{ steps.filter.outputs.contracts == 'true' }}
+      run_check_contracts: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_build_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
+      run_check_sdk: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_frontend: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_cli: ${{ steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_backend: ${{ steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_integration: ${{ steps.filter.outputs.contracts == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -40,8 +47,9 @@ jobs:
         uses: dorny/paths-filter@v4.0.3
         with:
           # PRs use the changed-files API; pushes diff against the previous
-          # commit on main. `ci`, `shell`, and `config` have their own lanes;
-          # unknown shared paths fail open to the app lanes, never to contracts.
+          # commit on main. `ci`, `shell`, and `markdown` have their own lanes;
+          # `workspace` catches every other root path and fails open to the
+          # verification lanes, never to compile-contracts or integration.
           base: ${{ github.event_name == 'push' && github.ref || '' }}
           predicate-quantifier: some-with-excludes
           filters: |
@@ -68,8 +76,6 @@ jobs:
             ci:
               - '.github/**'
               - '!**/*.md'
-            config:
-              - '.prettierrc.json'
             oracle:
               - 'docs/claim-tree-protocol-reference.py'
             markdown:
@@ -79,7 +85,7 @@ jobs:
               - '**/*.sh'
               - '**/*.bash'
               - '!**/node_modules/**'
-            shared:
+            workspace:
               - '**'
               - '!projects/contracts/**'
               - '!projects/sdk/**'
@@ -88,7 +94,6 @@ jobs:
               - '!projects/backend/**'
               - '!.github/**'
               - '!docs/claim-tree-protocol-reference.py'
-              - '!.prettierrc.json'
               - '!docs/**/*.{png,jpg,jpeg,gif,svg,webp,pdf}'
               - '!**/LICENSE'
               - '!**/*.md'
@@ -104,7 +109,7 @@ jobs:
   repo-lint:
     name: Lint repo
     needs: changes
-    if: needs.changes.outputs.ci == 'true' || needs.changes.outputs.shell == 'true' || needs.changes.outputs.markdown == 'true'
+    if: needs.changes.outputs.run_repo_lint == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -131,7 +136,7 @@ jobs:
   compile-contracts:
     name: Compile contracts
     needs: changes
-    if: needs.changes.outputs.contracts == 'true'
+    if: needs.changes.outputs.run_compile_contracts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -179,7 +184,7 @@ jobs:
   check-contracts:
     name: Check contracts
     needs: changes
-    if: needs.changes.outputs.contracts == 'true' || needs.changes.outputs.oracle == 'true' || needs.changes.outputs.config == 'true'
+    if: needs.changes.outputs.run_check_contracts == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -218,7 +223,7 @@ jobs:
   build-sdk:
     name: Build SDK package
     needs: [changes, compile-contracts]
-    if: always() && !failure() && !cancelled() && needs.changes.outputs.local_sdk == 'true'
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.run_build_sdk == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -266,12 +271,12 @@ jobs:
           retention-days: 7
 
   # SDK verification consumes the same generated clients `build-sdk` used.
-  # When the producer is skipped (shared/config-only changes), it regenerates
+  # When the producer is skipped (workspace-only changes), it regenerates
   # them from the pinned release. A failed check does not stop the rest.
   check-sdk:
     name: Check SDK
     needs: [changes, compile-contracts, build-sdk]
-    if: always() && !failure() && !cancelled() && (needs.changes.outputs.contracts == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.config == 'true')
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.run_check_sdk == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -315,14 +320,21 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run test:coverage
         working-directory: projects/sdk
+      - name: Check claim-tree vectors are current
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          python3 scripts/generate-claimtree-vectors.py
+          npx prettier --write src/claim-tree.vectors.ts
+          git diff --exit-code -- src/claim-tree.vectors.ts
+        working-directory: projects/sdk
 
   # Frontend verification and production-bundle gate. Frontend-only and
-  # shared-only changes install the published SDK; SDK/contracts changes
+  # workspace-only changes install the published SDK; SDK/contracts changes
   # consume the same-run `sdk-dist`. A failed check does not stop the rest.
   check-frontend:
     name: Check frontend
     needs: [changes, compile-contracts, build-sdk]
-    if: always() && !failure() && !cancelled() && (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true' || needs.changes.outputs.config == 'true')
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.run_check_frontend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -335,7 +347,7 @@ jobs:
           cache: npm
           cache-dependency-path: projects/frontend/package-lock.json
       - name: Download the local SDK
-        if: needs.changes.outputs.local_sdk == 'true'
+        if: needs.changes.outputs.run_build_sdk == 'true'
         uses: actions/download-artifact@v8
         with:
           name: sdk-dist
@@ -343,7 +355,7 @@ jobs:
       - name: Install dependencies
         id: install
         env:
-          LOCAL_SDK: ${{ needs.changes.outputs.local_sdk }}
+          LOCAL_SDK: ${{ needs.changes.outputs.run_build_sdk }}
         run: |
           if [ "$LOCAL_SDK" = "true" ]; then
             npm install --no-save --install-links "file:../sdk"
@@ -378,7 +390,7 @@ jobs:
   check-cli:
     name: Check CLI
     needs: [changes, compile-contracts, build-sdk]
-    if: always() && !failure() && !cancelled() && (needs.changes.outputs.cli == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.sdk == 'true' || needs.changes.outputs.contracts == 'true' || needs.changes.outputs.config == 'true')
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.run_check_cli == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -391,7 +403,7 @@ jobs:
           cache: npm
           cache-dependency-path: projects/cli/package-lock.json
       - name: Download the local SDK
-        if: needs.changes.outputs.local_sdk == 'true'
+        if: needs.changes.outputs.run_build_sdk == 'true'
         uses: actions/download-artifact@v8
         with:
           name: sdk-dist
@@ -399,7 +411,7 @@ jobs:
       - name: Install dependencies
         id: install
         env:
-          LOCAL_SDK: ${{ needs.changes.outputs.local_sdk }}
+          LOCAL_SDK: ${{ needs.changes.outputs.run_build_sdk }}
         run: |
           if [ "$LOCAL_SDK" = "true" ]; then
             npm install --no-save --install-links "file:../sdk"
@@ -433,7 +445,7 @@ jobs:
   check-backend:
     name: Check backend
     needs: changes
-    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.shared == 'true' || needs.changes.outputs.config == 'true'
+    if: needs.changes.outputs.run_check_backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     services:
@@ -492,7 +504,7 @@ jobs:
   integration-test:
     name: LocalNet integration
     needs: [changes, compile-contracts, check-contracts]
-    if: always() && !cancelled() && needs.changes.outputs.contracts == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
+    if: always() && !cancelled() && needs.changes.outputs.run_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
