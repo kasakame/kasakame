@@ -41,6 +41,9 @@ To open a campaign, complete these steps in order:
    deployment list it.
 4. Share the app ID so backers find it through the deployment's Factory listing.
 
+The registration group is `[deposit payment, Factory.register]` with `register` as the final transaction. The contract rejects
+other shapes, so one deposit cannot register more than one campaign.
+
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
 
 ## Escrow and vault

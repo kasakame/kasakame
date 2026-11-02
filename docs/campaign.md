@@ -118,6 +118,8 @@ Double-spend of one leaf fails: the second proof no longer matches the root. Con
 The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
+  The payment must be the transaction immediately before `pledge`, and `credit` must be the group's final transaction; those
+  positions keep one payment from backing more than one pledge or credit.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
 - `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`).
 

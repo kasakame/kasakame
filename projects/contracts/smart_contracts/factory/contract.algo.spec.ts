@@ -202,6 +202,35 @@ describe('Factory', () => {
         registerAs(factory, app)
       }).toThrow('campaign already registered')
     })
+
+    test('rejects reusing one payment for a second registration in the same group', () => {
+      const factory = createFactory()
+      setHash(factory)
+      const appA = campaignApp()
+      const appB = ctx.any.application({
+        applicationId: 5678,
+        creator: ctx.defaultSender,
+        approvalProgram: Bytes(FAKE_PROGRAM),
+      })
+      const factoryAddress = ctx.ledger.getApplicationForContract(factory).address
+      const pay = ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: factoryAddress, amount: REGISTER_MBR })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }),
+        ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        expect(() => {
+          factory.register(appA, pay)
+        }).toThrow('register must be the final transaction in the group')
+      })
+      ctx.txn.createScope(group, 2).execute(() => {
+        factory.register(appB, pay)
+      })
+
+      expect(factory.registered(FAKE_APP_ID).exists).toBe(false)
+      expect(factory.registered(5678).exists).toBe(true)
+    })
   })
 
   describe('unregister', () => {

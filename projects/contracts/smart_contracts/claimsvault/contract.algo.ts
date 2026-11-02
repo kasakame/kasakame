@@ -94,12 +94,17 @@ export class ClaimsVault extends Contract {
    * (no pledge-presence check is needed - a `credit` without a matching `pledge`, or vice versa, strands only the
    * deviator's own funds under the per-campaign balance guard). On first touch the campaign must be Factory-registered.
    *
+   * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
+   * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
+   * `paidIn` past what the vault actually received.
+   *
    * @param app The campaign application.
    * @param amount The pledged amount, in microAlgos.
    */
   @abimethod()
   credit(app: Application, amount: uint64): void {
     assert(amount > Uint64(0), 'pledge must be greater than zero')
+    assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'credit must be the final transaction in the group')
 
     const existing = this.campaignBox(app.id).get({ default: Bytes() })
     if (existing.length !== Uint64(0)) {

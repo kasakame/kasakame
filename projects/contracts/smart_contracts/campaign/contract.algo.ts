@@ -125,7 +125,8 @@ export class Campaign extends Contract {
    * Append one pledge leaf.
    *
    * The caller submits this app call in a group with a payment from their own account **to the vault** (the pooled
-   * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The caller
+   * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The payment
+   * must be the transaction immediately before this call, so one payment cannot back two pledges. The caller
    * supplies the frontier (peaks ascending, 32 bytes each); the contract authenticates it with `fold` against the
    * stored root, derives the leaf from the in-group payment (`sender ‖ amount ‖ txnId` - never caller-supplied), runs
    * the merge cascade, and stores the new root. N == 0 takes the empty-frontier branch.
@@ -140,6 +141,7 @@ export class Campaign extends Contract {
     assert(payment.receiver === this.vault.value.address, 'payment must be made to the vault')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.amount > Uint64(0), 'pledge must be greater than zero')
+    assert(payment.groupIndex === Txn.groupIndex - Uint64(1), 'payment must immediately precede pledge')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
 
     const n = this.n.value

@@ -179,6 +179,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     `op.AppGlobal.getExUint64/getExBytes(app, key)`; foreign **box** reads have
     no opcode - derive lookups from caller-supplied ids verified against local
     mappings instead.
+  - **Payment-consuming group order is load-bearing.** The payment must be the
+    transaction immediately before `Campaign.pledge`; `Vault.credit` and
+    `Factory.register` must be the group's final transaction. The contracts
+    reject other shapes; the positions are what stop one payment from backing
+    several pledges, credits, or registrations.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

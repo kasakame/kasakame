@@ -242,25 +242,32 @@ per-campaign state exists. The vault authenticates the campaign caller as
 ### Pledge
 
 Group: `[Payment (backer → vault, amount a, note optional), Campaign.pledge(payment, frontier), Vault.credit(app, amount)]`
-(the pledge precedes the credit; atomicity makes the order safe - if any of the three fails, nothing is written).
+(the payment is immediately before the pledge and the credit is the final transaction; atomicity makes the order safe - if any
+of the three fails, nothing is written). Those positions are load-bearing: a transaction can appear only once in a group, so the
+payment-before-pledge rule gives each pledge a distinct payment and the credit-last rule gives each credit a distinct payment.
+Without them one payment could back several pledges or credits and inflate `paidInOf` past the vault's actual balance.
 
 `Campaign.pledge` checks: deadline not passed; `status == OPEN`; `payment.receiver == vault.address`; `payment.sender == Txn.sender`;
-`payment.amount > 0`; `Txn.sender != creator`; `frontier.length == 32·popcount(N)`. Computes
+`payment.amount > 0`; `payment.groupIndex == Txn.groupIndex − 1`; `Txn.sender != creator`; `frontier.length == 32·popcount(N)`. Computes
 `leaf = H(0x01 ‖ sender ‖ amount ‖ payment.txnId)`; asserts `leaf ≠ Z`; authenticates the frontier (§4); updates `root, N`;
 `raised += amount`. No inner calls (a self inner call for budget would be illegal reentrancy - see §14 for the `ensureBudget`
 mechanism instead).
 
-`Vault.credit` (top-level, backer-signed) checks: the vault box for `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges
-after settlement); if the box is absent: inner-call `factory.isRegistered(app)` (result must be true) before creating it;
-**independently verify the payment**: scan the caller's own group (`gtxn` - fully visible because `credit` is top-level) for a payment
-with `sender == Txn.sender`, `receiver == vault.address`, `amount == amount` - assert found. Then `paidInOf += amount` (creating the
-box on first pledge). The vault's `paidInOf` therefore counts only real payments into the vault - the "derived, not trusted" property
-of the current design is preserved, per campaign.
+`Vault.credit` (top-level, backer-signed) checks: `Txn.groupIndex == Global.groupSize − 1` (the credit is the group's final
+transaction); the vault box for `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges after settlement); if the box is
+absent: inner-call `factory.isRegistered(app)` (result must be true) before creating it; **independently verify the payment**: scan
+the caller's own group (`gtxn` - fully visible because `credit` is top-level) for a payment with `sender == Txn.sender`,
+`receiver == vault.address`, `amount == amount` - assert found. Then `paidInOf += amount` (creating the box on first pledge). The
+vault's `paidInOf` therefore counts only real payments into the vault - the "derived, not trusted" property of the current design
+is preserved, per campaign. Because a payment can appear only once in a group and `credit` is always last, one payment can credit
+at most one campaign box.
 
 No pledge-presence check is needed in `credit`: a `credit` without a matching `pledge` - or a `pledge` without a `credit` - strands
-only the deviator's own funds (every later outflow is capped by verified inflows via the balance guard; §17 #29). `credit` is top-level by construction: an inner-called app sees only its own inner group in `gtxn`, so an inner `credit`
-could never scan the outer payment, and a transaction argument to an inner call indexes the inner group too, so forwarding
-is no fix either.
+only the deviator's own funds (every later outflow is capped by verified inflows via the balance guard; §17 #29). The group-position
+guards in `pledge` and `credit` are what prevent payment replay; without them a single payment could back several leaves or several
+credits and the accounting invariants in §11 would not hold. `credit` is top-level by construction: an inner-called app sees only its
+own inner group in `gtxn`, so an inner `credit` could never scan the outer payment, and a transaction argument to an inner call
+indexes the inner group too, so forwarding is no fix either.
 
 ### Cancel (pre-deadline withdrawal, while OPEN)
 
@@ -341,7 +348,8 @@ Invariants (all enforced by the contract, none rely on the indexer):
 2. `paidOutOf` increments only via `payBack` (cancels/live refunds), `payClaim`, and vault refunds, each guarded by
    `amount ≤ paidInOf − paidOutOf` → `paidOutOf ≤ paidInOf` at every instant.
 3. Every refund pays exactly the amount committed by the authenticated leaf (§5-E), and every leaf amount was part of a verified
-   payment → `refunds + cancels + claim ≤ paidInOf`.
+   payment, with each payment backing at most one leaf and at most one credit (§9 group-position guards) →
+   `refunds + cancels + claim ≤ paidInOf`.
 4. `finalize` pays exactly `paidInOf − paidOutOf` → **total outflows = total inflows per campaign**:
    `paidInOf = cancels + liveRefunds + vaultRefunds + (claim payout) + (finalize residual)`.
 5. **Pooled isolation:** all outflows are per-campaign capped by the per-campaign balance guard (2), so campaign A's funds can never
@@ -533,6 +541,7 @@ real consensus, including the races of §7.
 | 27 | Repeated finalize | box absent after first | app checks |
 | 28 | Malicious indexer data | the indexer is never trusted: every supplied structure (frontier, path) is authenticated by the contract against on-chain state; wrong indexer data only causes a rejected transaction and a retry | SHA + app checks |
 | 29 | `credit` without a matching `pledge` (or vice versa) | `paidInOf` counts only real in-group payments; a tree/paidIn skew strands only the deviator's own funds (an uncredited leaf fails the balance guard at refund; unpledged credit inflates only the deviator's own inflow, claimable back by nobody but the pool) - self-harm, no cross-campaign effect | app checks |
+| 29a | One payment reused for several pledges or credits | `pledge` requires the payment immediately before it and `credit` must be the group's final transaction; a transaction can appear only once per group, so each payment backs at most one pledge and one credit - `paidInOf` cannot be inflated by replaying a payment | app checks + AVM group shape |
 | 30 | Inner self-call for budget (`self.reserve()`) | forbidden by consensus (reentrancy); heavy methods use `ensureBudget` OpUp creates instead (§14) | AVM |
 | 31 | `credit` under another campaign's box | the box is keyed by the caller-supplied app id and creation is registration-gated; misattribution locks the caller's own funds under that campaign's cap | app checks |
 

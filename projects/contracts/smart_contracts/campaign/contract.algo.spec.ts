@@ -197,6 +197,29 @@ describe('Campaign', () => {
       expect(contract.raised.value).toEqual(7_000_000)
     })
 
+    test('rejects reusing one payment for a second pledge', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        contract.pledge(pay, Bytes(new Uint8Array()))
+      })
+      const frontier = contract.root.value
+      ctx.txn.createScope(group, 2).execute(() => {
+        expect(() => {
+          contract.pledge(pay, frontier)
+        }).toThrow('payment must immediately precede pledge')
+      })
+
+      expect(contract.n.value).toEqual(1)
+      expect(contract.raised.value).toEqual(100)
+    })
+
     test('rejects pledging after the deadline', () => {
       const contract = createCampaign()
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })

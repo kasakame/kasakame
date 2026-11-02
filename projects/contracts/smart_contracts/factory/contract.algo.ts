@@ -73,11 +73,16 @@ export class Factory extends Contract {
    * `approvalHash`, and its creator must be the caller. The caller pays a refundable deposit covering the registration box's minimum
    * balance; `unregister()` returns it when the campaign is deleted.
    *
+   * `register` must be the final transaction in the group. A payment can only appear once in one group, so this makes each
+   * registration consume a distinct deposit: without it one payment could register several campaigns and drain the Factory's
+   * minimum-balance buffer through repeated `unregister()` calls.
+   *
    * @param app The deployed Campaign application (its approval program is verified).
    * @param payment Payment from the caller to the Factory account, covering the registration deposit.
    */
   @abimethod()
   register(app: Application, payment: gtxn.PaymentTxn): void {
+    assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'register must be the final transaction in the group')
     assert(this.approvalHash.value.length === 32, 'official approval hash not configured')
     assert(app.creator === Txn.sender, 'only the campaign creator can register')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')

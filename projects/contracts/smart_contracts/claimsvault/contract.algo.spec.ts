@@ -243,6 +243,29 @@ describe('ClaimsVault', () => {
       expect(box.paidOut).toEqual(200n)
       expect(box.status).toEqual(OPEN)
     })
+
+    test('rejects reusing one payment for a second credit in the same group', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.any.account()
+      const app = campaignApp()
+      const group = [
+        ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500 }),
+        ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+        ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        expect(() => {
+          vault.credit(app, 500)
+        }).toThrow('credit must be the final transaction in the group')
+      })
+      ctx.txn.createScope(group, 2).execute(() => {
+        vault.credit(app, 500)
+      })
+
+      const box = readBox(vault, CAMPAIGN_APP_ID)
+      expect(box.paidIn).toEqual(1500n)
+    })
   })
 
   describe('payBack', () => {
