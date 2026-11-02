@@ -58,7 +58,7 @@ marks as executed, so statement coverage tops out at ~93% even when every real
 line is covered.
 
 Run it with `npm run test:coverage`. The thresholds live in
-`vitest.config.mts` and are enforced as a CI gate by the `test-contracts` job
+`vitest.config.mts` and are enforced as a CI gate by the `check-contracts` job
 (see [`ci.md`](ci.md)).
 
 ## Test file naming (important)
@@ -325,7 +325,7 @@ The suite drives the command layer: argument validation, read tables, refund
 and withdraw selection and partial failure, the creator checks for claim and
 delete, dry runs, the wallet session lifecycle and signer handshake, mnemonic
 validation for both 25-word Algo25 and 24-word ARC-52 phrases, and the bridge
-and storage fallbacks. The `cli` job in CI runs format, lint, type-check,
+and storage fallbacks. The `check-cli` job in CI runs format, lint, type-check,
 coverage, and the build (see [`ci.md`](ci.md#workflow-build-and-test)); the
 release workflow packs the tarball and runs `kasakame --help` before publishing
 (see [`ci.md`](ci.md#workflow-release-cli-separate-file)).

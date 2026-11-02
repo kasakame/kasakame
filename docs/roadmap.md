@@ -254,7 +254,7 @@ escape-hatch CLI is tracked in its own [CLI](#cli) section.
         switching, claim, refund before the delete, delete with live refunds,
         refund after the delete, delete after claim, withdraw while open, and
         every refusal.
-  - [x] Add CI: `cli` change filter and job (format, lint, types, coverage, build),
+  - [x] Add CI: `cli` change filter and `check-cli` job (format, lint, types, coverage, build),
         local SDK artifact when the SDK or contracts change, and `gate` entry. CI
         never contacts the bridge.
   - [x] Release: `release-cli.yml` with version checks, OIDC trusted publishing +
