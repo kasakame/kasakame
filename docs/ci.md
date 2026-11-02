@@ -391,6 +391,10 @@ mirror the SDK release:
 - `version`: required, without the `v` prefix; must match the package version.
 - `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
   and the prep publish dry-run, but skips the real publish and registry check.
+- `bootstrap`: defaults to `false`; the first publish sets it to `true`, which
+  authenticates with the `NPM_TOKEN` secret instead of OIDC. npm requires the
+  package to exist before a trusted publisher can be configured. Both paths
+  pass `--provenance`.
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
@@ -406,14 +410,22 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`. It then polls the registry for the version for up to 10
-  minutes, like the SDK release. A dry run stops before the publish and registry
-  check.
+  `--provenance`. A dispatch with `bootstrap=true` uses the `NPM_TOKEN` secret
+  instead; both paths publish with provenance. It then polls the registry for
+  the version for up to 10 minutes, like the SDK release. A dry run stops
+  before the publish and registry check.
 
-Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
-Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
-`kasakame`, workflow `release-cli.yml`, and no environment. The first-publish
-window, 2FA enforcement, and token cleanup described for the SDK apply here too.
+The first publish is the same bootstrap as the SDK: dispatch with
+`dry_run=false, bootstrap=true` and a short-lived granular token in the
+`NPM_TOKEN` secret, because npm requires the package to exist before a trusted
+publisher can be configured. The token needs read/write access to the
+`@kasakame` package scope and 2FA bypass; do not reuse a read-only install
+token.
+After it publishes, configure the trusted publisher for `@kasakame/cli` on
+npmjs.com (package Settings → Trusted Publisher) with GitHub owner `kasakame`,
+repository `kasakame`, workflow `release-cli.yml`, no environment, and **Allow
+npm publish** enabled; then delete the secret and revoke the token. The
+first-publish window and 2FA enforcement described for the SDK apply here too.
 Release the SDK first: the CLI depends on the published `@kasakame/sdk`. The
 package, its signers, and its commands are documented in [`cli.md`](cli.md).
 
@@ -469,9 +481,11 @@ order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
 - `release-sdk` and `release-cli` use npm OIDC trusted publishing; every publish
-  passes `--provenance`. Set each package's publishing access to "Require
-  two-factor authentication and disallow tokens" so only the trusted publisher
-  can publish.
+  passes `--provenance`. The first publish of a package bootstraps with a
+  short-lived `NPM_TOKEN` secret, because npm requires the package to exist
+  before a trusted publisher can be configured. Set each package's publishing
+  access to "Require two-factor authentication and disallow tokens" so only the
+  trusted publisher can publish.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.

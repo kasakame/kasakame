@@ -211,6 +211,10 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   - `README.md` for spec-level behavior, roadmap status, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
+- **Package READMEs are user-facing.** `projects/sdk/README.md` and
+  `projects/cli/README.md` are the READMEs npm publishes. Keep them to install,
+  usage, documentation links, and license; repository status, roadmaps, and
+  contributor instructions belong in the root README or `docs/`.
 
 ## Testing
 
