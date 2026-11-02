@@ -17,7 +17,8 @@ import { FactoryClient } from './generated/FactoryClient.js'
  * The claim-tree design (see docs/campaign.md):
  *
  * - **Creation** chains create → factory.register. Nothing is funded: the escrow never holds funds.
- * - **Pledges** are one atomic group `[pay, campaign.pledge, vault.credit]`; the caller supplies the frontier (rebuilt
+ * - **Pledges** are one atomic group `[pay, campaign.pledge, vault.credit]` (the payment immediately before the pledge,
+ *   the matching credit immediately after it and last - the contracts reject other shapes); the caller supplies the frontier (rebuilt
  *   from the indexer right before submitting) and retries once on a stale-proof rejection.
  * - **Cancels/refunds** null one leaf per call (`vault.payBack` path while the campaign box is open, `vault.refund`
  *   directly once settled) with the path rebuilt fresh and one stale retry.
@@ -273,8 +274,8 @@ export async function createCampaign(
 }
 
 /**
- * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt
- * frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
+ * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` (payment immediately
+ * before the pledge, matching credit immediately after it and last) with a freshly rebuilt frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
  * first attempts, each of which costs the user an approval plus burned fees).
  *
  * @param appId Campaign application id.
@@ -308,7 +309,8 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
     await vaultClient.params.credit({
       args: { app: appId, amount: amountMicroAlgos },
       sender: session.address,
-      appReferences: [factoryAppId],
+      // First-touch credit reads the campaign's status, so the campaign app must be a foreign app too.
+      appReferences: [factoryAppId, appId],
       boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
       extraFee: microAlgos(FEE_CREDIT_EXTRA),
     }),

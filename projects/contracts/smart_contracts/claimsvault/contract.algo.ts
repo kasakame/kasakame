@@ -92,7 +92,13 @@ export class ClaimsVault extends Contract {
    * Permissionless top-level call, normally grouped as `[Payment, Campaign.pledge, Vault.credit]`. The payment is
    * **independently verified**: the vault scans its own group for a payment from the caller to the vault for `amount`
    * (no pledge-presence check is needed - a `credit` without a matching `pledge`, or vice versa, strands only the
-   * deviator's own funds under the per-campaign balance guard). On first touch the campaign must be Factory-registered.
+   * deviator's own funds under the per-campaign balance guard). On first touch the campaign app must still exist and be
+   * Open (a deleted, Failed, or Claimed campaign cannot open a fresh box), and the campaign must be
+   * Factory-registered.
+   *
+   * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
+   * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
+   * `paidIn` past what the vault actually received.
    *
    * @param app The campaign application.
    * @param amount The pledged amount, in microAlgos.
@@ -100,6 +106,7 @@ export class ClaimsVault extends Contract {
   @abimethod()
   credit(app: Application, amount: uint64): void {
     assert(amount > Uint64(0), 'pledge must be greater than zero')
+    assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'credit must be the final transaction in the group')
 
     const existing = this.campaignBox(app.id).get({ default: Bytes() })
     if (existing.length !== Uint64(0)) {
@@ -121,6 +128,10 @@ export class ClaimsVault extends Contract {
     assert(found, 'matching payment not found in group')
 
     if (existing.length === Uint64(0)) {
+      // A deleted app has no globals; a Failed/Claimed app must not open a fresh Open box, which could never be
+      // settled (settleOpen rejects Claimed; settle needs the campaign caller).
+      const statusState = op.AppGlobal.getExUint64(app, Bytes('status'))
+      assert(statusState[1] && statusState[0] === Uint64(0), 'campaign is not open')
       this.checkRegistration(app)
       /* v8 ignore next - see checkRegistration; covered on LocalNet. */
       this.createBox(app.id, amount)
@@ -355,6 +366,8 @@ export class ClaimsVault extends Contract {
     ensureBudget(h * Uint64(70) + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(Bytes.fromHex('01').concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
+    /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
+    assert(leaf !== this.zeroRoot(), 'leaf must not be zero')
     assert(this.combineBlob(leaf, k, path, r, c, hasTop) === box.slice(16, 48), 'proof does not match root')
     assert(amount <= paidIn - paidOut, 'insufficient campaign balance')
 
@@ -380,13 +393,43 @@ export class ClaimsVault extends Contract {
    * Release a claimed campaign's box, driven by the campaign app during `delete()`.
    *
    * Requires the box Claimed with inflows fully paid out - O(1), and the vault parks nothing for successful campaigns.
+   * A no-op when the box was already released permissionlessly (see `releaseClaimed`), so the campaign's `delete()`
+   * still succeeds afterwards.
    *
    * @param app The campaign application.
    */
   @abimethod()
   notifyDelete(app: Application): void {
+    if (!this.campaignBox(app.id).exists) {
+      return
+    }
     this.assertCampaignCaller(app)
+    this.deleteClaimedBox(app)
+  }
 
+  /**
+   * Release a claimed campaign's box permissionlessly, recovering its minimum balance to the vault.
+   *
+   * Safe because a claimed box is fully paid out (`paidIn == paidOut`): no campaign or backer funds remain. This closes
+   * the case where a creator claims and then never deletes their campaign, which would otherwise park the box's 32,100 µA
+   * on the vault forever.
+   *
+   * @param app The claimed campaign application.
+   */
+  @abimethod()
+  releaseClaimed(app: Application): void {
+    if (!this.campaignBox(app.id).exists) {
+      return
+    }
+    this.deleteClaimedBox(app)
+  }
+
+  /**
+   * Delete a Claimed box after asserting no campaign balance remains.
+   *
+   * @param app The campaign application.
+   */
+  private deleteClaimedBox(app: Application): void {
     const box = this.readBox(app.id)
     assert(box.slice(56, 57) === BOX_CLAIMED, 'campaign not claimed')
     assert(op.btoi(box.slice(0, 8)) === op.btoi(box.slice(8, 16)), 'campaign balance outstanding')
