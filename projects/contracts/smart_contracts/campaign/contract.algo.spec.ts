@@ -1,4 +1,4 @@
-import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
+import type { Account, Application, bytes } from '@algorandfoundation/algorand-typescript'
 import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
@@ -24,6 +24,7 @@ const DEADLINE = 2_000
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
+const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb')
 const ORACLE = path.resolve(__dirname, '../oracle.py')
 
 describe('Campaign', () => {
@@ -73,6 +74,18 @@ describe('Campaign', () => {
     return Buffer.from(toExternalValue(contract.root.value)).toString('hex')
   }
 
+  /**
+   * Big-endian uint64 bytes for ABI app args.
+   *
+   * @param value The value.
+   * @returns Eight bytes.
+   */
+  function toU64(value: number | bigint): Uint8Array {
+    const buf = Buffer.alloc(8)
+    buf.writeBigUInt64BE(BigInt(value))
+    return new Uint8Array(buf)
+  }
+
   /** Hex of the first inner app call's method selector (keeps the embedded vault selectors in sync). */
   function firstInnerSelector(): string {
     const call = ctx.txn.lastGroup.getItxnGroup(0).getApplicationCallInnerTxn()
@@ -105,12 +118,21 @@ describe('Campaign', () => {
   function pledgeAs(contract: Campaign, backer: Account, amount: number): string {
     const front = oracle('frontier') as { peaks: string[] }
     const frontier = Buffer.concat(front.peaks.map((p) => Buffer.from(p, 'hex')))
+    const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
     let txid = ''
     ctx.txn
-      .createScope([
-        ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount }),
-        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
-      ])
+      .createScope(
+        [
+          ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount }),
+          ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+          ctx.any.txn.applicationCall({
+            appId: contract.vault.value,
+            sender: backer,
+            appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(amount)],
+          }),
+        ],
+        1,
+      )
       .execute(() => {
         // Rebuild the payment handle inside the scope so the mock carries the scope's transaction.
         const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount })
@@ -200,17 +222,23 @@ describe('Campaign', () => {
     test('rejects reusing one payment for a second pledge', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
       const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })
       const group = [
         pay,
         ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(100)],
+        }),
         ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
       ]
       ctx.txn.createScope(group, 1).execute(() => {
         contract.pledge(pay, Bytes(new Uint8Array()))
       })
       const frontier = contract.root.value
-      ctx.txn.createScope(group, 2).execute(() => {
+      ctx.txn.createScope(group, 3).execute(() => {
         expect(() => {
           contract.pledge(pay, frontier)
         }).toThrow('payment must immediately precede pledge')
@@ -218,6 +246,58 @@ describe('Campaign', () => {
 
       expect(contract.n.value).toEqual(1)
       expect(contract.raised.value).toEqual(100)
+    })
+
+    test('rejects a pledge without a matching vault credit', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })
+      const pledgeCall = ctx.any.txn.applicationCall({ appId: contract, sender: backer })
+      const other = ctx.any.account()
+      const otherApp = ctx.any.application({ applicationId: 999 })
+      const credit = (overrides: { appId?: Application; sender?: Account; appArgs?: unknown[] } = {}) =>
+        ctx.any.txn.applicationCall({
+          appId: overrides.appId ?? contract.vault.value,
+          sender: overrides.sender ?? backer,
+          appArgs: overrides.appArgs ?? [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(100)],
+        })
+
+      const cases: { group: unknown[]; expected: string }[] = [
+        { group: [pay, pledgeCall], expected: 'credit must follow pledge' },
+        {
+          group: [pay, pledgeCall, ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })],
+          expected: 'credit must follow pledge',
+        },
+        { group: [pay, pledgeCall, credit({ appId: otherApp })], expected: 'credit must call the vault' },
+        { group: [pay, pledgeCall, credit({ sender: other })], expected: 'credit must come from the pledger' },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId)] })],
+          expected: 'credit args mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [Bytes.fromHex('00000000'), toU64(campaignId), toU64(100)] })],
+          expected: 'credit selector mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId + 1n), toU64(100)] })],
+          expected: 'credit app mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(101)] })],
+          expected: 'credit amount mismatch',
+        },
+      ]
+
+      for (const { group, expected } of cases) {
+        ctx.txn.createScope(group as never[], 1).execute(() => {
+          expect(() => {
+            contract.pledge(pay, Bytes(new Uint8Array()))
+          }).toThrow(expected)
+        })
+      }
+      expect(contract.n.value).toEqual(0)
+      expect(contract.raised.value).toEqual(0)
     })
 
     test('rejects pledging after the deadline', () => {

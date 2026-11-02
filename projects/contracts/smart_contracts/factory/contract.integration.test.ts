@@ -47,6 +47,9 @@ describe('Factory (localnet)', () => {
 
     // The platform funds the Factory account: the 0.1 ALGO base, so it can hold registration deposits and pay them back.
     await algorand.send.payment({ sender: ownerAddr, receiver: appClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
+
+    // The fixture campaigns point at vault 1; bind it so register's vault check passes.
+    await appClient.send.call({ method: 'setVault(uint64)void', args: [1n], sender: ownerAddr, suppressLog: true })
     return appClient
   }
 
@@ -54,8 +57,9 @@ describe('Factory (localnet)', () => {
    * Deploy + fund a real Campaign and return its client.
    *
    * @param creatorAddr The campaign creator's address.
+   * @param vaultId The vault app id stored in the campaign.
    */
-  async function deployCampaign(creatorAddr: string): Promise<AppClient> {
+  async function deployCampaign(creatorAddr: string, vaultId = 1n): Promise<AppClient> {
     // Deadline from chain time (not wall time): other suites time-travel the shared LocalNet clock.
     const status = await algorand.client.algod.status().do()
     const block = await algorand.client.algod.block(status.lastRound).do()
@@ -63,9 +67,9 @@ describe('Factory (localnet)', () => {
     const factory = new AppFactory({ appSpec: campaignSpec, algorand, defaultSender: creatorAddr })
     const { appClient } = await factory.send.create({
       method: 'create(uint64,byte[],byte[],uint64,uint64)void',
-      args: [1n, new TextEncoder().encode('Registrable'), new TextEncoder().encode('ipfs://test'), 1_000_000n, deadline],
+      args: [vaultId, new TextEncoder().encode('Registrable'), new TextEncoder().encode('ipfs://test'), 1_000_000n, deadline],
       sender: creatorAddr,
-      appReferences: [1n],
+      appReferences: [vaultId],
       suppressLog: true,
     })
     return appClient
@@ -210,6 +214,36 @@ describe('Factory (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/not an official kasakame campaign/)
+  })
+
+  test('a campaign bound to a different vault cannot register', { timeout: 120_000 }, async () => {
+    const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const factoryClient = await deployFactory(owner.addr.toString())
+    const campaignClient = await deployCampaign(creator.addr.toString(), 2n)
+
+    const hash = await campaignApprovalHash(campaignClient.appId)
+    await factoryClient.send.call({
+      method: 'setApprovalHash(byte[])void',
+      args: [hash],
+      sender: owner.addr,
+      suppressLog: true,
+    })
+
+    const payment = await algorand.createTransaction.payment({
+      sender: creator.addr.toString(),
+      receiver: factoryClient.appAddress,
+      amount: microAlgos(REGISTER_MBR),
+    })
+    await expect(
+      factoryClient.send.call({
+        method: 'register(uint64,pay)void',
+        args: [campaignClient.appId, payment],
+        sender: creator.addr,
+        appReferences: [campaignClient.appId],
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/campaign vault is not the official vault/)
   })
 
   test(

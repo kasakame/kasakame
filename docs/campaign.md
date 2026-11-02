@@ -118,9 +118,9 @@ Double-spend of one leaf fails: the second proof no longer matches the root. Con
 The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
-  The payment must be the transaction immediately before `pledge`, and `credit` must be the group's final transaction; those
-  positions keep one payment from backing more than one pledge or credit. First-touch `credit` also requires the campaign app to
-  exist and be `Open`, so a deleted or settled campaign cannot open a fresh vault box.
+  The payment must be immediately before `pledge`, and the matching `credit` must be immediately after it and the group's final
+  transaction; `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
+  requires the campaign app to exist and be `Open`, so a deleted or settled campaign cannot open a fresh vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
 - `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
   `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.
@@ -129,7 +129,7 @@ Inner calls authenticate the caller as the campaign app address; top-level calls
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (36 tests, 100% lines/branches/functions) plus the LocalNet integration suite (8 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (37 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 

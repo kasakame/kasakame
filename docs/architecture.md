@@ -10,7 +10,7 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | --- | --- | --- |
 | Campaign app | One stateful app per campaign | Enforces rules; tracks the Merkle root; holds no funds |
 | ClaimsVault | One app per deployment | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory | One registry app per deployment | Registers campaigns for that deployment against the deployment's owner-configured approval hash |
+| Factory | One registry app per deployment | Registers campaigns against the deployment's owner-configured approval hash and official vault |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
 | CLI | Node.js + TypeScript | Escape hatch: refund, withdraw, claim, and delete by app ID; wallet over WalletConnect v1 or a local mnemonic (see [`cli.md`](cli.md)) |
 | Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
@@ -28,21 +28,27 @@ describe one deployment; other deployments use their own IDs.
 specific Factory. Clients choose which deployments they trust by pinning the
 Factory and vault app IDs; the SDK takes `factoryAppId` and `vaultAppId` as
 config. Each Factory's owner decides which campaign program that deployment
-admits. The planned standard defines the interface and behavior and leaves the
-choice of deployment to clients.
+admits, and binds the deployment's official ClaimsVault with `setVault` (owner-only,
+one-time) after the vault is deployed. The planned standard defines the interface
+and behavior and leaves the choice of deployment to clients.
+
+Deployment setup order: deploy the Factory, deploy the ClaimsVault with the Factory
+id, then call `Factory.setVault(vault)` as the Factory owner. A new vault therefore
+requires a new Factory.
 
 ## Creation flow
 
 To open a campaign, complete these steps in order:
 
-1. Deploy a Campaign app with the vault, title, metadata URI, goal, and deadline.
+1. Deploy a Campaign app with the **official vault**, title, metadata URI, goal, and deadline.
 2. Pay the 18,900 µA registration deposit to the Factory.
 3. Register the app in the deployment's Factory so clients that trust that
    deployment list it.
 4. Share the app ID so backers find it through the deployment's Factory listing.
 
 The registration group is `[deposit payment, Factory.register]` with `register` as the final transaction. The contract rejects
-other shapes, so one deposit cannot register more than one campaign.
+other shapes, so one deposit cannot register more than one campaign. `register` also reads the campaign's `vault` global and
+rejects a campaign bound to any vault other than the Factory's official one.
 
 `Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
 failed-in-fact (`Open`, deadline passed, `raised < goal`); a live campaign cannot delist itself. The campaign app must still

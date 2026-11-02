@@ -128,6 +128,12 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       amount: microAlgos(ALGO),
       suppressLog: true,
     })
+    await factoryClient.send.call({
+      method: 'setVault(uint64)void',
+      args: [vaultId],
+      sender: owner.addr,
+      suppressLog: true,
+    })
   })
 
   function addrHex(addr: string): string {

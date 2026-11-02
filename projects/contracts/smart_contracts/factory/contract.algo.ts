@@ -34,11 +34,14 @@ const CAMPAIGN_FAILED = Uint64(1)
 const CAMPAIGN_CLAIMED = Uint64(2)
 
 export class Factory extends Contract {
-  /** The platform owner - the only account allowed to configure the official approval hash. */
+  /** The platform owner - the only account allowed to configure the official approval hash and vault. */
   owner = GlobalState<Account>()
 
   /** SHA-256 of the official Campaign approval program; set by the owner. Empty until configured. */
   approvalHash = GlobalState<bytes>()
+
+  /** The official ClaimsVault app id; set once by the owner after the vault is deployed. 0 until configured. */
+  vault = GlobalState<uint64>({ initialValue: 0 })
 
   /** Registered campaigns: app id → campaign creator. */
   registered = BoxMap<uint64, Account>({ keyPrefix: 'r' })
@@ -72,29 +75,48 @@ export class Factory extends Contract {
   }
 
   /**
+   * Bind the official ClaimsVault to this Factory.
+   *
+   * Owner only, once. The Factory is deployed before the vault (the vault's `create` records the Factory id), so this is
+   * set after the vault exists. `register` then rejects campaigns whose `vault` global differs.
+   *
+   * @param vault The official ClaimsVault application.
+   */
+  @abimethod()
+  setVault(vault: Application): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can set the vault')
+    assert(this.vault.value === Uint64(0), 'vault already set')
+    this.vault.value = vault.id
+  }
+
+  /**
    * Register a newly created Campaign app.
    *
    * Anyone may call, but only the campaign's creator can register it: the calling application's approval program must hash to the official
-   * `approvalHash`, and its creator must be the caller. The caller pays a refundable deposit covering the registration box's minimum
-   * balance; `unregister()` returns it when the campaign is deleted.
+   * `approvalHash`, its `vault` global must be the official `vault`, and its creator must be the caller. The caller pays a
+   * refundable deposit covering the registration box's minimum balance; `unregister()` returns it when the campaign is
+   * deleted.
    *
    * `register` must be the final transaction in the group. A payment can only appear once in one group, so this makes each
    * registration consume a distinct deposit: without it one payment could register several campaigns and drain the Factory's
    * minimum-balance buffer through repeated `unregister()` calls.
    *
-   * @param app The deployed Campaign application (its approval program is verified).
+   * @param app The deployed Campaign application (its approval program and vault are verified).
    * @param payment Payment from the caller to the Factory account, covering the registration deposit.
    */
   @abimethod()
   register(app: Application, payment: gtxn.PaymentTxn): void {
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'register must be the final transaction in the group')
     assert(this.approvalHash.value.length === 32, 'official approval hash not configured')
+    assert(this.vault.value !== Uint64(0), 'official vault not configured')
     assert(app.creator === Txn.sender, 'only the campaign creator can register')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the factory')
     assert(payment.amount >= REGISTER_MBR, 'registration deposit too small')
     assert(!this.registered(app.id).exists, 'campaign already registered')
     assert(op.sha256(app.approvalProgram) === this.approvalHash.value, 'not an official kasakame campaign')
+    const campaignVault = op.AppGlobal.getExUint64(app, Bytes('vault'))
+    assert(campaignVault[1] && campaignVault[0] === this.vault.value, 'campaign vault is not the official vault')
 
     this.registered(app.id).value = Txn.sender
   }

@@ -127,6 +127,12 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       amount: microAlgos(ALGO),
       suppressLog: true,
     })
+    await factoryClient.send.call({
+      method: 'setVault(uint64)void',
+      args: [vaultId],
+      sender: owner.addr,
+      suppressLog: true,
+    })
   })
 
   function oracle(cmd: string, ...args: string[]): unknown {
@@ -370,6 +376,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       'payClaim(uint64)void',
       'settle(uint64,byte[],uint64)void',
       'notifyDelete(uint64)void',
+      'credit(uint64,uint64)void',
     ] as const) {
       const selector = createHash('sha512-256').update(method).digest('hex').slice(0, 8)
       expect(approval).toContain(selector)
@@ -450,6 +457,30 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/proof does not match root/)
+  })
+
+  test('a pledge without the matching vault credit is rejected', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appClient, appId } = await deployCampaign(creator.addr.toString())
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(2n * ALGO),
+    })
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
+      args: [pay, new Uint8Array()],
+      sender: backer.addr,
+    })
+
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
+    const st = await campaignState(appClient)
+    expect(st.n).toEqual(0n)
+    expect(st.raised).toEqual(0n)
+    expect(await boxExists(appId)).toEqual(false)
   })
 
   test('unregistered campaigns cannot touch the vault', async () => {

@@ -1,15 +1,17 @@
-import type { Account, Application, bytes, gtxn, uint64 } from '@algorandfoundation/algorand-typescript'
+import type { Account, Application, bytes, uint64 } from '@algorandfoundation/algorand-typescript'
 import {
   Bytes,
   Contract,
   Global,
   GlobalState,
   OpUpFeeSource,
+  TransactionType,
   Txn,
   Uint64,
   abimethod,
   assert,
   ensureBudget,
+  gtxn,
   itxn,
   op,
   urange,
@@ -56,6 +58,9 @@ const VAULT_PAY_BACK_SELECTOR = Bytes.fromHex('b0e0eedf') // payBack(uint64,addr
 const VAULT_PAY_CLAIM_SELECTOR = Bytes.fromHex('f8c4e0cb') // payClaim(uint64)void
 const VAULT_SETTLE_SELECTOR = Bytes.fromHex('09200848') // settle(uint64,byte[],uint64)void
 const VAULT_NOTIFY_DELETE_SELECTOR = Bytes.fromHex('87060e1d') // notifyDelete(uint64)void
+
+// ARC-4 selector for the top-level Vault.credit(uint64,uint64)void that must immediately follow every pledge.
+const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb') // credit(uint64,uint64)void
 
 export class Campaign extends Contract {
   /** Address of the creator - the only account allowed to claim and delete. */
@@ -126,7 +131,8 @@ export class Campaign extends Contract {
    *
    * The caller submits this app call in a group with a payment from their own account **to the vault** (the pooled
    * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The payment
-   * must be the transaction immediately before this call, so one payment cannot back two pledges. The caller
+   * must be the transaction immediately before this call, and the vault's `credit` must be the transaction immediately
+   * after it, for this campaign and the same amount - so a pledge can never be left uncredited. The caller
    * supplies the frontier (peaks ascending, 32 bytes each); the contract authenticates it with `fold` against the
    * stored root, derives the leaf from the in-group payment (`sender ‖ amount ‖ txnId` - never caller-supplied), runs
    * the merge cascade, and stores the new root. N == 0 takes the empty-frontier branch.
@@ -163,6 +169,19 @@ export class Campaign extends Contract {
       }
       newRoot = this.foldPeaks(g.concat(frontier.slice(t * Uint64(32))))
     }
+
+    // The matching vault credit must be the very next transaction. This closes the uncredited-pledge griefing path:
+    // a leaf can no longer be created without the vault recording the same payment.
+    const creditIndex: uint64 = Txn.groupIndex + Uint64(1)
+    assert(creditIndex < Global.groupSize, 'credit must follow pledge')
+    assert(gtxn.Transaction(creditIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
+    const creditCall = gtxn.ApplicationCallTxn(creditIndex)
+    assert(creditCall.appId === this.vault.value, 'credit must call the vault')
+    assert(creditCall.sender === Txn.sender, 'credit must come from the pledger')
+    assert(creditCall.numAppArgs === Uint64(3), 'credit args mismatch')
+    assert(creditCall.appArgs(Uint64(0)) === VAULT_CREDIT_SELECTOR, 'credit selector mismatch')
+    assert(creditCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'credit app mismatch')
+    assert(creditCall.appArgs(Uint64(2)) === op.itob(payment.amount), 'credit amount mismatch')
 
     this.root.value = newRoot
     this.n.value = n + Uint64(1)
