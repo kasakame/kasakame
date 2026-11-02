@@ -267,7 +267,7 @@ function claim(appId: bigint, session: WalletSession): Promise<void>
 function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
 ```
 
-Creation chains `create` to Factory `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete settles in O(1) on every path.
+Creation chains `create` to Factory `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. The order is load-bearing: the payment must immediately precede `pledge`, and the matching `credit` must immediately follow it and be last (the contracts reject other shapes). Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete settles in O(1) on every path.
 
 `pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 

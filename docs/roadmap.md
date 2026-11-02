@@ -340,8 +340,18 @@ submission.
       specification, rationale, security considerations, backwards
       compatibility, reference implementation, test vectors.
 - [ ] Define the deployment manifest: network, Factory and vault app IDs,
-      Campaign program hash, contract version, source repo. Add an SDK helper
-      that loads a manifest so clients can pin and verify a deployment.
+      Campaign program hash, vault binding, contract/spec version, SDK version,
+      source repo. Add an SDK helper that loads a manifest so clients can pin and
+      verify a deployment as one unit.
+- [ ] Document the cross-contract interface in one place: the inner-call
+      selectors, status values, the global keys the contracts read (`vault`,
+      `status`, `raised`, `goal`, `deadline`), and the load-bearing pledge group
+      shape. Keep the selector-sync tests so the hardcoded constants cannot
+      drift.
+- [ ] Codify the coupling rule: cross-contract access stays read-only
+      verification (verify, don't mutate). No shared boxes and no mutable config
+      across Factory, Campaign, and ClaimsVault; each contract writes only its
+      own state.
 - [ ] Build the conformance suite: run the behavioral matrix (every method ×
       every branch, plus the LocalNet adversarial cases) against any
       deployment's app IDs, with fixed claim-tree vectors.
@@ -358,6 +368,30 @@ submission.
       implementation.
 - [ ] Align the docs: link the standard from README and architecture, and
       describe "official" as deployment-local.
+
+## Contract hardening
+
+- [x] **Factory vault binding.** The Factory stores the official ClaimsVault app id
+      (owner-set once after the vault exists) and `register` rejects a campaign whose
+      `vault` global differs. `setVault` also requires the vault's `factory` global to
+      point back at the same Factory, so a wrong or foreign vault cannot be bound. The
+      deploy script binds the vault; tests cover the binding.
+- [x] **Pledge/credit pairing.** `Campaign.pledge` requires the vault's `credit` as the
+      immediate next transaction, for the same campaign and amount. An uncredited pledge
+      can no longer create a leaf or dilute other backers' refunds; the SDK group already
+      matches this shape.
+- [x] **Successful-campaign liveness decision.** Accepted product behavior: a successful
+      campaign's creator must claim; if they disappear, the funds stay locked and backers
+      cannot refund. No code fallback and no platform sweep of successful campaigns;
+      notifications may remind the creator later. See [`design.md`](design.md).
+- [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
+      `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only;
+      the SDK, scripts, docs, and tests unregister before deleting the app.
+- [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
+      vault deploy config and the parser is tested, so a misconfiguration cannot overflow
+      `settledAt + refundWindow`.
+- [x] **Payment-reuse regression tests.** Unit and LocalNet groups cover duplicate
+      `credit`, duplicate `pledge`, and duplicate `register` with one payment.
 
 ## Deployment
 

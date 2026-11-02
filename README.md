@@ -12,7 +12,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | Proof-based refunds | Each pledge is a Merkle leaf; each refund is a proof; no per-backer storage |
 | O(1) settlement | Success and failure paths finalize in constant time and cost |
 | Post-delete refunds | Backers refund from the vault after the campaign app is deleted |
-| Factory registry | Only hash-verified campaigns accept pledges |
+| Factory registry | Only hash-verified campaigns bound to the official vault accept pledges |
 | Refund window | Failed pledges stay reclaimable for 730 days, then residual goes to a sweep target |
 
 ## How it works
