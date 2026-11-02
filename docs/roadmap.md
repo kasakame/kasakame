@@ -340,8 +340,18 @@ submission.
       specification, rationale, security considerations, backwards
       compatibility, reference implementation, test vectors.
 - [ ] Define the deployment manifest: network, Factory and vault app IDs,
-      Campaign program hash, contract version, source repo. Add an SDK helper
-      that loads a manifest so clients can pin and verify a deployment.
+      Campaign program hash, vault binding, contract/spec version, SDK version,
+      source repo. Add an SDK helper that loads a manifest so clients can pin and
+      verify a deployment as one unit.
+- [ ] Document the cross-contract interface in one place: the inner-call
+      selectors, status values, the global keys the contracts read (`vault`,
+      `status`, `raised`, `goal`, `deadline`), and the load-bearing pledge group
+      shape. Keep the selector-sync tests so the hardcoded constants cannot
+      drift.
+- [ ] Codify the coupling rule: cross-contract access stays read-only
+      verification (verify, don't mutate). No shared boxes and no mutable config
+      across Factory, Campaign, and ClaimsVault; each contract writes only its
+      own state.
 - [ ] Build the conformance suite: run the behavioral matrix (every method ×
       every branch, plus the LocalNet adversarial cases) against any
       deployment's app IDs, with fixed claim-tree vectors.
