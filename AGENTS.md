@@ -15,21 +15,26 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     escrow is never funded and holds nothing
   - `smart_contracts/claimsvault/contract.algo.ts` - the `ClaimsVault`: pooled
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
-    `settleOpen`, `refund`, `notifyDelete`, `finalize`)
+    `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured approval hash, `setApprovalHash`,
-    `register`/`unregister`, readonly `isRegistered`)
+    registry (owner-configured approval hash and official vault, `setApprovalHash`,
+    `setVault`, `register`/`unregister`, readonly `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
+- `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
+  (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see
+  [`docs/cli.md`](docs/cli.md) and the [CLI roadmap](docs/roadmap.md#cli)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage; pinning and catalog planned)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) (tree math and
-  security), [`frontend.md`](docs/frontend.md), [`sdk.md`](docs/sdk.md) (SDK
-  package design and migration order), [`testing.md`](docs/testing.md),
+  security), [`frontend.md`](docs/frontend.md), [`cli.md`](docs/cli.md)
+  (escape-hatch CLI: signers, commands, networks, self-hosting),
+  [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
+  [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`roadmap.md`](docs/roadmap.md) (checklist),
   [`design.md`](docs/design.md) (product plan)
@@ -40,10 +45,11 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-algokit project bootstrap all    # install deps for contracts + frontend + sdk + backend
+algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
+git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck  # ShellCheck all tracked shell scripts
 
 cd projects/contracts
 npm run build                    # compile contracts + generate typed clients
@@ -65,6 +71,13 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
 
+cd ../cli
+npm run build                    # tsc emit to dist
+npm run check-types              # tsc --noEmit
+npm run lint                     # ESLint
+npm run format                   # Prettier check
+npm run test:coverage            # Vitest
+
 cd ../backend                    # optional API; Postgres via docker compose
 npm run db:migrate               # apply migrations
 npm run dev                      # Fastify in watch mode
@@ -85,6 +98,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
   back in. Approvals follow user intent: one click, only the approvals the protocol structurally requires.
+- **Successful-campaign creator inactivity is accepted product behavior.** A successful campaign's
+  creator must claim; if they disappear, the funds stay locked and backers cannot refund. Do not add
+  a protocol fallback, do not sweep successful campaigns to the platform, and do not treat this as a
+  bug. Notifications may remind the creator later. The failed-campaign refund window is a different
+  path and does not apply here.
 - **Confirm assumptions against real documentation.** Algorand behavior (box MBR,
   app lifecycle, indexer retention, transaction semantics, inner-txn fees) changes
   over time and is easy to misremember. Do not assert how the chain works from
@@ -106,7 +124,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   local copy (`npm install --no-save --install-links "file:../sdk"` in
   `projects/frontend`) - a plain `npm ci` restores the published package. CI
   installs the same copy only when the SDK or contracts changed; other frontend
-  runs test the registry package.
+  runs test the registry package. The CLI (`projects/cli`) consumes the same
+  published package and follows the same packed-copy pattern for unreleased SDK
+  changes.
 - **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
   `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
   over HTTPS by default and regenerates clients with the pinned generator. The version is
@@ -164,6 +184,16 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     `op.AppGlobal.getExUint64/getExBytes(app, key)`; foreign **box** reads have
     no opcode - derive lookups from caller-supplied ids verified against local
     mappings instead.
+  - **Payment-consuming group order is load-bearing.** The payment must be the
+    transaction immediately before `Campaign.pledge`; the matching `Vault.credit`
+    must be immediately after the pledge and the group's final transaction.
+    `Factory.register` must also be final. The contracts reject other shapes; the
+    positions are what stop one payment from backing several pledges, credits, or
+    registrations, and what stop a pledge from being left uncredited.
+  - `Factory.unregister` requires the campaign app to still exist and be settled
+    (`Claimed`/`Failed`), pristine (`Open`, `raised == 0`), or failed-in-fact.
+    Unregister **before** deleting the app: a deleted app's globals are
+    unreadable, so its registration deposit would be stuck.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

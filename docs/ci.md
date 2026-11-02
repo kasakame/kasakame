@@ -1,106 +1,160 @@
 # CI
 
 This page describes the GitHub Actions setup: a consolidated
-[`build-and-test`](.github/workflows/build-and-test.yml) workflow,
-a separate [`markdown-lint`](.github/workflows/markdown-lint.yml), and the
-manual [`release-specs`](.github/workflows/release-specs.yml) release - plus
-the reasoning behind the splits.
+[`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
+verification job per project plus repo-wide workflow, shell, and Markdown lint,
+and the manual
+[`release-specs`](../.github/workflows/release-specs.yml),
+[`release-sdk`](../.github/workflows/release-sdk.yml), and
+[`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
+reasoning behind the splits.
 
 ## Principles
 
 - **Build once, share the output.** The compiled contract artifacts (TEAL +
-  ARC specs) are gitignored and regenerable. When the contracts change,
-  `build-contracts` compiles them once and uploads `contracts-artifacts`; the
-  SDK lanes, the frontend lanes, `build`, and `integration-test` download it
-  instead of recompiling. The SDK never copies generated clients between
-  projects: it regenerates them from the ARC-56 specs, from the downloaded
-  artifacts (`SDK_SPECS=local`) in contracts-changed runs and from the pinned
-  release otherwise.
-- **Split by prerequisites.** Lint, format, type-check, and unit-test jobs need
-  only Node.js; `build-contracts` adds Python for the AlgoKit CLI (contract
-  compilation) and `integration-test` adds Docker for LocalNet too. Keeping
-  those in separate jobs (not separate workflows) keeps feedback fast and
-  failures attributable to the right lane.
-- **Change detection, not matrices.** One `changes` job diffs the pull request
-  and decides what every other job runs against: `build-contracts`,
-  `lint-contracts`, `test-contracts`, and `integration-test` run only when
-  `projects/contracts/**` (or this workflow) changed, while the SDK and
-  frontend jobs run on every PR. Separate jobs (no matrix) keep the conditional
-  presence and the status-check names stable.
-- **The frontend resolves the SDK by what changed.** A frontend-only change
-  installs the published `@kasakame/sdk`, so routine frontend work exercises
-  what users install; an SDK or contracts change builds the local SDK and
-  installs that copy instead (see below). The `build` job always bundles the
-  frontend against the local SDK as the same-SHA end-to-end gate. The backend
-  runs as its own job (it needs a Postgres service, so it doesn't fit the
-  pure-Node jobs).
+  ARC specs) are gitignored and regenerable. Only a contracts change triggers
+  `compile-contracts`, which compiles them once and uploads `contracts-artifacts`;
+  `build-sdk` and `integration-test` download it instead of recompiling. When
+  the SDK or contracts changed, `build-sdk` runs codegen once, compiles the
+  package once, and uploads both `sdk-generated` (the generated clients) and
+  `sdk-dist` (the compiled package). The SDK verification job downloads
+  `sdk-generated` instead of regenerating clients; the frontend and CLI
+  download `sdk-dist` instead of each rebuilding the SDK. A `workspace`-only
+  run skips the producer, so SDK verification regenerates the clients from the
+  pinned release itself. The SDK never copies generated
+  clients between projects: it regenerates them from the ARC-56 specs, from the
+  downloaded artifacts (`SDK_SPECS=local`) in contracts-changed runs and from
+  the pinned release otherwise.
+- **Split by prerequisite, not by phase.** Each project has one verification
+  job that runs format, lint, type-check, and tests in order; a failed check
+  does not stop the remaining checks, so one run reports them all. Contract
+  compilation and SDK packaging are separate producer jobs only because other
+  jobs consume their artifacts; `integration-test` adds Docker for LocalNet.
+  Keeping those in separate jobs (not separate workflows) keeps feedback fast
+  and failures attributable to the right lane.
+- **Change detection, not matrices.** One `changes` job runs
+  [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
+  what every other job runs against. Each filter is a lane input: contracts,
+  SDK, frontend, CLI, backend, `ci` (workflows/scripts), `oracle` (the
+  contract/SDK test oracle), `markdown`, `shell`, and `workspace`. Unknown root
+  paths land in `workspace`, which fails open to the verification lanes but
+  never sets `contracts`: `compile-contracts` and `integration-test` run only
+  when the contracts changed, and `check-contracts` runs for contracts, the
+  oracle, or workspace changes. Markdown, shell, and workflow files run only
+  `repo-lint`; docs images, licenses, and inert root files run no lane.
+  `.prettierrc.json` is part of `workspace`, so formatting-config changes are
+  not a special filter.
+- **The trigger policy is centralized.** `changes` publishes derived `run_*`
+  outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
+  `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
+  `run_check_backend`, `run_integration`). Every job reads one boolean, so the
+  trigger rules live in one place instead of repeated `if` expressions.
+  Separate jobs (no matrix) keep the conditional presence and the status-check
+  names stable.
+- **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
+  CLI-only, or workspace-only change installs the published `@kasakame/sdk`, so
+  routine work exercises what users install; an SDK or contracts change
+  downloads the same-run `sdk-dist` built by `build-sdk` and installs that copy
+  instead (see below). SDK verification consumes the same-run `sdk-generated`.
+  The frontend and CLI build against the same SDK choice. The backend runs as
+  its own job (it needs a Postgres service, so it doesn't fit the pure-Node
+  jobs) and is independent of contracts, SDK, frontend, and CLI.
 - **CI calls the per-project npm scripts directly** (`npm run lint`, …), not
   `algokit project run`. The algokit wrapper is a local convenience and runs
   projects sequentially.
-- **Run once per change.** Both workflows trigger on `pull_request` (any branch)
+- **Repo checks cover workflows, shell scripts, and Markdown.** The
+  `repo-lint` job runs actionlint for `.github/**`, the runner's preinstalled
+  ShellCheck over every tracked `.sh`/`.bash` file via `git ls-files`
+  (`shellcheck -x` follows sourced files), and markdownlint. Each step is
+  conditional on its filter and independent, so one failure does not hide the
+  others. Workflow `run:` blocks are covered by actionlint's bundled ShellCheck.
+- **Run once per change.** The workflow triggers on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
-  `push` and `pull_request` events and run everything twice.
+  `push` and `pull_request` events and run everything twice. Superseded PR runs
+  are cancelled; `main` runs finish. Manual `workflow_dispatch` skips change
+  detection and forces the full graph for debugging. Every `build-and-test` job
+  has a `timeout-minutes` bound.
 
 ## Job graph
 
 ```mermaid
 flowchart TD
-    changes["changes<br/>(changed paths)"]
-    buildc["build-contracts<br/>(when contracts changed)"]
-    contracts["lint-contracts / test-contracts<br/>(when contracts changed)"]
-    sdk["lint-sdk / test-sdk<br/>(every PR)"]
-    frontend["lint-frontend / test-frontend<br/>(every PR)"]
-    build["build<br/>(SDK + Vite bundle, local SDK)"]
-    integration["integration-test<br/>(when contracts changed)"]
-    backend["backend<br/>(lint, format, types, tests + Postgres)"]
-    gate["gate<br/>(single required check)"]
+    changes["Detect changes<br/>(changed paths)"]
+    repo["Lint repo<br/>(workflows / shell / markdown)"]
+    buildc["Compile contracts<br/>(TEAL + specs + clients)"]
+    contracts["Check contracts<br/>(format/lint/types/tests)"]
+    buildsdk["Build SDK package<br/>(codegen + tsc)"]
+    sdk["Check SDK<br/>(format/lint/types/tests)"]
+    frontend["Check frontend<br/>(checks + bundle)"]
+    cli["Check CLI<br/>(checks + build)"]
+    backend["Check backend<br/>(checks + Postgres)"]
+    integration["LocalNet integration<br/>(contracts only)"]
+    gate["Gate<br/>(single required check)"]
 
+    changes --> repo
     changes --> buildc
     changes --> contracts
+    changes --> buildsdk
     changes --> sdk
     changes --> frontend
-    changes --> build
+    changes --> cli
     changes --> backend
-    buildc -->|"contracts artifacts"| sdk
-    buildc -->|"contracts artifacts"| frontend
-    buildc -->|"contracts artifacts"| build
-    buildc -->|"contracts artifacts"| integration
+    changes --> integration
     changes --> gate
+    buildc -->|"contracts artifacts"| buildsdk
+    buildc -->|"contracts artifacts"| integration
+    contracts -->|"verification finished"| integration
+    buildsdk -->|"sdk-generated"| sdk
+    buildsdk -->|"sdk-dist"| frontend
+    buildsdk -->|"sdk-dist"| cli
+    repo --> gate
     buildc --> gate
     contracts --> gate
+    buildsdk --> gate
     sdk --> gate
     frontend --> gate
-    build --> gate
-    integration --> gate
+    cli --> gate
     backend --> gate
+    integration --> gate
 ```
 
 ## What each job needs
 
-| Job | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
-| --- | --- | --- | --- | --- |
-| `changes` | - | - | - | - |
-| `build-contracts` | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
-| `lint-contracts` / `test-contracts` | ✅ | - | - | - |
-| `lint-sdk` / `test-sdk` | ✅ | - | - | contracts artifacts (contracts-changed runs) |
-| `lint-frontend` / `test-frontend` | ✅ | - | - | contracts artifacts (contracts-changed runs); local SDK copy (SDK-changed runs) |
-| `build` | ✅ | - | - | contracts artifacts (contracts-changed runs) |
-| `backend` | ✅ | - | ✅ (Postgres service) | - |
-| `integration-test` | ✅ | ✅ | ✅ (algod + indexer) | contracts artifacts |
-| `gate` | ✅ (runner only) | - | - | - |
-| `markdown-lint` (own workflow) | ✅ | - | - | - |
-| `release-specs` (own workflow) | ✅ | ✅ | - | - |
+| Job | Runs when | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
+| --- | --- | --- | --- | --- | --- |
+| `changes` | always | - | - | - | - |
+| `repo-lint` | `ci`, `shell`, or `markdown` changed | ✅ | - | ✅ (actionlint image) | - |
+| `compile-contracts` | contracts changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
+| `check-contracts` | contracts, `oracle`, or `workspace` changed | ✅ | - | - | - |
+| `build-sdk` | SDK or contracts changed | ✅ | - | - | `contracts-artifacts` (contracts-changed runs); produces `sdk-generated` + `sdk-dist` |
+| `check-sdk` | contracts, SDK, `oracle`, or `workspace` changed | ✅ | - | - | `sdk-generated` when the producer ran; regenerates from the pinned release otherwise |
+| `check-frontend` | contracts, SDK, frontend, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
+| `check-cli` | contracts, SDK, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
+| `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
+| `integration-test` | contracts changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `gate` | always | ✅ (runner only) | - | - | - |
+| `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
+| `release-sdk` (own workflow) | manual | ✅ | - | - | - |
+| `release-cli` (own workflow) | manual | ✅ | - | - | - |
 
-Key point: **lint/format/type-check, unit-test, and markdown are pure Node**.
-`eslint`, `prettier`, `tsc`, `vitest`, and `markdownlint-cli2` need no Docker
-or AlgoKit install. The contracts jobs do not build anything: the offline
-contract suite runs the contract source directly, and only `build-contracts`
-compiles. The SDK lanes run codegen against the same-run artifacts or the
-pinned release; the frontend lanes install the published SDK or a packed local
-copy - see below. The backend lane is the exception: its suite runs against a
-throwaway Postgres service (migrations first, like local development).
+Key point: **format/lint/type-check, unit-test, markdown, and shell lint need no
+AlgoKit install**. `eslint`, `prettier`, `tsc`, `vitest`, `markdownlint-cli2`, and
+`shellcheck` are standalone tools; `actionlint` is the one repo-lint step that
+uses a container. The contracts verification job does not build anything: the
+offline contract suite runs the contract source directly, and only
+`compile-contracts` compiles. `build-sdk` runs codegen against the same-run
+artifacts or the pinned release; SDK verification consumes the resulting clients,
+and the frontend and CLI install the published SDK or the packed `sdk-dist` copy -
+see below. The backend lane is the exception: its suite runs against a throwaway
+Postgres service (static checks first, then migrations and tests).
 
-## Why the SDK lanes need same-run contract artifacts
+Verification jobs run format → lint → type-check → tests → build (where a build
+belongs to the job). A failed check does not stop the remaining checks: the job
+still fails, but the log reports all of them together. Producer jobs
+(`compile-contracts`, `build-sdk`) fail fast because there is no artifact to share
+after a failure.
+
+## Why the SDK build needs same-run contract artifacts
 
 The SDK's write path imports the generated clients (`src/generated/*`,
 gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
@@ -109,23 +163,26 @@ downloads the pinned `specs-v<version>` release asset over HTTPS
 (`.../releases/download/specs-v<version>/arc56.tar.gz`), so it needs no `gh`
 login; `SDK_SPECS=local` reads
 `projects/contracts/smart_contracts/artifacts` instead. On a
-contracts-changed run the SDK lanes download `contracts-artifacts` and run
-codegen with `SDK_SPECS=local`, so type-check and tests resolve the clients
-against the change set's contracts; otherwise they use the pinned release.
-Codegen never builds the contracts: local mode fails with instructions if the
-artifacts are absent.
+contracts-changed run `build-sdk` downloads `contracts-artifacts` and runs
+codegen with `SDK_SPECS=local`, so the generated clients, the type-check, the
+tests, and the built SDK all resolve against the change set's contracts;
+otherwise it uses the pinned release. `build-sdk` uploads the generated clients
+as `sdk-generated`, which SDK verification downloads instead of regenerating
+them. Codegen never builds the contracts: local mode fails with instructions if
+the artifacts are absent.
 
-## How the frontend jobs resolve the SDK
+## How the frontend and CLI jobs resolve the SDK
 
-The committed frontend dependency is `"@kasakame/sdk": "^0.1.0"` (see
-[`sdk.md`](sdk.md)). On a frontend-only change the frontend lanes install it
-from the registry with `npm ci`, so routine frontend work exercises exactly
-what users install.
+The committed frontend and CLI dependency is `"@kasakame/sdk": "^0.1.0"` (see
+[`sdk.md`](sdk.md)). On a frontend-only, CLI-only, or workspace-only change those
+lanes install it from the registry with `npm ci`, so routine work exercises
+exactly what users install.
 
-When the SDK or the contracts changed, the lanes build the SDK first
-(`npm ci` + `npm run build` in `projects/sdk`; codegen uses the same-run
-artifacts when the contracts changed, the pinned release otherwise) and then
-install it as a packed copy:
+When the SDK or the contracts changed, `build-sdk` runs codegen and builds the
+SDK package once (`npm ci` + `npm run build` in `projects/sdk`; codegen uses the
+same-run artifacts when the contracts changed, the pinned release otherwise),
+uploads `sdk-generated` and `sdk-dist`, and the frontend and CLI lanes download
+`sdk-dist` and install it as a packed copy:
 
 ```sh
 npm install --no-save --install-links "file:../sdk"
@@ -137,64 +194,115 @@ shape as the published package) instead of symlinking it; `--no-save` leaves
 restores the published package. Local contract/SDK work uses the same command
 (build the SDK first), so there is nothing to revert.
 
-The `build` job keeps the same-SHA gate: it always builds the local SDK and
-bundles the frontend against that copy - from the same-run artifacts when the
-contracts changed, from the pinned release otherwise.
+The `check-frontend` job bundles against the same SDK choice: published for
+frontend-only, CLI-only, or workspace-only changes, the same-run `sdk-dist` for
+SDK/contracts changes. `check-cli` type-checks and builds against that same
+choice. `check-sdk` downloads `sdk-generated` from the producer; when the
+producer is skipped (`workspace`-only changes), it regenerates from the pinned
+release.
 
 ## Workflow: build-and-test
 
-Implemented at `.github/workflows/build-and-test.yml`. Twelve jobs. `changes`
-diffs the PR against its base branch (or marks everything changed on a `push`
-to `main`) and exposes two outputs:
+Implemented at `.github/workflows/build-and-test.yml`. Eleven jobs. `changes`
+runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
+`pull-requests: read`), and pushes to `main` diff against the previous commit
+on the branch (`github.ref` as the base on pushes). Manual dispatch skips
+change detection and forces every `run_*` output, so it executes the full
+graph. The workflow defaults to
+`permissions: contents: read`; `changes` adds `pull-requests: read` for the PR
+changed-files API. No job needs repository write access. Licenses are excluded
+from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
+`markdown`. It exposes the raw filters plus derived trigger outputs:
 
-- `contracts` - `projects/contracts/**` or `.github/**` changed.
-- `local_sdk` - `contracts` is true, or `projects/sdk/**` changed.
+- `contracts`, `sdk`, `frontend`, `cli`, `backend` - the project path itself, no
+  folding. A contracts change does not set `sdk`, `frontend`, or `cli`; the
+  derived outputs OR the inputs they need.
+- `ci` - `.github/**` (workflows and release scripts).
+- `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
+  oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
+  and fails on drift. LocalNet stays contracts-only, so an oracle-only change
+  runs the offline suites, not `integration-test`.
+- `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
+- `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
+- `workspace` - any other non-inert root path outside the five projects (root
+  config, `.prettierrc.json`, a new project). It fails open to the verification
+  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
+  run only when the contracts changed. Markdown, shell scripts, docs images,
+  licenses, and inert root files are excluded from it.
+- `run_repo_lint` - `ci || shell || markdown`.
+- `run_compile_contracts` - `contracts`.
+- `run_check_contracts` - `contracts || oracle || workspace`.
+- `run_build_sdk` - `contracts || sdk`; the frontend and CLI lanes also use it
+  to choose the packed local SDK instead of the published package.
+- `run_check_sdk` - `contracts || sdk || oracle || workspace`.
+- `run_check_frontend` - `contracts || sdk || frontend || workspace`.
+- `run_check_cli` - `contracts || sdk || cli || workspace`.
+- `run_check_backend` - `backend || workspace`.
+- `run_integration` - `contracts`.
 
-- **`changes`** - checkout with `fetch-depth: 0`, `git merge-base` +
-  `git diff --name-only` against the base branch, and the two outputs; no Node
-  setup, seconds of work.
-- **`build-contracts`** - runs when `contracts` is true. Installs Node +
-  AlgoKit, compiles the contracts (`npm run build` → TEAL + ARC-56 specs +
-  generated clients), and uploads `contracts-artifacts`.
-- **`lint-contracts` / `test-contracts`** - run when `contracts` is true; pure
-  Node (`npm ci`, then lint/format/type-check or `npm run test:coverage`).
-- **`lint-sdk` / `test-sdk`** - run every PR. When `contracts` is true they
-  download `contracts-artifacts` and codegen with `SDK_SPECS=local`; otherwise
-  codegen downloads the pinned specs release. Then lint/format/type-check or
-  `npm run test:coverage`.
-- **`lint-frontend` / `test-frontend`** - run every PR. When `local_sdk` is
-  true they build the SDK (same-run artifacts or pinned release) and install
-  the packed copy (`npm install --no-save --install-links "file:../sdk"`);
-  otherwise they install the published package with `npm ci`. Then
-  lint/format/type-check or `npm run test:coverage`.
-- **`build`** - runs every PR. Builds the local SDK (same-run artifacts or
-  pinned release), installs the packed copy into the frontend, and bundles it
-  (`npx vite build`) - the same-SHA end-to-end gate.
-- **`integration-test`** - runs when `contracts` is true: downloads
-  `contracts-artifacts`, starts LocalNet, and runs the compiled TEAL against a
-  live algod.
-- **`backend`** - standalone (needs nothing from the other jobs): starts a
-  Postgres service, runs migrations, then lint, format, type-check, and
-  `npm run test:coverage` - the same sequence as local development.
+Every `run_*` output is true on a manual `workflow_dispatch`.
+
+- **`changes`** - checkout with `fetch-depth: 0`, the paths-filter action, and
+  the outputs; no Node setup, seconds of work.
+- **`repo-lint`** - runs when `run_repo_lint` is true. Runs
+  actionlint in the `rhysd/actionlint:1.7.12` container (which bundles
+  ShellCheck for workflow `run:` blocks), the runner's preinstalled ShellCheck
+  over every tracked `.sh`/`.bash` file via `git ls-files`, and
+  `npx --yes markdownlint-cli2@0.23.2` over every `*.md` file. The steps are
+  independent, so one failure does not hide the others.
+- **`compile-contracts`** - runs when `run_compile_contracts` is true. Installs Node + AlgoKit,
+  compiles the contracts (`npm run build` → TEAL + ARC-56 specs and generated
+  clients), and uploads `contracts-artifacts` with `overwrite: true` and 7-day
+  retention.
+- **`check-contracts`** - runs when `run_check_contracts` is true (contracts,
+  oracle, or workspace). Pure Node: format, lint, type-check, and
+  `npm run test:coverage`. The offline suite runs the contract source directly,
+  so it never needs the compiled artifacts. A failed check does not stop the
+  rest.
+- **`build-sdk`** - runs when `run_build_sdk` is true (SDK or contracts
+  changed). Downloads `contracts-artifacts` when the contracts changed, installs
+  the SDK dependencies, builds the package (`npm run build` → codegen + tsc),
+  and uploads `sdk-generated` and `sdk-dist` (7-day retention).
+- **`check-sdk`** - runs when `run_check_sdk` is true (contracts, SDK, oracle,
+  or workspace). Downloads `sdk-generated` when `build-sdk` ran; when the
+  producer was skipped (`workspace`-only changes), regenerates the clients from
+  the pinned release. Then format, lint, type-check, and `npm run test:coverage`.
+  It does not download `contracts-artifacts` directly. It also regenerates
+  `src/claim-tree.vectors.ts` from the Python oracle, formats it, and fails with
+  `git diff --exit-code` when the committed vectors are stale.
+- **`check-frontend`** - runs when `run_check_frontend` is true (contracts, SDK,
+  frontend, or workspace). Installs the published SDK with `npm ci`, or the
+  same-run `sdk-dist` as a packed copy when `run_build_sdk` is true, then format,
+  lint, type-check, `npm run test:coverage`, and `npx vite build`. The bundle
+  gate is in this job, after the tests.
+- **`check-cli`** - runs when `run_check_cli` is true (contracts, SDK, CLI, or
+  workspace). Installs the published SDK with `npm ci`, or the same-run
+  `sdk-dist` as a packed copy when `run_build_sdk` is true, then format, lint,
+  type-check, `npm run test:coverage`, and `npm run build`. The suite mocks the
+  WalletConnect transport, so CI never contacts the bridge. See
+  [`cli.md`](cli.md) and the [CLI tests](testing.md#cli-tests).
+- **`check-backend`** - runs when `run_check_backend` is true (backend or
+  workspace): starts a Postgres service, runs format, lint, and type-check, then
+  migrations and `npm run test:coverage`. It is independent of
+  contracts/SDK/frontend/CLI.
+- **`integration-test`** - runs when `run_integration` is true and waits for
+  `compile-contracts` (the artifact) and `check-contracts` (verification). It
+  runs even if contract verification failed, so a lint/test failure still
+  reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
+  and runs the compiled TEAL against a live algod.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
-  should require only this check, so skipped contracts jobs don't block a
-  merge.
+  requires only this check, so skipped jobs don't block a merge.
+
+Verification jobs order the checks format → lint → type-check → tests → build,
+and a failed check does not stop the later ones. The step conditions use
+`!cancelled()` instead of the implicit `success()` gate, so a failed
+format/lint/type-check still runs the tests and the bundle. The job still fails,
+but one run reports all failures. `compile-contracts` and `build-sdk` fail fast
+because there is no artifact to share after a failure.
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
-
-## Workflow: markdown-lint (separate file)
-
-Implemented at `.github/workflows/markdown-lint.yml`. Markdown linting gets its
-**own workflow file**, because triggers live at the workflow level - a job
-cannot have a different trigger than its workflow. Splitting it allows a
-`paths:` filter so the markdown job only runs when docs (or the markdownlint
-config) change.
-
-This also gives markdown its own status check, so a docs failure isn't buried
-under the per-project checks. The lint command checks all
-`*.md` files; the `paths:` filter limits runs to docs changes.
 
 ## Workflow: release-specs (separate file)
 
@@ -273,10 +381,46 @@ version; it is not part of the SDK release.
 
 Then dispatch the workflow from `main` with `dry_run=false`.
 
+## Workflow: release-cli (separate file)
+
+Implemented at `.github/workflows/release-cli.yml`. Manual (`workflow_dispatch`)
+release of `@kasakame/cli`; no reviewer gate (single developer). The version is
+`projects/cli/package.json`; bump it in the release commit. The dispatch inputs
+mirror the SDK release:
+
+- `version`: required, without the `v` prefix; must match the package version.
+- `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
+  and the prep publish dry-run, but skips the real publish and registry check.
+
+Prerelease versions publish under the `next` dist-tag, finals under `latest`.
+
+- `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
+  never the `file:../sdk` copy, because a released CLI must ship against a
+  released SDK. It validates the input version against `package.json` and that
+  it is unpublished, then lints, formats, type-checks, runs coverage, builds,
+  inspects the packed tarball, and dry-runs the publish. Each command is its own
+  step. It uploads the tested `dist/`.
+- `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
+  `dist/`, installs the tarball into a clean consumer, checks the version and
+  `LICENSE`, and runs `kasakame --help`. It gates the publish.
+- `publish` downloads the tested `dist/`, verifies the package files and
+  version, and, when `dry_run=false`, publishes with the `next`/`latest`
+  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
+  `--provenance`. It then polls the registry for the version for up to 10
+  minutes, like the SDK release. A dry run stops before the publish and registry
+  check.
+
+Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
+Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
+`kasakame`, workflow `release-cli.yml`, and no environment. The first-publish
+window, 2FA enforcement, and token cleanup described for the SDK apply here too.
+Release the SDK first: the CLI depends on the published `@kasakame/sdk`. The
+package, its signers, and its commands are documented in [`cli.md`](cli.md).
+
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
-order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
+order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section).
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |
@@ -308,8 +452,8 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   independent of the published npm package versions. The SDK pins the consumed
   specs version in `package.json` (`config.specsVersion`) and exports it as
   `SPECS_VERSION`.
-- Both release workflows validate the dispatch version against their project
-  `package.json` with `.github/scripts/check-release-version.mjs`.
+- All three release workflows validate the dispatch version against their
+  project `package.json` with `.github/scripts/check-release-version.mjs`.
 - Release in order: contracts → specs release → SDK → frontend/CLI. A
   frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
@@ -324,8 +468,8 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- The `release-sdk` workflow uses npm OIDC trusted publishing; every publish
-  passes `--provenance`. Set the package's publishing access to "Require
+- `release-sdk` and `release-cli` use npm OIDC trusted publishing; every publish
+  passes `--provenance`. Set each package's publishing access to "Require
   two-factor authentication and disallow tokens" so only the trusted publisher
   can publish.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
@@ -347,46 +491,71 @@ order is in [`roadmap.md`](roadmap.md) (SDK and CI & packaging sections).
 
 ## Testing taxonomy
 
-Contracts and frontend test differently. Contract suites are offline AVM tests
-with a 100% lines/branches/functions gate; frontend suites are Vitest unit +
-component tests with a 100% gate on components and utils. The SDK's suite is
-pure Vitest over the chain layer (claim-tree math, replay, campaign reads, and
-writes) with a 100% gate on `src`; its lane runs the codegen first (from the
-same-run artifacts with `SDK_SPECS=local`, or the pinned release) so the
-generated clients resolve at import time. All are
-described in [`testing.md`](testing.md) (contracts) and
-[`frontend.md`](frontend.md) (frontend).
+Contracts, frontend, and CLI test differently. Contract suites are offline AVM
+tests with a 100% lines/branches/functions gate; frontend suites are Vitest
+unit + component tests with a 100% gate on components and utils. The CLI's suite
+is Vitest over the command layer with a mocked SDK and WalletConnect transport,
+also gated at 100% on `src`, and its lane builds the package too. The SDK's
+suite is pure Vitest over the chain layer (claim-tree math, replay, campaign
+reads, and writes) with a 100% gate on `src`; `build-sdk` runs codegen first
+(from the same-run artifacts with `SDK_SPECS=local`, or the pinned release) and
+SDK verification consumes the generated clients so they resolve at import time.
+SDK verification also regenerates the committed claim-tree vectors from the
+Python oracle and fails if they drifted. Test layers are described in [`testing.md`](testing.md) (contracts and
+[CLI](testing.md#cli-tests)) and [`frontend.md`](frontend.md) (frontend).
 
 The offline contract tests don't need the AlgoKit CLI or Docker because the
 `algorand-typescript-testing` transformer runs the contract source directly
-under Node - the contracts jobs are pure Node and consume nothing from
-`build-contracts`, never the compiled TEAL. The SDK lanes download
-`contracts-artifacts` on contracts-changed runs (see above for why); the
-frontend lanes install the published SDK or a packed local copy.
+under Node - the contracts verification job is pure Node and consumes nothing
+from `compile-contracts`, never the compiled TEAL. `build-sdk` downloads
+`contracts-artifacts` on contracts-changed runs (see above for why); SDK
+verification consumes `sdk-generated`, and the frontend and CLI lanes install
+the published SDK or the packed `sdk-dist` copy.
 
 ## Caching
 
-No custom Docker image is built or pulled for any job. Tooling installs on
-the runner and caches:
+No custom Docker image is built for any job. Tooling installs on the runner
+and caches:
 
 - **Node** - `actions/setup-node@v7` with `cache: npm` and
-  `cache-dependency-path` pointing at the project's `package-lock.json` (the
-  frontend jobs list the SDK lockfile too, because they may build it). This
-  caches `node_modules`, so `npm ci` is ~seconds on cache hits.
-- **AlgoKit (Python)** - installed fresh via `pipx` in the `build-contracts`
-  and `integration-test` jobs (not cached). The install is fast relative to the
-  Docker container startup that dominates the integration job.
+  `cache-dependency-path` pointing at the project's `package-lock.json`
+  (`build-sdk` uses the SDK lockfile; the frontend and CLI jobs use their own
+  lockfiles). This caches the npm cache, so `npm ci` installs from it and is
+  usually seconds on cache hits.
+- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts` and
+  `integration-test` jobs. `~/.local` is cached by AlgoKit version, Python
+  version, and runner OS, so a cache hit skips the install entirely. The install
+  is fast relative to the Docker container startup that dominates the
+  integration job.
 
-The only Docker in CI is **prebuilt** images: the Postgres service (backend
-job) and the algod/indexer sandbox (integration job, pulled only there). If runner install time ever justifies a custom
-CI image, publish it once to GHCR and rebuild only when its `Dockerfile` changes.
+The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
+`repo-lint`, the Postgres service (backend job), and the algod/indexer
+sandbox (integration job). If runner install time ever justifies a custom CI
+image, publish it once to GHCR and rebuild only when its `Dockerfile` changes.
+
+## Dependency updates
+
+[`.github/dependabot.yml`](../.github/dependabot.yml) checks GitHub Actions and
+the five npm projects weekly. Minor and patch updates are grouped per project;
+major updates stay individual for closer review. Dependabot PRs run the normal
+change-filtered lanes, so a dependency update gets the same checks as any other
+change.
 
 ## Artifacts - sharing build output between jobs
 
-`build-contracts` uploads one artifact that the other jobs download when the
-contracts changed, so nothing is compiled twice:
+`compile-contracts` and `build-sdk` upload the build outputs the other jobs
+download, so nothing is compiled or built twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
-  (TEAL, ARC-32/56 specs). Consumed by `integration-test`, by the SDK lanes
-  (they regenerate clients from it with `SDK_SPECS=local`), and by the frontend
-  lanes and `build` (their local SDK builds use it as the codegen input).
+  (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input) and
+  `integration-test`.
+- **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
+  Consumed by SDK verification, which otherwise regenerates them when
+  `build-sdk` was skipped.
+- **`sdk-dist`** - `projects/sdk/dist` (compiled package). Consumed by
+  `check-frontend` and `check-cli`, which install it as `file:../sdk`.
+
+Producer uploads use `overwrite: true`, so re-running a failed job does not
+collide with the previous attempt's artifact. The artifacts and `release-sdk`'s
+`sdk-dist` are kept for 7 days - long enough to debug a failed run, short
+enough not to hoard storage.

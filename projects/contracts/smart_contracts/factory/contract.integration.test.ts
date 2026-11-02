@@ -22,24 +22,28 @@ const REGISTER_MBR = 18_900n // the registration box's minimum balance (2500 + 4
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
 const FACTORY_SPEC_PATH = path.resolve(__dirname, '../artifacts/factory/Factory.arc56.json')
+const VAULT_SPEC_PATH = path.resolve(__dirname, '../artifacts/claimsvault/ClaimsVault.arc56.json')
 
 describe('Factory (localnet)', () => {
   const fixture = algorandFixture()
   let algorand: AlgorandClient
   let factorySpec: Arc56Contract
   let campaignSpec: Arc56Contract
+  let vaultSpec: Arc56Contract
 
   beforeAll(async () => {
     await fixture.newScope()
     algorand = fixture.context.algorand
     factorySpec = JSON.parse(fs.readFileSync(FACTORY_SPEC_PATH, 'utf8')) as Arc56Contract
     campaignSpec = JSON.parse(fs.readFileSync(CAMPAIGN_SPEC_PATH, 'utf8')) as Arc56Contract
+    vaultSpec = JSON.parse(fs.readFileSync(VAULT_SPEC_PATH, 'utf8')) as Arc56Contract
   })
 
   /**
-   * Deploy the Factory, fund its application account, and return its client.
+   * Deploy the Factory, fund its application account, deploy the official vault bound to it, and bind the vault.
    *
    * @param ownerAddr The platform owner's address.
+   * @returns The Factory client and the official vault's app id.
    */
   async function deployFactory(ownerAddr: string) {
     const factory = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: ownerAddr })
@@ -47,15 +51,33 @@ describe('Factory (localnet)', () => {
 
     // The platform funds the Factory account: the 0.1 ALGO base, so it can hold registration deposits and pay them back.
     await algorand.send.payment({ sender: ownerAddr, receiver: appClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
-    return appClient
+
+    // Deploy the official vault against this Factory, then bind it; `setVault` verifies the back-reference.
+    const vaultFactory = new AppFactory({ appSpec: vaultSpec, algorand, defaultSender: ownerAddr })
+    const { appClient: vaultClient } = await vaultFactory.send.create({
+      method: 'create(uint64,address,uint64)void',
+      args: [appClient.appId, ownerAddr, 730n * 24n * 60n * 60n],
+      sender: ownerAddr,
+      appReferences: [appClient.appId],
+      suppressLog: true,
+    })
+    await appClient.send.call({
+      method: 'setVault(uint64)void',
+      args: [vaultClient.appId],
+      sender: ownerAddr,
+      appReferences: [vaultClient.appId],
+      suppressLog: true,
+    })
+    return { factoryClient: appClient, vaultId: vaultClient.appId }
   }
 
   /**
    * Deploy + fund a real Campaign and return its client.
    *
    * @param creatorAddr The campaign creator's address.
+   * @param vaultId The vault app id stored in the campaign.
    */
-  async function deployCampaign(creatorAddr: string): Promise<AppClient> {
+  async function deployCampaign(creatorAddr: string, vaultId: bigint): Promise<AppClient> {
     // Deadline from chain time (not wall time): other suites time-travel the shared LocalNet clock.
     const status = await algorand.client.algod.status().do()
     const block = await algorand.client.algod.block(status.lastRound).do()
@@ -63,9 +85,9 @@ describe('Factory (localnet)', () => {
     const factory = new AppFactory({ appSpec: campaignSpec, algorand, defaultSender: creatorAddr })
     const { appClient } = await factory.send.create({
       method: 'create(uint64,byte[],byte[],uint64,uint64)void',
-      args: [1n, new TextEncoder().encode('Registrable'), new TextEncoder().encode('ipfs://test'), 1_000_000n, deadline],
+      args: [vaultId, new TextEncoder().encode('Registrable'), new TextEncoder().encode('ipfs://test'), 1_000_000n, deadline],
       sender: creatorAddr,
-      appReferences: [1n],
+      appReferences: [vaultId],
       suppressLog: true,
     })
     return appClient
@@ -107,10 +129,10 @@ describe('Factory (localnet)', () => {
   test('register/isRegistered/unregister round trip with a real Campaign', { timeout: 120_000 }, async () => {
     const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    const factoryClient = await deployFactory(owner.addr.toString())
+    const { factoryClient, vaultId } = await deployFactory(owner.addr.toString())
     const factoryAddress = factoryClient.appAddress.toString()
 
-    const campaignClient = await deployCampaign(creator.addr.toString())
+    const campaignClient = await deployCampaign(creator.addr.toString(), vaultId)
     const campaignId = campaignClient.appId
 
     // Configure the official hash from the real deployed program.
@@ -183,8 +205,8 @@ describe('Factory (localnet)', () => {
   test('an impostor copy of the Campaign contract cannot register', { timeout: 120_000 }, async () => {
     const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    const factoryClient = await deployFactory(owner.addr.toString())
-    const campaignClient = await deployCampaign(creator.addr.toString())
+    const { factoryClient, vaultId } = await deployFactory(owner.addr.toString())
+    const campaignClient = await deployCampaign(creator.addr.toString(), vaultId)
 
     const hash = await campaignApprovalHash(campaignClient.appId)
     await factoryClient.send.call({
@@ -212,6 +234,37 @@ describe('Factory (localnet)', () => {
     ).rejects.toThrow(/not an official kasakame campaign/)
   })
 
+  test('a campaign bound to a different vault cannot register', { timeout: 120_000 }, async () => {
+    const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+    const { factoryClient } = await deployFactory(owner.addr.toString())
+    // The Factory's own app is a real application, but not the official vault.
+    const campaignClient = await deployCampaign(creator.addr.toString(), factoryClient.appId)
+
+    const hash = await campaignApprovalHash(campaignClient.appId)
+    await factoryClient.send.call({
+      method: 'setApprovalHash(byte[])void',
+      args: [hash],
+      sender: owner.addr,
+      suppressLog: true,
+    })
+
+    const payment = await algorand.createTransaction.payment({
+      sender: creator.addr.toString(),
+      receiver: factoryClient.appAddress,
+      amount: microAlgos(REGISTER_MBR),
+    })
+    await expect(
+      factoryClient.send.call({
+        method: 'register(uint64,pay)void',
+        args: [campaignClient.appId, payment],
+        sender: creator.addr,
+        appReferences: [campaignClient.appId],
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/campaign vault is not the official vault/)
+  })
+
   test(
     'a non-creator cannot register someone else’s campaign, and registration is refused before the hash is configured',
     { timeout: 120_000 },
@@ -219,8 +272,8 @@ describe('Factory (localnet)', () => {
       const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
       const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
       const stranger = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-      const factoryClient = await deployFactory(owner.addr.toString())
-      const campaignClient = await deployCampaign(creator.addr.toString())
+      const { factoryClient, vaultId } = await deployFactory(owner.addr.toString())
+      const campaignClient = await deployCampaign(creator.addr.toString(), vaultId)
 
       // No hash configured yet: registration is refused outright.
       const payment = await algorand.createTransaction.payment({
@@ -268,8 +321,8 @@ describe('Factory (localnet)', () => {
     const owner = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const creator = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const stranger = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    const factoryClient = await deployFactory(owner.addr.toString())
-    const campaignClient = await deployCampaign(creator.addr.toString())
+    const { factoryClient, vaultId } = await deployFactory(owner.addr.toString())
+    const campaignClient = await deployCampaign(creator.addr.toString(), vaultId)
 
     // Non-owner cannot set the hash.
     await expect(

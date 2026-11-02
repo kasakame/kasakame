@@ -1,15 +1,17 @@
-import type { Account, Application, bytes, gtxn, uint64 } from '@algorandfoundation/algorand-typescript'
+import type { Account, Application, bytes, uint64 } from '@algorandfoundation/algorand-typescript'
 import {
   Bytes,
   Contract,
   Global,
   GlobalState,
   OpUpFeeSource,
+  TransactionType,
   Txn,
   Uint64,
   abimethod,
   assert,
   ensureBudget,
+  gtxn,
   itxn,
   op,
   urange,
@@ -56,6 +58,9 @@ const VAULT_PAY_BACK_SELECTOR = Bytes.fromHex('b0e0eedf') // payBack(uint64,addr
 const VAULT_PAY_CLAIM_SELECTOR = Bytes.fromHex('f8c4e0cb') // payClaim(uint64)void
 const VAULT_SETTLE_SELECTOR = Bytes.fromHex('09200848') // settle(uint64,byte[],uint64)void
 const VAULT_NOTIFY_DELETE_SELECTOR = Bytes.fromHex('87060e1d') // notifyDelete(uint64)void
+
+// ARC-4 selector for the top-level Vault.credit(uint64,uint64)void that must immediately follow every pledge.
+const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb') // credit(uint64,uint64)void
 
 export class Campaign extends Contract {
   /** Address of the creator - the only account allowed to claim and delete. */
@@ -125,7 +130,9 @@ export class Campaign extends Contract {
    * Append one pledge leaf.
    *
    * The caller submits this app call in a group with a payment from their own account **to the vault** (the pooled
-   * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The caller
+   * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The payment
+   * must be the transaction immediately before this call, and the vault's `credit` must be the transaction immediately
+   * after it, for this campaign and the same amount - so a pledge can never be left uncredited. The caller
    * supplies the frontier (peaks ascending, 32 bytes each); the contract authenticates it with `fold` against the
    * stored root, derives the leaf from the in-group payment (`sender ‖ amount ‖ txnId` - never caller-supplied), runs
    * the merge cascade, and stores the new root. N == 0 takes the empty-frontier branch.
@@ -140,6 +147,7 @@ export class Campaign extends Contract {
     assert(payment.receiver === this.vault.value.address, 'payment must be made to the vault')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.amount > Uint64(0), 'pledge must be greater than zero')
+    assert(payment.groupIndex === Txn.groupIndex - Uint64(1), 'payment must immediately precede pledge')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
 
     const n = this.n.value
@@ -148,6 +156,8 @@ export class Campaign extends Contract {
     ensureBudget(p * Uint64(70) + Uint64(400), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
+    /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
+    assert(leaf !== ZERO_ROOT, 'leaf must not be zero')
 
     let newRoot: bytes = leaf
     if (n > Uint64(0)) {
@@ -159,6 +169,19 @@ export class Campaign extends Contract {
       }
       newRoot = this.foldPeaks(g.concat(frontier.slice(t * Uint64(32))))
     }
+
+    // The matching vault credit must be the very next transaction. This closes the uncredited-pledge griefing path:
+    // a leaf can no longer be created without the vault recording the same payment.
+    const creditIndex: uint64 = Txn.groupIndex + Uint64(1)
+    assert(creditIndex < Global.groupSize, 'credit must follow pledge')
+    assert(gtxn.Transaction(creditIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
+    const creditCall = gtxn.ApplicationCallTxn(creditIndex)
+    assert(creditCall.appId === this.vault.value, 'credit must call the vault')
+    assert(creditCall.sender === Txn.sender, 'credit must come from the pledger')
+    assert(creditCall.numAppArgs === Uint64(3), 'credit args mismatch')
+    assert(creditCall.appArgs(Uint64(0)) === VAULT_CREDIT_SELECTOR, 'credit selector mismatch')
+    assert(creditCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'credit app mismatch')
+    assert(creditCall.appArgs(Uint64(2)) === op.itob(payment.amount), 'credit amount mismatch')
 
     this.root.value = newRoot
     this.n.value = n + Uint64(1)
@@ -331,6 +354,8 @@ export class Campaign extends Contract {
     ensureBudget(h * Uint64(70) + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
+    /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
+    assert(leaf !== ZERO_ROOT, 'leaf must not be zero')
     assert(this.combineBlob(leaf, k, path, r, c, hasTop) === this.root.value, 'proof does not match root')
 
     this.root.value = this.combineBlob(ZERO_ROOT, k, path, r, c, hasTop)

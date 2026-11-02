@@ -127,6 +127,13 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       amount: microAlgos(ALGO),
       suppressLog: true,
     })
+    await factoryClient.send.call({
+      method: 'setVault(uint64)void',
+      args: [vaultId],
+      sender: owner.addr,
+      appReferences: [vaultId],
+      suppressLog: true,
+    })
   })
 
   function oracle(cmd: string, ...args: string[]): unknown {
@@ -303,7 +310,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, amount],
       sender: backerAddr,
-      appReferences: [factoryId],
+      appReferences: [appId, factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
@@ -370,6 +377,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       'payClaim(uint64)void',
       'settle(uint64,byte[],uint64)void',
       'notifyDelete(uint64)void',
+      'credit(uint64,uint64)void',
     ] as const) {
       const selector = createHash('sha512-256').update(method).digest('hex').slice(0, 8)
       expect(approval).toContain(selector)
@@ -450,6 +458,30 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/proof does not match root/)
+  })
+
+  test('a pledge without the matching vault credit is rejected', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appClient, appId } = await deployCampaign(creator.addr.toString())
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(2n * ALGO),
+    })
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
+      args: [pay, new Uint8Array()],
+      sender: backer.addr,
+    })
+
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
+    const st = await campaignState(appClient)
+    expect(st.n).toEqual(0n)
+    expect(st.raised).toEqual(0n)
+    expect(await boxExists(appId)).toEqual(false)
   })
 
   test('unregistered campaigns cannot touch the vault', async () => {
@@ -559,8 +591,23 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     expect(box.status).toEqual(3)
     expect(box.paidOut).toEqual(box.paidIn)
 
-    // Delete: notifyDelete releases the box (32,100 MBR back to the pool), escrow closes to the creator.
+    // Unregister returns the factory deposit while the campaign is Claimed (the app must still exist).
+    const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: caddr }).getAppClientById({
+      appId: factoryId,
+    })
     const balC1 = await balanceOf(caddr)
+    await factoryClient.send.call({
+      method: 'unregister(uint64)void',
+      args: [appId],
+      sender: caddr,
+      appReferences: [appId],
+      extraFee: microAlgos(FEE),
+      suppressLog: true,
+    })
+    expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER)
+
+    // Delete: notifyDelete releases the box (32,100 MBR back to the pool), escrow closes to the creator.
+    const balC2 = await balanceOf(caddr)
     await appClient.send.delete({
       method: 'delete()void',
       sender: caddr,
@@ -571,22 +618,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     })
     expect(await boxExists(appId)).toEqual(false)
     // The escrow never held funds, so deletion only costs its fees.
-    expect(await balanceOf(caddr)).toEqual(balC1 - FEE_DELETE_SETTLED)
-
-    // Unregister returns the factory deposit.
-    const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: caddr }).getAppClientById({
-      appId: factoryId,
-    })
-    const balC2 = await balanceOf(caddr)
-    await factoryClient.send.call({
-      method: 'unregister(uint64)void',
-      args: [appId],
-      sender: caddr,
-      appReferences: [appId],
-      extraFee: microAlgos(FEE),
-      suppressLog: true,
-    })
-    expect(await balanceOf(caddr)).toEqual(balC2 + REGISTER_MBR - FEE_UNREGISTER)
+    expect(await balanceOf(caddr)).toEqual(balC2 - FEE_DELETE_SETTLED)
   })
 
   test('failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual', async () => {

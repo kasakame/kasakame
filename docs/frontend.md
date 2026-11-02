@@ -312,14 +312,13 @@ target) once settled:
 | `refund()` / `cancelPledge()` | 1 app call + 1 OpUp iteration + 1 inner app call + 1 inner payment | ≈ 0.004 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 OpUp iteration + 1 inner payment | ≈ 0.004 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
-| `delete()` + `unregister()` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
+| `unregister()` + `delete()` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
 
 ## Edge cases & gotchas
 
 - **Indexer lag.** After a write (create/pledge/claim/refund), the indexer may lag a
   round or two; the helpers wait on the confirmation round where available.
-- **Client clock drift.** The deadline is computed from `Date.now()/1000`; clamp
-  the duration to a sane range in the create form.
+- **Clock drift.** Deadline and outcome decisions use chain time (`fetchChainTimestamp`), never the client clock; the create form still clamps the duration to a sane range.
 - **Bytes vs. characters.** `title`/`metadataUri` are capped at 128 **bytes**;
   keep the `TextEncoder` check.
 - **Pledge > wallet balance.** Validate against the connected account's ALGO balance
@@ -404,6 +403,8 @@ indexer/client services via `vi.mock`.
 
 ## Out of scope
 
-- Campaign metadata - implemented (hybrid, see [Campaign metadata](#campaign-metadata)); rich media/IPFS rendering is on the roadmap.
-- TestNet deployment - on the roadmap.
+- Campaign metadata - implemented (hybrid, see [Campaign metadata](#campaign-metadata)) and rendered from IPFS.
+- CLI workflows - refund, withdraw, claim, and delete by app ID ship in the
+  separate `@kasakame/cli` package (see [`cli.md`](cli.md)).
+- Frontend hosting - tracked in [`roadmap.md`](roadmap.md).
 - Backend / database - optional catalog only; the indexer + Factory are the read model.

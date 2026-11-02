@@ -1,0 +1,222 @@
+name: release-cli
+
+# Manual release of @kasakame/cli. The CLI consumes the published SDK, so this
+# workflow never builds or installs a local copy: `npm ci` installs exactly what
+# users get. Every gate is its own step so a failure and its timing are visible
+# in the run. The dispatch version must match projects/cli/package.json, and
+# dry_run defaults to true; set it to false only for a real release. Release the
+# SDK first.
+#
+# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
+# --provenance. Configure the trusted publisher for @kasakame/cli as GitHub
+# owner `kasakame`, repository `kasakame`, workflow `release-cli.yml`, with no
+# environment and "Allow npm publish" enabled.
+#
+# A smoke job installs the packed tarball in a clean consumer and runs
+# `kasakame --help` before the publish job runs.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'CLI version, without the v prefix (e.g. 0.1.0); must match projects/cli/package.json'
+        required: true
+        type: string
+      dry_run:
+        description: 'Run all checks but skip publishing'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-cli
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    name: Prepare and verify
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/cli/package-lock.json
+
+      # The committed dependency is the published SDK. Do not install
+      # file:../sdk here: a published CLI must ship against a released SDK.
+      - name: Install CLI dependencies
+        run: npm ci
+        working-directory: projects/cli
+
+      - name: Validate version and choose dist-tag
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          node .github/scripts/check-release-version.mjs projects/cli/package.json "$INPUT_VERSION"
+          version=$(node -p "require('./projects/cli/package.json').version")
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "package version is not semver: $version" >&2
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            tag=next
+          else
+            tag=latest
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "@kasakame/cli@$version -> $tag"
+
+      - name: Check the version is unpublished
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "@kasakame/cli@$VERSION" version >/dev/null 2>&1; then
+            echo "@kasakame/cli@$VERSION is already published" >&2
+            exit 1
+          fi
+          echo "@kasakame/cli@$VERSION is free"
+
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/cli
+
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/cli
+
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/cli
+
+      - name: Run unit tests with coverage
+        run: npm run test:coverage
+        working-directory: projects/cli
+
+      - name: Build
+        run: npm run build
+        working-directory: projects/cli
+
+      - name: Inspect package contents
+        run: npm pack --dry-run
+        working-directory: projects/cli
+
+      - name: Dry-run the publish
+        run: npm publish --dry-run
+        working-directory: projects/cli
+
+      - name: Upload the tested dist
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-dist
+          path: projects/cli/dist
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Smoke-test the packed package
+    runs-on: ubuntu-latest
+    needs: prep
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download the tested dist
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-dist
+          path: projects/cli/dist
+
+      - name: Smoke-test the packed package
+        run: node scripts/smoke-package.mjs
+        working-directory: projects/cli
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [prep, smoke]
+    permissions:
+      contents: read
+      # OIDC authenticates the publish and signs provenance.
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Download the tested dist
+        uses: actions/download-artifact@v8
+        with:
+          name: cli-dist
+          path: projects/cli/dist
+
+      - name: Verify package files
+        run: |
+          test -f README.md
+          test -f LICENSE
+          test -f dist/index.js
+        working-directory: projects/cli
+
+      - name: Verify the checked-out version
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        run: |
+          version=$(node -p "require('./projects/cli/package.json').version")
+          if [[ "$version" != "$VERSION" ]]; then
+            echo "checked-out version $version does not match prep $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Publish with provenance (OIDC)
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          echo "publishing @kasakame/cli@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
+          npm publish --provenance --access public --tag "$TAG"
+        working-directory: projects/cli
+
+      - name: Skip publish (dry run)
+        if: ${{ inputs.dry_run }}
+        run: echo "dry_run=true; package verified but not published"
+
+      - name: Verify the published version
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        # npm stages a new package ("being processed") before it is visible.
+        run: |
+          for attempt in {1..40}; do
+            if npm view "@kasakame/cli@$VERSION" version >/dev/null 2>&1; then
+              echo "@kasakame/cli@$VERSION is visible (attempt $attempt/40)"
+              exit 0
+            fi
+            echo "not visible yet (attempt $attempt/40); waiting"
+            sleep 15
+          done
+          npm view "@kasakame/cli@$VERSION" version || true
+          echo "@kasakame/cli@$VERSION did not appear in the registry after 10 minutes" >&2
+          exit 1

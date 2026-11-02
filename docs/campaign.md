@@ -97,7 +97,8 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones. A stray vault inflow with no matching pledge still settles on pristine delete and sweeps through `finalize` instead of stranding.
-7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) at `delete()` + `unregister()`. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `finalize`.
+7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) at `unregister()` + `delete()`. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`.
+8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
 
@@ -117,14 +118,18 @@ Double-spend of one leaf fails: the second proof no longer matches the root. Con
 The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
+  The payment must be immediately before `pledge`, and the matching `credit` must be immediately after it and the group's final
+  transaction; `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
+  requires the campaign app to exist and be `Open`, so a deleted or settled campaign cannot open a fresh vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
-- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`).
+- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
+  `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.
 
 Inner calls authenticate the caller as the campaign app address; top-level calls to `payBack`/`payClaim`/`settle`/`notifyDelete` fail. Box access on the outer transaction must declare the vault campaign box. The full vault reference is in the protocol spec (§9); the fee table below carries the measured outer-call costs.
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (35 tests, 100% lines/branches/functions) plus the LocalNet integration suite (8 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (37 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 

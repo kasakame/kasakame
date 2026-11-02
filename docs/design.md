@@ -52,10 +52,10 @@ indexer queries filtered by the connected address - no new storage.
 
 Content is hybrid and already implemented (see [`frontend.md`](frontend.md)): a
 short on-chain `title`, with the long description/image/category off-chain behind
-`metadataUri`. Both are immutable by decision (see [`roadmap.md`](roadmap.md)):
-a backer's pledge can never be re-described under them. Fixes and updates ship
-through the creator updates feed below, and mutability can return later via the
-off-chain JSON.
+`metadataUri`. Both are creation-time fields with no update method (see
+[`campaign.md`](campaign.md) → Design decisions): a backer's pledge can never be
+re-described under them. Fixes and updates ship through the creator updates feed
+below, and mutability can return later via the off-chain JSON.
 
 ## UI / design work
 
@@ -116,6 +116,17 @@ Deployed AVM apps are immutable, so every contract change is a **new app version
 
 If a long-lived singleton ever appears (registry, fee collector, profile attestation
 ledger), consider a **proxy contract** pattern to enable upgrades. Not needed now.
+
+## Campaign outcomes and creator inactivity
+
+A successful campaign pays the creator; only the creator can call `claim()` after the
+deadline. If a creator disappears, the funds stay in the vault and the backers cannot
+refund. This is **accepted product behavior**, not a contract bug: the creator is the
+party who earned the funds, and the protocol will not sweep a successful campaign to the
+platform or add a code fallback. Notifications (email/push) may remind the creator later;
+if they never return, the funds remain locked. The failed-campaign refund window is a
+different path: unclaimed refunds are swept to the platform after the disclosed window.
+Successful campaigns have no equivalent timeout.
 
 ## Open questions to decide (product)
 
