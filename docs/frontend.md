@@ -258,11 +258,14 @@ await client.send.refund({
 A `proof does not match root` rejection rebuilds once and retries (a
 concurrent spend moved the root).
 
-### deleteCampaign - settle + close + unregister, one atomic group
+### deleteCampaign - unregister + settle/close, one atomic group
 
 Delete sends unregister and delete in a single atomic group, so you approve
 once. Unregister runs first: every app reference resolves while the campaign
-app still exists.
+app still exists, and the Factory requires its `delete()` to be the immediately
+following transaction. The campaign requires the unregister immediately before
+its delete, so a raw delete is rejected; an unregistered campaign's unregister
+no-ops, and the same group still cleans it up.
 
 ```ts
 const composer = algorand.send.newGroup()
@@ -312,7 +315,7 @@ target) once settled:
 | `refund()` / `cancelPledge()` | 1 app call + 1 OpUp iteration + 1 inner app call + 1 inner payment | ≈ 0.004 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 OpUp iteration + 1 inner payment | ≈ 0.004 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
-| `delete()` + `unregister()` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
+| `[unregister, delete]` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
 
 ## Edge cases & gotchas
 

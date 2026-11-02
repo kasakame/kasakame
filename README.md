@@ -12,7 +12,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | Proof-based refunds | Each pledge is a Merkle leaf; each refund is a proof; no per-backer storage |
 | O(1) settlement | Success and failure paths finalize in constant time and cost |
 | Post-delete refunds | Backers refund from the vault after the campaign app is deleted |
-| Factory registry | Only hash-verified campaigns accept pledges |
+| Factory registry | Only hash-verified campaigns bound to the official vault accept pledges |
 | Refund window | Failed pledges stay reclaimable for 730 days, then residual goes to a sweep target |
 
 ## How it works
@@ -21,7 +21,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | --- | --- |
 | Campaign app (one per campaign) | Enforces rules; appends and nulls Merkle leaves; holds no funds |
 | ClaimsVault (one, platform-owned) | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory (one, platform-owned) | Registers campaigns against the owner-configured approval hash |
+| Factory (one, platform-owned) | Registers campaigns against the owner-configured program hash |
 | Frontend | Reads state from the indexer; builds transaction groups for the wallet |
 | CLI (escape hatch) | Refunds, withdrawals, claims, and deletes by app ID; wallet or mnemonic signer |
 

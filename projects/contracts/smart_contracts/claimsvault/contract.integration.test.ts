@@ -4,7 +4,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { ABIMethod, decodeAddress } from 'algosdk'
+import { ABIMethod, OnApplicationComplete, decodeAddress } from 'algosdk'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
@@ -31,7 +31,6 @@ const Z_HEX = '00'.repeat(32)
 
 const FEE_CREDIT_FIRST = 2n * FEE // base + inner factory check pool
 const FEE_VAULT_REFUND = 4n * FEE // app call + 1 OpUp iteration (create+delete) + inner payment
-const FEE_FINALIZE_PAID = 2n * FEE // app call + inner residual-payment pool
 const FEE_FINALIZE_BARE = FEE // app call only
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
@@ -76,7 +75,6 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
   let vaultId: bigint
   let vaultAddress: string
   let vaultClient: AppClient
-  let sweeperAddr: string
 
   beforeAll(async () => {
     await fixture.newScope()
@@ -87,7 +85,6 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
 
     const owner = await fixture.context.generateAccount({ initialFunds: (50).algo(), suppressLog: true })
     const sweeper = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    sweeperAddr = sweeper.addr.toString()
 
     const factoryFactory = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: owner.addr })
     const factoryClient = (await factoryFactory.send.create({ method: 'create()void', args: [], sender: owner.addr, suppressLog: true }))
@@ -100,12 +97,16 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       suppressLog: true,
     })
 
-    const campaignTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-    const compiled = await algorand.app.compileTeal(campaignTeal)
-    const approvalHash = createHash('sha256').update(compiled.compiledBase64ToBytes).digest()
+    const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
+    const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
+    const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
+    const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
+    const programHash = createHash('sha256')
+      .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
+      .digest()
     await factoryClient.send.call({
       method: 'setApprovalHash(byte[])void',
-      args: [approvalHash],
+      args: [programHash],
       sender: owner.addr,
       suppressLog: true,
     })
@@ -126,6 +127,13 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       sender: owner.addr,
       receiver: vaultClient.appAddress,
       amount: microAlgos(ALGO),
+      suppressLog: true,
+    })
+    await factoryClient.send.call({
+      method: 'setVault(uint64)void',
+      args: [vaultId],
+      sender: owner.addr,
+      appReferences: [vaultId],
       suppressLog: true,
     })
   })
@@ -247,6 +255,35 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       suppressLog: true,
     })
     return { appClient, appId }
+  }
+
+  /**
+   * Delete a campaign through the required atomic `[unregister, delete]` group.
+   *
+   * @param appId The campaign application id.
+   * @param creatorAddr The campaign creator.
+   */
+  async function deleteCampaign(appId: bigint, creatorAddr: string): Promise<void> {
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId: factoryId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
+      args: [appId],
+      sender: creatorAddr,
+      appReferences: [appId],
+      extraFee: microAlgos(FEE),
+    })
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creatorAddr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+    })
+    await composer.send({ suppressLog: true })
   }
 
   /**
@@ -424,8 +461,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       }),
     ).rejects.toThrow(/proof does not match root/)
 
-    // Nothing left: finalize deletes the box with no payment (only its own fee).
-    await advanceTime(4_000)
+    // Nothing left: finalize deletes the box with no payment even before the window closes (fully paid out).
     const vaultMin = await minBalanceOf(vaultAddress)
     const caller = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const balC0 = await balanceOf(caller.addr.toString())
@@ -441,13 +477,14 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin - BOX_MBR)
   })
 
-  test('direct credit without a pledge strands only the deviator funds (spec §17 #29)', async () => {
+  test('rejects a credit without a preceding pledge', async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const deviator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const addr = deviator.addr.toString()
     const { appId } = await deployCampaign(creator.addr.toString())
 
-    // Pay + credit with no pledge call: the payment is added explicitly (credit takes no txn arg, so no duplication).
+    // Pay + credit with no pledge call: the vault requires the pledge immediately before credit, so this is rejected and
+    // no box is created. A donation must be expressed as a pledge (a backer who chooses not to refund).
     const pay = await algorand.createTransaction.payment({ sender: addr, receiver: vaultAddress, amount: microAlgos(ALGO) })
     const composer = algorand.send.newGroup()
     composer.addTransaction(pay)
@@ -460,39 +497,110 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
-    await composer.send({ suppressLog: true })
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
+    expect(await boxExists(appId)).toEqual(false)
+  })
 
-    // paidIn counts the real payment, but no leaf exists: no proof can ever verify against it.
-    const box = await boxOf(appId)
-    expect(box.paidIn).toEqual(ALGO)
-    expect(box.n).toEqual(0n)
-    await advanceTime(900)
-    // Pristine delete settles the stray box to FAILED (settle no-ops only when no box exists)...
-    const campaignClient = new AppFactory({ appSpec: campaignSpec, algorand, defaultSender: creator.addr.toString() }).getAppClientById({
-      appId,
+  test('one payment cannot back two credits in one group', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appId } = await deployCampaign(creator.addr.toString())
+
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(2n * ALGO),
     })
-    await campaignClient.send.delete({
-      method: 'delete()void',
-      sender: creator.addr.toString(),
+    const composer = algorand.send.newGroup()
+    composer.addTransaction(pay)
+    for (const note of ['credit-1', 'credit-2']) {
+      composer.addAppCallMethodCall({
+        appId: vaultId,
+        method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
+        args: [appId, 2n * ALGO],
+        sender: backer.addr,
+        note: new TextEncoder().encode(note),
+        appReferences: [factoryId],
+        boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
+        extraFee: microAlgos(FEE),
+      })
+    }
+
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/final transaction in the group/)
+    expect(await boxExists(appId)).toEqual(false)
+  })
+
+  test('a deleted campaign cannot be pledged, so it cannot be credited', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appId } = await deployCampaign(creator.addr.toString())
+
+    // Delete the pristine campaign through the atomic cleanup group: the registration is removed and the app is gone.
+    await deleteCampaign(appId, creator.addr.toString())
+    expect(await boxExists(appId)).toEqual(false)
+
+    // A pledge group must fail at the pledge call (the app is gone), so the credit can never create a box for it.
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(1n),
+    })
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
+      args: [pay, new Uint8Array()],
+      sender: backer.addr,
+    })
+    composer.addAppCallMethodCall({
+      appId: vaultId,
+      method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
+      args: [appId, 1n],
+      sender: backer.addr,
+      appReferences: [factoryId],
+      boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
+      extraFee: microAlgos(FEE),
+    })
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow()
+    expect(await boxExists(appId)).toEqual(false)
+  })
+
+  test('releaseClaimed recovers a claimed box permissionlessly; delete still works', async () => {
+    const tree = new Tree()
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appClient, appId } = await deployCampaign(creator.addr.toString(), 2n * ALGO)
+    const addr = backer.addr.toString()
+    await pledge(appId, addr, 2n * ALGO, tree)
+    await advanceTime(900)
+    await appClient.send.call({
+      method: 'claim()void',
+      args: [],
+      sender: creator.addr,
       appReferences: [vaultId],
       boxReferences: [vaultBoxRef(appId)],
       extraFee: microAlgos(2n * FEE),
       suppressLog: true,
     })
-    expect((await boxOf(appId)).status).toEqual(2)
-    // ...and after the window the stray inflow sweeps to the target: nobody else was ever affected.
-    await advanceTime(4_000)
-    const balS0 = await balanceOf(sweeperAddr)
-    const balD0 = await balanceOf(addr)
+    const box = await boxOf(appId)
+    expect(box.status).toEqual(3)
+    expect(box.paidIn).toEqual(box.paidOut)
+
+    const vaultBal0 = await balanceOf(vaultAddress)
+    const vaultMin0 = await minBalanceOf(vaultAddress)
     await vaultClient.send.call({
-      method: 'finalize(uint64)void',
+      method: 'releaseClaimed(uint64)void',
       args: [appId],
-      sender: addr,
-      extraFee: microAlgos(FEE),
+      sender: stranger.addr,
+      boxReferences: [vaultBoxRef(appId)],
       suppressLog: true,
     })
-    expect(await balanceOf(sweeperAddr)).toEqual(balS0 + ALGO)
-    expect(await balanceOf(addr)).toEqual(balD0 - FEE_FINALIZE_PAID)
     expect(await boxExists(appId)).toEqual(false)
+    expect(await balanceOf(vaultAddress)).toEqual(vaultBal0)
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin0 - BOX_MBR)
+
+    // The campaign's creator can still delete: notifyDelete is a no-op once the box is gone.
+    await deleteCampaign(appId, creator.addr.toString())
   })
 })

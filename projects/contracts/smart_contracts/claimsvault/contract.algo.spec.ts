@@ -1,5 +1,5 @@
 import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
-import { Bytes } from '@algorandfoundation/algorand-typescript'
+import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
@@ -174,6 +174,23 @@ describe('ClaimsVault', () => {
   })
 
   describe('credit', () => {
+    const PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
+    const dummyBytes = Bytes.fromHex('00')
+
+    /**
+     * A mock `Campaign.pledge` call for the credit's preceding-transaction check.
+     *
+     * @param app The campaign app to call.
+     * @param sender The pledge sender (must match the credit caller).
+     * @param selector The first app arg (the pledge selector by default).
+     * @param argCount The number of app args.
+     * @returns The mock application call.
+     */
+    function pledgeCall(app = campaignApp(), sender = ctx.defaultSender, selector = PLEDGE_SELECTOR, argCount = 2) {
+      const args = [selector, dummyBytes].slice(0, argCount)
+      return ctx.any.txn.applicationCall({ appId: app, sender, appArgs: args })
+    }
+
     test('rejects a zero amount', () => {
       const vault = createVault()
       expect(() => {
@@ -182,60 +199,215 @@ describe('ClaimsVault', () => {
     })
 
     test('rejects a first touch the offline ledger cannot register (covered on LocalNet)', () => {
-      // No box exists and the group payment verifies, so `credit` reaches the Factory inner call whose log the
-      // offline ledger cannot emulate: the call resolves but returns no log, failing the gate. The real gate runs
-      // on LocalNet.
+      // A valid pledge precedes this call; the Factory inner call's log cannot be emulated offline, so the registration
+      // gate fails here. The real gate runs on LocalNet.
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('campaign not registered')
+        })
+    })
+
+    test('rejects a credit without a preceding pledge', () => {
       const vault = createVault()
       const caller = ctx.defaultSender
       ctx.txn
-        .createScope([
-          ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
-          ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
-        ])
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          1,
+        )
         .execute(() => {
           expect(() => {
             vault.credit(campaignApp(), 1000)
-          }).toThrow('campaign not registered')
+          }).toThrow('credit must follow pledge')
+        })
+    })
+
+    test('rejects a credit whose preceding pledge is for another campaign', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      const other = ctx.any.application({ applicationId: CAMPAIGN_APP_ID + 1 })
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledgeCall(other, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('credit pledge app mismatch')
+        })
+    })
+
+    test('rejects a credit whose preceding pledge is from another sender', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const other = ctx.any.account()
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledgeCall(app, other),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('credit pledge sender mismatch')
+        })
+    })
+
+    test('rejects a malformed pledge call', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      const cases = [
+        { selector: PLEDGE_SELECTOR, argCount: 1, expected: 'credit pledge args mismatch' },
+        { selector: Bytes.fromHex('00000000'), argCount: 2, expected: 'credit pledge selector mismatch' },
+      ]
+      for (const { selector, argCount, expected } of cases) {
+        ctx.txn
+          .createScope(
+            [
+              ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+              pledgeCall(app, caller, selector, argCount),
+              ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+            ],
+            2,
+          )
+          .execute(() => {
+            expect(() => {
+              vault.credit(app, 1000)
+            }).toThrow(expected)
+          })
+      }
+    })
+
+    test('rejects a ClearState pledge call', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      const pledge = ctx.any.txn.applicationCall({
+        appId: app,
+        sender: caller,
+        onCompletion: OnCompleteAction.ClearState,
+        appArgs: [PLEDGE_SELECTOR, dummyBytes],
+      })
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledge,
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('credit pledge must be a NoOp call')
         })
     })
 
     test('rejects a box that is not open', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: FAILED, settledAt: 500 })
-      expect(() => {
-        vault.credit(campaignApp(), 1000)
-      }).toThrow('campaign is not open')
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('campaign is not open')
+        })
     })
 
     test('rejects a group without a matching payment', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
-      const caller = ctx.any.account()
+      const caller = ctx.defaultSender
       const other = ctx.any.account()
+      const app = campaignApp()
       ctx.txn
-        .createScope([
-          ctx.any.txn.applicationCall({ appId: vault, sender: other }),
-          ctx.any.txn.payment({ sender: other, receiver: vaultAccount(vault), amount: 500 }),
-          ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
-        ])
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: other, receiver: vaultAccount(vault), amount: 500 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
         .execute(() => {
           expect(() => {
-            vault.credit(campaignApp(), 500)
+            vault.credit(app, 500)
           }).toThrow('matching payment not found in group')
         })
+    })
+
+    test('rejects a credit that is not final', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      const group = [
+        ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500 }),
+        pledgeCall(app, caller),
+        ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+        ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+      ]
+      ctx.txn.createScope(group, 2).execute(() => {
+        expect(() => {
+          vault.credit(app, 500)
+        }).toThrow('credit must be the final transaction in the group')
+      })
     })
 
     test('records the inflow on an existing box', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
       const caller = ctx.any.account()
+      const app = campaignApp()
       ctx.txn
-        .createScope([
-          ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500 }),
-          ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
-        ])
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
         .execute(() => {
-          vault.credit(campaignApp(), 500)
+          vault.credit(app, 500)
         })
 
       const box = readBox(vault, CAMPAIGN_APP_ID)
@@ -723,13 +895,12 @@ describe('ClaimsVault', () => {
       })
     })
 
-    test('rejects an unknown campaign', () => {
+    test('is a no-op when the box is already gone', () => {
       const vault = createVault()
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
-        expect(() => {
-          vault.notifyDelete(ctx.any.application({ applicationId: 999 }))
-        }).toThrow('unknown campaign')
+        vault.notifyDelete(ctx.any.application({ applicationId: 999 }))
       })
+      expect(vault.campaignBox(999).exists).toEqual(false)
     })
 
     test('rejects a box that is not claimed', () => {
@@ -759,6 +930,48 @@ describe('ClaimsVault', () => {
         vault.notifyDelete(campaignApp())
       })
 
+      expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
+    })
+  })
+
+  describe('releaseClaimed', () => {
+    test('is a no-op when the box is already gone', () => {
+      const vault = createVault()
+      vault.releaseClaimed(ctx.any.application({ applicationId: 999 }))
+      expect(vault.campaignBox(999).exists).toEqual(false)
+    })
+
+    test('rejects a box that is not claimed', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      expect(() => {
+        vault.releaseClaimed(campaignApp())
+      }).toThrow('campaign not claimed')
+    })
+
+    test('rejects a box with an outstanding balance', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      expect(() => {
+        vault.releaseClaimed(campaignApp())
+      }).toThrow('campaign balance outstanding')
+    })
+
+    test('deletes a balanced claimed box permissionlessly', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      vault.releaseClaimed(campaignApp())
+      expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
+    })
+
+    test('notifyDelete is a no-op after a permissionless release', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      const app = campaignApp()
+      vault.releaseClaimed(app)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
+        vault.notifyDelete(app)
+      })
       expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
     })
   })
@@ -799,6 +1012,15 @@ describe('ClaimsVault', () => {
       const payout = ctx.txn.lastGroup.lastItxnGroup().getPaymentInnerTxn()
       expect(payout.receiver).toEqual(sweep)
       expect(toExternalValue(payout.amount)).toEqual(800)
+    })
+
+    test('deletes a fully paid-out box before the window closes', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: Z_HEX, n: 1, status: FAILED, settledAt: 100 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 100 })
+      vault.finalize(campaignApp())
+
+      expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
     })
 
     test('deletes the box without paying when nothing is left', () => {

@@ -145,6 +145,7 @@ void (async () => {
         method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
         args: [result.appId, amount],
         sender: backer.addr,
+        // The credit must follow the pledge; first touch checks the campaign's Factory registration.
         appReferences: [factoryId],
         boxReferences: [
           { appId: vaultId, name: new Uint8Array(Buffer.concat([Buffer.from('c'), appIdBuf])) },

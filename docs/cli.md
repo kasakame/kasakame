@@ -128,7 +128,10 @@ the funds before deleting.
 
 Deleting a failed campaign is safe. Backers keep refunding from the ClaimsVault
 after the campaign app is gone, until the 730-day refund window closes. When
-the campaign registered in a Factory, the same approval unregisters it.
+the campaign is registered in a Factory, the same approval sends the atomic
+`[unregister, delete]` group (the Factory requires the delete immediately after
+unregister; the campaign requires the unregister immediately before). An
+unregistered campaign's unregister is a no-op, so the same command cleans it up.
 
 ## Options
 
