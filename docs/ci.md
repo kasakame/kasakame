@@ -1,12 +1,12 @@
 # CI
 
 This page describes the GitHub Actions setup: a consolidated
-[`build-and-test`](.github/workflows/build-and-test.yml) workflow with one
+[`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, and Markdown lint,
 and the manual
-[`release-specs`](.github/workflows/release-specs.yml),
-[`release-sdk`](.github/workflows/release-sdk.yml), and
-[`release-cli`](.github/workflows/release-cli.yml) releases - plus the
+[`release-specs`](../.github/workflows/release-specs.yml),
+[`release-sdk`](../.github/workflows/release-sdk.yml), and
+[`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
 reasoning behind the splits.
 
 ## Principles
@@ -205,8 +205,10 @@ release.
 Implemented at `.github/workflows/build-and-test.yml`. Eleven jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
-on the branch (`github.ref` as the base on pushes). Licenses are excluded from
-every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
+on the branch (`github.ref` as the base on pushes). The workflow defaults to
+`permissions: contents: read`; `changes` adds `pull-requests: read` for the PR
+changed-files API. No job needs repository write access. Licenses are excluded
+from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 `markdown`. It exposes the raw filters plus derived trigger outputs:
 
 - `contracts`, `sdk`, `frontend`, `cli`, `backend` - the project path itself, no
@@ -513,7 +515,8 @@ and caches:
 - **Node** - `actions/setup-node@v7` with `cache: npm` and
   `cache-dependency-path` pointing at the project's `package-lock.json`
   (`build-sdk` uses the SDK lockfile; the frontend and CLI jobs use their own
-  lockfiles). This caches `node_modules`, so `npm ci` is ~seconds on cache hits.
+  lockfiles). This caches the npm cache, so `npm ci` installs from it and is
+  usually seconds on cache hits.
 - **AlgoKit (Python)** - installed fresh via `pipx` in the `compile-contracts`
   and `integration-test` jobs (not cached). The install is fast relative to the
   Docker container startup that dominates the integration job.
@@ -522,6 +525,14 @@ The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
 sandbox (integration job). If runner install time ever justifies a custom CI
 image, publish it once to GHCR and rebuild only when its `Dockerfile` changes.
+
+## Dependency updates
+
+[`.github/dependabot.yml`](../.github/dependabot.yml) checks GitHub Actions and
+the five npm projects weekly. Minor and patch updates are grouped per project;
+major updates stay individual for closer review. Dependabot PRs run the normal
+change-filtered lanes, so a dependency update gets the same checks as any other
+change.
 
 ## Artifacts - sharing build output between jobs
 
@@ -537,5 +548,7 @@ download, so nothing is compiled or built twice:
 - **`sdk-dist`** - `projects/sdk/dist` (compiled package). Consumed by
   `check-frontend` and `check-cli`, which install it as `file:../sdk`.
 
-The artifacts and `release-sdk`'s `sdk-dist` are kept for 7 days - long enough
-to debug a failed run, short enough not to hoard storage.
+Producer uploads use `overwrite: true`, so re-running a failed job does not
+collide with the previous attempt's artifact. The artifacts and `release-sdk`'s
+`sdk-dist` are kept for 7 days - long enough to debug a failed run, short
+enough not to hoard storage.

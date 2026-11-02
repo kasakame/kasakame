@@ -9,6 +9,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: read
+
 jobs:
   changes:
     name: Detect changes
@@ -260,6 +263,7 @@ jobs:
           name: sdk-generated
           path: projects/sdk/src/generated
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
 
       - name: Upload SDK package
@@ -268,6 +272,7 @@ jobs:
           name: sdk-dist
           path: projects/sdk/dist
           if-no-files-found: error
+          overwrite: true
           retention-days: 7
 
   # SDK verification consumes the same generated clients `build-sdk` used.

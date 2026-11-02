@@ -120,13 +120,13 @@ Follow-ups after the 11-job build-and-test restructure:
       `claim-tree.vectors.ts` from the Python oracle, and fail on drift.
 - [x] **Centralized triggers** - publish `run_*` outputs from `changes` so each
       job reads one boolean instead of repeating filter expressions.
-- [ ] **Least-privilege permissions** - set top-level `contents: read`; keep
+- [x] **Least-privilege permissions** - set top-level `contents: read`; keep
       `pull-requests: read` on `changes`.
-- [ ] **Dependabot** - weekly GitHub Actions and npm updates for the five
+- [x] **Dependabot** - weekly GitHub Actions and npm updates for the five
       projects, grouped for patch/minor.
-- [ ] **Artifact rerun polish** - add `overwrite: true` to `sdk-generated` and
+- [x] **Artifact rerun polish** - add `overwrite: true` to `sdk-generated` and
       `sdk-dist`.
-- [ ] **Caching doc wording** - `setup-node` caches the npm cache, not
+- [x] **Caching doc wording** - `setup-node` caches the npm cache, not
       `node_modules`; `npm ci` still installs from it.
 - [ ] **Cache AlgoKit** - cache pipx installs keyed by `2.10.2` in
       `compile-contracts` and `integration-test` (optional).
