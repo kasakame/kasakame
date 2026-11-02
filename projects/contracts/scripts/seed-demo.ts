@@ -145,8 +145,8 @@ void (async () => {
         method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
         args: [result.appId, amount],
         sender: backer.addr,
-        // First-touch credit reads the campaign's status, so the campaign app must be a foreign app too.
-        appReferences: [factoryId, result.appId],
+        // The credit must follow the pledge; first touch checks the campaign's Factory registration.
+        appReferences: [factoryId],
         boxReferences: [
           { appId: vaultId, name: new Uint8Array(Buffer.concat([Buffer.from('c'), appIdBuf])) },
           { appId: factoryId, name: new Uint8Array(Buffer.concat([Buffer.from('r'), appIdBuf])) },

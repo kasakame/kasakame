@@ -52,14 +52,16 @@ other shapes, so one deposit cannot register more than one campaign. `register` 
 rejects a campaign bound to any vault other than the Factory's official one.
 
 `Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
-failed-in-fact (`Open`, deadline passed, `raised < goal`); a live campaign cannot delist itself. The campaign app must still
-exist when unregistering, so clients unregister **before** deleting it.
+failed-in-fact (`Open`, deadline passed, `raised < goal`), and it requires the campaign's `delete()` to be the immediately
+following transaction in the same atomic group. Delisting and deletion are therefore one operation: a delisted campaign can
+never remain live, and zero-pledge or all-cancelled campaigns clean up immediately. Unregister runs first because the campaign
+state must be read before the app is deleted.
 
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
 
 ## Escrow and vault
 
-Campaign escrows are never funded and hold nothing. Every pledge payment goes to the vault app account. Each pledge appends one receipt leaf to the campaign's incremental Merkle tree ([`claim-tree-protocol.md`](claim-tree-protocol.md)) and records the inflow in the vault's per-campaign box. There is no per-backer on-chain state anywhere.
+Campaign escrows are never funded and hold nothing. Every pledge payment goes to the vault app account. Each pledge appends one receipt leaf to the campaign's incremental Merkle tree ([`claim-tree-protocol.md`](claim-tree-protocol.md)) and records the inflow in the vault's per-campaign box. `Vault.credit` requires the campaign's `pledge` as the immediately preceding transaction, so every inflow has a backer leaf and there are no standalone donations. There is no per-backer on-chain state anywhere.
 
 The vault account therefore holds the full pool of live pledges plus parked box minimum balances (32,100 µA per live or failed campaign box). Every outflow passes a balance guard: a payout never exceeds the campaign's verified inflows minus its verified outflows.
 
@@ -70,9 +72,9 @@ The vault account therefore holds the full pool of live pledges plus parked box 
 | Success | Creator calls `claim()` after the deadline with the goal met | Vault pays the creator the full live total; the box closes as `Claimed` |
 | Failure | First `refund()` after the deadline with the goal missed | Box settles as `Failed`; each backer refunds their own leaves from the vault |
 | Pre-deadline exit | Backer calls `cancelPledge()` while the campaign is open | Leaf nulls in place; vault pays the backer |
-| Creator delete | Creator calls `delete()` on a settled campaign | Unregisters from the Factory first (settled/pristine/failed-in-fact only), then settles through the vault, closes the escrow, and deletes |
+| Creator delete | Creator submits `[Factory.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit; delete settles through the vault, closes the escrow, and deletes the app |
 
-Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a permissionless `finalize()` sweeps the residual to the configured treasury. A backer who never acts before deletion refunds straight from the vault with the same proofs.
+Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a permissionless `finalize()` sweeps the residual to the configured treasury; a fully paid-out box can be finalized immediately. A backer who never acts before deletion refunds straight from the vault with the same proofs.
 
 ## Optional catalog
 

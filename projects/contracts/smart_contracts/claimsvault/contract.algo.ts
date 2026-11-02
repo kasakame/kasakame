@@ -34,8 +34,10 @@ import {
  *
  * Trust model: `payBack`, `payClaim`, `settle`, and `notifyDelete` are reachable only as inner app calls from the
  * campaign's own app account (`Txn.sender == app.address` - unforgeable, and app addresses are distinct per app id).
- * `credit`, `settleOpen`, `refund`, and `finalize` are permissionless top-level calls whose every effect is verified
- * against the vault's own boxes and the caller's group.
+ * `credit` is a permissionless top-level call, but it must be the final transaction in a group whose previous
+ * transaction is the matching `Campaign.pledge`, so every inflow has a backer leaf. `settleOpen`, `refund`, and
+ * `finalize` are permissionless top-level calls whose every effect is verified against the vault's own boxes and the
+ * caller's group.
  */
 
 // Vault box statuses (1 byte in the packed box): 1 = Open, 2 = Failed, 3 = Claimed.
@@ -52,6 +54,10 @@ const FACTORY_IS_REGISTERED_SELECTOR = Bytes.fromHex('716a3d0e')
 
 // The ARC-4 bool return of the Factory's `isRegistered`: the return-value prefix (0x151f7c75) followed by 0x80 (true).
 const FACTORY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
+
+// ARC-4 selector for Campaign.pledge(pay,byte[])void. The credit must be the transaction immediately after it, so every
+// vault inflow is tied to a backer leaf (kept in sync by the integration tests).
+const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
 export class ClaimsVault extends Contract {
   /** The Factory registry app; its `registered` boxes are the canonical campaign records. */
@@ -89,12 +95,12 @@ export class ClaimsVault extends Contract {
   /**
    * Record one pledge payment into a campaign's box.
    *
-   * Permissionless top-level call, normally grouped as `[Payment, Campaign.pledge, Vault.credit]`. The payment is
-   * **independently verified**: the vault scans its own group for a payment from the caller to the vault for `amount`
-   * (no pledge-presence check is needed - a `credit` without a matching `pledge`, or vice versa, strands only the
-   * deviator's own funds under the per-campaign balance guard). On first touch the campaign app must still exist and be
-   * Open (a deleted, Failed, or Claimed campaign cannot open a fresh box), and the campaign must be
-   * Factory-registered.
+   * Permissionless top-level call, always grouped as `[Payment, Campaign.pledge, Vault.credit]`: the payment is
+   * immediately before the pledge, and the pledge is immediately before this call (the group's final transaction).
+   * The vault checks the pledge shape itself, so a credit without a pledge is rejected: every inflow belongs to a
+   * backer leaf and counts toward the campaign's goal. The payment is **independently verified**: the vault scans its
+   * own group for a payment from the caller to the vault for `amount`. On first touch the campaign must be
+   * Factory-registered, so an unregistered campaign can never open a box.
    *
    * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
    * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
@@ -107,6 +113,17 @@ export class ClaimsVault extends Contract {
   credit(app: Application, amount: uint64): void {
     assert(amount > Uint64(0), 'pledge must be greater than zero')
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'credit must be the final transaction in the group')
+
+    // The credit is the second half of the pledge: the immediately preceding transaction must be the campaign's
+    // `pledge` for this campaign and caller. This keeps every vault inflow tied to a backer leaf.
+    assert(Txn.groupIndex > Uint64(0), 'credit must follow pledge')
+    const pledgeIndex: uint64 = Txn.groupIndex - Uint64(1)
+    assert(gtxn.Transaction(pledgeIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
+    const pledgeCall = gtxn.ApplicationCallTxn(pledgeIndex)
+    assert(pledgeCall.appId.id === app.id, 'credit pledge app mismatch')
+    assert(pledgeCall.sender === Txn.sender, 'credit pledge sender mismatch')
+    assert(pledgeCall.numAppArgs === Uint64(2), 'credit pledge args mismatch')
+    assert(pledgeCall.appArgs(Uint64(0)) === CAMPAIGN_PLEDGE_SELECTOR, 'credit pledge selector mismatch')
 
     const existing = this.campaignBox(app.id).get({ default: Bytes() })
     if (existing.length !== Uint64(0)) {
@@ -128,10 +145,6 @@ export class ClaimsVault extends Contract {
     assert(found, 'matching payment not found in group')
 
     if (existing.length === Uint64(0)) {
-      // A deleted app has no globals; a Failed/Claimed app must not open a fresh Open box, which could never be
-      // settled (settleOpen rejects Claimed; settle needs the campaign caller).
-      const statusState = op.AppGlobal.getExUint64(app, Bytes('status'))
-      assert(statusState[1] && statusState[0] === Uint64(0), 'campaign is not open')
       this.checkRegistration(app)
       /* v8 ignore next - see checkRegistration; covered on LocalNet. */
       this.createBox(app.id, amount)
@@ -438,10 +451,12 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Sweep a settled-failed campaign's residual to the sweep target and release its box, once the refund window closes.
+   * Sweep a settled-failed campaign's residual to the sweep target and release its box, once the refund window closes
+   * or the box is fully paid out (nothing left to refund).
    *
    * Permissionless, O(1). Unclaimed refunds after a generous window fund the sweep target (disclosed at pledge time);
-   * backer-controlled refunds need no platform action before the window closes.
+   * backer-controlled refunds need no platform action before the window closes. A fully paid-out box (all leaves
+   * cancelled/refunded) can be released immediately, recovering its MBR without waiting for the window.
    *
    * @param app The settled-failed campaign application.
    */
@@ -450,9 +465,11 @@ export class ClaimsVault extends Contract {
     const box = this.readBox(app.id)
     assert(box.slice(56, 57) === BOX_FAILED, 'campaign is not failed')
     const settledAt: uint64 = op.btoi(box.slice(57, 65))
-    assert(Global.latestTimestamp >= settledAt + this.refundWindow.value, 'refund window still open')
+    const paidIn: uint64 = op.btoi(box.slice(0, 8))
+    const paidOut: uint64 = op.btoi(box.slice(8, 16))
+    assert(paidIn === paidOut || Global.latestTimestamp >= settledAt + this.refundWindow.value, 'refund window still open')
 
-    const residual: uint64 = op.btoi(box.slice(0, 8)) - op.btoi(box.slice(8, 16))
+    const residual: uint64 = paidIn - paidOut
     if (residual > Uint64(0)) {
       itxn
         .payment({

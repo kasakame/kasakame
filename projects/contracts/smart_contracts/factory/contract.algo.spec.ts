@@ -1,4 +1,4 @@
-import { Bytes, type Application } from '@algorandfoundation/algorand-typescript'
+import { Bytes, OnCompleteAction, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -120,14 +120,21 @@ describe('Factory', () => {
    * @param fields.raised Live pledge total.
    * @param fields.goal Funding target.
    * @param fields.deadline Deadline timestamp.
+   * @param fields.n Positions ever appended (non-zero for an all-cancelled campaign).
    * @returns The registered campaign app.
    */
-  function registeredCampaign(contract: Factory, fields: { status: number; raised: number; goal: number; deadline: number }): Application {
+  function registeredCampaign(
+    contract: Factory,
+    fields: { status: number; raised: number; goal: number; deadline: number; n?: number },
+  ): Application {
     const campaign = ctx.contract.create(Campaign)
+    // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
+    campaign.create(ctx.any.application({ applicationId: 777 }), Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
     campaign.status.value = fields.status
     campaign.raised.value = fields.raised
     campaign.goal.value = fields.goal
     campaign.deadline.value = fields.deadline
+    campaign.n.value = fields.n ?? 0
     const app = ctx.ledger.getApplicationForContract(campaign)
     contract.registered(app.id).value = ctx.defaultSender
     return app
@@ -391,18 +398,55 @@ describe('Factory', () => {
   })
 
   describe('unregister', () => {
+    const DELETE_SELECTOR = Bytes.fromHex('24378d3c')
+
+    /**
+     * A mock `Campaign.delete()` call for the unregister pairing check.
+     *
+     * @param app The campaign app to delete.
+     * @param sender The delete sender (the creator).
+     * @returns The mock application call.
+     */
+    function deleteCall(app: Application, sender = ctx.defaultSender) {
+      return ctx.any.txn.applicationCall({
+        appId: app,
+        sender,
+        onCompletion: OnCompleteAction.DeleteApplication,
+        appArgs: [DELETE_SELECTOR],
+      })
+    }
+
+    /**
+     * Run `unregister` in the required `[unregister, delete]` group.
+     *
+     * @param factory The Factory.
+     * @param app The campaign app.
+     */
+    function unregisterWithDelete(factory: Factory, app: Application) {
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), deleteCall(app)], 0).execute(() => {
+        factory.unregister(app)
+      })
+    }
+
     test('returns the deposit and removes the registration for a pristine campaign', () => {
       const factory = createFactory()
       const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
 
-      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
-        factory.unregister(app)
-      })
+      unregisterWithDelete(factory, app)
 
       expect(factory.registered(app.id).exists).toBe(false)
       const payout = ctx.txn.lastGroup.lastItxnGroup().getPaymentInnerTxn()
       expect(payout.receiver).toEqual(ctx.defaultSender)
       expect(payout.amount).toEqual(REGISTER_MBR)
+    })
+
+    test('allows an all-cancelled campaign before the deadline', () => {
+      ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 2_000, n: 2 })
+
+      unregisterWithDelete(factory, app)
+      expect(factory.registered(app.id).exists).toBe(false)
     })
 
     test('rejects an unregistered campaign', () => {
@@ -444,9 +488,7 @@ describe('Factory', () => {
       const factory = createFactory()
       const app = registeredCampaign(factory, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
 
-      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
-        factory.unregister(app)
-      })
+      unregisterWithDelete(factory, app)
       expect(factory.registered(app.id).exists).toBe(false)
     })
 
@@ -454,9 +496,7 @@ describe('Factory', () => {
       const factory = createFactory()
       const app = registeredCampaign(factory, { status: 1, raised: 100, goal: 1000, deadline: 2_000 })
 
-      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
-        factory.unregister(app)
-      })
+      unregisterWithDelete(factory, app)
       expect(factory.registered(app.id).exists).toBe(false)
     })
 
@@ -464,9 +504,7 @@ describe('Factory', () => {
       const factory = createFactory()
       const app = registeredCampaign(factory, { status: 2, raised: 1000, goal: 1000, deadline: 2_000 })
 
-      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
-        factory.unregister(app)
-      })
+      unregisterWithDelete(factory, app)
       expect(factory.registered(app.id).exists).toBe(false)
     })
 
@@ -479,6 +517,91 @@ describe('Factory', () => {
         expect(() => {
           factory.unregister(app)
         }).toThrow('campaign state missing')
+      })
+    })
+
+    test('rejects unregister without the delete in the same group', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })], 0).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('delete must follow unregister')
+      })
+    })
+
+    test('rejects a delete for another app', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const other = ctx.any.application({ applicationId: FAKE_APP_ID })
+
+      ctx.txn
+        .createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), deleteCall(other)], 0)
+        .execute(() => {
+          expect(() => {
+            factory.unregister(app)
+          }).toThrow('delete must target the campaign')
+        })
+    })
+
+    test('rejects a delete from someone other than the creator', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const other = ctx.any.account()
+
+      ctx.txn
+        .createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), deleteCall(app, other)], 0)
+        .execute(() => {
+          expect(() => {
+            factory.unregister(app)
+          }).toThrow('delete must come from the creator')
+        })
+    })
+
+    test('rejects a non-DeleteApplication call', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const call = ctx.any.txn.applicationCall({ appId: app, sender: ctx.defaultSender, appArgs: [DELETE_SELECTOR] })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), call], 0).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('delete must be DeleteApplication')
+      })
+    })
+
+    test('rejects a delete with the wrong arg count', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const call = ctx.any.txn.applicationCall({
+        appId: app,
+        sender: ctx.defaultSender,
+        onCompletion: OnCompleteAction.DeleteApplication,
+        appArgs: [],
+      })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), call], 0).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('delete args mismatch')
+      })
+    })
+
+    test('rejects a delete with the wrong selector', () => {
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const call = ctx.any.txn.applicationCall({
+        appId: app,
+        sender: ctx.defaultSender,
+        onCompletion: OnCompleteAction.DeleteApplication,
+        appArgs: [Bytes.fromHex('00000000')],
+      })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender }), call], 0).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('delete selector mismatch')
       })
     })
   })

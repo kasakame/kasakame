@@ -186,14 +186,19 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     mappings instead.
   - **Payment-consuming group order is load-bearing.** The payment must be the
     transaction immediately before `Campaign.pledge`; the matching `Vault.credit`
-    must be immediately after the pledge and the group's final transaction.
-    `Factory.register` must also be final. The contracts reject other shapes; the
-    positions are what stop one payment from backing several pledges, credits, or
-    registrations, and what stop a pledge from being left uncredited.
+    must be immediately after the pledge and the group's final transaction, and
+    the vault requires that pledge immediately before it. `Factory.register` must
+    also be final. `Factory.unregister` must be immediately followed by the
+    campaign's `delete()` in the same atomic group. The contracts reject other
+    shapes; the positions stop one payment from backing several pledges, credits,
+    or registrations, stop a pledge from being left uncredited, stop a credit
+    without a pledge (donations), and make delisting and deletion one operation.
   - `Factory.unregister` requires the campaign app to still exist and be settled
     (`Claimed`/`Failed`), pristine (`Open`, `raised == 0`), or failed-in-fact.
-    Unregister **before** deleting the app: a deleted app's globals are
-    unreadable, so its registration deposit would be stuck.
+    The campaign's `delete()` must be the immediately following transaction:
+    unregister reads the state first, the delete then settles/releases the box.
+    A deleted app's globals are unreadable, so a standalone unregister is
+    rejected; the SDK/CLI/scripts build `[unregister, delete]` as one group.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

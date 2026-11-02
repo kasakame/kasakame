@@ -40,7 +40,7 @@ The contract owns the root; the frontend owns reconstruction. A stale or forged 
 
 ### Vault box (per campaign, 65 bytes)
 
-Key = `'c' + appId` (9 bytes). Value = `paidIn (8) ‖ paidOut (8) ‖ root (32) ‖ N (8) ‖ status (1) ‖ settledAt (8)`. Box MBR = 2,500 + 400 × (9 + 65) = **32,100 µA**, parked on the vault's platform-funded account and released by `notifyDelete` / `finalize`. Opening the box is the vault's only per-campaign cost.
+Key = `'c' + appId` (9 bytes). Value = `paidIn (8) ‖ paidOut (8) ‖ root (32) ‖ N (8) ‖ status (1) ‖ settledAt (8)`. Box MBR = 2,500 + 400 × (9 + 65) = **32,100 µA**, parked on the vault's platform-funded account and released by `notifyDelete` / `releaseClaimed` / `finalize`. Opening the box is the vault's only per-campaign cost.
 
 ## State machine
 
@@ -60,7 +60,7 @@ Transitions:
 
 - `claim()` writes `Claimed`, sends the vault total `paidIn - paidOut` to the creator. Only the creator, only after the deadline, only when `raised >= goal`. Double claims fail (`status != Open`).
 - The first `refund()` flips the campaign status to `Failed`. The vault box stays `Open` until settlement: `root`/`N`/`settledAt` are recorded when `delete()` settles or when `settleOpen` runs. Any later refund, or vault-direct refund, nulls one leaf and pays the backer. `cancelPledge` works only while `Open`.
-- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes.
+- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes. The Factory requires `delete()` to be the immediately following transaction after `unregister()`, so delisting and deletion are one atomic operation.
 - Settling never depends on reading a possibly-deleted app: the campaign pushes `root`/`N`/`settledAt` into the vault box at settle time.
 
 ## Methods
@@ -96,8 +96,8 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 3. **No ASA anywhere.** Assets would add opt-in minimum balances, clawback trust, and per-holder state. The tree needs none of that.
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
-6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones. A stray vault inflow with no matching pledge still settles on pristine delete and sweeps through `finalize` instead of stranding.
-7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) at `unregister()` + `delete()`. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`.
+6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
+7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) in the atomic `[unregister, delete]` group. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
@@ -119,8 +119,9 @@ The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
   The payment must be immediately before `pledge`, and the matching `credit` must be immediately after it and the group's final
-  transaction; `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
-  requires the campaign app to exist and be `Open`, so a deleted or settled campaign cannot open a fresh vault box.
+  transaction; the vault also requires that preceding `pledge`, so a credit without a pledge is rejected and every payer is a
+  backer. `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
+  checks Factory registration, so an unregistered campaign cannot open a vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
 - `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
   `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.

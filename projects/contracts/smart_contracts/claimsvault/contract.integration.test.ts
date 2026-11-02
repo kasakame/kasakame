@@ -31,7 +31,6 @@ const Z_HEX = '00'.repeat(32)
 
 const FEE_CREDIT_FIRST = 2n * FEE // base + inner factory check pool
 const FEE_VAULT_REFUND = 4n * FEE // app call + 1 OpUp iteration (create+delete) + inner payment
-const FEE_FINALIZE_PAID = 2n * FEE // app call + inner residual-payment pool
 const FEE_FINALIZE_BARE = FEE // app call only
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
@@ -76,7 +75,6 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
   let vaultId: bigint
   let vaultAddress: string
   let vaultClient: AppClient
-  let sweeperAddr: string
 
   beforeAll(async () => {
     await fixture.newScope()
@@ -87,7 +85,6 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
 
     const owner = await fixture.context.generateAccount({ initialFunds: (50).algo(), suppressLog: true })
     const sweeper = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    sweeperAddr = sweeper.addr.toString()
 
     const factoryFactory = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: owner.addr })
     const factoryClient = (await factoryFactory.send.create({ method: 'create()void', args: [], sender: owner.addr, suppressLog: true }))
@@ -281,7 +278,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, amount],
       sender: backerAddr,
-      appReferences: [appId, factoryId],
+      appReferences: [factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
@@ -431,8 +428,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       }),
     ).rejects.toThrow(/proof does not match root/)
 
-    // Nothing left: finalize deletes the box with no payment (only its own fee).
-    await advanceTime(4_000)
+    // Nothing left: finalize deletes the box with no payment even before the window closes (fully paid out).
     const vaultMin = await minBalanceOf(vaultAddress)
     const caller = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const balC0 = await balanceOf(caller.addr.toString())
@@ -448,13 +444,14 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin - BOX_MBR)
   })
 
-  test('direct credit without a pledge strands only the deviator funds (spec §17 #29)', async () => {
+  test('rejects a credit without a preceding pledge', async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const deviator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const addr = deviator.addr.toString()
     const { appId } = await deployCampaign(creator.addr.toString())
 
-    // Pay + credit with no pledge call: the payment is added explicitly (credit takes no txn arg, so no duplication).
+    // Pay + credit with no pledge call: the vault requires the pledge immediately before credit, so this is rejected and
+    // no box is created. A donation must be expressed as a pledge (a backer who chooses not to refund).
     const pay = await algorand.createTransaction.payment({ sender: addr, receiver: vaultAddress, amount: microAlgos(ALGO) })
     const composer = algorand.send.newGroup()
     composer.addTransaction(pay)
@@ -463,43 +460,11 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, ALGO],
       sender: addr,
-      appReferences: [appId, factoryId],
+      appReferences: [factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
-    await composer.send({ suppressLog: true })
-
-    // paidIn counts the real payment, but no leaf exists: no proof can ever verify against it.
-    const box = await boxOf(appId)
-    expect(box.paidIn).toEqual(ALGO)
-    expect(box.n).toEqual(0n)
-    await advanceTime(900)
-    // Pristine delete settles the stray box to FAILED (settle no-ops only when no box exists)...
-    const campaignClient = new AppFactory({ appSpec: campaignSpec, algorand, defaultSender: creator.addr.toString() }).getAppClientById({
-      appId,
-    })
-    await campaignClient.send.delete({
-      method: 'delete()void',
-      sender: creator.addr.toString(),
-      appReferences: [vaultId],
-      boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
-    })
-    expect((await boxOf(appId)).status).toEqual(2)
-    // ...and after the window the stray inflow sweeps to the target: nobody else was ever affected.
-    await advanceTime(4_000)
-    const balS0 = await balanceOf(sweeperAddr)
-    const balD0 = await balanceOf(addr)
-    await vaultClient.send.call({
-      method: 'finalize(uint64)void',
-      args: [appId],
-      sender: addr,
-      extraFee: microAlgos(FEE),
-      suppressLog: true,
-    })
-    expect(await balanceOf(sweeperAddr)).toEqual(balS0 + ALGO)
-    expect(await balanceOf(addr)).toEqual(balD0 - FEE_FINALIZE_PAID)
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
     expect(await boxExists(appId)).toEqual(false)
   })
 
@@ -522,7 +487,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
         args: [appId, 2n * ALGO],
         sender: backer.addr,
         note: new TextEncoder().encode(note),
-        appReferences: [appId, factoryId],
+        appReferences: [factoryId],
         boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
         extraFee: microAlgos(FEE),
       })
@@ -532,7 +497,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await boxExists(appId)).toEqual(false)
   })
 
-  test('deleted but still-registered campaigns cannot be credited afterwards', async () => {
+  test('a deleted campaign cannot be pledged, so it cannot be credited', async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const { appClient, appId } = await deployCampaign(creator.addr.toString())
@@ -548,20 +513,25 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     })
     expect(await boxExists(appId)).toEqual(false)
 
-    // A credit with a real payment must be rejected before it can create a box for the deleted app.
+    // A pledge group must fail at the pledge call (the app is gone), so the credit can never create a box for it.
     const pay = await algorand.createTransaction.payment({
       sender: backer.addr,
       receiver: vaultAddress,
       amount: microAlgos(1n),
     })
     const composer = algorand.send.newGroup()
-    composer.addTransaction(pay)
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
+      args: [pay, new Uint8Array()],
+      sender: backer.addr,
+    })
     composer.addAppCallMethodCall({
       appId: vaultId,
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, 1n],
       sender: backer.addr,
-      appReferences: [appId, factoryId],
+      appReferences: [factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })

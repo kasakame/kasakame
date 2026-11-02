@@ -377,19 +377,26 @@ submission.
       point back at the same Factory, so a wrong or foreign vault cannot be bound. The
       deploy script binds the vault; tests cover the binding.
 - [x] **Pledge/credit pairing.** `Campaign.pledge` requires the vault's `credit` as the
-      immediate next transaction, for the same campaign and amount. An uncredited pledge
-      can no longer create a leaf or dilute other backers' refunds; the SDK group already
-      matches this shape.
+      immediate next transaction, for the same campaign and amount; `Vault.credit` requires
+      the campaign's `pledge` as the immediate preceding transaction. An uncredited pledge
+      can no longer create a leaf, and a credit without a pledge is rejected: every payer is
+      a backer and every inflow counts toward the goal. The SDK group matches this shape.
 - [x] **Successful-campaign liveness decision.** Accepted product behavior: a successful
       campaign's creator must claim; if they disappear, the funds stay locked and backers
       cannot refund. No code fallback and no platform sweep of successful campaigns;
       notifications may remind the creator later. See [`design.md`](design.md).
 - [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
-      `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only;
-      the SDK, scripts, docs, and tests unregister before deleting the app.
+      `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only.
+      It requires the campaign's `delete()` as the immediately following transaction, so
+      delisting and deletion are one atomic operation; zero-pledge and all-cancelled
+      campaigns clean up immediately, and no delisted campaign can remain live. The SDK,
+      scripts, docs, and tests build `[unregister, delete]` as one group.
 - [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
       vault deploy config and the parser is tested, so a misconfiguration cannot overflow
       `settledAt + refundWindow`.
+- [x] **Balanced-box finalize.** A Failed box with `paidIn == paidOut` has nothing left to
+      refund, so `finalize` can delete it immediately instead of waiting for the refund
+      window; all-cancelled campaigns do not pin their MBR.
 - [x] **Payment-reuse regression tests.** Unit and LocalNet groups cover duplicate
       `credit`, duplicate `pledge`, and duplicate `register` with one payment.
 

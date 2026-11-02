@@ -310,7 +310,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, amount],
       sender: backerAddr,
-      appReferences: [appId, factoryId],
+      appReferences: [factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
@@ -388,6 +388,12 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     expect(VAULT_SELECTORS.notifyDelete).toEqual(createHash('sha512-256').update('notifyDelete(uint64)void').digest('hex').slice(0, 8))
     const vaultApproval = fs.readFileSync(path.resolve(__dirname, '../artifacts/claimsvault/ClaimsVault.approval.teal'), 'utf8')
     expect(vaultApproval).toContain(FACTORY_SELECTOR)
+    // The vault embeds the campaign pledge selector (credit must follow a pledge).
+    expect(vaultApproval).toContain(createHash('sha512-256').update('pledge(pay,byte[])void').digest('hex').slice(0, 8))
+
+    // The Factory embeds the campaign delete selector (unregister must be followed by delete).
+    const factoryApproval = fs.readFileSync(path.resolve(__dirname, '../artifacts/factory/Factory.approval.teal'), 'utf8')
+    expect(factoryApproval).toContain(createHash('sha512-256').update('delete()void').digest('hex').slice(0, 8))
   })
 
   test('pledge → cancel → refund lifecycle, differentially verified with exact fund movement', async () => {
@@ -591,34 +597,31 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     expect(box.status).toEqual(3)
     expect(box.paidOut).toEqual(box.paidIn)
 
-    // Unregister returns the factory deposit while the campaign is Claimed (the app must still exist).
-    const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: caddr }).getAppClientById({
-      appId: factoryId,
-    })
+    // Unregister and delete in one atomic group: the Factory requires the delete immediately after it.
     const balC1 = await balanceOf(caddr)
-    await factoryClient.send.call({
-      method: 'unregister(uint64)void',
+    const composer = algorand.send.newGroup()
+    composer.addAppCallMethodCall({
+      appId: factoryId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
       args: [appId],
       sender: caddr,
       appReferences: [appId],
       extraFee: microAlgos(FEE),
-      suppressLog: true,
     })
-    expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER)
-
-    // Delete: notifyDelete releases the box (32,100 MBR back to the pool), escrow closes to the creator.
-    const balC2 = await balanceOf(caddr)
-    await appClient.send.delete({
-      method: 'delete()void',
+    composer.addAppCallMethodCall({
+      appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
       sender: caddr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
       appReferences: [vaultId],
       boxReferences: [vaultBoxRef(appId)],
       extraFee: microAlgos(2n * FEE),
-      suppressLog: true,
     })
+    await composer.send({ suppressLog: true })
     expect(await boxExists(appId)).toEqual(false)
-    // The escrow never held funds, so deletion only costs its fees.
-    expect(await balanceOf(caddr)).toEqual(balC2 - FEE_DELETE_SETTLED)
+    // Deposit returned; delete releases the box and closes the escrow (the escrow never held funds).
+    expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER - FEE_DELETE_SETTLED)
   })
 
   test('failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual', async () => {

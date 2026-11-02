@@ -1,14 +1,17 @@
-import type { Account, Application, bytes, gtxn, uint64 } from '@algorandfoundation/algorand-typescript'
+import type { Account, Application, bytes, uint64 } from '@algorandfoundation/algorand-typescript'
 import {
   BoxMap,
   Bytes,
   Contract,
   Global,
   GlobalState,
+  OnCompleteAction,
+  TransactionType,
   Txn,
   Uint64,
   abimethod,
   assert,
+  gtxn,
   itxn,
   op,
 } from '@algorandfoundation/algorand-typescript'
@@ -21,8 +24,8 @@ import {
  * records `app id → creator`, so the frontend can tell official campaigns apart from arbitrary copies of the contract.
  *
  * Registration costs a small, refundable deposit (the registration box's minimum balance, ~0.019 ALGO), paid to the Factory account and
- * returned by `unregister()` when the creator deletes their campaign. The Factory takes no part in pledging, refunding, or cleanup - it
- * is never a bottleneck and never performs per-backer operations.
+ * returned by `unregister()` in the same atomic group as the campaign's `delete()`. The Factory takes no part in pledging, refunding, or
+ * cleanup - it is never a bottleneck and never performs per-backer operations.
  */
 
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
@@ -32,6 +35,9 @@ const REGISTER_MBR = 18_900
 const CAMPAIGN_OPEN = Uint64(0)
 const CAMPAIGN_FAILED = Uint64(1)
 const CAMPAIGN_CLAIMED = Uint64(2)
+
+// ARC-4 selector for Campaign.delete()void; unregister must be followed by it in the same atomic group.
+const CAMPAIGN_DELETE_SELECTOR = Bytes.fromHex('24378d3c')
 
 export class Factory extends Contract {
   /** The platform owner - the only account allowed to configure the official approval hash and vault. */
@@ -130,8 +136,11 @@ export class Factory extends Contract {
    * Only the registered creator may call; the registration box is deleted (freeing its minimum balance on the Factory
    * account) and the deposit is paid back to the creator. The campaign app must still exist and be settled (`Failed` or
    * `Claimed`), pristine (`Open` with `raised == 0`), or failed-in-fact (`Open`, deadline passed, `raised < goal`). A
-   * live campaign cannot delist itself while it can still take pledges. Callers unregister **before** deleting the app
-   * (the SDK does this); a deleted app's state cannot be read, so its deposit would be stuck.
+   * live campaign with pledges cannot delist itself.
+   *
+   * Delisting and deletion are one atomic operation: the campaign's `delete()` must be the immediately following
+   * transaction, from the same creator, with the `DeleteApplication` action. This lets zero-pledge and all-cancelled
+   * campaigns clean up immediately while guaranteeing that no unregistered campaign can remain live to take pledges.
    *
    * @param app The registered Campaign application.
    */
@@ -150,6 +159,17 @@ export class Factory extends Contract {
     const pristine = status[0] === CAMPAIGN_OPEN && raised[0] === Uint64(0)
     const failedInFact = status[0] === CAMPAIGN_OPEN && Global.latestTimestamp >= deadline[0] && raised[0] < goal[0]
     assert(settled || pristine || failedInFact, 'campaign is still live')
+
+    // The campaign's delete must be the very next transaction, so delisting and deletion are atomic.
+    const deleteIndex: uint64 = Txn.groupIndex + Uint64(1)
+    assert(deleteIndex < Global.groupSize, 'delete must follow unregister')
+    assert(gtxn.Transaction(deleteIndex).type === TransactionType.ApplicationCall, 'delete must follow unregister')
+    const deleteCall = gtxn.ApplicationCallTxn(deleteIndex)
+    assert(deleteCall.appId.id === app.id, 'delete must target the campaign')
+    assert(deleteCall.sender === Txn.sender, 'delete must come from the creator')
+    assert(deleteCall.onCompletion === OnCompleteAction.DeleteApplication, 'delete must be DeleteApplication')
+    assert(deleteCall.numAppArgs === Uint64(1), 'delete args mismatch')
+    assert(deleteCall.appArgs(Uint64(0)) === CAMPAIGN_DELETE_SELECTOR, 'delete selector mismatch')
 
     this.registered(app.id).delete()
 

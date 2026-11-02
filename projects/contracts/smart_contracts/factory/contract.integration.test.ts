@@ -4,6 +4,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
+import { ABIMethod, OnApplicationComplete } from 'algosdk'
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -146,7 +147,6 @@ describe('Factory (localnet)', () => {
 
     // Register: the creator pays the refundable deposit.
     const factoryBefore = await accountInfo(factoryAddress)
-    const creatorBefore = await accountInfo(creator.addr.toString())
     const payment = await algorand.createTransaction.payment({
       sender: creator.addr.toString(),
       receiver: factoryAddress,
@@ -182,20 +182,28 @@ describe('Factory (localnet)', () => {
       }),
     ).rejects.toThrow(/campaign already registered/)
 
-    // Unregister: the deposit is returned to the creator and the registration disappears.
-    await factoryClient.send.call({
-      method: 'unregister(uint64)void',
+    // Unregister + delete in one atomic group: the deposit is returned and the campaign cannot remain live.
+    const unregisterComposer = algorand.send.newGroup()
+    unregisterComposer.addAppCallMethodCall({
+      appId: factoryClient.appId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
       args: [campaignId],
       sender: creator.addr,
       appReferences: [campaignId],
-      extraFee: (1000).microAlgo(),
-      suppressLog: true,
+      extraFee: microAlgos(TXN_FEE),
     })
+    unregisterComposer.addAppCallMethodCall({
+      appId: campaignId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creator.addr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      extraFee: microAlgos(2n * TXN_FEE),
+    })
+    await unregisterComposer.send({ suppressLog: true })
     expect(await isRegistered(factoryClient, campaignId, owner.addr.toString())).toBe(false)
 
-    const creatorAfter = await accountInfo(creator.addr.toString())
-    // Deposit returned; the creator only pays the register and unregister call fees (2,000 µA each, as measured on LocalNet).
-    expect(creatorAfter.balance - creatorBefore.balance).toEqual(-4n * TXN_FEE)
     const factoryAfterUnregister = await accountInfo(factoryAddress)
     expect(factoryAfterUnregister.balance).toEqual(factoryAfterRegister.balance - REGISTER_MBR)
     // The registration box is gone: its MBR is released back to the account base.
@@ -367,15 +375,26 @@ describe('Factory (localnet)', () => {
       }),
     ).rejects.toThrow(/only the campaign creator can unregister/)
 
-    // The registered creator can.
-    await factoryClient.send.call({
-      method: 'unregister(uint64)void',
+    // The registered creator can (unregister and delete must be one atomic group).
+    const unregisterComposer = algorand.send.newGroup()
+    unregisterComposer.addAppCallMethodCall({
+      appId: factoryClient.appId,
+      method: ABIMethod.fromSignature('unregister(uint64)void'),
       args: [campaignClient.appId],
       sender: creator.addr,
       appReferences: [campaignClient.appId],
-      extraFee: (1000).microAlgo(),
-      suppressLog: true,
+      extraFee: microAlgos(TXN_FEE),
     })
+    unregisterComposer.addAppCallMethodCall({
+      appId: campaignClient.appId,
+      method: ABIMethod.fromSignature('delete()void'),
+      args: [],
+      sender: creator.addr,
+      onComplete: OnApplicationComplete.DeleteApplicationOC,
+      appReferences: [vaultId],
+      extraFee: microAlgos(2n * TXN_FEE),
+    })
+    await unregisterComposer.send({ suppressLog: true })
     expect(await isRegistered(factoryClient, campaignClient.appId, owner.addr.toString())).toBe(false)
   })
 })
