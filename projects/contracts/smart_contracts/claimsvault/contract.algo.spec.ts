@@ -182,11 +182,12 @@ describe('ClaimsVault', () => {
     })
 
     test('rejects a first touch the offline ledger cannot register (covered on LocalNet)', () => {
-      // No box exists and the group payment verifies, so `credit` reaches the Factory inner call whose log the
-      // offline ledger cannot emulate: the call resolves but returns no log, failing the gate. The real gate runs
-      // on LocalNet.
+      // A live Open campaign passes the status gate, then reaches the Factory inner call whose log the offline ledger
+      // cannot emulate: the call resolves but returns no log, failing the registration gate. The real gate runs on
+      // LocalNet.
       const vault = createVault()
       const caller = ctx.defaultSender
+      const { app } = foreignCampaign({ status: 0, raised: 0, goal: 1000, deadline: 0, root: Z_HEX, n: 0 })
       ctx.txn
         .createScope([
           ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
@@ -194,9 +195,30 @@ describe('ClaimsVault', () => {
         ])
         .execute(() => {
           expect(() => {
-            vault.credit(campaignApp(), 1000)
+            vault.credit(app, 1000)
           }).toThrow('campaign not registered')
         })
+    })
+
+    test('rejects a first touch for a deleted or non-open campaign', () => {
+      const vault = createVault()
+      const caller = ctx.defaultSender
+      const failed = foreignCampaign({ status: 1, raised: 0, goal: 1000, deadline: 0, root: Z_HEX, n: 0 })
+      const claimed = foreignCampaign({ status: 2, raised: 0, goal: 1000, deadline: 0, root: Z_HEX, n: 0 })
+      const deleted = ctx.any.application({ applicationId: 999 })
+
+      for (const app of [failed.app, claimed.app, deleted]) {
+        ctx.txn
+          .createScope([
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ])
+          .execute(() => {
+            expect(() => {
+              vault.credit(app, 1000)
+            }).toThrow('campaign is not open')
+          })
+      }
     })
 
     test('rejects a box that is not open', () => {
@@ -746,13 +768,12 @@ describe('ClaimsVault', () => {
       })
     })
 
-    test('rejects an unknown campaign', () => {
+    test('is a no-op when the box is already gone', () => {
       const vault = createVault()
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
-        expect(() => {
-          vault.notifyDelete(ctx.any.application({ applicationId: 999 }))
-        }).toThrow('unknown campaign')
+        vault.notifyDelete(ctx.any.application({ applicationId: 999 }))
       })
+      expect(vault.campaignBox(999).exists).toEqual(false)
     })
 
     test('rejects a box that is not claimed', () => {
@@ -782,6 +803,48 @@ describe('ClaimsVault', () => {
         vault.notifyDelete(campaignApp())
       })
 
+      expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
+    })
+  })
+
+  describe('releaseClaimed', () => {
+    test('is a no-op when the box is already gone', () => {
+      const vault = createVault()
+      vault.releaseClaimed(ctx.any.application({ applicationId: 999 }))
+      expect(vault.campaignBox(999).exists).toEqual(false)
+    })
+
+    test('rejects a box that is not claimed', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      expect(() => {
+        vault.releaseClaimed(campaignApp())
+      }).toThrow('campaign not claimed')
+    })
+
+    test('rejects a box with an outstanding balance', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      expect(() => {
+        vault.releaseClaimed(campaignApp())
+      }).toThrow('campaign balance outstanding')
+    })
+
+    test('deletes a balanced claimed box permissionlessly', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      vault.releaseClaimed(campaignApp())
+      expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
+    })
+
+    test('notifyDelete is a no-op after a permissionless release', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: Z_HEX, n: 1, status: CLAIMED, settledAt: 0 })
+      const app = campaignApp()
+      vault.releaseClaimed(app)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
+        vault.notifyDelete(app)
+      })
       expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
     })
   })

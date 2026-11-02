@@ -19,7 +19,7 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   `delete()` is O(1) on every path.
 - **ClaimsVault** (`smart_contracts/claimsvault/contract.algo.ts`) - permanent pooled escrow. State: one 65-byte box per campaign
   (`paidIn`, `paidOut`, `root`, `N`, `status`, `settledAt`). Methods: `credit`, `payBack`, `payClaim`, `settle`, `settleOpen`,
-  `refund`, `notifyDelete`, `finalize`. Payout amounts are per-campaign capped by verified inflows
+  `refund`, `notifyDelete`, `releaseClaimed`, `finalize`. Payout amounts are per-campaign capped by verified inflows
   (`amount <= paidIn - paidOut`); inner payouts are gated on the campaign app caller; vault refunds work after campaign deletion.
 - **Factory** (`smart_contracts/factory/contract.algo.ts`) - registration registry only: `owner`, `approvalHash`, `registered` BoxMap;
   `register` verifies the campaign program hash and the creator identity; refundable 18,900 µA deposit.
@@ -255,7 +255,9 @@ mechanism instead).
 
 `Vault.credit` (top-level, backer-signed) checks: `Txn.groupIndex == Global.groupSize − 1` (the credit is the group's final
 transaction); the vault box for `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges after settlement); if the box is
-absent: inner-call `factory.isRegistered(app)` (result must be true) before creating it; **independently verify the payment**: scan
+absent: the campaign app must still exist and its `status` must be `OPEN` (a deleted app fails the global read; `FAILED`/`CLAIMED`
+reject, so a stale registration can never open a fresh box), then inner-call `factory.isRegistered(app)` (result must be true)
+before creating it; **independently verify the payment**: scan
 the caller's own group (`gtxn` - fully visible because `credit` is top-level) for a payment with `sender == Txn.sender`,
 `receiver == vault.address`, `amount == amount` - assert found. Then `paidInOf += amount` (creating the box on first pledge). The
 vault's `paidInOf` therefore counts only real payments into the vault - the "derived, not trusted" property of the current design
@@ -301,7 +303,13 @@ to the live pledge total because cancels were balanced); pay creator (`Txn.sende
 
 `[Campaign.delete()]` (creator): requires `status == CLAIMED` (or `FAILED`, or `raised == 0`); inner `vault.notifyDelete(app)` which
 asserts `status == CLAIMED` and `paidInOf == paidOutOf`, then deletes the box (recovering the 32,100 µA) - **O(1), vault parks nothing
-for successful campaigns**. Creator then `factory.unregister(app)`.
+for successful campaigns**. `notifyDelete` is a no-op when the box was already released, so deletion still works after a
+permissionless cleanup. Creator then `factory.unregister(app)`.
+
+`[Vault.releaseClaimed(app)]` (**permissionless**): asserts the box is `CLAIMED` with `paidInOf == paidOutOf`, then deletes it. This
+recovers the box's 32,100 µA even when a creator claims and then never deletes the campaign, so claimed boxes cannot pin the vault's
+minimum balance forever. It cannot re-open a box: a later `credit` for the same (now `CLAIMED`) campaign is rejected by the first-touch
+status check.
 
 ### Failed settlement
 
@@ -376,17 +384,18 @@ on a live campaign (`raised > 0`, OPEN, deadline not passed or goal met); refund
 ### Vault box
 
 ```text
-absent ──credit──▶ OPEN          (first pledge; Factory check on creation)
+absent ──credit──▶ OPEN          (first pledge; campaign must exist + be OPEN, Factory check on creation)
 OPEN ──credit/payBack──▶ OPEN
-OPEN ──payClaim──▶ CLAIMED ──notifyDelete──▶ absent
+OPEN ──payClaim──▶ CLAIMED ──notifyDelete/releaseClaimed──▶ absent
 OPEN ──settle (campaign delete)──▶ FAILED
 OPEN ──settleOpen (permissionless)──▶ FAILED
 FAILED ──refund──▶ FAILED        (window open; paidOutOf grows)
 FAILED ──finalize──▶ absent      (window closed; residual to sweepTarget)
 ```
 
-Illegal: credit/payBack on a FAILED/CLAIMED box; refund on OPEN/CLAIMED/absent boxes or after the window; finalize on OPEN/CLAIMED
-or before the window; double settle (idempotent no-op); double finalize (box absent → reject).
+Illegal: credit/payBack on a FAILED/CLAIMED box; credit on a deleted/Failed/Claimed campaign with no box; refund on
+OPEN/CLAIMED/absent boxes or after the window; finalize on OPEN/CLAIMED or before the window; double settle (idempotent no-op);
+double finalize (box absent → reject).
 
 ### Edge cases
 
@@ -540,10 +549,11 @@ real consensus, including the races of §7.
 | 26 | Finalize race | window + status assertions; absent-box reject | app checks |
 | 27 | Repeated finalize | box absent after first | app checks |
 | 28 | Malicious indexer data | the indexer is never trusted: every supplied structure (frontier, path) is authenticated by the contract against on-chain state; wrong indexer data only causes a rejected transaction and a retry | SHA + app checks |
-| 29 | `credit` without a matching `pledge` (or vice versa) | `paidInOf` counts only real in-group payments; a tree/paidIn skew strands only the deviator's own funds (an uncredited leaf fails the balance guard at refund; unpledged credit inflates only the deviator's own inflow, claimable back by nobody but the pool) - self-harm, no cross-campaign effect | app checks |
+| 29 | `credit` without a matching `pledge` (or vice versa) | `paidInOf` counts only real in-group payments; an unpledged credit is a donation (only the creator can claim it on success), while an uncredited pledge strands the deviator's payment in the pool and lets that leaf consume other backers' refunds up to the uncredited amount - griefing with no direct profit, and no cross-campaign effect (the per-campaign guard caps every outflow) | app checks |
 | 29a | One payment reused for several pledges or credits | `pledge` requires the payment immediately before it and `credit` must be the group's final transaction; a transaction can appear only once per group, so each payment backs at most one pledge and one credit - `paidInOf` cannot be inflated by replaying a payment | app checks + AVM group shape |
 | 30 | Inner self-call for budget (`self.reserve()`) | forbidden by consensus (reentrancy); heavy methods use `ensureBudget` OpUp creates instead (§14) | AVM |
 | 31 | `credit` under another campaign's box | the box is keyed by the caller-supplied app id and creation is registration-gated; misattribution locks the caller's own funds under that campaign's cap | app checks |
+| 32 | `credit` after the campaign app is deleted or settled | first-touch `credit` requires the campaign app's `status` to be `OPEN` (a deleted app fails the global read; `FAILED`/`CLAIMED` reject), so a stale Factory registration cannot open a box that no campaign can settle | app checks + AVM global read |
 
 ## 18. Six-requirement scorecard
 

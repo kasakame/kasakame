@@ -150,6 +150,8 @@ export class Campaign extends Contract {
     ensureBudget(p * Uint64(70) + Uint64(400), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
+    /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
+    assert(leaf !== ZERO_ROOT, 'leaf must not be zero')
 
     let newRoot: bytes = leaf
     if (n > Uint64(0)) {
@@ -333,6 +335,8 @@ export class Campaign extends Contract {
     ensureBudget(h * Uint64(70) + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
+    /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
+    assert(leaf !== ZERO_ROOT, 'leaf must not be zero')
     assert(this.combineBlob(leaf, k, path, r, c, hasTop) === this.root.value, 'proof does not match root')
 
     this.root.value = this.combineBlob(ZERO_ROOT, k, path, r, c, hasTop)

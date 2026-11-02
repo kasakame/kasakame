@@ -303,7 +303,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, amount],
       sender: backerAddr,
-      appReferences: [factoryId],
+      appReferences: [appId, factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })

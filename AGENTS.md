@@ -15,7 +15,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     escrow is never funded and holds nothing
   - `smart_contracts/claimsvault/contract.algo.ts` - the `ClaimsVault`: pooled
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
-    `settleOpen`, `refund`, `notifyDelete`, `finalize`)
+    `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
     registry (owner-configured approval hash, `setApprovalHash`,
     `register`/`unregister`, readonly `isRegistered`)

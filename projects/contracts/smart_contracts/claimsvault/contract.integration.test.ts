@@ -274,7 +274,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, amount],
       sender: backerAddr,
-      appReferences: [factoryId],
+      appReferences: [appId, factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
@@ -456,7 +456,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [appId, ALGO],
       sender: addr,
-      appReferences: [factoryId],
+      appReferences: [appId, factoryId],
       boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
       extraFee: microAlgos(FEE),
     })
@@ -494,5 +494,117 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await balanceOf(sweeperAddr)).toEqual(balS0 + ALGO)
     expect(await balanceOf(addr)).toEqual(balD0 - FEE_FINALIZE_PAID)
     expect(await boxExists(appId)).toEqual(false)
+  })
+
+  test('one payment cannot back two credits in one group', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appId } = await deployCampaign(creator.addr.toString())
+
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(2n * ALGO),
+    })
+    const composer = algorand.send.newGroup()
+    composer.addTransaction(pay)
+    for (const note of ['credit-1', 'credit-2']) {
+      composer.addAppCallMethodCall({
+        appId: vaultId,
+        method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
+        args: [appId, 2n * ALGO],
+        sender: backer.addr,
+        note: new TextEncoder().encode(note),
+        appReferences: [appId, factoryId],
+        boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
+        extraFee: microAlgos(FEE),
+      })
+    }
+
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow(/final transaction in the group/)
+    expect(await boxExists(appId)).toEqual(false)
+  })
+
+  test('deleted but still-registered campaigns cannot be credited afterwards', async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appClient, appId } = await deployCampaign(creator.addr.toString())
+
+    // Delete the pristine campaign without unregistering: the Factory registration remains, the app is gone.
+    await appClient.send.delete({
+      method: 'delete()void',
+      sender: creator.addr,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+      suppressLog: true,
+    })
+    expect(await boxExists(appId)).toEqual(false)
+
+    // A credit with a real payment must be rejected before it can create a box for the deleted app.
+    const pay = await algorand.createTransaction.payment({
+      sender: backer.addr,
+      receiver: vaultAddress,
+      amount: microAlgos(1n),
+    })
+    const composer = algorand.send.newGroup()
+    composer.addTransaction(pay)
+    composer.addAppCallMethodCall({
+      appId: vaultId,
+      method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
+      args: [appId, 1n],
+      sender: backer.addr,
+      appReferences: [appId, factoryId],
+      boxReferences: [vaultBoxRef(appId), registrationBoxRef(appId)],
+      extraFee: microAlgos(FEE),
+    })
+    await expect(composer.send({ suppressLog: true })).rejects.toThrow()
+    expect(await boxExists(appId)).toEqual(false)
+  })
+
+  test('releaseClaimed recovers a claimed box permissionlessly; delete still works', async () => {
+    const tree = new Tree()
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const { appClient, appId } = await deployCampaign(creator.addr.toString(), 2n * ALGO)
+    const addr = backer.addr.toString()
+    await pledge(appId, addr, 2n * ALGO, tree)
+    await advanceTime(900)
+    await appClient.send.call({
+      method: 'claim()void',
+      args: [],
+      sender: creator.addr,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+      suppressLog: true,
+    })
+    const box = await boxOf(appId)
+    expect(box.status).toEqual(3)
+    expect(box.paidIn).toEqual(box.paidOut)
+
+    const vaultBal0 = await balanceOf(vaultAddress)
+    const vaultMin0 = await minBalanceOf(vaultAddress)
+    await vaultClient.send.call({
+      method: 'releaseClaimed(uint64)void',
+      args: [appId],
+      sender: stranger.addr,
+      boxReferences: [vaultBoxRef(appId)],
+      suppressLog: true,
+    })
+    expect(await boxExists(appId)).toEqual(false)
+    expect(await balanceOf(vaultAddress)).toEqual(vaultBal0)
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin0 - BOX_MBR)
+
+    // The campaign's creator can still delete: notifyDelete is a no-op once the box is gone.
+    await appClient.send.delete({
+      method: 'delete()void',
+      sender: creator.addr,
+      appReferences: [vaultId],
+      boxReferences: [vaultBoxRef(appId)],
+      extraFee: microAlgos(2n * FEE),
+      suppressLog: true,
+    })
   })
 })

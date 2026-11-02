@@ -126,22 +126,22 @@ class as it does not extend Contract or BaseContract".
 
 ## Integration test inventory
 
-All LocalNet integration tests in the repo (run with `npm run test:integration`; 16
+All LocalNet integration tests in the repo (run with `npm run test:integration`; 19
 tests across 3 files). Each file deploys its own fixture chain to a live algod.
 Files run **sequentially** (`--no-file-parallelism`): they share one LocalNet
 sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global - parallel
 files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 35 campaign +
-50 vault + 16 factory tests, all green with 100% line/branch/function coverage).
+Offline specs live next to each contract (`contract.algo.spec.ts`: 36 campaign +
+57 vault + 17 factory + 2 deployer tests, all green with 100% line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money
 ledger, µA-exact, for every actor involved: balance and minimum-balance deltas
 per account, the fee totals of each operation (measured on LocalNet - the
 pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA),
 the vault pool movement, the parked box MBR (32,100 µA per campaign box on the
-vault, released by `notifyDelete`/`finalize`), and the creator's sponsorship
+vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the creator's sponsorship
 floor (recovered at `delete()`). Rejected transactions are asserted to move
 **nothing** (atomic failure charges no fee).
 
@@ -168,7 +168,7 @@ Factory + ClaimsVault + Campaign.
 | 7 | pristine and all-cancelled campaigns delete cleanly | No-box delete settles as a no-op; fully-cancelled delete settles to `Failed` with nothing owed |
 | 8 | settleOpen lets a stranger settle a vanished-creator campaign | Permissionless settle from live globals; the campaign path then rejects (box not open) and the vault path serves refunds |
 
-### `smart_contracts/claimsvault/contract.integration.test.ts` (4 tests)
+### `smart_contracts/claimsvault/contract.integration.test.ts` (7 tests)
 
 | # | Test | Verifies |
 | --- | --- | --- |
@@ -176,15 +176,18 @@ Factory + ClaimsVault + Campaign.
 | 10 | two campaigns share the pool with per-campaign isolation | Draining campaign A leaves B's box (root, `paidOut` 0) untouched; the pool holds exactly B's live pledge |
 | 11 | settleOpen + vault refunds + zero-residual finalize | Stranger settlement; direct refund + double-refund rejection; `finalize` with nothing left deletes the box with no payment and frees the MBR |
 | 12 | direct credit without a pledge strands only the deviator funds (spec §17 #29) | `paidIn` counts the real inflow but no leaf exists; pristine delete settles the stray box; post-window `finalize` sweeps the stray inflow and deletes the box - nobody else affected |
+| 13 | deleted but still-registered campaigns cannot be credited afterwards | First-touch `credit` rejects a deleted campaign app even though its Factory registration remains; no box is created |
+| 14 | releaseClaimed recovers a claimed box permissionlessly; delete still works | A stranger deletes the Claimed box and frees its MBR; the creator's later `delete` succeeds because `notifyDelete` is a no-op |
+| 15 | one payment cannot back two credits in one group | The first `credit` is not the group's final transaction; the whole group is rejected and no box is created |
 
 ### `smart_contracts/factory/contract.integration.test.ts` (4 tests)
 
 | # | Test | Verifies |
 | --- | --- | --- |
-| 13 | register/isRegistered/unregister round trip with a real Campaign | Registration against the real deployed program hash; the deposit lands on the Factory and returns on unregister; `isRegistered` reflects the state |
-| 14 | an impostor copy of the Campaign contract cannot register | The program-hash check rejects a non-official program |
-| 15 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
-| 16 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership and deposit protection |
+| 16 | register/isRegistered/unregister round trip with a real Campaign | Registration against the real deployed program hash; the deposit lands on the Factory and returns on unregister; `isRegistered` reflects the state |
+| 17 | an impostor copy of the Campaign contract cannot register | The program-hash check rejects a non-official program |
+| 18 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
+| 19 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership and deposit protection |
 
 ## API cheat sheet (learned the hard way)
 

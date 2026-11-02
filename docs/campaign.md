@@ -119,15 +119,17 @@ The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
   The payment must be the transaction immediately before `pledge`, and `credit` must be the group's final transaction; those
-  positions keep one payment from backing more than one pledge or credit.
+  positions keep one payment from backing more than one pledge or credit. First-touch `credit` also requires the campaign app to
+  exist and be `Open`, so a deleted or settled campaign cannot open a fresh vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
-- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`).
+- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
+  `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.
 
 Inner calls authenticate the caller as the campaign app address; top-level calls to `payBack`/`payClaim`/`settle`/`notifyDelete` fail. Box access on the outer transaction must declare the vault campaign box. The full vault reference is in the protocol spec (§9); the fee table below carries the measured outer-call costs.
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (35 tests, 100% lines/branches/functions) plus the LocalNet integration suite (8 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (36 tests, 100% lines/branches/functions) plus the LocalNet integration suite (8 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 

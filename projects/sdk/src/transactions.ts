@@ -309,7 +309,8 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
     await vaultClient.params.credit({
       args: { app: appId, amount: amountMicroAlgos },
       sender: session.address,
-      appReferences: [factoryAppId],
+      // First-touch credit reads the campaign's status, so the campaign app must be a foreign app too.
+      appReferences: [factoryAppId, appId],
       boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
       extraFee: microAlgos(FEE_CREDIT_EXTRA),
     }),
