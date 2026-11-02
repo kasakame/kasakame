@@ -1,4 +1,4 @@
-import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
+import type { Account, Application, bytes } from '@algorandfoundation/algorand-typescript'
 import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
@@ -7,6 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Campaign } from './contract.algo'
 
 /**
@@ -24,6 +25,9 @@ const DEADLINE = 2_000
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
+const FACTORY_APP_ID = 7
+const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb')
+const FACTORY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277')
 const ORACLE = path.resolve(__dirname, '../oracle.py')
 
 describe('Campaign', () => {
@@ -69,8 +73,39 @@ describe('Campaign', () => {
     return contract
   }
 
+  /**
+   * A campaign bound to a real ClaimsVault with a Factory binding, for the delete group-shape check.
+   *
+   * @param factoryAppId The Factory app id the vault points at.
+   * @returns The campaign, its Factory app, and the campaign app id.
+   */
+  function createCampaignWithFactory(factoryAppId = FACTORY_APP_ID) {
+    const vault = ctx.contract.create(ClaimsVault)
+    // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
+    ;(vault.factory as unknown as { value: unknown }).value = factoryAppId
+    const contract = ctx.contract.create(Campaign)
+    contract.create(ctx.ledger.getApplicationForContract(vault), TITLE, METADATA_URI, GOAL, DEADLINE)
+    return {
+      contract,
+      factoryApp: ctx.any.application({ applicationId: factoryAppId }),
+      campaignId: toExternalValue(ctx.ledger.getApplicationForContract(contract).id),
+    }
+  }
+
   function rootHex(contract: Campaign): string {
     return Buffer.from(toExternalValue(contract.root.value)).toString('hex')
+  }
+
+  /**
+   * Big-endian uint64 bytes for ABI app args.
+   *
+   * @param value The value.
+   * @returns Eight bytes.
+   */
+  function toU64(value: number | bigint): Uint8Array {
+    const buf = Buffer.alloc(8)
+    buf.writeBigUInt64BE(BigInt(value))
+    return new Uint8Array(buf)
   }
 
   /** Hex of the first inner app call's method selector (keeps the embedded vault selectors in sync). */
@@ -105,12 +140,21 @@ describe('Campaign', () => {
   function pledgeAs(contract: Campaign, backer: Account, amount: number): string {
     const front = oracle('frontier') as { peaks: string[] }
     const frontier = Buffer.concat(front.peaks.map((p) => Buffer.from(p, 'hex')))
+    const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
     let txid = ''
     ctx.txn
-      .createScope([
-        ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount }),
-        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
-      ])
+      .createScope(
+        [
+          ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount }),
+          ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+          ctx.any.txn.applicationCall({
+            appId: contract.vault.value,
+            sender: backer,
+            appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(amount)],
+          }),
+        ],
+        1,
+      )
       .execute(() => {
         // Rebuild the payment handle inside the scope so the mock carries the scope's transaction.
         const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount })
@@ -195,6 +239,89 @@ describe('Campaign', () => {
 
       expect(contract.n.value).toEqual(4)
       expect(contract.raised.value).toEqual(7_000_000)
+    })
+
+    test('rejects reusing one payment for a second pledge', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(100)],
+        }),
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        contract.pledge(pay, Bytes(new Uint8Array()))
+      })
+      const frontier = contract.root.value
+      ctx.txn.createScope(group, 3).execute(() => {
+        expect(() => {
+          contract.pledge(pay, frontier)
+        }).toThrow('payment must immediately precede pledge')
+      })
+
+      expect(contract.n.value).toEqual(1)
+      expect(contract.raised.value).toEqual(100)
+    })
+
+    test('rejects a pledge without a matching vault credit', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })
+      const pledgeCall = ctx.any.txn.applicationCall({ appId: contract, sender: backer })
+      const other = ctx.any.account()
+      const otherApp = ctx.any.application({ applicationId: 999 })
+      const credit = (overrides: { appId?: Application; sender?: Account; appArgs?: unknown[]; onCompletion?: OnCompleteAction } = {}) =>
+        ctx.any.txn.applicationCall({
+          appId: overrides.appId ?? contract.vault.value,
+          sender: overrides.sender ?? backer,
+          appArgs: overrides.appArgs ?? [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(100)],
+          onCompletion: overrides.onCompletion ?? OnCompleteAction.NoOp,
+        })
+
+      const cases: { group: unknown[]; expected: string }[] = [
+        { group: [pay, pledgeCall], expected: 'credit must follow pledge' },
+        {
+          group: [pay, pledgeCall, ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100 })],
+          expected: 'credit must follow pledge',
+        },
+        { group: [pay, pledgeCall, credit({ appId: otherApp })], expected: 'credit must call the vault' },
+        { group: [pay, pledgeCall, credit({ sender: other })], expected: 'credit must come from the pledger' },
+        { group: [pay, pledgeCall, credit({ onCompletion: OnCompleteAction.ClearState })], expected: 'credit must be a NoOp call' },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId)] })],
+          expected: 'credit args mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [Bytes.fromHex('00000000'), toU64(campaignId), toU64(100)] })],
+          expected: 'credit selector mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId + 1n), toU64(100)] })],
+          expected: 'credit app mismatch',
+        },
+        {
+          group: [pay, pledgeCall, credit({ appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(101)] })],
+          expected: 'credit amount mismatch',
+        },
+      ]
+
+      for (const { group, expected } of cases) {
+        ctx.txn.createScope(group as never[], 1).execute(() => {
+          expect(() => {
+            contract.pledge(pay, Bytes(new Uint8Array()))
+          }).toThrow(expected)
+        })
+      }
+      expect(contract.n.value).toEqual(0)
+      expect(contract.raised.value).toEqual(0)
     })
 
     test('rejects pledging after the deadline', () => {
@@ -521,6 +648,86 @@ describe('Campaign', () => {
         ctx.any.txn.applicationCall({ appId: contract, sender, onCompletion: OnCompleteAction.DeleteApplication }),
       ])
     }
+
+    /**
+     * The required `[Factory.unregister, Campaign.delete]` group for a Factory-bound vault.
+     *
+     * @param contract The campaign.
+     * @param factoryApp The Factory app the vault points at.
+     * @param sender The creator.
+     * @returns The two group transactions.
+     */
+    function deleteGroup(contract: Campaign, factoryApp: ReturnType<typeof ctx.any.application>, sender = ctx.defaultSender) {
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      return [
+        ctx.any.txn.applicationCall({ appId: factoryApp, sender, appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)] }),
+        ctx.any.txn.applicationCall({ appId: contract, sender, onCompletion: OnCompleteAction.DeleteApplication }),
+      ]
+    }
+
+    test('requires the Factory unregister immediately before delete', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      ctx.txn.createScope(deleteGroup(contract, factoryApp), 1).execute(() => {
+        contract.delete()
+      })
+
+      expect(firstInnerSelector()).toEqual('09200848')
+    })
+
+    test('rejects a raw delete when the vault has a Factory binding', () => {
+      const { contract } = createCampaignWithFactory()
+      deleteScope(contract, ctx.defaultSender).execute(() => {
+        expect(() => {
+          contract.delete()
+        }).toThrow('unregister must precede delete')
+      })
+    })
+
+    test('rejects an unregister for another campaign', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      const wrong = ctx.any.txn.applicationCall({
+        appId: factoryApp,
+        sender: ctx.defaultSender,
+        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(999_999)],
+      })
+      ctx.txn
+        .createScope(
+          [
+            wrong,
+            ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender, onCompletion: OnCompleteAction.DeleteApplication }),
+          ],
+          1,
+        )
+        .execute(() => {
+          expect(() => {
+            contract.delete()
+          }).toThrow('unregister app mismatch')
+        })
+    })
+
+    test('rejects a ClearState unregister before delete', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const wrong = ctx.any.txn.applicationCall({
+        appId: factoryApp,
+        sender: ctx.defaultSender,
+        onCompletion: OnCompleteAction.ClearState,
+        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)],
+      })
+      ctx.txn
+        .createScope(
+          [
+            wrong,
+            ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender, onCompletion: OnCompleteAction.DeleteApplication }),
+          ],
+          1,
+        )
+        .execute(() => {
+          expect(() => {
+            contract.delete()
+          }).toThrow('unregister must be a NoOp call')
+        })
+    })
 
     test('rejects a non-creator caller', () => {
       const contract = createCampaign()

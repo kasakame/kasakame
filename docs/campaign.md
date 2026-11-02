@@ -40,7 +40,7 @@ The contract owns the root; the frontend owns reconstruction. A stale or forged 
 
 ### Vault box (per campaign, 65 bytes)
 
-Key = `'c' + appId` (9 bytes). Value = `paidIn (8) ‖ paidOut (8) ‖ root (32) ‖ N (8) ‖ status (1) ‖ settledAt (8)`. Box MBR = 2,500 + 400 × (9 + 65) = **32,100 µA**, parked on the vault's platform-funded account and released by `notifyDelete` / `finalize`. Opening the box is the vault's only per-campaign cost.
+Key = `'c' + appId` (9 bytes). Value = `paidIn (8) ‖ paidOut (8) ‖ root (32) ‖ N (8) ‖ status (1) ‖ settledAt (8)`. Box MBR = 2,500 + 400 × (9 + 65) = **32,100 µA**, parked on the vault's platform-funded account and released by `notifyDelete` / `releaseClaimed` / `finalize`. Opening the box is the vault's only per-campaign cost.
 
 ## State machine
 
@@ -60,7 +60,7 @@ Transitions:
 
 - `claim()` writes `Claimed`, sends the vault total `paidIn - paidOut` to the creator. Only the creator, only after the deadline, only when `raised >= goal`. Double claims fail (`status != Open`).
 - The first `refund()` flips the campaign status to `Failed`. The vault box stays `Open` until settlement: `root`/`N`/`settledAt` are recorded when `delete()` settles or when `settleOpen` runs. Any later refund, or vault-direct refund, nulls one leaf and pays the backer. `cancelPledge` works only while `Open`.
-- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes.
+- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes. When the campaign's vault has a Factory binding, `delete()` requires the Factory's `unregister` (a NoOp app call) to be the immediately preceding transaction; the Factory requires the delete immediately after, so delisting and deletion are one atomic operation and a raw delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op, so the same group cleans up a registration that never landed.
 - Settling never depends on reading a possibly-deleted app: the campaign pushes `root`/`N`/`settledAt` into the vault box at settle time.
 
 ## Methods
@@ -96,8 +96,8 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 3. **No ASA anywhere.** Assets would add opt-in minimum balances, clawback trust, and per-holder state. The tree needs none of that.
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
-6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones. A stray vault inflow with no matching pledge still settles on pristine delete and sweeps through `finalize` instead of stranding.
-7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) at `delete()` + `unregister()`. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `finalize`.
+6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
+7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) in the atomic `[unregister, delete]` group. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
@@ -118,14 +118,20 @@ Double-spend of one leaf fails: the second proof no longer matches the root. Con
 The campaign never holds funds, so every money movement is an inner vault call:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
+  The payment must be immediately before `pledge`, and the matching `credit` must be immediately after it and the group's final
+  transaction; both the pledge and credit must be `NoOp` app calls (`ClearState` runs the clear program and is rejected). The vault
+  also requires that preceding `pledge`, so a credit without a pledge is rejected and every payer is a
+  backer. `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
+  checks Factory registration, so an unregistered campaign cannot open a vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
-- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`).
+- `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
+  `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.
 
 Inner calls authenticate the caller as the campaign app address; top-level calls to `payBack`/`payClaim`/`settle`/`notifyDelete` fail. Box access on the outer transaction must declare the vault campaign box. The full vault reference is in the protocol spec (§9); the fee table below carries the measured outer-call costs.
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (35 tests, 100% lines/branches/functions) plus the LocalNet integration suite (8 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (37 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 
@@ -146,4 +152,4 @@ Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 
 2. **Two encoding rules for raw inner appArgs** (see the vault interaction above). ABI-encode dynamic types: the settle `root` (`byte[]`) carries its uint16 length prefix. Static `uint64`/`address` args go raw.
 3. **Delete path.** `delete()` uses the dedicated `send.delete` path (or a manual composer group with `DeleteApplicationOC`). `send.call` with an `onComplete` override mis-encodes the call.
 4. **No `updatable`/`deletable` flags.** Do not pass them to `factory.send.create`; the contract TEAL has no deploy-time templates for them.
-5. **Factory approval hash.** Registration compares the full approval program hash. After any contract rebuild, set the new hash on the Factory before registering.
+5. **Factory program hash.** Registration compares the full SHA-256 over the approval **and clear-state** programs. After any contract rebuild, set the new hash on the Factory before registering.

@@ -15,10 +15,10 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     escrow is never funded and holds nothing
   - `smart_contracts/claimsvault/contract.algo.ts` - the `ClaimsVault`: pooled
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
-    `settleOpen`, `refund`, `notifyDelete`, `finalize`)
+    `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured approval hash, `setApprovalHash`,
-    `register`/`unregister`, readonly `isRegistered`)
+    registry (owner-configured program hash and official vault, `setApprovalHash`,
+    `setVault`, `register`/`unregister`, readonly `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
@@ -98,6 +98,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
   back in. Approvals follow user intent: one click, only the approvals the protocol structurally requires.
+- **Successful-campaign creator inactivity is accepted product behavior.** A successful campaign's
+  creator must claim; if they disappear, the funds stay locked and backers cannot refund. Do not add
+  a protocol fallback, do not sweep successful campaigns to the platform, and do not treat this as a
+  bug. Notifications may remind the creator later. The failed-campaign refund window is a different
+  path and does not apply here.
 - **Confirm assumptions against real documentation.** Algorand behavior (box MBR,
   app lifecycle, indexer retention, transaction semantics, inner-txn fees) changes
   over time and is easy to misremember. Do not assert how the chain works from
@@ -179,6 +184,27 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
     `op.AppGlobal.getExUint64/getExBytes(app, key)`; foreign **box** reads have
     no opcode - derive lookups from caller-supplied ids verified against local
     mappings instead.
+  - **Payment-consuming group order is load-bearing.** The payment must be the
+    transaction immediately before `Campaign.pledge`; the matching `Vault.credit`
+    must be immediately after the pledge and the group's final transaction, and
+    the vault requires that pledge immediately before it. `Factory.register` must
+    also be final. `Factory.unregister` must be immediately followed by the
+    campaign's `delete()`, and the campaign's `delete()` requires that
+    `unregister` immediately before it (when the campaign's vault has a Factory
+    binding). The paired calls must be `NoOp`: a `ClearState` call runs the
+    clear-state program instead of the method, so it can satisfy an app-id/selector
+    check without executing the paired logic. The contracts reject other shapes; the
+    positions stop one payment from backing several pledges, credits, or
+    registrations, stop a pledge from being left uncredited, stop a credit without a
+    pledge (donations), and make delisting and deletion one operation.
+  - `Factory.unregister` requires the campaign creator. A registered campaign
+    must exist and be settled (`Claimed`/`Failed`), pristine (`Open`,
+    `raised == 0`), or failed-in-fact; an unregistered campaign is a no-op, so the
+    same cleanup group also handles a registration that never landed. The
+    campaign's `delete()` must be the immediately following transaction:
+    unregister reads the state first, the delete then settles/releases the box.
+    The campaign's side enforces the reverse (unregister immediately before), so
+    a raw delete of an official campaign is rejected.
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions

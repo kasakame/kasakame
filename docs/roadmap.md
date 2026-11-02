@@ -135,6 +135,43 @@ Follow-ups after the 11-job build-and-test restructure:
 - [x] **ShellCheck sources** - add `-x` if tracked scripts source other files
       (optional).
 
+## Dependency upgrades
+
+- [x] **Verify frontend group #31** - `@txnlab/use-wallet` 5.1.1; local
+      type-check, lint, format, 311 tests, and the TestNet build pass. The
+      dependency tree still uses WalletConnect v1 through the vendor adapters.
+- [ ] **Merge frontend group #31** - test a real Pera, Defly, and Exodus
+      handshake on TestNet or LocalNet first; CI mocks the wallet context.
+- [ ] **Migrate the Pera adapter** - replace `@txnlab/use-wallet-pera@5.0.1`
+      with `@perawallet/use-wallet-pera@1.0.0`; the `pera()` API is unchanged,
+      but the wallet handshake needs a browser test.
+- [ ] **Split the CLI update** - take `@perawallet/walletconnect` 1.0.3
+      separately; ignore `libsodium-wrappers-sumo` 0.8.x until
+      `@algorandfoundation/xhd-wallet-api` supports it.
+- [ ] **Remove the deprecated Jest DOM types** - drop
+      `@types/testing-library__jest-dom`; `@testing-library/jest-dom@7` ships
+      its own types. Close Dependabot #34.
+- [ ] **Add Dependabot ignore rules** - major TypeScript, ESLint,
+      `@eslint/js`, `@types/node` (where used), and React family updates;
+      ignore libsodium 0.7.16 and 0.8.x in the CLI. Close the existing major
+      PRs with `@dependabot ignore this major version`.
+- [ ] **React 19** - upgrade `react`, `react-dom`, both type packages,
+      `notistack@3.0.2`, and the wallet group; run the suite and a browser
+      smoke test. Recommended after #31, not urgent.
+- [ ] **ESLint 10** - wait for `eslint-plugin-import` and
+      `eslint-plugin-react` to support 10, then upgrade `eslint` and
+      `@eslint/js` together per project.
+- [ ] **TypeScript 7** - wait for `@algorandfoundation/puya-ts` and
+      `typescript-eslint` to support it; not viable now.
+- [ ] **Node 26 types** - move `@types/node` to 26 only when the runtime and CI
+      move to Node 26; keep 24 now.
+- [ ] **libsodium 0.8** - drop the CLI `0.7.15` pin and its ignore rule once
+      `xhd-wallet-api` supports 0.8.x.
+
+WalletConnect v1 vs v2 is separate from these dependency PRs: #31 and the CLI
+walletconnect patch remain on v1. The v2 migration stays under
+[Wallet transport](#wallet-transport).
+
 ## SDK
 
 The chain layer the frontend and the escape-hatch CLI share, published as
@@ -340,8 +377,18 @@ submission.
       specification, rationale, security considerations, backwards
       compatibility, reference implementation, test vectors.
 - [ ] Define the deployment manifest: network, Factory and vault app IDs,
-      Campaign program hash, contract version, source repo. Add an SDK helper
-      that loads a manifest so clients can pin and verify a deployment.
+      Campaign program hash, vault binding, contract/spec version, SDK version,
+      source repo. Add an SDK helper that loads a manifest so clients can pin and
+      verify a deployment as one unit.
+- [ ] Document the cross-contract interface in one place: the inner-call
+      selectors, status values, the global keys the contracts read (`vault`,
+      `status`, `raised`, `goal`, `deadline`), and the load-bearing pledge group
+      shape. Keep the selector-sync tests so the hardcoded constants cannot
+      drift.
+- [ ] Codify the coupling rule: cross-contract access stays read-only
+      verification (verify, don't mutate). No shared boxes and no mutable config
+      across Factory, Campaign, and ClaimsVault; each contract writes only its
+      own state.
 - [ ] Build the conformance suite: run the behavioral matrix (every method ×
       every branch, plus the LocalNet adversarial cases) against any
       deployment's app IDs, with fixed claim-tree vectors.
@@ -358,6 +405,40 @@ submission.
       implementation.
 - [ ] Align the docs: link the standard from README and architecture, and
       describe "official" as deployment-local.
+
+## Contract hardening
+
+- [x] **Factory vault binding.** The Factory stores the official ClaimsVault app id
+      (owner-set once after the vault exists) and `register` rejects a campaign whose
+      `vault` global differs. `setVault` also requires the vault's `factory` global to
+      point back at the same Factory, so a wrong or foreign vault cannot be bound. The
+      deploy script binds the vault; tests cover the binding.
+- [x] **Pledge/credit pairing.** `Campaign.pledge` requires the vault's `credit` as the
+      immediate next transaction, for the same campaign and amount; `Vault.credit` requires
+      the campaign's `pledge` as the immediate preceding transaction. An uncredited pledge
+      can no longer create a leaf, and a credit without a pledge is rejected: every payer is
+      a backer and every inflow counts toward the goal. The SDK group matches this shape.
+- [x] **Successful-campaign liveness decision.** Accepted product behavior: a successful
+      campaign's creator must claim; if they disappear, the funds stay locked and backers
+      cannot refund. No code fallback and no platform sweep of successful campaigns;
+      notifications may remind the creator later. See [`design.md`](design.md).
+- [x] **Unregister gate.** `Factory.unregister` reads the campaign's `status`/`raised`/
+      `goal`/`deadline` and accepts settled, pristine, or failed-in-fact campaigns only.
+      It requires the campaign's `delete()` as the immediately following transaction, and
+      the campaign's `delete()` requires that `unregister` immediately before it when its
+      vault has a Factory binding, so delisting and deletion are one atomic operation and a
+      raw delete of an official campaign is rejected. Zero-pledge and all-cancelled campaigns
+      clean up immediately, no delisted campaign can remain live, and an unregistered
+      campaign's `unregister` no-ops so the same group handles failed registrations. The
+      SDK, scripts, docs, and tests build `[unregister, delete]` as one group.
+- [x] **Refund-window sanity.** `REFUND_WINDOW_SECONDS` is capped at 10 years in the
+      vault deploy config and the parser is tested, so a misconfiguration cannot overflow
+      `settledAt + refundWindow`.
+- [x] **Balanced-box finalize.** A Failed box with `paidIn == paidOut` has nothing left to
+      refund, so `finalize` can delete it immediately instead of waiting for the refund
+      window; all-cancelled campaigns do not pin their MBR.
+- [x] **Payment-reuse regression tests.** Unit and LocalNet groups cover duplicate
+      `credit`, duplicate `pledge`, and duplicate `register` with one payment.
 
 ## Deployment
 

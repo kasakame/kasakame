@@ -17,7 +17,9 @@ import { FactoryClient } from './generated/FactoryClient.js'
  * The claim-tree design (see docs/campaign.md):
  *
  * - **Creation** chains create → factory.register. Nothing is funded: the escrow never holds funds.
- * - **Pledges** are one atomic group `[pay, campaign.pledge, vault.credit]`; the caller supplies the frontier (rebuilt
+ * - **Pledges** are one atomic group `[pay, campaign.pledge, vault.credit]` (the payment immediately before the pledge,
+ *   the matching credit immediately after it and last - the contracts reject other shapes, and the vault rejects a
+ *   credit whose preceding transaction is not that pledge); the caller supplies the frontier (rebuilt
  *   from the indexer right before submitting) and retries once on a stale-proof rejection.
  * - **Cancels/refunds** null one leaf per call (`vault.payBack` path while the campaign box is open, `vault.refund`
  *   directly once settled) with the path rebuilt fresh and one stale retry.
@@ -273,8 +275,8 @@ export async function createCampaign(
 }
 
 /**
- * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt
- * frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
+ * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` (payment immediately
+ * before the pledge, matching credit immediately after it and last) with a freshly rebuilt frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
  * first attempts, each of which costs the user an approval plus burned fees).
  *
  * @param appId Campaign application id.
@@ -308,6 +310,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
     await vaultClient.params.credit({
       args: { app: appId, amount: amountMicroAlgos },
       sender: session.address,
+      // The first-touch registration check runs inside the vault; the campaign app is the pledge txn before this call.
       appReferences: [factoryAppId],
       boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
       extraFee: microAlgos(FEE_CREDIT_EXTRA),
@@ -499,8 +502,8 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
 /**
  * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow to the creator,
  * and unregisters from the Factory (returning the registration deposit). One atomic group (one wallet approval):
- * unregister runs first so every app reference resolves while the campaign app still exists; atomicity makes the
- * order irrelevant to the outcome.
+ * unregister runs first so every app reference resolves while the campaign app still exists, and the Factory requires
+ * its `delete()` to be the immediately following transaction. Atomicity makes the order irrelevant to the outcome.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
