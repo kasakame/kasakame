@@ -135,6 +135,43 @@ Follow-ups after the 11-job build-and-test restructure:
 - [x] **ShellCheck sources** - add `-x` if tracked scripts source other files
       (optional).
 
+## Dependency upgrades
+
+- [x] **Verify frontend group #31** - `@txnlab/use-wallet` 5.1.1; local
+      type-check, lint, format, 311 tests, and the TestNet build pass. The
+      dependency tree still uses WalletConnect v1 through the vendor adapters.
+- [ ] **Merge frontend group #31** - test a real Pera, Defly, and Exodus
+      handshake on TestNet or LocalNet first; CI mocks the wallet context.
+- [ ] **Migrate the Pera adapter** - replace `@txnlab/use-wallet-pera@5.0.1`
+      with `@perawallet/use-wallet-pera@1.0.0`; the `pera()` API is unchanged,
+      but the wallet handshake needs a browser test.
+- [ ] **Split the CLI update** - take `@perawallet/walletconnect` 1.0.3
+      separately; ignore `libsodium-wrappers-sumo` 0.8.x until
+      `@algorandfoundation/xhd-wallet-api` supports it.
+- [ ] **Remove the deprecated Jest DOM types** - drop
+      `@types/testing-library__jest-dom`; `@testing-library/jest-dom@7` ships
+      its own types. Close Dependabot #34.
+- [ ] **Add Dependabot ignore rules** - major TypeScript, ESLint,
+      `@eslint/js`, `@types/node` (where used), and React family updates;
+      ignore libsodium 0.7.16 and 0.8.x in the CLI. Close the existing major
+      PRs with `@dependabot ignore this major version`.
+- [ ] **React 19** - upgrade `react`, `react-dom`, both type packages,
+      `notistack@3.0.2`, and the wallet group; run the suite and a browser
+      smoke test. Recommended after #31, not urgent.
+- [ ] **ESLint 10** - wait for `eslint-plugin-import` and
+      `eslint-plugin-react` to support 10, then upgrade `eslint` and
+      `@eslint/js` together per project.
+- [ ] **TypeScript 7** - wait for `@algorandfoundation/puya-ts` and
+      `typescript-eslint` to support it; not viable now.
+- [ ] **Node 26 types** - move `@types/node` to 26 only when the runtime and CI
+      move to Node 26; keep 24 now.
+- [ ] **libsodium 0.8** - drop the CLI `0.7.15` pin and its ignore rule once
+      `xhd-wallet-api` supports 0.8.x.
+
+WalletConnect v1 vs v2 is separate from these dependency PRs: #31 and the CLI
+walletconnect patch remain on v1. The v2 migration stays under
+[Wallet transport](#wallet-transport).
+
 ## SDK
 
 The chain layer the frontend and the escape-hatch CLI share, published as
