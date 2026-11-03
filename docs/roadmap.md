@@ -99,6 +99,7 @@ slices land one commit each:
 - [ ] **Funded-account gating (if abuse shows up)** - require the uploader address to hold ALGO or show on-chain history (one free indexer call). Costs attackers real money per identity, unlike keygen; costs legitimate pledgers nothing extra. Only if quotas prove insufficient.
 - [ ] **Minimal catalog backend** - API + DB storing one row per campaign (app id, creator, title, metadata URI, goal, deadline, status, outcome, raised, backer count), serving browse/detail pages for ended campaigns.
 - [ ] **Chain watcher** - observes the indexer and finalizes campaign records (created/pledged/claimed/refunded/deleted) into the catalog.
+- [ ] **Registry/browse spam** - Factory registration is permissionless and the 18,900 µA deposit only locks the attacker's capital; a flood can still overwhelm the browse list/indexer. Add browse pagination/filtering and catalog-side moderation or rate limits; the on-chain registry stays permissionless.
 - [ ] **Creator updates feed** - append-only, timestamped, creator-signed messages stored by the catalog and shown as history on the
       detail page; the original description stays frozen and always viewable. No contract change: signatures are verified off-chain
       against the on-chain creator address. Typos get corrected and progress gets shared, but silent rewrites stay impossible -
@@ -539,6 +540,22 @@ submission.
       are added; Factory hash-split and register close/rekey tests are added. Remaining:
       remove the duplicate `campaign.create` in `registeredCampaign`, and run the LocalNet
       integration suite once LocalNet is healthy.
+
+### Follow-ups from the 2026-11-04 review
+
+- [ ] **P2 - campaign duration cap.** Add a maximum deadline (e.g., 365 days) in
+      `Campaign.create` and the create form; measure the byte delta. Today only
+      `deadline > latestTimestamp` is checked, so a custom client can create a 100-year
+      campaign. A 1 µA pledge then pins the platform-funded 32,100 µA vault box until the
+      deadline (`settleOpen` cannot run before it). A 365-day cap plus the 730-day refund
+      window bounds a failed campaign's box to ~3 years; the accepted successful-creator
+      inactivity case is unchanged. See [`limits.md`](limits.md).
+- [ ] **P2 - minimum pledge.** Decide and enforce a minimum pledge (e.g., 0.1-1 ALGO) in
+      `Campaign.pledge` and the pledge form. The current `amount > 0` allows 1 µA pledges,
+      which are cheap vault-box spam; a minimum makes the griefing more expensive.
+- [ ] **P3 - goal sanity cap.** Optional UX cap on `goal` (e.g., total ALGO supply or a
+      sane maximum). A huge goal does not consume platform resources; it only makes the
+      campaign fail. Keep it separate from the duration/pledge resource guards.
 
 ## Deployment
 
