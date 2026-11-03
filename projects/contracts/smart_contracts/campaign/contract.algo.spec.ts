@@ -395,6 +395,42 @@ describe('Campaign', () => {
         })
     })
 
+    test('rejects a payment that closes the sender account', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      ctx.txn
+        .createScope([
+          ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100, closeRemainderTo: vaultAccount() }),
+          ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ])
+        .execute(() => {
+          expect(() => {
+            contract.pledge(
+              ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100, closeRemainderTo: vaultAccount() }),
+              Bytes(new Uint8Array()),
+            )
+          }).toThrow('payment must not close')
+        })
+    })
+
+    test('rejects a payment that rekeys the sender', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      ctx.txn
+        .createScope([
+          ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100, rekeyTo: ctx.any.account() }),
+          ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ])
+        .execute(() => {
+          expect(() => {
+            contract.pledge(
+              ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 100, rekeyTo: ctx.any.account() }),
+              Bytes(new Uint8Array()),
+            )
+          }).toThrow('payment must not rekey')
+        })
+    })
+
     test('rejects a zero pledge', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()

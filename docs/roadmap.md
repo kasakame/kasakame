@@ -502,7 +502,7 @@ submission.
       A non-32-byte root could create a non-65-byte box that `readBox`/`finalize`/`settle`
       cannot use, parking its 32,100 µA. Tests cover a malformed root and a campaign bound
       to another vault.
-- [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,053 B
+- [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,069 B
       (1 extra page), so creation locks ~0.34 ALGO (321,000 µA app MBR + 18,900 µA
       registration deposit), returned when the campaign is deleted; the 1-page target is
       ~0.24. [`limits.md`](limits.md), the contract comment, and the affected docs record
@@ -514,16 +514,16 @@ submission.
       `sweepTarget` and a zero `factory`. Tests cover the cap, zero factory, zero/self
       target, and the existing zero-window guard.
 - [x] **P2 - campaign create zero-vault.** `Campaign.create` now rejects `vault == 0`;
-      the test covers it. The campaign grew 3 bytes (2,050 -> 2,053 B), still 2 pages;
-      the app MBR and creator cost are unchanged.
+      the test covers it. The app MBR and creator cost are unchanged; see
+      [`limits.md`](limits.md) for the current bytes.
 - [ ] **P2 - deploy target default.** Require an explicit `SWEEP_TARGET` on
       TestNet/MainNet; do not silently default the residual sweep to the deployer.
 - [x] **P2 - direct credit payment check.** `credit` now checks the payment at
       `Txn.groupIndex - 2` directly instead of scanning the group; the pledge/credit
       positions guarantee that is the committed payment. Cheaper and stricter.
-- [ ] **P2 - payment field hardening.** Vault `credit` now rejects
-      `closeRemainderTo`/`rekeyTo`; the Campaign `pledge` and Factory `register` checks
-      remain. Extra ALGO sent to the vault is not credited and has no sweep path.
+- [ ] **P2 - payment field hardening.** Vault `credit` and Campaign `pledge` now reject
+      `closeRemainderTo`/`rekeyTo`; the Factory `register` check remains. Extra ALGO sent
+      to the vault is not credited and has no sweep path.
 - [ ] **P2 - Factory governance.** Add owner transfer/renounce/timelock, store and verify
       the official vault program hash in `setVault`, and document the revocation story
       for old registered campaigns. The owner can change the official campaign program
@@ -537,10 +537,10 @@ submission.
       `finalize`, and `releaseClaimed`; otherwise failed-campaign boxes and residuals
       need manual transactions.
 - [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
-      vault, create guards, close/rekey); the Campaign zero-vault test is added. Remaining:
-      hash-split regression, Campaign pledge close/rekey test, remove the duplicate
-      `campaign.create` in `registeredCampaign`, and run the LocalNet integration suite
-      once LocalNet is healthy.
+      vault, create guards, close/rekey); Campaign zero-vault and pledge close/rekey tests
+      are added. Remaining: hash-split regression, remove the duplicate `campaign.create`
+      in `registeredCampaign`, and run the LocalNet integration suite once LocalNet is
+      healthy.
 
 ## Deployment
 

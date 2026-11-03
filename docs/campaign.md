@@ -97,7 +97,7 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
-7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,053 B total, 1 extra page), so creation locks the app MBR (321,000 µA) plus the 18,900 µA registration deposit = **339,900 µA (~0.34 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~5,000 µA in transaction fees. The 1-page target was ~0.24 ALGO (239,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
+7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,069 B total, 1 extra page), so creation locks the app MBR (321,000 µA) plus the 18,900 µA registration deposit = **339,900 µA (~0.34 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~5,000 µA in transaction fees. The 1-page target was ~0.24 ALGO (239,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
@@ -131,7 +131,7 @@ Inner calls authenticate the caller as the campaign app address; top-level calls
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (42 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (44 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 

@@ -156,6 +156,8 @@ export class Campaign extends Contract {
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.amount > Uint64(0), 'pledge must be greater than zero')
     assert(payment.groupIndex === Txn.groupIndex - Uint64(1), 'payment must immediately precede pledge')
+    assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
+    assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
 
     const n = this.n.value

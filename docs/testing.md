@@ -133,8 +133,8 @@ sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global - parallel
 files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 42 campaign +
-73 vault + 38 factory + 2 deployer + 5 refund-window parser tests = 160, all green with
+Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
+73 vault + 38 factory + 2 deployer + 5 refund-window parser tests = 162, all green with
 100% line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money
@@ -249,7 +249,7 @@ Factory + ClaimsVault + Campaign.
 | Method | Branch | Covered? |
 | --- | --- | --- |
 | `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
-| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
+| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
