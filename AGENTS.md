@@ -112,6 +112,49 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 - When you edit any Markdown file, lint it with the command in
   [Commands](#commands).
 
+## Contract size, storage, and fees
+
+The compiled size, page count, app MBR, box MBR, and transaction fees are part of
+the product contract. The current numbers and the AVM limits are in
+[`docs/limits.md`](docs/limits.md); read it before touching
+`smart_contracts/**/contract.algo.ts`.
+
+Current footprint (2026-11-03, `npm run build`):
+
+| Contract | Approval + clear | Pages | App MBR |
+| --- | ---: | ---: | ---: |
+| Campaign | 2,050 B | 2 (1 extra) | 321,000 µA |
+| ClaimsVault | 2,729 B | 2 (1 extra) | 232,000 µA |
+| Factory | 667 B | 1 | 153,500 µA |
+
+- **Measure before and after.** Run `npm run build` in `projects/contracts`,
+  record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
+  affected group fees, and update `docs/limits.md` plus the affected docs in the
+  same change set. The report command is in
+  [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
+- **Never silently change the creator cost.** The campaign create cost is a
+  product promise. The current 2-page campaign locks ~0.34 ALGO (321,000 µA app
+  MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
+  ~0.24 ALGO. An extra page is +100,000 µA. If a change crosses a page boundary,
+  adds a global/local slot, adds a box, adds an inner txn to create/register, or
+  changes a group shape or fee, stop and call it out in the commit/PR; get
+  explicit approval before proceeding.
+- **Any campaign program change changes the Factory `approvalHash`.** Update the
+  deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
+  (or redeploy Factory + vault). The current hash is `sha256(approval ‖ clear)`;
+  a length-prefixed formula is planned because the concatenation is ambiguous.
+- **Locked is not spent.** App/box MBR and the registration deposit are locked
+  and recoverable; transaction fees are spent. The vault box (32,100 µA) is
+  platform-funded; the Factory registration box (18,900 µA) is covered by the
+  creator deposit.
+- **Respect the no-surcharge page limit.** The current limit is 3 extra pages
+  (8,192 B total). Do not rely on the 7-extra-page surcharge path unless the
+  target network supports it and the cost is accepted.
+- **Keep the vault and Factory funded.** New boxes increase their accounts'
+  minimum balances. Check the group/resource limits (8 references, 16 inner
+  txns per app call, 2,048 B app args, 700 opcode budget per app call) when
+  adding a call, box, or reference.
+
 ## Conventions
 
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
@@ -228,6 +271,10 @@ Before marking work complete, run the checks from [Commands](#commands) in order
 format, lint, check-types, then the relevant test suite - and fix everything until
 green. Don't skip a step because the change "looks small."
 
+For contract changes, also run `npm run build` in `projects/contracts`, record the
+size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
+[Contract size, storage, and fees](#contract-size-storage-and-fees)).
+
 ## Commits & pull requests
 
 - **Never commit or push automatically** unless asked; always propose a commit message first.
@@ -258,6 +305,17 @@ working from memory on protocol details:
   box MBR, box deletion, app-deletion caveats.
 - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts/inner-txn/) -
   app-account payments and inner-txn fees.
+- [Protocol parameters](https://dev.algorand.co/concepts/protocol/protocol-parameters/) -
+  program size/pages, opcode budget, app args, box and state limits.
+- [Smart contract costs & constraints](https://dev.algorand.co/concepts/smart-contracts/costs-constraints/) -
+  MBR formulas, program size, fees.
+- [Fees](https://dev.algorand.co/concepts/transactions/fees/) - minimum fee,
+  larger-transaction surcharge, fee pooling.
+- [AVM](https://dev.algorand.co/concepts/smart-contracts/avm/) - execution model,
+  resource availability, stack and program limits.
+- [Ledger parameters](https://specs.algorand.co/ledger/ledger-parameters) - exact
+  consensus values (`MaxAppTotalProgramLen`, `MaxExtraAppProgramPages`, MBR
+  parameters, box limits).
 - [Transaction Types](https://dev.algorand.co/concepts/transactions/types/) -
   payment `close`, application call transaction kinds.
 - [Indexer REST API](https://dev.algorand.co/reference/rest-api/indexer/) -

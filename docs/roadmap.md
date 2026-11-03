@@ -443,8 +443,61 @@ submission.
 - [x] **Payment-reuse regression tests.** Unit and LocalNet groups cover duplicate
       `credit`, duplicate `pledge`, and duplicate `register` with one payment.
 
+### Follow-ups from the 2026-11-02 contract review
+
+- [ ] **P1 - unambiguous program hash.** Replace the current
+      `sha256(approval ‖ clear)` check with a length-prefixed (or separate) hash, update
+      `Factory.register`, the Factory deploy script (hash the ARC-56 bytecode, not
+      recompiled TEAL), the spec/integration tests, and the docs. Add a split-boundary
+      regression test. The current formula is ambiguous: the Factory accepts different
+      approval/clear splits of the same bytes. [`limits.md`](limits.md) and the protocol
+      spec now state the limitation; the code fix is open.
+- [ ] **P1 - `settleOpen` root validation.** Assert the campaign root is 32 bytes before
+      writing the vault box (as `settle` already does), and consider checking the
+      campaign's `vault` global equals this vault. A non-32-byte root creates a
+      non-65-byte box that `readBox`/`finalize`/`settle` cannot use, parking its
+      32,100 µA. Add a malformed-root test.
+- [ ] **P1 - creator-cost and page gate.** The campaign is now 2 pages (2,050 B total,
+      1 extra page), so creation costs ~0.34 ALGO, not the 1-page target ~0.24. The
+      size/MBR/fee table is now in [`limits.md`](limits.md) and the review gate is in
+      `AGENTS.md`; the open decision is whether to trim the program back under 2,048 B
+      (the redundant `create` app-id assert and the infeasible zero-leaf asserts are
+      candidates) or explicitly accept the extra page. Do not change the creator cost
+      silently.
+- [ ] **P2 - contract input hardening.** Cap `Vault.create` `refundWindow` in the
+      contract (not only in the deploy script); reject a zero/self `sweepTarget` and a
+      zero `factory`; reject a zero campaign `vault` at create.
+- [ ] **P2 - direct credit payment check.** Replace the `credit` group scan with the
+      payment at `Txn.groupIndex - 2`; the pledge/credit positions already guarantee
+      that is the committed payment. Cheaper and stricter.
+- [ ] **P2 - payment field hardening.** Reject `closeRemainderTo`/`rekeyTo` on pledge
+      and registration payments, or document why they are allowed. Extra ALGO sent to
+      the vault is not credited and has no sweep path.
+- [ ] **P2 - Factory governance.** Add owner transfer/renounce/timelock, store and verify
+      the official vault program hash in `setVault`, and document the revocation story
+      for old registered campaigns. The owner can change the official campaign program
+      at any time; old registrations stay.
+- [ ] **P2 - dynamic fee sizing.** The SDK uses fixed extras
+      (`FEE_SPEND_EXTRA=3_000`, `FEE_CREDIT_EXTRA=1_000`); [`limits.md`](limits.md) now
+      documents this and the minimums, but large trees that need 2–3 OpUp iterations can
+      be underfunded. Either implement dynamic sizing or explicitly cap/document the
+      supported N.
+- [ ] **P2 - expose permissionless cleanup.** Add SDK/CLI paths for `settleOpen`,
+      `finalize`, and `releaseClaimed`; otherwise failed-campaign boxes and residuals
+      need manual transactions.
+- [ ] **P3 - test/docs cleanup.** Remove the duplicate `campaign.create` in
+      `registeredCampaign`; add tests for the hash split, malformed `settleOpen` root,
+      zero vault/target, and the window cap; run the LocalNet integration suite once
+      LocalNet is healthy.
+
 ## Deployment
 
+- [ ] **Release the 2026-11 contract changes.** Publish a new `specs-vX.Y.Z` from the
+      current contracts, regenerate/publish the SDK, bump the frontend and CLI, update
+      the Factory `approvalHash` (or redeploy Factory + vault), and refresh the TestNet
+      IDs and deployment manifest. The registry SDK still ships the old campaign
+      program, so a new Factory rejects frontend-created campaigns until this lands.
+      See the contract-hardening follow-ups above.
 - [ ] **Frontend** - deploy the release bundle (built against the
       published SDK) to a static host (Cloudflare Pages / GitHub Pages / Netlify) and
       point the domain at it.

@@ -133,8 +133,8 @@ sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global - parallel
 files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 37 campaign +
-57 vault + 26 factory + 2 deployer + 5 refund-window parser tests = 127, all green with
+Offline specs live next to each contract (`contract.algo.spec.ts`: 41 campaign +
+62 vault + 38 factory + 2 deployer + 5 refund-window parser tests = 148, all green with
 100% line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money
@@ -142,9 +142,10 @@ ledger, µA-exact, for every actor involved: balance and minimum-balance deltas
 per account, the fee totals of each operation (measured on LocalNet - the
 pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA),
 the vault pool movement, the parked box MBR (32,100 µA per campaign box on the
-vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the creator's sponsorship
-floor (recovered at `delete()`). Rejected transactions are asserted to move
-**nothing** (atomic failure charges no fee).
+vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the creator's
+sponsorship floor (339,900 µA: 321,000 app MBR + 18,900 registration, recovered at
+`delete()`). Rejected transactions are asserted to move **nothing** (atomic
+failure charges no fee). The current size/MBR/fee table is in [`limits.md`](limits.md).
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by

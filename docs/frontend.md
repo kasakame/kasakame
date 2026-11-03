@@ -311,11 +311,16 @@ target) once settled:
 
 | Action | Transactions | Estimated network fee |
 | --- | --- | --- |
+| create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.005 ALGO fees + ≈ 0.34 ALGO locked |
 | `pledge()` | 1 payment + 2 app calls | ≈ 0.004 ALGO |
 | `refund()` / `cancelPledge()` | 1 app call + 1 OpUp iteration + 1 inner app call + 1 inner payment | ≈ 0.004 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 OpUp iteration + 1 inner payment | ≈ 0.004 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
 | `[unregister, delete]` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
+
+The create row's 0.34 ALGO is **locked**, not spent: 321,000 µA campaign app MBR + 18,900 µA registration deposit, returned by
+`[unregister, delete]`. The fee-only cost of a create is ~0.005 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
+pledge. See [`limits.md`](limits.md) for the current sizes, page counts, and minimum fees.
 
 ## Edge cases & gotchas
 

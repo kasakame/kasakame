@@ -24,7 +24,8 @@ import {
  *
  * One stateful application per campaign. Backers' pledged ALGO goes to the **ClaimsVault** (the pooled refund
  * escrow); the campaign app itself holds no funds at all - not even a creator deposit - so creation costs the creator
- * only the global-schema sponsorship floor on their own account (~0.24 ALGO, recovered at `delete()`).
+ * only the global-schema sponsorship floor on their own account (~0.34 ALGO for the current 2-page program,
+ * recovered at `delete()`; see docs/limits.md for the size/MBR table).
  *
  * A backer's receipt is their pledge leaf in the campaign's incremental tree: `leaf = H(0x01 ‖ backer ‖ amount ‖
  * paymentTxId)`, committed at pledge time from the in-group payment (never caller-supplied). The contract stores only

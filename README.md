@@ -62,6 +62,7 @@ npm run dev             # API on http://127.0.0.1:3001
 | --- | --- |
 | [`docs/architecture.md`](docs/architecture.md) | Pieces, creation and settlement flows, tech stack |
 | [`docs/campaign.md`](docs/campaign.md) | Campaign contract reference: state, methods, fees |
+| [`docs/limits.md`](docs/limits.md) | AVM limits, compiled sizes, page counts, MBR, storage, and fees |
 | [`docs/claim-tree-protocol.md`](docs/claim-tree-protocol.md) | Claim-tree math, proofs, and security analysis |
 | [`docs/frontend.md`](docs/frontend.md) | UI structure, wallet, reads, writes, metadata |
 | [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |
@@ -76,7 +77,7 @@ Agent guidance (commands, gotchas, definition of done) is in [`AGENTS.md`](AGENT
 
 ## Status
 
-Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Current work is tracked in [`docs/roadmap.md`](docs/roadmap.md).
+Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the 2026-11 hardening and its specs/SDK release are pending (see [`docs/roadmap.md`](docs/roadmap.md)). Current work is tracked in [`docs/roadmap.md`](docs/roadmap.md).
 
 ## License
 

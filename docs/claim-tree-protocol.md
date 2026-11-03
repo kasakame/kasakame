@@ -30,8 +30,8 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   unregister immediately before when its vault has a Factory binding); cancel/refund carry one leaf proof each; claim is a
   single app call with an inner vault call. Every paired call must be a `NoOp` app call: `ClearState` runs the clear-state
   program instead of the method, so it can satisfy a selector check without executing the paired logic.
-- **MBR (current):** creator ≈ 0.24 ALGO (app + schema + registration, recoverable O(1) via the atomic
-  `[unregister, delete]` group);
+- **MBR (current):** creator ≈ 0.34 ALGO (2-page app + schema + 1 extra page + registration, recoverable O(1) via the atomic
+  `[unregister, delete]` group; the 1-page target is ≈ 0.24 ALGO - see [`limits.md`](limits.md));
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer 0 (no
   opt-ins exist).
 
@@ -43,8 +43,10 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
 | Per-call opcode budget | 700, never raised | `consensus.go` v24 |
 | Group budget pooling | 700 per app call in the group; inner app calls add 700 each to the shared pool | `consensus.go` v30 (`EnableAppCostPooling`); `eval.go` `NewAppEvalParams`/`NewInnerEvalParams` |
 | `txn TxID` / `gtxn i TxID` | `[32]byte`, available without version gate (field 23) | `TEAL_opcodes_v12.md` |
-| App args | 16 max; **2048 bytes total** | `consensus.go` (`MaxAppTotalArgLen` = 2048, v24) |
-| Box | 2,500 + 400×(name+value) µA MBR; name ≤ 64 B, value ≤ 32 KB; 8 refs/call; 1,024 B IO budget per ref | docs, `consensus.go` v36, repo constants |
+| App args | 16 max; **2048 bytes total**; absolute 16,384 with a fee surcharge | `consensus.go` (`MaxAppTotalArgLen` = 2048, v24); [`limits.md`](limits.md) |
+| Program size | 2,048 B combined approval + clear base; +2,048 B per extra page; 3 extra pages without surcharge (up to 7 with a fee surcharge on newer consensus) | `MaxAppTotalProgramLen`, `MaxExtraAppProgramPages`; [`limits.md`](limits.md) |
+| Inner transactions | 16 per app call; 256 per group | `MaxInnerTransactions`; [`limits.md`](limits.md) |
+| Box | 2,500 + 400×(name+value) µA MBR; name ≤ 64 B, value ≤ 32 KB; 8 refs/call; 2,048 B IO budget per ref | docs, `consensus.go` v36, repo constants |
 | App opt-in (local state) MBR | 100,000 + 25,000/byte-slice + 3,500/uint, on the **opted-in account**; app deletion does **not** release it | `userBalance.go`, `deleteApplication` |
 | No history access | `block` = header fields only; no opcode reads past transactions or logs; no state-proof verification | `opcodes.go` |
 
@@ -344,7 +346,9 @@ Either path, converging on the same box state:
 - `[Vault.settleOpen(app)]` (**permissionless**, for a missing creator): asserts box `status == OPEN`; reads the campaign app's
   foreign global state (`status`, `root`, `N`, `raised`, `goal`, `deadline` - the app still exists); asserts deadline passed and
   `raised < goal`; writes `root, N, settledAt = now, status = FAILED`. After this, campaign-driven `payBack` is rejected (box not
-  OPEN) and all refunds flow through the vault.
+  OPEN) and all refunds flow through the vault. Known gap: the current code does not assert the campaign `root` is 32 bytes before
+  packing the box (unlike `settle`); a malformed root creates a non-65-byte box that `readBox`/`finalize`/`settle` cannot use. The
+  length check is tracked in [`roadmap.md`](roadmap.md).
 
 Then: refunds per §9 until the window closes (§13); then `[Vault.finalize(app)]` (permissionless): asserts `status == FAILED` and
 (`paidInOf == paidOutOf` or `latestTimestamp ≥ settledAt + refundWindow`); pays `paidInOf − paidOutOf` to `sweepTarget`; deletes
@@ -368,9 +372,10 @@ vault/factory app ids plus the campaign app id.
 
 Exactly as §9: campaign = 10 global slots; vault = one 65-byte box per campaign
 (live and failed; deleted on claim-finalization or finalize). **No local state, no ASA, no per-backer storage anywhere.** Campaign
-account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×25,000 + 6×3,500 = 121,000) + registration
-(18,900) ≈ 0.24 ALGO, fully recovered in the atomic `[unregister, delete]` group; vault = 32,100 µA per live/failed campaign, recovered via
-`notifyDelete`/`releaseClaimed`/`finalize`; backer = **0**.
+account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×25,000 + 6×3,500 = 121,000) + 1 extra page
+(100,000) + registration (18,900) = **339,900 µA (~0.34 ALGO)**, fully recovered in the atomic `[unregister, delete]` group; vault = 32,100 µA
+per live/failed campaign, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer = **0**. The 1-page target was ~0.24 ALGO;
+see [`limits.md`](limits.md) for the current footprint and the page-boundary rule.
 
 ## 11. Accounting and solvency
 
@@ -501,20 +506,33 @@ excluded - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts
 - **Refund, vault path** (1 app call + 0 inner app calls → pool 700): same `ops` as above, so N=1,000 → 1 OpUp inner (1,400) ✓;
   N=131,071 → 3 OpUp inners (2,800) ✓.
 
-The client derives `(N, k)` from on-chain state, computes the `ops` estimate with the formula above, and funds the group fee
-accordingly; the contract calls `ensureBudget` itself with the same estimate. An underfunded transaction fails atomically with
-no partial state; the client retries with a higher fee.
+The contract calls `ensureBudget` itself with the estimate above. The SDK currently funds a **fixed** extra fee
+(`FEE_SPEND_EXTRA = 3,000`, `FEE_CREDIT_EXTRA = 1,000`), not a value derived from `(N, k)`: it covers one OpUp iteration
+plus the payout/inner call and overpays small trees; large trees that need 2–3 OpUp iterations can be underfunded. Dynamic
+sizing is tracked in [`roadmap.md`](roadmap.md). An underfunded transaction fails atomically with no partial state; the client
+retries with a higher fee.
+
+Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits.md) for the full table):
+
+| Contract | Approval + clear | Pages | App MBR |
+| --- | ---: | ---: | ---: |
+| Campaign | 2,050 B | 2 (1 extra) | 321,000 µA |
+| ClaimsVault | 2,729 B | 2 (1 extra) | 232,000 µA |
+| Factory | 667 B | 1 | 153,500 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
 - **Arguments:** refund args `appId(8) ‖ k(8) ‖ amount(8) ‖ txid(34) ‖ path(2+32·pathLen)`; total ≤ 2,048 B ⇒ pathLen ≤ 62 ⇒
   **N ≤ 2³²−1** (4.29 billion backers). Pledge frontier: `32·p + ~20` B ⇒ p ≤ 62 ⇒ N ≤ 2³²−1.
-- **Box IO:** refund reads+writes one 65-byte box (1 ref → 1,024 B budget) ✓; `credit` writes the same box ✓.
-- **Group size:** 3 top-level transactions on pledge (limit 16); inner groups ≤ 5 (OpUp creates + vault/factory calls; limit 256) ✓.
+- **Box IO:** refund reads+writes one 65-byte box (1 ref → 2,048 B budget) ✓; `credit` writes the same box ✓.
+- **Group size:** 3 top-level transactions on pledge (limit 16); inner transactions 16 per app call / 256 per group; the
+  protocol uses at most 5 inner txns per operation (OpUp creates + vault/factory calls) ✓.
 - **Stack:** values ≤ 32 B each during hashing (leaf preimage 73 B once); depth < 20 ✓.
-- Fees: each OpUp inner ≈ +1,000 µA via `GroupCredit`. Typical campaigns (N ≤ ~10k) need no OpUp: pledge ≈ 3× minimum (pay + 2 app
-  calls), campaign-path refund ≈ 2×, vault-path refund ≈ 1–2×. Worst-case trees (N ≈ 131k) add 2–3 inners: pledge ≈ 4–5×, refund ≈
-  5–6×. Flat in the common case, growing only with `log N`-class path lengths at extreme N.
+- Fees: each OpUp iteration is a create + delete inner pair, ≈ +2,000 µA via `GroupCredit`; each inner app call also adds 700
+  ops. Typical campaigns (N ≤ ~10k) need no OpUp: pledge ≈ 3× minimum (pay + 2 app calls), first touch +1 inner Factory check =
+  4×; campaign-path refund ≈ 2×, vault-path refund ≈ 1×. The SDK's fixed extras make pledge/spend 4,000 µA even when no OpUp is
+  needed. Worst-case trees (N ≈ 131k) add 2–3 OpUp iterations: pledge ≈ 4–5×, refund ≈ 5–6×. Flat in the common case, growing
+  only with `log N`-class path lengths at extreme N.
 
 ## 15. Reference implementation
 
@@ -587,7 +605,7 @@ real consensus, including the races of §7.
 | 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction, and the campaign requires the `unregister` immediately before it (NoOp on both sides); delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
 | 35 | Raw delete leaves the registration behind | `Campaign.delete` requires the Factory's `unregister` immediately before it when the vault has a Factory binding; a standalone delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op so the same cleanup group still works. | app checks + AVM group shape |
 | 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
-| 37 | Custom clear-state program | `Factory.register` hashes the approval program concatenated with the clear-state program; a copy with a custom clear program is rejected, so it cannot rewrite campaign globals through `ClearState` | SHA + app checks |
+| 37 | Custom clear-state program | `Factory.register` hashes `sha256(approval ‖ clear)`. This is **ambiguous without a length prefix**: different approval/clear splits of the same bytes hash the same, so the current check is not a unique program-pair check. A length-prefixed (or separate) hash is tracked in [`roadmap.md`](roadmap.md); until it lands, do not rely on this to reject every custom clear program. | SHA + app checks |
 
 ## 18. Six-requirement scorecard
 
@@ -597,7 +615,7 @@ real consensus, including the races of §7.
 | B - Complete bounded finalization | ✓ with Option B | Protocol resources per campaign = one 32,100 µA box; recovered by `notifyDelete` (claimed) or `finalize` (failed, time-gated) - one transaction, independent of N and of any backer. Without the window (Option A), fails by a constant. |
 | C - No O(N) platform operations | ✓ | No platform operation is per-backer anywhere; frontiers/proofs are computed by backers' own clients and *verified* by the contract. |
 | D - Very high scalability | ✓ | Zero per-backer on-chain structures (no ASA, no boxes-per-backer, no local state, no bitmap). Per-campaign state is constant (10 global slots + one box). Single-call refunds to N ≈ 1,000; `ensureBudget`-pooled refunds to N ≈ 131k with ≤ 3 OpUp inners (§14); argument ceiling N ≤ 2³²−1. |
-| E - Minimal creator capital | ✓ | ≈ 0.24 ALGO (app + schema MBR on the creator's own account), fully recovered at `delete()`; no escrow deposit exists. |
+| E - Minimal creator capital | ✓ | ≈ 0.34 ALGO now (2-page campaign: app + schema + extra page MBR + registration), fully recovered at `delete()`; the 1-page target is ≈ 0.24 ALGO. See [`limits.md`](limits.md). |
 | F - Zero backer action after success | ✓ | Backers hold nothing on-chain after success: no ASA, no opt-in, no local state, nothing to close, sweep, or destroy. |
 
 ## 19. Verdict
