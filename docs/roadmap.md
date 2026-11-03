@@ -104,18 +104,62 @@ slices land one commit each:
 
 ## Testing
 
+- [ ] **SDK and CLI LocalNet integration** - close the client send-path gap
+      described in [`testing.md`](testing.md): contract integration proves the
+      compiled TEAL, but the SDK's group assembly and the CLI's command wiring
+      never touch a live chain.
+  - [ ] **SDK suite** - add `projects/sdk/**/*.integration.test.ts`, excluded
+        from `npm test` and coverage. Deploy Factory + ClaimsVault from ARC-56
+        bytecode, call `configureSdk`, and run create → pledge → cancel,
+        successful claim → delete, and failed campaign → refund before delete →
+        delete → refund after delete through the SDK functions. Use
+        generated-account signers and `setBlockOffsetTimestamp` for deadlines;
+        reset the offset in `finally`.
+  - [ ] **CLI smoke** - add a built-binary smoke under `projects/cli/scripts/`
+        that uses the mnemonic signer on LocalNet and exercises `pledges` and
+        `campaigns` reads, `withdraw`, `refund` before and after delete,
+        `delete`, and `claim`. Each suite deploys its own Factory + vault and
+        uses fresh campaigns, so the phases share no on-chain state.
+  - [ ] **One LocalNet** - run the contract, SDK, and CLI suites in one job as
+        separate steps, so a failure names the layer and one LocalNet start
+        serves all three. Job, triggers, and artifact flow are in [CI](#ci).
+  - [ ] **Time control** - use chain-relative deadlines and the dev-mode block
+        offset for both suites; never wait a day. Keep the suites sequential
+        because the offset is chain-global.
+
 - [ ] **Browser E2E / acceptance tests** - drive the real UI against LocalNet
       (click Pledge → confirm → Cancel pledge, browse, create, claim, refund) with a
-      test signer standing in for the wallet. See [`testing.md`](testing.md) →
+      test signer standing in for the wallet. Join the LocalNet job above rather
+      than starting a second one. See [`testing.md`](testing.md) →
       "Browser E2E / acceptance tests".
 
 ## CI
 
 Follow-ups after the 11-job build-and-test restructure:
 
+- [ ] **Single LocalNet job and artifact reuse** - extend `integration-test`
+      into the one job for contract, SDK, and CLI integration, starting
+      LocalNet once and running each suite as its own step.
+  - [ ] **Triggers and needs** - run on contracts, SDK, or CLI changes; add
+        `build-sdk` to `needs`; require the producers that ran to succeed; keep
+        `gate` as the only required check.
+  - [ ] **Build once** - keep `compile-contracts` and `build-sdk` as the only
+        producers. Download `contracts-artifacts` when contracts changed and
+        the pinned `specs-v<version>/arc56.tar.gz` otherwise (the same release
+        the SDK codegen uses). Download `sdk-generated` + `sdk-dist` when
+        contracts or the SDK changed; on a CLI-only change install the
+        published SDK. Build the CLI in the job: the `tsc` emit is cheaper than
+        a new artifact upload/download.
+  - [ ] **Caching** - cache npm via `setup-node` with the contracts, SDK, and
+        CLI lockfiles and AlgoKit via the existing pipx cache. Don't cache
+        LocalNet state; add Docker-image caching only if measured startup
+        dominates.
+  - [ ] **Docs** - update [`ci.md`](ci.md) with the job graph, triggers, and
+        artifact flow, and [`testing.md`](testing.md) with the new layer.
+
 - [x] **Filter cleanup** - fold `config` into `workspace`, rename `shared` to
       `workspace`, and include `workspace` in `check-contracts`;
-      `compile-contracts` and `integration-test` stay contracts-only.
+      `compile-contracts` stays contracts-only.
 - [x] **SDK vector freshness** - include `oracle` in `check-sdk`, regenerate
       `claim-tree.vectors.ts` from the Python oracle, and fail on drift.
 - [x] **Centralized triggers** - publish `run_*` outputs from `changes` so each
