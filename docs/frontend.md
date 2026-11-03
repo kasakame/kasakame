@@ -322,6 +322,14 @@ The create row's 0.34 ALGO is **locked**, not spent: 321,000 µA campaign app MB
 `[unregister, delete]`. The fee-only cost of a create is ~0.005 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
 pledge. See [`limits.md`](limits.md) for the current sizes, page counts, and minimum fees.
 
+### Creator capital disclosure
+
+Creating a campaign locks **~0.34 ALGO**: the campaign app MBR (~0.321 ALGO) plus the registration deposit (~0.0189 ALGO). It is
+**not a fee**; it is returned when the campaign is deleted. The create flow also spends **~0.005 ALGO** in network fees. Show this
+before the create approval, in plain ALGO (not µA), with the storage/deposit breakdown in a tooltip or learn-more. On the creator's
+campaign actions, repeat it next to the **Delete** button and in the delete confirmation: deleting returns the ~0.34 ALGO locked for
+this campaign, and backers can still refund from the vault until the window closes.
+
 ## Edge cases & gotchas
 
 - **Indexer lag.** After a write (create/pledge/claim/refund), the indexer may lag a

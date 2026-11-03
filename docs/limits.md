@@ -162,7 +162,9 @@ it and top it up as the number of live/failed campaigns grows.
    product promise. A change that adds an extra page (+100,000 µA), adds a
    global slot (+25,000/3,500 µA), adds a box, or adds an inner txn to
    create/register must be called out in the commit/PR and explicitly approved.
-   The current cost is ~0.34 ALGO; the 1-page target is ~0.24 ALGO.
+   The current cost is ~0.34 ALGO; the 1-page target is ~0.24 ALGO. The frontend
+   must disclose the current locked amount at create and next to Delete (see
+   [`frontend.md`](frontend.md)).
 3. **Any campaign program change changes the Factory `approvalHash`.** Update
    the deploy script, tests, docs, specs/SDK release, and the deployed Factory
    hash (or redeploy Factory + vault). The current formula is

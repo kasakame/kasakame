@@ -80,7 +80,9 @@ transparency rule in [`AGENTS.md`](../AGENTS.md).
 - [ ] **Wallet approval invitation** - separate from the steps above: a prominent element below the progress (bigger than step captions) reading "Open your wallet and confirm", shown during every waiting-for-approval state and cleared on resolve or reject. The wallet popup itself is browser chrome and not configurable; this invitation plus the vendors' in-page sign toasts (default-on, keep them on) are the layers we control.
 - [ ] **Pledge receipt transparency** - after pledging, show what the backer holds: funds pooled in escrow (never paid to the creator), cancel anytime while open, automatic refund rights if the goal fails, until when (refund window end date).
 - [ ] **Outcome states in plain language** - funded (creator claims, nothing needed from backers), failed (refund window with the actual end date), deleted (refunds continue from the vault; the page stays reachable via My pledges). No chain jargon.
-- [ ] **Delete consequences for creators** - deleting removes the listing and returns the deposit, but changes nothing for backers: live pledges stay refundable from the vault until the window closes. Say so on the delete confirmation.
+- [ ] **Creator capital at create** - before the create approval, say in plain ALGO that creating a campaign locks ~0.34 ALGO (campaign storage + registration deposit), not a fee, and that it is returned when the campaign is deleted; show the ~0.005 ALGO network fee separately. No chain jargon; a tooltip or learn-more can break down storage vs deposit.
+- [ ] **Creator capital next to Delete** - on the creator's campaign actions, show next to the Delete button that deleting returns the ~0.34 ALGO locked for this campaign (campaign storage + registration deposit); repeat it in the delete confirmation. The backer-refund consequence stays in that confirmation.
+- [ ] **Delete consequences for creators** - deleting removes the listing and returns the ~0.34 ALGO locked (campaign storage + registration deposit), but changes nothing for backers: live pledges stay refundable from the vault until the window closes. Say so on the delete confirmation.
 
 ## Backend & archival
 
@@ -500,16 +502,18 @@ submission.
       campaign's `vault` global equals this vault. A non-32-byte root creates a
       non-65-byte box that `readBox`/`finalize`/`settle` cannot use, parking its
       32,100 µA. Add a malformed-root test.
-- [ ] **P1 - creator-cost and page gate.** The campaign is now 2 pages (2,050 B total,
-      1 extra page), so creation costs ~0.34 ALGO, not the 1-page target ~0.24. The
-      size/MBR/fee table is now in [`limits.md`](limits.md) and the review gate is in
-      `AGENTS.md`; the open decision is whether to trim the program back under 2,048 B
-      (the redundant `create` app-id assert and the infeasible zero-leaf asserts are
-      candidates) or explicitly accept the extra page. Do not change the creator cost
+- [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,050 B
+      (1 extra page), so creation locks ~0.34 ALGO (321,000 µA app MBR + 18,900 µA
+      registration deposit), returned when the campaign is deleted; the 1-page target is
+      ~0.24. [`limits.md`](limits.md), the contract comment, and the affected docs record
+      the current cost, and the review gate is in `AGENTS.md`. The frontend disclosure is
+      tracked under [Frontend clarity](#frontend-clarity). Do not change the creator cost
       silently.
 - [ ] **P2 - contract input hardening.** Cap `Vault.create` `refundWindow` in the
       contract (not only in the deploy script); reject a zero/self `sweepTarget` and a
       zero `factory`; reject a zero campaign `vault` at create.
+- [ ] **P2 - deploy target default.** Require an explicit `SWEEP_TARGET` on
+      TestNet/MainNet; do not silently default the residual sweep to the deployer.
 - [ ] **P2 - direct credit payment check.** Replace the `credit` group scan with the
       payment at `Txn.groupIndex - 2`; the pledge/credit positions already guarantee
       that is the committed payment. Cheaper and stricter.
