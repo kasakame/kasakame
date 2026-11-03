@@ -403,6 +403,52 @@ describe('Factory', () => {
       })
     })
 
+    test('rejects a registration payment that closes the sender account', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      setHash(factory)
+      const app = campaignApp()
+      const factoryAddress = ctx.ledger.getApplicationForContract(factory).address
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.register(
+            app,
+            ctx.any.txn.payment({
+              sender: ctx.defaultSender,
+              receiver: factoryAddress,
+              amount: REGISTER_MBR,
+              closeRemainderTo: factoryAddress,
+            }),
+          )
+        }).toThrow('payment must not close')
+      })
+    })
+
+    test('rejects a registration payment that rekeys the sender', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      setHash(factory)
+      const app = campaignApp()
+      const factoryAddress = ctx.ledger.getApplicationForContract(factory).address
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.register(
+            app,
+            ctx.any.txn.payment({
+              sender: ctx.defaultSender,
+              receiver: factoryAddress,
+              amount: REGISTER_MBR,
+              rekeyTo: ctx.any.account(),
+            }),
+          )
+        }).toThrow('payment must not rekey')
+      })
+    })
+
     test('rejects double registration of the same campaign', () => {
       const factory = createFactory()
       const vault = vaultApp(factory)

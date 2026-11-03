@@ -125,6 +125,8 @@ export class Factory extends Contract {
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the factory')
     assert(payment.amount >= REGISTER_MBR, 'registration deposit too small')
+    assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
+    assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(!this.registered(app.id).exists, 'campaign already registered')
     // Length-prefix the approval program so the hash binds the exact approval/clear split: `sha256(approval ‖ clear)`
     // alone is ambiguous, because moving bytes between the two programs leaves the concatenation unchanged.

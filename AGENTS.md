@@ -125,7 +125,7 @@ Current footprint (2026-11-03, `npm run build`):
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 675 B | 1 | 153,500 µA |
+| Factory | 691 B | 1 | 153,500 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the

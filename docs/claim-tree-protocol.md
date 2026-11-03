@@ -519,7 +519,7 @@ Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 675 B | 1 | 153,500 µA |
+| Factory | 691 B | 1 | 153,500 µA |
 
 Resource ceilings (hard limits, not Big-O):
 

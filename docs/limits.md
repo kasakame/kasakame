@@ -52,7 +52,7 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Campaign | 2,065 B | 4 B | 2,069 B | 1 (2 pages) | 4,096 B | 2,027 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
-| Factory | 671 B | 4 B | 675 B | 0 (1 page) | 2,048 B | 1,373 B |
+| Factory | 687 B | 4 B | 691 B | 0 (1 page) | 2,048 B | 1,357 B |
 
 The campaign is **21 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 21 B would return it to

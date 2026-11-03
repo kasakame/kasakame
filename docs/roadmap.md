@@ -519,9 +519,9 @@ submission.
 - [x] **P2 - direct credit payment check.** `credit` now checks the payment at
       `Txn.groupIndex - 2` directly instead of scanning the group; the pledge/credit
       positions guarantee that is the committed payment. Cheaper and stricter.
-- [ ] **P2 - payment field hardening.** Vault `credit` and Campaign `pledge` now reject
-      `closeRemainderTo`/`rekeyTo`; the Factory `register` check remains. Extra ALGO sent
-      to the vault is not credited and has no sweep path.
+- [x] **P2 - payment field hardening.** Vault `credit`, Campaign `pledge`, and Factory
+      `register` now reject `closeRemainderTo`/`rekeyTo`; extra ALGO sent to the vault is
+      not credited and has no sweep path.
 - [ ] **P2 - Factory governance.** Add owner transfer/renounce/timelock, store and verify
       the official vault program hash in `setVault`, and document the revocation story
       for old registered campaigns. The owner can change the official campaign program
@@ -536,8 +536,8 @@ submission.
       need manual transactions.
 - [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
       vault, create guards, close/rekey); Campaign zero-vault and pledge close/rekey tests
-      are added; the Factory hash-split regression test is added. Remaining: remove the
-      duplicate `campaign.create` in `registeredCampaign`, and run the LocalNet
+      are added; Factory hash-split and register close/rekey tests are added. Remaining:
+      remove the duplicate `campaign.create` in `registeredCampaign`, and run the LocalNet
       integration suite once LocalNet is healthy.
 
 ## Deployment
