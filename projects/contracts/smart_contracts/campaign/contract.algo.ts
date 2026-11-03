@@ -114,6 +114,7 @@ export class Campaign extends Contract {
   @abimethod({ onCreate: 'require' })
   create(vault: Application, title: bytes, metadataUri: bytes, goal: uint64, deadline: uint64): void {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
+    assert(vault.id !== Uint64(0), 'vault required')
     assert(title.length > 0, 'title must not be empty')
     assert(title.length <= MAX_BYTES_PER_STATE_KEY, 'title too long')
     assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')

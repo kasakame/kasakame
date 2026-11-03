@@ -502,7 +502,7 @@ submission.
       A non-32-byte root could create a non-65-byte box that `readBox`/`finalize`/`settle`
       cannot use, parking its 32,100 µA. Tests cover a malformed root and a campaign bound
       to another vault.
-- [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,050 B
+- [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,053 B
       (1 extra page), so creation locks ~0.34 ALGO (321,000 µA app MBR + 18,900 µA
       registration deposit), returned when the campaign is deleted; the 1-page target is
       ~0.24. [`limits.md`](limits.md), the contract comment, and the affected docs record
@@ -513,8 +513,9 @@ submission.
       10 years in the contract (not only the deploy script), and rejects a zero/self
       `sweepTarget` and a zero `factory`. Tests cover the cap, zero factory, zero/self
       target, and the existing zero-window guard.
-- [ ] **P2 - campaign create zero-vault.** Reject a zero campaign `vault` at create
-      (Campaign fix; do it with the Campaign changes, measuring the bytes).
+- [x] **P2 - campaign create zero-vault.** `Campaign.create` now rejects `vault == 0`;
+      the test covers it. The campaign grew 3 bytes (2,050 -> 2,053 B), still 2 pages;
+      the app MBR and creator cost are unchanged.
 - [ ] **P2 - deploy target default.** Require an explicit `SWEEP_TARGET` on
       TestNet/MainNet; do not silently default the residual sweep to the deployer.
 - [x] **P2 - direct credit payment check.** `credit` now checks the payment at
@@ -536,9 +537,10 @@ submission.
       `finalize`, and `releaseClaimed`; otherwise failed-campaign boxes and residuals
       need manual transactions.
 - [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
-      vault, create guards, close/rekey). Remaining: hash-split regression, Campaign
-      tests, remove the duplicate `campaign.create` in `registeredCampaign`, and run the
-      LocalNet integration suite once LocalNet is healthy.
+      vault, create guards, close/rekey); the Campaign zero-vault test is added. Remaining:
+      hash-split regression, Campaign pledge close/rekey test, remove the duplicate
+      `campaign.create` in `registeredCampaign`, and run the LocalNet integration suite
+      once LocalNet is healthy.
 
 ## Deployment
 

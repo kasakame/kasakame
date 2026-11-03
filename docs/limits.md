@@ -27,7 +27,7 @@ not the `.teal` source size. Re-measure after any contract change.
 | Stack | 1,000 entries; byte array ≤ 4,096 B | `MaxStackDepth`, `MaxStackSize` |
 | Logs | 32 calls, 1,024 B each | not used by these contracts |
 | Minimum fee | 1,000 µA per txn | `MinTxnFee` |
-| Larger-transaction fee | +1,000 µA per 1,000 B | a 2,248 B create txn needs 3,000 µA; inner txn fees are paid from the group fee pool |
+| Larger-transaction fee | +1,000 µA per 1,000 B | a 2,251 B create txn needs 3,000 µA; inner txn fees are paid from the group fee pool |
 | Account base MBR | 100,000 µA | app accounts with boxes must hold this; the campaign app account holds 0 |
 | App creation MBR | 100,000 + 25,000 × global bytes + 3,500 × global uints + 100,000 × extra pages | charged to the creator |
 | App opt-in MBR | 100,000 + 25,000 × local bytes + 3,500 × local uints | charged to the opted-in account; not used |
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,046 B | 4 B | 2,050 B | 1 (2 pages) | 4,096 B | 2,046 B |
+| Campaign | 2,049 B | 4 B | 2,053 B | 1 (2 pages) | 4,096 B | 2,043 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
 | Factory | 663 B | 4 B | 667 B | 0 (1 page) | 2,048 B | 1,381 B |
 
-The campaign is **2 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 2 B would return it to
+The campaign is **5 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 5 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 ## Current app MBR and storage
@@ -97,7 +97,7 @@ The create flow is `[create app call]` then `[deposit payment, register app call
 | --- | ---: | --- |
 | Campaign app MBR | 321,000 µA | locked on the creator's account; released on `delete` |
 | Registration deposit | 18,900 µA | paid to the Factory; returned by `unregister` |
-| Create app-call fee | 3,000 µA | spent (2,248 B txn) |
+| Create app-call fee | 3,000 µA | spent (2,251 B txn) |
 | Deposit payment fee | 1,000 µA | spent |
 | Register app-call fee | 1,000 µA | spent |
 | **Total capital locked** | **339,900 µA (~0.34 ALGO)** | recoverable on `[unregister, delete]` |

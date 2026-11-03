@@ -517,7 +517,7 @@ Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,050 B | 2 (1 extra) | 321,000 µA |
+| Campaign | 2,053 B | 2 (1 extra) | 321,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
 | Factory | 667 B | 1 | 153,500 µA |
 

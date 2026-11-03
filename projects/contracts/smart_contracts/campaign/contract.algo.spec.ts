@@ -188,6 +188,13 @@ describe('Campaign', () => {
       expect(contract.n.value).toEqual(0)
     })
 
+    test('rejects a zero vault', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(ctx.any.application({ applicationId: 0 }), TITLE, METADATA_URI, GOAL, DEADLINE)
+      }).toThrow('vault required')
+    })
+
     test('rejects an empty title', () => {
       const contract = ctx.contract.create(Campaign)
       expect(() => {
