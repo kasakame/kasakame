@@ -126,7 +126,12 @@ export class Factory extends Contract {
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the factory')
     assert(payment.amount >= REGISTER_MBR, 'registration deposit too small')
     assert(!this.registered(app.id).exists, 'campaign already registered')
-    assert(op.sha256(app.approvalProgram.concat(app.clearStateProgram)) === this.approvalHash.value, 'not an official kasakame campaign')
+    // Length-prefix the approval program so the hash binds the exact approval/clear split: `sha256(approval ‖ clear)`
+    // alone is ambiguous, because moving bytes between the two programs leaves the concatenation unchanged.
+    assert(
+      op.sha256(op.itob(app.approvalProgram.length).concat(app.approvalProgram).concat(app.clearStateProgram)) === this.approvalHash.value,
+      'not an official kasakame campaign',
+    )
     const campaignVault = op.AppGlobal.getExUint64(app, Bytes('vault'))
     assert(campaignVault[1] && campaignVault[0] === this.vault.value, 'campaign vault is not the official vault')
 

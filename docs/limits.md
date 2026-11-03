@@ -52,7 +52,7 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Campaign | 2,065 B | 4 B | 2,069 B | 1 (2 pages) | 4,096 B | 2,027 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
-| Factory | 663 B | 4 B | 667 B | 0 (1 page) | 2,048 B | 1,381 B |
+| Factory | 671 B | 4 B | 675 B | 0 (1 page) | 2,048 B | 1,373 B |
 
 The campaign is **21 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 21 B would return it to
@@ -168,8 +168,8 @@ it and top it up as the number of live/failed campaigns grows.
 3. **Any campaign program change changes the Factory `approvalHash`.** Update
    the deploy script, tests, docs, specs/SDK release, and the deployed Factory
    hash (or redeploy Factory + vault). The current formula is
-   `sha256(approval ‖ clear)`; a length-prefixed formula is planned because the
-   concatenation is ambiguous.
+   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the length prefix binds the
+   approval/clear split.
 4. **Distinguish locked from spent.** App/box MBR and the registration deposit
    are locked and recoverable; transaction fees are spent. Do not describe the
    total locked amount as a fee.

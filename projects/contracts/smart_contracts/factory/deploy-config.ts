@@ -40,14 +40,19 @@ export async function deploy() {
     amount: microAlgos(1_000_000n),
   })
 
-  // The official Campaign program hash: SHA-256 over the compiled approval + clear-state programs, exactly what `register()` verifies.
-  const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-  const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
-  const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
-  const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
-  const programHash = createHash('sha256')
-    .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
-    .digest()
+  // The official Campaign program hash: SHA-256 over `itob(approval.length) ‖ approval ‖ clear`, using the ARC-56
+  // bytecode (exactly what the SDK/AppFactory deploys) - not recompiled TEAL, which could differ across assembler
+  // versions. The 8-byte length prefix makes the approval/clear split unambiguous.
+  const campaignSpecPath = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
+  const campaignSpec = JSON.parse(fs.readFileSync(campaignSpecPath, 'utf8')) as Arc56Contract
+  if (campaignSpec.byteCode === undefined) {
+    throw new Error('Campaign.arc56.json has no byteCode; run `npm run build` first.')
+  }
+  const approvalProgram = Buffer.from(campaignSpec.byteCode.approval, 'base64')
+  const clearStateProgram = Buffer.from(campaignSpec.byteCode.clear, 'base64')
+  const approvalLength = Buffer.alloc(8)
+  approvalLength.writeBigUInt64BE(BigInt(approvalProgram.length))
+  const programHash = createHash('sha256').update(approvalLength).update(approvalProgram).update(clearStateProgram).digest()
 
   await appClient.send.call({
     method: 'setApprovalHash(byte[])void',

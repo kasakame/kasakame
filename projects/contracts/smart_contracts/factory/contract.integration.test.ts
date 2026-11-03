@@ -95,15 +95,17 @@ describe('Factory (localnet)', () => {
   }
 
   /**
-   * The SHA-256 of the deployed Campaign's approval + clear-state programs, exactly what the Factory verifies.
+   * The SHA-256 of `itob(approval.length) ‖ approval ‖ clear` for the deployed Campaign, exactly what the Factory verifies.
    *
    * @param appId The deployed Campaign's application id.
    */
   async function campaignApprovalHash(appId: bigint): Promise<Uint8Array> {
     const info = await algorand.app.getById(appId)
-    return createHash('sha256')
-      .update(Buffer.concat([Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram)]))
-      .digest()
+    const approval = Buffer.from(info.approvalProgram)
+    const clear = Buffer.from(info.clearStateProgram)
+    const approvalLength = Buffer.alloc(8)
+    approvalLength.writeBigUInt64BE(BigInt(approval.length))
+    return createHash('sha256').update(approvalLength).update(approval).update(clear).digest()
   }
 
   /**

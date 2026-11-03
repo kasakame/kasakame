@@ -134,7 +134,7 @@ files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
-73 vault + 38 factory + 2 deployer + 5 refund-window parser tests = 162, all green with
+73 vault + 39 factory + 2 deployer + 5 refund-window parser tests = 163, all green with
 100% line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money
@@ -264,7 +264,7 @@ Factory + ClaimsVault + Campaign.
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
 | `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
-| `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
+| `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
 | `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 

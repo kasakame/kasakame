@@ -490,13 +490,11 @@ submission.
 
 ### Follow-ups from the 2026-11-02 contract review
 
-- [ ] **P1 - unambiguous program hash.** Replace the current
-      `sha256(approval ‖ clear)` check with a length-prefixed (or separate) hash, update
-      `Factory.register`, the Factory deploy script (hash the ARC-56 bytecode, not
-      recompiled TEAL), the spec/integration tests, and the docs. Add a split-boundary
-      regression test. The current formula is ambiguous: the Factory accepts different
-      approval/clear splits of the same bytes. [`limits.md`](limits.md) and the protocol
-      spec now state the limitation; the code fix is open.
+- [x] **P1 - unambiguous program hash.** `Factory.register` now verifies
+      `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix binds
+      the approval/clear split. The deploy script hashes the ARC-56 bytecode, not
+      recompiled TEAL; the spec/integration tests and docs are updated; a split-boundary
+      regression test is added.
 - [x] **P1 - `settleOpen` root validation.** `settleOpen` now asserts the campaign root
       is 32 bytes and the campaign's `vault` global is this vault before writing the box.
       A non-32-byte root could create a non-65-byte box that `readBox`/`finalize`/`settle`
@@ -538,9 +536,9 @@ submission.
       need manual transactions.
 - [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
       vault, create guards, close/rekey); Campaign zero-vault and pledge close/rekey tests
-      are added. Remaining: hash-split regression, remove the duplicate `campaign.create`
-      in `registeredCampaign`, and run the LocalNet integration suite once LocalNet is
-      healthy.
+      are added; the Factory hash-split regression test is added. Remaining: remove the
+      duplicate `campaign.create` in `registeredCampaign`, and run the LocalNet
+      integration suite once LocalNet is healthy.
 
 ## Deployment
 

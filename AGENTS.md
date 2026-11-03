@@ -125,7 +125,7 @@ Current footprint (2026-11-03, `npm run build`):
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 667 B | 1 | 153,500 µA |
+| Factory | 675 B | 1 | 153,500 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -141,8 +141,9 @@ Current footprint (2026-11-03, `npm run build`):
   explicit approval before proceeding.
 - **Any campaign program change changes the Factory `approvalHash`.** Update the
   deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
-  (or redeploy Factory + vault). The current hash is `sha256(approval ‖ clear)`;
-  a length-prefixed formula is planned because the concatenation is ambiguous.
+  (or redeploy Factory + vault). The current hash is
+  `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
+  binds the approval/clear split.
 - **Locked is not spent.** App/box MBR and the registration deposit are locked
   and recoverable; transaction fees are spent. The vault box (32,100 µA) is
   platform-funded; the Factory registration box (18,900 µA) is covered by the

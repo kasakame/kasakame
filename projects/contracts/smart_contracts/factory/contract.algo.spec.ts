@@ -16,10 +16,23 @@ import { Factory } from './contract.algo'
 
 const REGISTER_MBR = 18_900 // µA - the registration box's minimum balance
 
-// The fake campaign app: an application with a known approval program (preimage), whose SHA-256 we set as the official hash.
+/**
+ * The official program hash: `sha256(itob(approval.length) ‖ approval ‖ clear)`.
+ *
+ * @param approval The approval program bytes.
+ * @param clear The clear-state program bytes.
+ * @returns The base64-encoded SHA-256 digest.
+ */
+function programHash(approval: Uint8Array, clear: Uint8Array): string {
+  const lengthPrefix = Buffer.alloc(8)
+  lengthPrefix.writeBigUInt64BE(BigInt(approval.length))
+  return createHash('sha256').update(lengthPrefix).update(approval).update(clear).digest('base64')
+}
+
+// The fake campaign app: an application with a known approval program (preimage), whose length-prefixed hash we set as the official hash.
 const FAKE_APP_ID = 1234
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
-const FAKE_PROGRAM_HASH = createHash('sha256').update(FAKE_PROGRAM).digest('base64')
+const FAKE_PROGRAM_HASH = programHash(FAKE_PROGRAM, new Uint8Array())
 
 // A non-official vault app id for mismatch tests.
 const VAULT_APP_ID = 777
@@ -73,9 +86,7 @@ describe('Factory', () => {
    * @param app The real Campaign app.
    */
   function setCampaignHash(contract: Factory, app: Application) {
-    const hash = createHash('sha256')
-      .update(Buffer.concat([toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram)]))
-      .digest('base64')
+    const hash = programHash(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
     setHash(contract, Bytes.fromBase64(hash))
   }
 
@@ -322,6 +333,23 @@ describe('Factory', () => {
       setVault(factory, vault)
       setHash(factory)
       const app = campaignApp(ctx.defaultSender, FAKE_PROGRAM, new Uint8Array([0x62, 0x61, 0x64]))
+
+      expect(() => {
+        registerAs(factory, app)
+      }).toThrow('not an official kasakame campaign')
+    })
+
+    test('rejects a different approval/clear split of the official bytes', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      const clear = new Uint8Array([0x0b, 0x81, 0x01, 0x43])
+      setHash(factory, Bytes.fromBase64(programHash(FAKE_PROGRAM, clear)))
+      // Same official byte sequence, but the first clear byte is moved into the approval program. The length prefix
+      // binds the split, so this must not match the official hash.
+      const splitApproval = new Uint8Array([...FAKE_PROGRAM, clear[0] ?? 0])
+      const splitClear = clear.slice(1)
+      const app = campaignApp(ctx.defaultSender, splitApproval, splitClear)
 
       expect(() => {
         registerAs(factory, app)

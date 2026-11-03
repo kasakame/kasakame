@@ -519,7 +519,7 @@ Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 667 B | 1 | 153,500 µA |
+| Factory | 675 B | 1 | 153,500 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
@@ -606,7 +606,7 @@ real consensus, including the races of §7.
 | 34 | Delisted campaign keeps taking pledges | `Factory.unregister` requires the campaign's `delete()` as the immediately following transaction, and the campaign requires the `unregister` immediately before it (NoOp on both sides); delisting and deletion are atomic, so no live campaign can remain outside the registry. | app checks + AVM group shape |
 | 35 | Raw delete leaves the registration behind | `Campaign.delete` requires the Factory's `unregister` immediately before it when the vault has a Factory binding; a standalone delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op so the same cleanup group still works. | app checks + AVM group shape |
 | 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
-| 37 | Custom clear-state program | `Factory.register` hashes `sha256(approval ‖ clear)`. This is **ambiguous without a length prefix**: different approval/clear splits of the same bytes hash the same, so the current check is not a unique program-pair check. A length-prefixed (or separate) hash is tracked in [`roadmap.md`](roadmap.md); until it lands, do not rely on this to reject every custom clear program. | SHA + app checks |
+| 37 | Custom clear-state program | `Factory.register` hashes `sha256(itob(approval.length) ‖ approval ‖ clear)`. The 8-byte length prefix binds the approval/clear split, so a copy that moves bytes between the two programs is rejected. | SHA + app checks |
 
 ## 18. Six-requirement scorecard
 
