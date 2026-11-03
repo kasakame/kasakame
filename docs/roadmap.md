@@ -497,11 +497,11 @@ submission.
       regression test. The current formula is ambiguous: the Factory accepts different
       approval/clear splits of the same bytes. [`limits.md`](limits.md) and the protocol
       spec now state the limitation; the code fix is open.
-- [ ] **P1 - `settleOpen` root validation.** Assert the campaign root is 32 bytes before
-      writing the vault box (as `settle` already does), and consider checking the
-      campaign's `vault` global equals this vault. A non-32-byte root creates a
-      non-65-byte box that `readBox`/`finalize`/`settle` cannot use, parking its
-      32,100 µA. Add a malformed-root test.
+- [x] **P1 - `settleOpen` root validation.** `settleOpen` now asserts the campaign root
+      is 32 bytes and the campaign's `vault` global is this vault before writing the box.
+      A non-32-byte root could create a non-65-byte box that `readBox`/`finalize`/`settle`
+      cannot use, parking its 32,100 µA. Tests cover a malformed root and a campaign bound
+      to another vault.
 - [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,050 B
       (1 extra page), so creation locks ~0.34 ALGO (321,000 µA app MBR + 18,900 µA
       registration deposit), returned when the campaign is deleted; the 1-page target is
@@ -509,17 +509,20 @@ submission.
       the current cost, and the review gate is in `AGENTS.md`. The frontend disclosure is
       tracked under [Frontend clarity](#frontend-clarity). Do not change the creator cost
       silently.
-- [ ] **P2 - contract input hardening.** Cap `Vault.create` `refundWindow` in the
-      contract (not only in the deploy script); reject a zero/self `sweepTarget` and a
-      zero `factory`; reject a zero campaign `vault` at create.
+- [x] **P2 - vault create input hardening.** `Vault.create` now caps `refundWindow` at
+      10 years in the contract (not only the deploy script), and rejects a zero/self
+      `sweepTarget` and a zero `factory`. Tests cover the cap, zero factory, zero/self
+      target, and the existing zero-window guard.
+- [ ] **P2 - campaign create zero-vault.** Reject a zero campaign `vault` at create
+      (Campaign fix; do it with the Campaign changes, measuring the bytes).
 - [ ] **P2 - deploy target default.** Require an explicit `SWEEP_TARGET` on
       TestNet/MainNet; do not silently default the residual sweep to the deployer.
-- [ ] **P2 - direct credit payment check.** Replace the `credit` group scan with the
-      payment at `Txn.groupIndex - 2`; the pledge/credit positions already guarantee
-      that is the committed payment. Cheaper and stricter.
-- [ ] **P2 - payment field hardening.** Reject `closeRemainderTo`/`rekeyTo` on pledge
-      and registration payments, or document why they are allowed. Extra ALGO sent to
-      the vault is not credited and has no sweep path.
+- [x] **P2 - direct credit payment check.** `credit` now checks the payment at
+      `Txn.groupIndex - 2` directly instead of scanning the group; the pledge/credit
+      positions guarantee that is the committed payment. Cheaper and stricter.
+- [ ] **P2 - payment field hardening.** Vault `credit` now rejects
+      `closeRemainderTo`/`rekeyTo`; the Campaign `pledge` and Factory `register` checks
+      remain. Extra ALGO sent to the vault is not credited and has no sweep path.
 - [ ] **P2 - Factory governance.** Add owner transfer/renounce/timelock, store and verify
       the official vault program hash in `setVault`, and document the revocation story
       for old registered campaigns. The owner can change the official campaign program
@@ -532,10 +535,10 @@ submission.
 - [ ] **P2 - expose permissionless cleanup.** Add SDK/CLI paths for `settleOpen`,
       `finalize`, and `releaseClaimed`; otherwise failed-campaign boxes and residuals
       need manual transactions.
-- [ ] **P3 - test/docs cleanup.** Remove the duplicate `campaign.create` in
-      `registeredCampaign`; add tests for the hash split, malformed `settleOpen` root,
-      zero vault/target, and the window cap; run the LocalNet integration suite once
-      LocalNet is healthy.
+- [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
+      vault, create guards, close/rekey). Remaining: hash-split regression, Campaign
+      tests, remove the duplicate `campaign.create` in `registeredCampaign`, and run the
+      LocalNet integration suite once LocalNet is healthy.
 
 ## Deployment
 

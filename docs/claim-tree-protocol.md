@@ -273,18 +273,19 @@ transaction); the transaction immediately before it is `Campaign.pledge` for thi
 NoOp, and arg count are asserted), so a credit without a pledge is rejected and every inflow has a backer leaf; the vault box for
 `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges after settlement); if the box is absent: inner-call
 `factory.isRegistered(app)` (result must be true; the Factory only registers campaigns whose `vault` global is the owner-bound
-official vault) before creating it; **independently verify the payment**: scan the caller's own group (`gtxn` - fully visible
-because `credit` is top-level) for a payment with `sender == Txn.sender`, `receiver == vault.address`, `amount == amount` -
-assert found. Then `paidInOf += amount` (creating the box on first pledge). The vault's `paidInOf` therefore counts only real
-pledge payments into the vault - the "derived, not trusted" property of the current design is preserved, per campaign. Because
-a payment can appear only once in a group and `credit` is always last, one payment can credit at most one campaign box.
+official vault) before creating it; **independently verify the payment**: the pledge requires the payment immediately before it,
+so the committed payment is exactly `groupIndex − 2`; assert it is a payment from `Txn.sender` to the vault for `amount`, with no
+`closeRemainderTo`/`rekeyTo`. Then `paidInOf += amount` (creating the box on first pledge). The vault's `paidInOf` therefore
+counts only real pledge payments into the vault - the "derived, not trusted" property of the current design is preserved, per
+campaign. Because a payment can appear only once in a group and `credit` is always last, one payment can credit at most one
+campaign box.
 
 `credit` requires the matching pledge, so a standalone payment cannot be credited: every payer is a backer, `raised` and the
 tree count the amount, and a donation is expressed as a pledge the backer chooses not to refund. The reverse skew is also
 impossible: a `pledge` must be immediately followed by its matching `credit`, so a leaf can never exist without the vault
 recording the same payment. The group-position guards in `pledge` and `credit` are what prevent payment replay; without them a
 single payment could back several leaves or several credits and the accounting invariants in §11 would not hold. `credit` is
-top-level by construction: an inner-called app sees only its own inner group in `gtxn`, so an inner `credit` could never scan
+top-level by construction: an inner-called app sees only its own inner group in `gtxn`, so an inner `credit` could never see
 the outer payment, and a transaction argument to an inner call indexes the inner group too, so forwarding is no fix either.
 
 ### Cancel (pre-deadline withdrawal, while OPEN)
@@ -344,11 +345,10 @@ Either path, converging on the same box state:
 - `[Campaign.delete()]` on a failed campaign (creator): inner `vault.settle(app, root, N)` - asserts `Txn.sender == app.address`; if
   box `status == OPEN`: write `root, N, settledAt = latestTimestamp, status = FAILED`; if already `FAILED`: no-op.
 - `[Vault.settleOpen(app)]` (**permissionless**, for a missing creator): asserts box `status == OPEN`; reads the campaign app's
-  foreign global state (`status`, `root`, `N`, `raised`, `goal`, `deadline` - the app still exists); asserts deadline passed and
-  `raised < goal`; writes `root, N, settledAt = now, status = FAILED`. After this, campaign-driven `payBack` is rejected (box not
-  OPEN) and all refunds flow through the vault. Known gap: the current code does not assert the campaign `root` is 32 bytes before
-  packing the box (unlike `settle`); a malformed root creates a non-65-byte box that `readBox`/`finalize`/`settle` cannot use. The
-  length check is tracked in [`roadmap.md`](roadmap.md).
+  foreign global state (`status`, `root`, `N`, `raised`, `goal`, `deadline`, `vault` - the app still exists); asserts the campaign
+  `vault` is this vault and the `root` is exactly 32 bytes; asserts deadline passed and `raised < goal`; writes
+  `root, N, settledAt = now, status = FAILED`. After this, campaign-driven `payBack` is rejected (box not OPEN) and all refunds
+  flow through the vault.
 
 Then: refunds per §9 until the window closes (§13); then `[Vault.finalize(app)]` (permissionless): asserts `status == FAILED` and
 (`paidInOf == paidOutOf` or `latestTimestamp ≥ settledAt + refundWindow`); pays `paidInOf − paidOutOf` to `sweepTarget`; deletes
@@ -463,8 +463,9 @@ window, never exercised a right they were offered at pledge time; the alternativ
 If the platform wants zero self-enrichment optics, `sweepTarget` can be a documented community fund - a governance decision, not a protocol change.
 
 **Deployed choice:** `sweepTarget` is the platform treasury.
-The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault
-deploy script caps `REFUND_WINDOW_SECONDS` at 10 years so a misconfiguration cannot overflow `settledAt + refundWindow`.
+The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault contract
+and deploy script both cap the window at 10 years, so a misconfiguration cannot overflow `settledAt + refundWindow`; the contract
+also rejects a zero/self `sweepTarget` and a zero `factory` at creation.
 Rationale:
 residuals will be dust; a future vault can point at a community fund instead - the address is a vault-creation parameter,
 so no contract change is needed either way. The creator as sweep target was rejected (rewards failure, looks like a backdoor).
@@ -490,7 +491,7 @@ Derived from the verified reference model (not estimates):
 Worst case for pledge is `N = 2ᵏ−1` (maximal popcount); worst case for refund is a leaf at position 0 of `N = 2ᵏ−1`
 (path = `(k−1) + (k−1) = 2k−2`).
 
-Budget model: `ops = H_calls × 35 + ~150` (ABI decode, box access, asserts, inner-call emission, payment scan). Available pool =
+Budget model: `ops = H_calls × 35 + ~150` (ABI decode, box access, asserts, inner-call emission, payment check). Available pool =
 `700 × (top-level app calls)` plus `700` per inner app call submitted, under v30+ pooling
 ([specs](https://specs.algorand.co/avm/avm-mode-applications)). Inner calls to *oneself* are forbidden (reentrancy is explicitly
 excluded - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts/inner-txn/)), so heavy methods size
@@ -517,7 +518,7 @@ Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
 | Campaign | 2,050 B | 2 (1 extra) | 321,000 µA |
-| ClaimsVault | 2,729 B | 2 (1 extra) | 232,000 µA |
+| ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
 | Factory | 667 B | 1 | 153,500 µA |
 
 Resource ceilings (hard limits, not Big-O):

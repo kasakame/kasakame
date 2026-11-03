@@ -60,6 +60,10 @@ const FACTORY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 // vault inflow is tied to a backer leaf (kept in sync by the integration tests).
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
+// Deployment sanity cap: 10 years, matching claimsvault/deploy-config.ts. Keeps `settledAt + refundWindow` far from
+// uint64 overflow even if the vault is created directly instead of through the deploy script.
+const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
+
 export class ClaimsVault extends Contract {
   /** The Factory registry app; its `registered` boxes are the canonical campaign records. */
   factory = GlobalState<Application>()
@@ -86,7 +90,11 @@ export class ClaimsVault extends Contract {
   @abimethod({ onCreate: 'require' })
   create(factory: Application, target: Account, window: uint64): void {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
+    assert(factory.id !== Uint64(0), 'factory required')
+    assert(target !== Global.zeroAddress, 'sweep target must not be zero')
+    assert(target !== Global.currentApplicationAddress, 'sweep target must not be the vault')
     assert(window > Uint64(0), 'refund window must be positive')
+    assert(window <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 
     this.factory.value = factory
     this.sweepTarget.value = target
@@ -100,9 +108,9 @@ export class ClaimsVault extends Contract {
    * immediately before the pledge, and the pledge is immediately before this call (the group's final transaction).
    * The pledge must be a NoOp call (a ClearState call would bypass the pledge method). The vault checks the pledge shape
    * itself, so a credit without a pledge is rejected: every inflow belongs to a backer leaf and counts toward the
-   * campaign's goal. The payment is **independently verified**: the vault scans its own group for a payment from the
-   * caller to the vault for `amount`. On first touch the campaign must be Factory-registered, so an unregistered
-   * campaign can never open a box.
+   * campaign's goal. The payment is **independently verified**: it is the transaction immediately before the pledge
+   * (`groupIndex - 2`), from the caller to the vault for `amount`, with no close/rekey. On first touch the campaign must
+   * be Factory-registered, so an unregistered campaign can never open a box.
    *
    * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
    * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
@@ -118,7 +126,7 @@ export class ClaimsVault extends Contract {
 
     // The credit is the second half of the pledge: the immediately preceding transaction must be the campaign's
     // `pledge` for this campaign and caller. This keeps every vault inflow tied to a backer leaf.
-    assert(Txn.groupIndex > Uint64(0), 'credit must follow pledge')
+    assert(Txn.groupIndex > Uint64(1), 'credit must follow pledge')
     const pledgeIndex: uint64 = Txn.groupIndex - Uint64(1)
     assert(gtxn.Transaction(pledgeIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
     const pledgeCall = gtxn.ApplicationCallTxn(pledgeIndex)
@@ -133,19 +141,17 @@ export class ClaimsVault extends Contract {
       assert(existing.slice(56, 57) === BOX_OPEN, 'campaign is not open')
     }
 
-    // Independent payment verification: scan the caller's own group (fully visible because `credit` is top-level) for
-    // the payment. Only transactions before this call are considered.
-    let found = false
-    for (const i of urange(Txn.groupIndex)) {
-      const candidate = gtxn.Transaction(i)
-      if (candidate.type === TransactionType.Payment) {
-        const payment = gtxn.PaymentTxn(i)
-        if (payment.sender === Txn.sender && payment.receiver === Global.currentApplicationAddress && payment.amount === amount) {
-          found = true
-        }
-      }
-    }
-    assert(found, 'matching payment not found in group')
+    // Independent payment verification: the pledge requires the payment immediately before it, so the committed payment
+    // is exactly `groupIndex - 2`. Check it directly instead of scanning the group: stricter, cheaper, and it rejects
+    // payments that close the sender's account or rekey it.
+    const paymentIndex: uint64 = Txn.groupIndex - Uint64(2)
+    assert(gtxn.Transaction(paymentIndex).type === TransactionType.Payment, 'matching payment not found in group')
+    const payment = gtxn.PaymentTxn(paymentIndex)
+    assert(payment.sender === Txn.sender, 'matching payment not found in group')
+    assert(payment.receiver === Global.currentApplicationAddress, 'matching payment not found in group')
+    assert(payment.amount === amount, 'matching payment not found in group')
+    assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
+    assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
 
     if (existing.length === Uint64(0)) {
       this.checkRegistration(app)
@@ -318,16 +324,22 @@ export class ClaimsVault extends Contract {
     assert(box.slice(56, 57) === BOX_OPEN, 'campaign is not open')
 
     // The campaign app still exists here, so its global state is readable (this is never attempted after deletion).
-    /* v8 ignore start - every created campaign writes all six globals, so the missing-key branches are defensive only;
-     * the guards below (claimed/deadline/goal) run offline and the whole path runs on LocalNet. */
+    /* v8 ignore start - every created campaign writes all seven globals, so the missing-key branches are defensive only;
+     * the guards below (vault/root/claimed/deadline/goal) run offline and the whole path runs on LocalNet. */
     const statusState = op.AppGlobal.getExUint64(app, Bytes('status'))
     const raisedState = op.AppGlobal.getExUint64(app, Bytes('raised'))
     const goalState = op.AppGlobal.getExUint64(app, Bytes('goal'))
     const deadlineState = op.AppGlobal.getExUint64(app, Bytes('deadline'))
     const rootState = op.AppGlobal.getExBytes(app, Bytes('root'))
     const nState = op.AppGlobal.getExUint64(app, Bytes('n'))
-    assert(statusState[1] && raisedState[1] && goalState[1] && deadlineState[1] && rootState[1] && nState[1], 'campaign state missing')
+    const vaultState = op.AppGlobal.getExUint64(app, Bytes('vault'))
+    assert(
+      statusState[1] && raisedState[1] && goalState[1] && deadlineState[1] && rootState[1] && nState[1] && vaultState[1],
+      'campaign state missing',
+    )
     /* v8 ignore stop */
+    assert(vaultState[0] === Global.currentApplicationId.id, 'campaign vault mismatch')
+    assert(rootState[0].length === Uint64(32), 'bad root length')
     assert(statusState[0] !== Uint64(2), 'campaign already claimed')
     assert(Global.latestTimestamp >= deadlineState[0], 'deadline has not passed')
     assert(raisedState[0] < goalState[0], 'goal was reached')
