@@ -103,8 +103,7 @@ describe('Factory', () => {
    * A real Campaign app created with the official vault, so `register` can read its `vault` global.
    *
    * @param vault The vault app stored in the campaign's global state.
-
-  * @param fields The campaign globals that gate unregistration.
+   * @param fields The campaign globals that gate unregistration.
    * @param fields.status Campaign status: 0 Open, 1 Failed, 2 Claimed.
    * @param fields.raised Live pledge total.
    * @param fields.goal Funding target.
