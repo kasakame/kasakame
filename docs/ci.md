@@ -420,7 +420,8 @@ the SDK apply here too. Release the SDK first: the CLI depends on the published
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
-order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section).
+order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83) and the
+[CLI commands epic](https://github.com/kasakame/kasakame/issues/54).
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |

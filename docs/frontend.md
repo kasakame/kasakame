@@ -127,7 +127,7 @@ and falls back silently to a zero self-payment proof on `Method not supported`,
 so every wallet uploads the same way. Campaigns without a cover skip pinning
 entirely.
 Needs `VITE_BACKEND_URL`. Descriptions
-evolve through the creator updates feed (roadmap), not by editing the blob -
+evolve through the [creator updates feed](https://github.com/kasakame/kasakame/issues/58), not by editing the blob -
 the pledge-time content stays frozen and always viewable.
 
 ## Reads (indexer)
@@ -423,5 +423,5 @@ indexer/client services via `vi.mock`.
 - Campaign metadata - implemented (hybrid, see [Campaign metadata](#campaign-metadata)) and rendered from IPFS.
 - CLI workflows - refund, withdraw, claim, and delete by app ID ship in the
   separate `@kasakame/cli` package (see [`cli.md`](cli.md)).
-- Frontend hosting - tracked in [`roadmap.md`](roadmap.md).
+- Frontend hosting - tracked in the [TestNet go-live epic](https://github.com/kasakame/kasakame/issues/61).
 - Backend / database - optional catalog only; the indexer + Factory are the read model.

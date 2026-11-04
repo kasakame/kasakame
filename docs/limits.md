@@ -228,4 +228,4 @@ for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'factory/Factor
 - [`claim-tree-protocol.md`](claim-tree-protocol.md) - tree math, opcode budget, and resource analysis
 - [`architecture.md`](architecture.md) - pieces, deployment, and settlement flows
 - [`frontend.md`](frontend.md) - user-facing fee disclaimers
-- [`roadmap.md`](roadmap.md) - open hardening and release items
+- [the KasaKame project](https://github.com/orgs/kasakame/projects/1) - open hardening and release items

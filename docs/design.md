@@ -3,7 +3,8 @@
 This page records where kasakame is headed beyond the current contract and frontend:
 identity, profiles, notifications, the backend question, content, UI work, and contract
 versioning. Nothing here is implemented unless noted. Contract behavior is defined in
-[`campaign.md`](campaign.md); remaining work is tracked in [`roadmap.md`](roadmap.md).
+[`campaign.md`](campaign.md); remaining work is tracked in the
+[KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
 ## Guiding principle
 
@@ -136,3 +137,7 @@ Successful campaigns have no equivalent timeout.
 4. **IPFS pinning** - hosted service (Pinata/web3.storage) or our own node?
 5. **Backend hosting** - Cloudflare Workers + D1/Supabase, or Node + Postgres?
 6. **Fees** - does the platform ever take a cut (a `fee` in the contract), and how?
+7. **Residual and cleanup cadence** - failed campaigns hold the pool until
+   `finalize` sweeps the residual to `sweepTarget` after the 730-day window; who
+   drives `finalize`, the platform or the community? See
+   [`claim-tree-protocol.md`](claim-tree-protocol.md#13-refund-window-decision).

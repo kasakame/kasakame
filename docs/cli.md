@@ -199,8 +199,8 @@ CLI signs over v1. The bridge list comes from Pera's published config
 (`https://wc.perawallet.app/config.json`), with a known Pera bridge as fallback
 when that request times out. No WalletConnect Cloud project or account is
 needed. The bridge is a third-party relay: if pairing fails, retry or use
-the mnemonic signer. [`roadmap.md`](roadmap.md#wallet-transport) tracks the move
-to WalletConnect v2 once both wallets support it.
+the mnemonic signer. [The Wallet transport epic](https://github.com/kasakame/kasakame/issues/55)
+tracks the move to WalletConnect v2 once both wallets support it.
 
 ### Mnemonic (explicit opt-in, required off TestNet)
 
@@ -317,4 +317,4 @@ Background for the behavior above:
 - [`claim-tree-protocol.md`](claim-tree-protocol.md) - leaf, proof, and
   refund-window rules
 - [`sdk.md`](sdk.md) - the shared chain layer
-- [`roadmap.md`](roadmap.md#cli) - remaining CLI work
+- [the CLI commands epic](https://github.com/kasakame/kasakame/issues/54) - remaining CLI work
