@@ -1,0 +1,54 @@
+name: Bug
+description: Something is broken.
+type: Bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: A concise description of the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual
+      description: What should happen, and what happens instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Start from a known state and number each step.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Network, browser, wallet, OS, and app version.
+      placeholder: "LocalNet, Chrome 140, Defly 6.x, Linux"
+    validations:
+      required: false
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: The fix and the regression test that proves it.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Logs, screenshots, or links. Logs are formatted automatically.
+      render: shell
+    validations:
+      required: false
