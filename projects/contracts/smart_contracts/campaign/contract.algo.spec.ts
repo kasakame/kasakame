@@ -22,6 +22,7 @@ import { Campaign } from './contract.algo'
 const GOAL = 10_000_000
 const CREATION_TIME = 1_000
 const DEADLINE = 2_000
+const MAX_DURATION = 180 * 24 * 60 * 60
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
@@ -228,6 +229,19 @@ describe('Campaign', () => {
       expect(() => {
         contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME)
       }).toThrow('deadline must be in the future')
+    })
+
+    test('accepts a deadline exactly at the maximum duration', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MAX_DURATION)
+      expect(contract.deadline.value).toEqual(CREATION_TIME + MAX_DURATION)
+    })
+
+    test('rejects a deadline beyond the maximum duration', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MAX_DURATION + 1)
+      }).toThrow('deadline too far')
     })
   })
 
