@@ -1,0 +1,34 @@
+name: Task
+description: A scoped unit of work.
+type: Task
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What changes and why. Keep it to one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: One observable outcome per line.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this ticket deliberately does not cover.
+    validations:
+      required: false
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Relevant docs, issues, or references.
+    validations:
+      required: false

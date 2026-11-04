@@ -1,10 +1,12 @@
 ## Summary
 
-<!-- What does this PR do? One or two sentences. -->
+<!-- What does this PR do? One or two sentences. Use the change name, not the issue number. -->
+
+Fixes #
 
 ## Motivation
 
-<!-- Why is this needed? Link any issue/roadmap area. -->
+<!-- Why is this needed? Link the ticket and any context. -->
 
 ## Changes
 
@@ -16,6 +18,7 @@
 
 ## Checklist
 
+- [ ] PR title describes the change; `Fixes #N` belongs in the body
 - [ ] Tests added/updated and passing
 - [ ] `npm run build` succeeds
 - [ ] No secrets or generated artifacts committed
