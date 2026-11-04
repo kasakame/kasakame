@@ -155,6 +155,11 @@ generously and compared before/after. An absolute per-wallet/per-app
 minimum-balance suite is tracked in the roadmap. The current size/MBR/fee table
 is in [`limits.md`](limits.md).
 
+**Contract sizes.** The compiled approval/clear bytes, page count, and app MBR
+are **not** asserted by a test yet. The measurement command is in
+[`limits.md`](limits.md#measure-the-current-sizes); a size-budget regression test
+is tracked in the roadmap.
+
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by
 `docs/claim-tree-protocol-reference.py`) with the REAL confirmed payment TxIDs

@@ -560,6 +560,17 @@ submission.
       fixture, and fail when a schema/page change or a docs typo makes them diverge.
       This is the regression test for the 2026-11-04 MBR arithmetic error (321,000 vs
       571,000). See [`limits.md`](limits.md).
+- [ ] **P1 - contract size budget tests.** Add an offline test that reads the built
+      ARC-56 bytecode and asserts, per contract, the exact approval bytes, clear bytes,
+      total, extra pages, page capacity, and app MBR against pinned constants. Start
+      from the current values: Campaign 2,065 / 4 / 2,069 B, 1 extra page, 571,000 µA;
+      ClaimsVault 2,755 / 4 / 2,759 B, 1 extra page, 307,000 µA; Factory 687 / 4 /
+      691 B, 0 extra pages, 228,500 µA. Also assert the no-surcharge page cap (≤ 3 extra
+      pages) and that the total fits the declared page capacity. Any contract change
+      that moves a byte, page, or schema must update the pinned fixture and
+      [`limits.md`](limits.md) in the same change set. Run it in the
+      `compile-contracts` CI job after `npm run build`, because `check-contracts` does
+      not build the artifacts.
 - [ ] **P2 - campaign duration cap.** Add a maximum deadline (e.g., 365 days) in
       `Campaign.create` and the create form; measure the byte delta. Today only
       `deadline > latestTimestamp` is checked, so a custom client can create a 100-year
