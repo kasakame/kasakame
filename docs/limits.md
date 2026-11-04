@@ -52,7 +52,7 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Campaign | 2,065 B | 4 B | 2,069 B | 1 (2 pages) | 4,096 B | 2,027 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
-| Factory | 687 B | 4 B | 691 B | 0 (1 page) | 2,048 B | 1,357 B |
+| Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
 The campaign is **21 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 21 B would return it to
@@ -64,11 +64,11 @@ one page and save 100,000 µA of creator MBR.
 | --- | --- | ---: | ---: | --- | --- |
 | Campaign | 4 byte-slices + 6 uints | 1 | **571,000 µA** | creator's account | none |
 | ClaimsVault | 1 byte-slice + 2 uints | 1 | **307,000 µA** | platform/deployer | none |
-| Factory | 2 byte-slices + 1 uint | 0 | **228,500 µA** | platform/deployer | none |
+| Factory | 4 byte-slices + 2 uints | 0 | **357,000 µA** | platform/deployer | none |
 
 - Campaign app MBR = 100,000 + 4 × 50,000 + 6 × 28,500 + 100,000 × 1 = 571,000.
 - Vault app MBR = 100,000 + 1 × 50,000 + 2 × 28,500 + 100,000 × 1 = 307,000.
-- Factory app MBR = 100,000 + 2 × 50,000 + 1 × 28,500 = 228,500.
+- Factory app MBR = 100,000 + 4 × 50,000 + 2 × 28,500 = 357,000.
 - Campaign app account: **0** (no boxes/assets; never funded).
 - Vault app account: 100,000 base + 32,100 per live/failed campaign box. The
   deploy script funds it with 1 ALGO; after the 100,000 base that is ~28 boxes.
@@ -146,11 +146,11 @@ the SDK's fixed extras cover one iteration. Large trees may need more. See
 
 | Item | Amount | Notes |
 | --- | ---: | --- |
-| Factory app MBR | 228,500 µA | locked on the deployer's account |
+| Factory app MBR | 357,000 µA | locked on the deployer's account |
 | Factory app-account funding | 1,000,000 µA | base + registration headroom |
 | Vault app MBR | 307,000 µA | locked on the deployer's account |
 | Vault app-account funding | 1,000,000 µA | base + ~28 campaign boxes |
-| Deploy fees | ~8,000 µA | Factory create/fund/hash + vault create/fund/bind |
+| Deploy fees | ~9,000 µA | Factory create/fund/hash + vault create/fund/vault-hash/bind |
 
 The vault's 1 ALGO funding is a platform liability: each live/failed campaign
 box parks 32,100 µA until `notifyDelete` / `releaseClaimed` / `finalize`. Monitor
@@ -173,7 +173,9 @@ it and top it up as the number of live/failed campaigns grows.
    the deploy script, tests, docs, specs/SDK release, and the deployed Factory
    hash (or redeploy Factory + vault). The current formula is
    `sha256(itob(approval.length) ‖ approval ‖ clear)`; the length prefix binds the
-   approval/clear split.
+   approval/clear split. A new Factory sets its first hash immediately; an
+   existing Factory must propose, wait `APPROVAL_HASH_DELAY` (~7 days), then
+   apply. The vault program hash is verified once at `setVault`.
 4. **Distinguish locked from spent.** App/box MBR and the registration deposit
    are locked and recoverable; transaction fees are spent. Do not describe the
    total locked amount as a fee.

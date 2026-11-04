@@ -526,10 +526,15 @@ submission.
 - [x] **P2 - payment field hardening.** Vault `credit`, Campaign `pledge`, and Factory
       `register` now reject `closeRemainderTo`/`rekeyTo`; extra ALGO sent to the vault is
       not credited and has no sweep path.
-- [ ] **P2 - Factory governance.** Add owner transfer/renounce/timelock, store and verify
-      the official vault program hash in `setVault`, and document the revocation story
-      for old registered campaigns. The owner can change the official campaign program
-      at any time; old registrations stay.
+- [x] **P2 - Factory governance.** `transferOwnership`/`renounceOwnership` added. A changed
+      campaign hash now uses `proposeApprovalHash` + `applyApprovalHash` with a ~7-day
+      timelock (`APPROVAL_HASH_DELAY`), while the first hash is still immediate;
+      `cancelApprovalHash` clears a proposal. `setVaultApprovalHash` pins the official
+      vault program hash and `setVault` verifies it. Old registrations stay valid, and the
+      revocation story is in [`architecture.md`](architecture.md#factory-governance-and-revocation).
+      The Factory grew from 691 to 1,036 B (still 1 page); its app MBR rose from 228,500 to
+      357,000 µA (platform-funded), and the vault deploy spends one extra 1,000 µA call.
+      Tests cover every new branch.
 - [ ] **P2 - dynamic fee sizing.** The SDK uses fixed extras
       (`FEE_SPEND_EXTRA=3_000`, `FEE_CREDIT_EXTRA=1_000`); [`limits.md`](limits.md) now
       documents this and the minimums, but large trees that need 2–3 OpUp iterations can
@@ -540,9 +545,9 @@ submission.
       need manual transactions.
 - [ ] **P3 - remaining test/docs cleanup.** Vault tests are added (malformed root, wrong
       vault, create guards, close/rekey); Campaign zero-vault and pledge close/rekey tests
-      are added; Factory hash-split and register close/rekey tests are added. Remaining:
-      remove the duplicate `campaign.create` in `registeredCampaign`, and run the LocalNet
-      integration suite once LocalNet is healthy.
+      are added; Factory hash-split, register close/rekey, and governance tests are added.
+      Remaining: remove the duplicate `campaign.create` in `registeredCampaign`, and run
+      the LocalNet integration suite once LocalNet is healthy.
 
 ### Follow-ups from the 2026-11-04 review
 
@@ -551,7 +556,7 @@ submission.
       lifecycle boundary, not only deltas: campaign creator before/after
       create/register/delete (589,900 µA locked, fully recovered); vault deployer
       (307,000 µA app MBR) and vault app account (100,000 µA base + 32,100 µA per
-      campaign box); Factory deployer (228,500 µA app MBR) and Factory app account
+      campaign box); Factory deployer (357,000 µA app MBR) and Factory app account
       (100,000 µA base + 18,900 µA per registration box, covered by the creator
       deposit); the campaign app account (stays 0, never funded); and a backer
       before/after pledge/refund (nothing locked). Assert the fee total of each
@@ -564,8 +569,8 @@ submission.
       ARC-56 bytecode and asserts, per contract, the exact approval bytes, clear bytes,
       total, extra pages, page capacity, and app MBR against pinned constants. Start
       from the current values: Campaign 2,065 / 4 / 2,069 B, 1 extra page, 571,000 µA;
-      ClaimsVault 2,755 / 4 / 2,759 B, 1 extra page, 307,000 µA; Factory 687 / 4 /
-      691 B, 0 extra pages, 228,500 µA. Also assert the no-surcharge page cap (≤ 3 extra
+      ClaimsVault 2,755 / 4 / 2,759 B, 1 extra page, 307,000 µA; Factory 1,032 / 4 /
+      1,036 B, 0 extra pages, 357,000 µA. Also assert the no-surcharge page cap (≤ 3 extra
       pages) and that the total fits the declared page capacity. Any contract change
       that moves a byte, page, or schema must update the pinned fixture and
       [`limits.md`](limits.md) in the same change set. Run it in the
@@ -588,11 +593,13 @@ submission.
 ## Deployment
 
 - [ ] **Release the 2026-11 contract changes.** Publish a new `specs-vX.Y.Z` from the
-      current contracts, regenerate/publish the SDK, bump the frontend and CLI, update
-      the Factory `approvalHash` (or redeploy Factory + vault), and refresh the TestNet
-      IDs and deployment manifest. The registry SDK still ships the old campaign
-      program, so a new Factory rejects frontend-created campaigns until this lands.
-      See the contract-hardening follow-ups above.
+      current contracts, regenerate/publish the SDK, bump the frontend and CLI, and refresh
+      the TestNet IDs and deployment manifest. A fresh Factory sets the first hash
+      immediately; an existing Factory must `proposeApprovalHash` and wait
+      `APPROVAL_HASH_DELAY` (~7 days), then `applyApprovalHash` (or redeploy Factory +
+      vault, which also requires `setVaultApprovalHash`). The registry SDK still ships the
+      old campaign program, so a new Factory rejects frontend-created campaigns until this
+      lands. See the contract-hardening follow-ups above.
 - [ ] **Frontend** - deploy the release bundle (built against the
       published SDK) to a static host (Cloudflare Pages / GitHub Pages / Netlify) and
       point the domain at it.

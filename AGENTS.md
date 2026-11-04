@@ -17,8 +17,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
     `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured program hash and official vault, `setApprovalHash`,
-    `setVault`, `register`/`unregister`, readonly `isRegistered`)
+    registry (owner-configured campaign hash with a ~7-day `propose`/`apply`
+    timelock, pinned vault program hash, `setVault`, `register`/`unregister`,
+    ownership transfer/renounce, readonly `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
@@ -126,7 +127,7 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
-| Factory | 691 B | 1 | 228,500 µA |
+| Factory | 1,036 B | 1 | 357,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -144,7 +145,10 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
   deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
   (or redeploy Factory + vault). The current hash is
   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
-  binds the approval/clear split.
+  binds the approval/clear split. A new Factory sets its first hash immediately;
+  an existing Factory must `proposeApprovalHash`, wait `APPROVAL_HASH_DELAY`
+  (~7 days), then `applyApprovalHash`. The vault is bound once and its program
+  hash is verified in `setVault`.
 - **Locked is not spent.** App/box MBR and the registration deposit are locked
   and recoverable; transaction fees are spent. The vault box (32,100 µA) is
   platform-funded; the Factory registration box (18,900 µA) is covered by the

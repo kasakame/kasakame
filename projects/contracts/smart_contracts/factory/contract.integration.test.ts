@@ -62,6 +62,15 @@ describe('Factory (localnet)', () => {
       appReferences: [appClient.appId],
       suppressLog: true,
     })
+    if (vaultSpec.byteCode === undefined) {
+      throw new Error('ClaimsVault.arc56.json has no byteCode; run `npm run build` first.')
+    }
+    await appClient.send.call({
+      method: 'setVaultApprovalHash(byte[])void',
+      args: [programHash(Buffer.from(vaultSpec.byteCode.approval, 'base64'), Buffer.from(vaultSpec.byteCode.clear, 'base64'))],
+      sender: ownerAddr,
+      suppressLog: true,
+    })
     await appClient.send.call({
       method: 'setVault(uint64)void',
       args: [vaultClient.appId],

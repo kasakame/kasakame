@@ -50,6 +50,7 @@ export async function deploy() {
   const approvalProgram = Buffer.from(campaignSpec.byteCode.approval, 'base64')
   const clearStateProgram = Buffer.from(campaignSpec.byteCode.clear, 'base64')
 
+  // This is the Factory's first hash, so it is set immediately; later changes go through the propose/apply timelock.
   await appClient.send.call({
     method: 'setApprovalHash(byte[])void',
     args: [programHash(approvalProgram, clearStateProgram)],

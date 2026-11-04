@@ -66,6 +66,25 @@ describe('SDK send path (localnet)', () => {
     // 2026-11 Factory specs bind the vault and hash approval ‖ clear with a length prefix; the pinned release predates both.
     const legacyFactory = !factory.appSpec.methods.some((method) => method.name === 'setVault')
     if (!legacyFactory) {
+      if (factory.appSpec.methods.some((method) => method.name === 'setVaultApprovalHash')) {
+        const vaultSpec = vaultFactory.appSpec
+        const approval = vaultSpec.byteCode?.approval
+        const clear = vaultSpec.byteCode?.clear
+        if (approval === undefined || clear === undefined) {
+          throw new Error('ClaimsVault ARC-56 spec has no bytecode; regenerate the clients with codegen')
+        }
+        const approvalBytes = Buffer.from(approval, 'base64')
+        const clearBytes = Buffer.from(clear, 'base64')
+        const length = Buffer.alloc(8)
+        length.writeBigUInt64BE(BigInt(approvalBytes.length))
+        const vaultHash = createHash('sha256').update(length).update(approvalBytes).update(clearBytes).digest()
+        await factoryClient.appClient.send.call({
+          method: 'setVaultApprovalHash(byte[])void',
+          args: [vaultHash],
+          sender: ownerAddress,
+          suppressLog: true,
+        })
+      }
       await factoryClient.appClient.send.call({
         method: 'setVault(uint64)void',
         args: [vaultClient.appId],

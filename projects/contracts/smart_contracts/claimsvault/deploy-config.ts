@@ -4,6 +4,7 @@ import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import fs from 'node:fs'
 import path from 'node:path'
 import { resolveDeployerAccount } from '../deployer'
+import { programHash } from '../program-hash'
 
 /** Default refund window: 730 days, per the spec recommendation. */
 export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * 24 * 60 * 60)
@@ -107,9 +108,21 @@ export async function deploy() {
   })
 
   // Bind the vault to the Factory (owner-only, one-time). The Factory is deployed first, so the binding happens here.
-  // The vault must be a foreign app: `setVault` reads its `factory` global and requires it to point back at this Factory.
+  // The vault must be a foreign app: `setVault` reads its `factory` global, requires it to point back at this Factory,
+  // and verifies its approval + clear-state programs against the owner-configured vault hash.
+  if (appSpec.byteCode === undefined) {
+    throw new Error('ClaimsVault.arc56.json has no byteCode; run `npm run build` first.')
+  }
+  const vaultApproval = Buffer.from(appSpec.byteCode.approval, 'base64')
+  const vaultClear = Buffer.from(appSpec.byteCode.clear, 'base64')
   const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
     appId: BigInt(factoryId),
+  })
+  await factoryClient.send.call({
+    method: 'setVaultApprovalHash(byte[])void',
+    args: [programHash(vaultApproval, vaultClear)],
+    sender: deployer.addr,
+    suppressLog: true,
   })
   await factoryClient.send.call({
     method: 'setVault(uint64)void',

@@ -32,6 +32,14 @@ import {
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
 const REGISTER_MBR = 18_900
 
+/**
+ * Timelock for a changed official Campaign program hash: ~7 days at 2.8s per round.
+ *
+ * The first hash is set immediately at deploy; later changes must be proposed, then applied after this delay. Old
+ * registrations stay valid regardless, so the delay only gives clients time to notice a changed admission rule.
+ */
+export const APPROVAL_HASH_DELAY = 216_000
+
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
 const CAMPAIGN_OPEN = Uint64(0)
 const CAMPAIGN_FAILED = Uint64(1)
@@ -47,8 +55,17 @@ export class Factory extends Contract {
   /** SHA-256 of the official Campaign approval program concatenated with its clear-state program; set by the owner. */
   approvalHash = GlobalState<bytes>()
 
+  /** A proposed replacement for `approvalHash`, applied only after `approvalHashEligibleAt`. */
+  pendingApprovalHash = GlobalState<bytes>()
+
+  /** The round at which `pendingApprovalHash` can be applied; 0 when nothing is pending. */
+  approvalHashEligibleAt = GlobalState<uint64>({ initialValue: 0 })
+
   /** The official ClaimsVault app id; set once by the owner after the vault is deployed. 0 until configured. */
   vault = GlobalState<uint64>({ initialValue: 0 })
+
+  /** SHA-256 of the official ClaimsVault approval + clear-state programs; set before `setVault`. */
+  vaultApprovalHash = GlobalState<bytes>()
 
   /** Registered campaigns: app id → campaign creator. */
   registered = BoxMap<uint64, Account>({ keyPrefix: 'r' })
@@ -64,15 +81,17 @@ export class Factory extends Contract {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     this.owner.value = Txn.sender
     this.approvalHash.value = Bytes()
+    this.pendingApprovalHash.value = Bytes()
+    this.vaultApprovalHash.value = Bytes()
   }
 
   /**
-   * Set the official Campaign program hash.
+   * Set the official Campaign program hash for the first time.
    *
-   * Owner only. Registration is refused until this is configured. The SHA-256 digest covers the approval program **and** the
-   * clear-state program, so a copy with a custom clear program cannot be registered. Updating the hash (e.g. after a contract
-   * upgrade) makes old program versions unregisterable while existing registrations stay. The method name is historical; the
-   * stored value is the program hash over both programs.
+   * Owner only, once. Registration is refused until this is configured. The SHA-256 digest covers the approval program
+   * **and** the clear-state program, so a copy with a custom clear program cannot be registered. Later changes must go
+   * through `proposeApprovalHash` + `applyApprovalHash`, which enforces the timelock; a direct second call is rejected so
+   * the timelock cannot be bypassed.
    *
    * @param hash The SHA-256 digest of the official Campaign approval + clear-state programs.
    */
@@ -80,15 +99,77 @@ export class Factory extends Contract {
   setApprovalHash(hash: bytes): void {
     assert(Txn.sender === this.owner.value, 'only the owner can set the program hash')
     assert(hash.length === 32, 'program hash must be 32 bytes')
+    assert(this.approvalHash.value.length === 0, 'program hash already configured')
     this.approvalHash.value = hash
+  }
+
+  /**
+   * Propose a replacement for the official Campaign program hash.
+   *
+   * Owner only. The proposal can be applied with `applyApprovalHash` after `APPROVAL_HASH_DELAY` rounds. Existing
+   * registrations are unaffected; only future `register` calls use the new hash.
+   *
+   * @param hash The proposed SHA-256 digest of the Campaign approval + clear-state programs.
+   */
+  @abimethod()
+  proposeApprovalHash(hash: bytes): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can propose the program hash')
+    assert(hash.length === 32, 'program hash must be 32 bytes')
+    this.pendingApprovalHash.value = hash
+    this.approvalHashEligibleAt.value = Global.round + APPROVAL_HASH_DELAY
+  }
+
+  /**
+   * Apply the proposed Campaign program hash after the timelock.
+   *
+   * Owner only. The proposal must exist and `APPROVAL_HASH_DELAY` rounds must have elapsed since it was made. Applying
+   * changes the admission rule for future registrations only; old registrations stay registered and deletable.
+   */
+  @abimethod()
+  applyApprovalHash(): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can apply the program hash')
+    assert(this.pendingApprovalHash.value.length === 32, 'no pending program hash')
+    assert(Global.round >= this.approvalHashEligibleAt.value, 'program hash timelock not elapsed')
+    this.approvalHash.value = this.pendingApprovalHash.value
+    this.pendingApprovalHash.value = Bytes()
+    this.approvalHashEligibleAt.value = 0
+  }
+
+  /**
+   * Cancel the pending Campaign program hash.
+   *
+   * Owner only. Clears the proposal and its eligibility round; the active hash is unchanged.
+   */
+  @abimethod()
+  cancelApprovalHash(): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can cancel the program hash')
+    this.pendingApprovalHash.value = Bytes()
+    this.approvalHashEligibleAt.value = 0
+  }
+
+  /**
+   * Set the official ClaimsVault program hash.
+   *
+   * Owner only, before `setVault`. The SHA-256 digest covers the vault's approval **and** clear-state programs. Once the
+   * vault is bound this cannot change, so a lookalike vault cannot be bound later.
+   *
+   * @param hash The SHA-256 digest of the official ClaimsVault approval + clear-state programs.
+   */
+  @abimethod()
+  setVaultApprovalHash(hash: bytes): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can set the vault hash')
+    assert(hash.length === 32, 'vault hash must be 32 bytes')
+    assert(this.vault.value === Uint64(0), 'vault already set')
+    this.vaultApprovalHash.value = hash
   }
 
   /**
    * Bind the official ClaimsVault to this Factory.
    *
    * Owner only, once. The Factory is deployed before the vault (the vault's `create` records the Factory id), so this is
-   * set after the vault exists. The vault must point back at this Factory, so a wrong or foreign vault cannot be bound
-   * permanently. `register` then rejects campaigns whose `vault` global differs.
+   * set after the vault exists. The vault must point back at this Factory and its approval + clear-state programs must
+   * match the owner-configured `vaultApprovalHash`, so a wrong, foreign, or lookalike vault cannot be bound permanently.
+   * `register` then rejects campaigns whose `vault` global differs.
    *
    * @param vault The official ClaimsVault application.
    */
@@ -98,7 +179,40 @@ export class Factory extends Contract {
     assert(this.vault.value === Uint64(0), 'vault already set')
     const vaultFactory = op.AppGlobal.getExUint64(vault, Bytes('factory'))
     assert(vaultFactory[1] && vaultFactory[0] === Global.currentApplicationId.id, 'vault is not bound to this factory')
+    assert(this.vaultApprovalHash.value.length === 32, 'official vault hash not configured')
+    assert(
+      op.sha256(op.itob(vault.approvalProgram.length).concat(vault.approvalProgram).concat(vault.clearStateProgram)) ===
+        this.vaultApprovalHash.value,
+      'not the official vault program',
+    )
     this.vault.value = vault.id
+  }
+
+  /**
+   * Transfer Factory ownership.
+   *
+   * Owner only. The new owner controls future program-hash and vault configuration. Transfer is immediate; use a
+   * multisig or treasury account for production ownership, because a wrong address cannot be recovered.
+   *
+   * @param newOwner The account that becomes the owner.
+   */
+  @abimethod()
+  transferOwnership(newOwner: Account): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can transfer ownership')
+    assert(newOwner !== Global.zeroAddress, 'new owner must not be zero')
+    this.owner.value = newOwner
+  }
+
+  /**
+   * Renounce Factory ownership.
+   *
+   * Owner only. Sets the owner to the zero address, so no account can configure the program hash or vault again.
+   * Registration continues with the last configured hash and vault; existing registrations stay valid.
+   */
+  @abimethod()
+  renounceOwnership(): void {
+    assert(Txn.sender === this.owner.value, 'only the owner can renounce ownership')
+    this.owner.value = Global.zeroAddress
   }
 
   /**

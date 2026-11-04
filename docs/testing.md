@@ -135,7 +135,7 @@ parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
-73 vault + 41 factory + 2 deployer + 8 deploy-config tests = 168, all green with
+73 vault + 63 factory + 2 deployer + 8 deploy-config tests = 190, all green with
 100% line/branch/function coverage).
 
 **Ledger accounting.** The lifecycle integration tests assert the money ledger,
@@ -243,9 +243,9 @@ cd ../sdk && SDK_SPECS=local npm run codegen
 npm run test:integration
 ```
 
-The setup adapts to both shapes: the 2026-11 Factory binds the vault and hashes
-`itob(approval length) ‖ approval ‖ clear`, while the pinned release predates
-both.
+The setup adapts to both shapes: the 2026-11 Factory binds the vault, pins the
+vault program hash, and hashes `itob(approval length) ‖ approval ‖ clear`, while
+the pinned release predates all three.
 
 ## API cheat sheet (learned the hard way)
 
@@ -316,7 +316,11 @@ both.
 | `vault.refund` | success differentially (LocalNet) / unknown / not failed / window closed / unknown position / bad txid+path / proof mismatch / insufficient | ✅ |
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
-| `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
+| `Factory.setApprovalHash` | success / non-owner / wrong length / second direct set rejected (timelock bypass) | ✅ |
+| `Factory.proposeApprovalHash` / `applyApprovalHash` / `cancelApprovalHash` | propose stores pending + eligibility / non-owner / wrong length / apply before timelock / no pending / non-owner / apply after timelock / cancel clears / non-owner | ✅ |
+| `Factory.setVaultApprovalHash` | success / non-owner / wrong length / change after vault bound | ✅ |
+| `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding / vault hash not configured / lookalike vault program | ✅ |
+| `Factory.transferOwnership` / `renounceOwnership` | transfer / new owner can configure / old owner rejected / non-owner / zero address / renounce locks configuration / non-owner renounce | ✅ |
 | `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / low deposit / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
 | `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |

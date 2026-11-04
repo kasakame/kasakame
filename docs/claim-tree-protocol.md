@@ -22,8 +22,14 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   `refund`, `notifyDelete`, `releaseClaimed`, `finalize`. Payout amounts are per-campaign capped by verified inflows
   (`amount <= paidIn - paidOut`); inner payouts are gated on the campaign app caller; vault refunds work after campaign deletion.
 - **Factory** (`smart_contracts/factory/contract.algo.ts`) - registration registry only: `owner`, `approvalHash` (SHA-256
-  over the approval + clear-state programs), `vault`, `registered` BoxMap; `register` verifies the campaign program hash, the
-  campaign's `vault` global (the owner-bound official vault), and the creator identity; refundable 18,900 µA deposit.
+  over the approval + clear-state programs), `pendingApprovalHash`/`approvalHashEligibleAt` (the ~7-day timelock for a changed
+  campaign hash), `vault`, `vaultApprovalHash`, `registered` BoxMap; `register` verifies the campaign program hash, the
+  campaign's `vault` global (the owner-bound official vault), and the creator identity; refundable 18,900 µA deposit. The owner
+  can transfer or renounce ownership; `setVault` verifies the vault's approval + clear-state hash and is one-time.
+  **Governance:** the first campaign hash is immediate; later changes are proposed and applied after `APPROVAL_HASH_DELAY`
+  (~7 days). Old registrations stay valid and only future registrations use the new hash. No owner action can pause, delete,
+  seize, or unregister an existing campaign; renouncing freezes configuration. See
+  [`architecture.md`](architecture.md#factory-governance-and-revocation).
 - **Transaction groups:** pledge `[Payment→vault, Campaign.pledge, Vault.credit]` (payment immediately before the pledge,
   credit immediately after it and final; the vault requires the pledge before the credit); cleanup
   `[Factory.unregister, Campaign.delete]` (the Factory requires the delete immediately after; the campaign requires the
@@ -520,7 +526,7 @@ Current program footprint (2026-11-04, `npm run build`; see [`limits.md`](limits
 | --- | ---: | ---: | ---: |
 | Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
-| Factory | 691 B | 1 | 228,500 µA |
+| Factory | 1,036 B | 1 | 357,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
