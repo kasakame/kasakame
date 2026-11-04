@@ -311,23 +311,23 @@ target) once settled:
 
 | Action | Transactions | Estimated network fee |
 | --- | --- | --- |
-| create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.005 ALGO fees + ≈ 0.34 ALGO locked |
+| create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.005 ALGO fees + ≈ 0.59 ALGO locked |
 | `pledge()` | 1 payment + 2 app calls | ≈ 0.004 ALGO |
 | `refund()` / `cancelPledge()` | 1 app call + 1 OpUp iteration + 1 inner app call + 1 inner payment | ≈ 0.004 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 OpUp iteration + 1 inner payment | ≈ 0.004 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
 | `[unregister, delete]` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
 
-The create row's 0.34 ALGO is **locked**, not spent: 321,000 µA campaign app MBR + 18,900 µA registration deposit, returned by
+The create row's 0.59 ALGO is **locked**, not spent: 571,000 µA campaign app MBR + 18,900 µA registration deposit, returned by
 `[unregister, delete]`. The fee-only cost of a create is ~0.005 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
 pledge. See [`limits.md`](limits.md) for the current sizes, page counts, and minimum fees.
 
 ### Creator capital disclosure
 
-Creating a campaign locks **~0.34 ALGO**: the campaign app MBR (~0.321 ALGO) plus the registration deposit (~0.0189 ALGO). It is
+Creating a campaign locks **~0.59 ALGO**: the campaign app MBR (~0.571 ALGO) plus the registration deposit (~0.0189 ALGO). It is
 **not a fee**; it is returned when the campaign is deleted. The create flow also spends **~0.005 ALGO** in network fees. Show this
 before the create approval, in plain ALGO (not µA), with the storage/deposit breakdown in a tooltip or learn-more. On the creator's
-campaign actions, repeat it next to the **Delete** button and in the delete confirmation: deleting returns the ~0.34 ALGO locked for
+campaign actions, repeat it next to the **Delete** button and in the delete confirmation: deleting returns the ~0.59 ALGO locked for
 this campaign, and backers can still refund from the vault until the window closes.
 
 ## Edge cases & gotchas

@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-03,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-04,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -62,19 +62,24 @@ one page and save 100,000 µA of creator MBR.
 
 | Contract | Global schema | Extra pages | App MBR | Who pays | Local state |
 | --- | --- | ---: | ---: | --- | --- |
-| Campaign | 4 byte-slices + 6 uints | 1 | **321,000 µA** | creator's account | none |
-| ClaimsVault | 1 byte-slice + 2 uints | 1 | **232,000 µA** | platform/deployer | none |
-| Factory | 2 byte-slices + 1 uint | 0 | **153,500 µA** | platform/deployer | none |
+| Campaign | 4 byte-slices + 6 uints | 1 | **571,000 µA** | creator's account | none |
+| ClaimsVault | 1 byte-slice + 2 uints | 1 | **307,000 µA** | platform/deployer | none |
+| Factory | 2 byte-slices + 1 uint | 0 | **228,500 µA** | platform/deployer | none |
 
-- Campaign app MBR = 100,000 + 4 × 25,000 + 6 × 3,500 + 100,000 × 1 = 321,000.
-- Vault app MBR = 100,000 + 1 × 25,000 + 2 × 3,500 + 100,000 × 1 = 232,000.
-- Factory app MBR = 100,000 + 2 × 25,000 + 1 × 3,500 = 153,500.
+- Campaign app MBR = 100,000 + 4 × 50,000 + 6 × 28,500 + 100,000 × 1 = 571,000.
+- Vault app MBR = 100,000 + 1 × 50,000 + 2 × 28,500 + 100,000 × 1 = 307,000.
+- Factory app MBR = 100,000 + 2 × 50,000 + 1 × 28,500 = 228,500.
 - Campaign app account: **0** (no boxes/assets; never funded).
 - Vault app account: 100,000 base + 32,100 per live/failed campaign box. The
   deploy script funds it with 1 ALGO; after the 100,000 base that is ~28 boxes.
 - Factory app account: 100,000 base + 18,900 per registration box. The deploy
   script funds it with 1 ALGO; each creator's 18,900 deposit covers that
   campaign's registration box.
+
+The per-slot costs are the protocol's: a global **uint** is 25,000 + 3,500 =
+28,500 µA and a global **byte slice** is 25,000 + 25,000 = 50,000 µA. An earlier
+revision of this page used 25,000/3,500 for byte slices/uints and understated the
+MBR; the values above were measured on LocalNet against the real schemas.
 
 ## Current per-campaign storage
 
@@ -95,22 +100,21 @@ The create flow is `[create app call]` then `[deposit payment, register app call
 
 | Item | Amount | Spent or locked? |
 | --- | ---: | --- |
-| Campaign app MBR | 321,000 µA | locked on the creator's account; released on `delete` |
+| Campaign app MBR | 571,000 µA | locked on the creator's account; released on `delete` |
 | Registration deposit | 18,900 µA | paid to the Factory; returned by `unregister` |
 | Create app-call fee | 3,000 µA | spent (2,267 B txn) |
 | Deposit payment fee | 1,000 µA | spent |
 | Register app-call fee | 1,000 µA | spent |
-| **Total capital locked** | **339,900 µA (~0.34 ALGO)** | recoverable on `[unregister, delete]` |
+| **Total capital locked** | **589,900 µA (~0.59 ALGO)** | recoverable on `[unregister, delete]` |
 | **Total fees spent** | **5,000 µA** | not recoverable |
 
-The current campaign is 2 pages, so the creator locks **0.34 ALGO**, not the
-**0.24 ALGO** quoted before the program grew. The 0.24 target is the 1-page
-program (2,048 B total): 221,000 app MBR + 18,900 deposit = 239,900 µA. An
-extra page adds 100,000 µA. The create flow does **not** fund the campaign app
-account and does **not** pay the vault box MBR.
+The current campaign is 2 pages, so the creator locks **~0.59 ALGO**. The 1-page
+target is **~0.49 ALGO**: 471,000 app MBR + 18,900 deposit = 489,900 µA. An extra
+page adds 100,000 µA. The create flow does **not** fund the campaign app account
+and does **not** pay the vault box MBR.
 
 A create followed immediately by delete spends about 5,000 µA (create fees) +
-5,000 µA (cleanup fees) = ~10,000 µA, and returns the 339,900 µA capital.
+5,000 µA (cleanup fees) = ~10,000 µA, and returns the 589,900 µA capital.
 
 ## Current transaction fees
 
@@ -120,7 +124,7 @@ needed, so the SDK overpays on small campaigns.
 
 | Action | Transactions | SDK total | Minimum (small tree) | Notes |
 | --- | --- | ---: | ---: | --- |
-| Create + register | create + deposit + register | 5,000 µA | 5,000 µA | create txn is 2,248 B → 3,000 µA |
+| Create + register | create + deposit + register | 5,000 µA | 5,000 µA | create txn is 2,267 B → 3,000 µA |
 | Pledge (first touch) | pay + pledge + credit + inner `isRegistered` | 4,000 µA | 4,000 µA | first pledge opens the vault box |
 | Pledge (later) | pay + pledge + credit | 4,000 µA | 3,000 µA | SDK still pays the 1,000 µA extra |
 | Cancel / refund, campaign path | campaign + inner `payBack` + OpUp | 4,000 µA | 2,000 µA | `FEE_SPEND_EXTRA = 3,000` |
@@ -142,9 +146,9 @@ the SDK's fixed extras cover one iteration. Large trees may need more. See
 
 | Item | Amount | Notes |
 | --- | ---: | --- |
-| Factory app MBR | 153,500 µA | locked on the deployer's account |
+| Factory app MBR | 228,500 µA | locked on the deployer's account |
 | Factory app-account funding | 1,000,000 µA | base + registration headroom |
-| Vault app MBR | 232,000 µA | locked on the deployer's account |
+| Vault app MBR | 307,000 µA | locked on the deployer's account |
 | Vault app-account funding | 1,000,000 µA | base + ~28 campaign boxes |
 | Deploy fees | ~8,000 µA | Factory create/fund/hash + vault create/fund/bind |
 
@@ -160,11 +164,11 @@ it and top it up as the number of live/failed campaigns grows.
    same change set.
 2. **Do not silently change the creator cost.** The campaign create cost is a
    product promise. A change that adds an extra page (+100,000 µA), adds a
-   global slot (+25,000/3,500 µA), adds a box, or adds an inner txn to
-   create/register must be called out in the commit/PR and explicitly approved.
-   The current cost is ~0.34 ALGO; the 1-page target is ~0.24 ALGO. The frontend
-   must disclose the current locked amount at create and next to Delete (see
-   [`frontend.md`](frontend.md)).
+   global slot (+50,000 µA for a byte slice, +28,500 µA for a uint), adds a box,
+   or adds an inner txn to create/register must be called out in the commit/PR
+   and explicitly approved. The current cost is ~0.59 ALGO; the 1-page target is
+   ~0.49 ALGO. The frontend must disclose the current locked amount at create and
+   next to Delete (see [`frontend.md`](frontend.md)).
 3. **Any campaign program change changes the Factory `approvalHash`.** Update
    the deploy script, tests, docs, specs/SDK release, and the deployed Factory
    hash (or redeploy Factory + vault). The current formula is
@@ -196,6 +200,22 @@ for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'factory/Factor
   const c = Buffer.from(s.byteCode.clear, 'base64').length;
   const extra = Math.floor((a + c - 1) / 2048);
   console.log(n, { approval: a, clear: c, total: a + c, extraPages: extra, capacity: 2048 * (1 + extra), headroom: 2048 * (1 + extra) - (a + c) });
+}
+"
+```
+
+App MBR is derived from the global schema and page count, not the bytecode
+length. Confirm it against a real LocalNet account when changing a schema:
+
+```bash
+node -e "
+const fs = require('fs');
+for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'factory/Factory']) {
+  const s = JSON.parse(fs.readFileSync('smart_contracts/artifacts/' + n + '.arc56.json', 'utf8'));
+  const { ints, bytes } = s.state.schema.global;
+  const total = Buffer.from(s.byteCode.approval, 'base64').length + Buffer.from(s.byteCode.clear, 'base64').length;
+  const extra = Math.floor((total - 1) / 2048);
+  console.log(n, { ints, bytes, extraPages: extra, appMbr: 100000 + ints * 28500 + bytes * 50000 + extra * 100000 });
 }
 "
 ```

@@ -120,13 +120,13 @@ the product contract. The current numbers and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
 
-Current footprint (2026-11-03, `npm run build`):
+Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
-| ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 691 B | 1 | 153,500 µA |
+| Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
+| Factory | 691 B | 1 | 228,500 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -134,12 +134,12 @@ Current footprint (2026-11-03, `npm run build`):
   same change set. The report command is in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **Never silently change the creator cost.** The campaign create cost is a
-  product promise. The current 2-page campaign locks ~0.34 ALGO (321,000 µA app
+  product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
   MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
-  ~0.24 ALGO. An extra page is +100,000 µA. If a change crosses a page boundary,
-  adds a global/local slot, adds a box, adds an inner txn to create/register, or
-  changes a group shape or fee, stop and call it out in the commit/PR; get
-  explicit approval before proceeding.
+  ~0.49 ALGO. An extra page is +100,000 µA. If a change crosses a page boundary,
+  adds a global/local slot (a byte slice is +50,000 µA, a uint +28,500 µA), adds a
+  box, adds an inner txn to create/register, or changes a group shape or fee, stop
+  and call it out in the commit/PR; get explicit approval before proceeding.
 - **Any campaign program change changes the Factory `approvalHash`.** Update the
   deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
   (or redeploy Factory + vault). The current hash is

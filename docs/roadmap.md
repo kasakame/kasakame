@@ -80,9 +80,9 @@ transparency rule in [`AGENTS.md`](../AGENTS.md).
 - [ ] **Wallet approval invitation** - separate from the steps above: a prominent element below the progress (bigger than step captions) reading "Open your wallet and confirm", shown during every waiting-for-approval state and cleared on resolve or reject. The wallet popup itself is browser chrome and not configurable; this invitation plus the vendors' in-page sign toasts (default-on, keep them on) are the layers we control.
 - [ ] **Pledge receipt transparency** - after pledging, show what the backer holds: funds pooled in escrow (never paid to the creator), cancel anytime while open, automatic refund rights if the goal fails, until when (refund window end date).
 - [ ] **Outcome states in plain language** - funded (creator claims, nothing needed from backers), failed (refund window with the actual end date), deleted (refunds continue from the vault; the page stays reachable via My pledges). No chain jargon.
-- [ ] **Creator capital at create** - before the create approval, say in plain ALGO that creating a campaign locks ~0.34 ALGO (campaign storage + registration deposit), not a fee, and that it is returned when the campaign is deleted; show the ~0.005 ALGO network fee separately. No chain jargon; a tooltip or learn-more can break down storage vs deposit.
-- [ ] **Creator capital next to Delete** - on the creator's campaign actions, show next to the Delete button that deleting returns the ~0.34 ALGO locked for this campaign (campaign storage + registration deposit); repeat it in the delete confirmation. The backer-refund consequence stays in that confirmation.
-- [ ] **Delete consequences for creators** - deleting removes the listing and returns the ~0.34 ALGO locked (campaign storage + registration deposit), but changes nothing for backers: live pledges stay refundable from the vault until the window closes. Say so on the delete confirmation.
+- [ ] **Creator capital at create** - before the create approval, say in plain ALGO that creating a campaign locks ~0.59 ALGO (campaign storage + registration deposit), not a fee, and that it is returned when the campaign is deleted; show the ~0.005 ALGO network fee separately. No chain jargon; a tooltip or learn-more can break down storage vs deposit.
+- [ ] **Creator capital next to Delete** - on the creator's campaign actions, show next to the Delete button that deleting returns the ~0.59 ALGO locked for this campaign (campaign storage + registration deposit); repeat it in the delete confirmation. The backer-refund consequence stays in that confirmation.
+- [ ] **Delete consequences for creators** - deleting removes the listing and returns the ~0.59 ALGO locked (campaign storage + registration deposit), but changes nothing for backers: live pledges stay refundable from the vault until the window closes. Say so on the delete confirmation.
 
 ## Backend & archival
 
@@ -502,12 +502,14 @@ submission.
       cannot use, parking its 32,100 µA. Tests cover a malformed root and a campaign bound
       to another vault.
 - [x] **P1 - creator-cost/page decision.** Accept 2 pages: the campaign is 2,069 B
-      (1 extra page), so creation locks ~0.34 ALGO (321,000 µA app MBR + 18,900 µA
+      (1 extra page), so creation locks ~0.59 ALGO (571,000 µA app MBR + 18,900 µA
       registration deposit), returned when the campaign is deleted; the 1-page target is
-      ~0.24. [`limits.md`](limits.md), the contract comment, and the affected docs record
-      the current cost, and the review gate is in `AGENTS.md`. The frontend disclosure is
-      tracked under [Frontend clarity](#frontend-clarity). Do not change the creator cost
-      silently.
+      ~0.49. The earlier ~0.34/~0.24 figures were an MBR arithmetic error (they used
+      25,000/3,500 per byte slice/uint instead of the protocol's 50,000/28,500); the
+      values are now measured on LocalNet. [`limits.md`](limits.md), the contract comment,
+      and the affected docs record the current cost, and the review gate is in `AGENTS.md`.
+      The frontend disclosure is tracked under [Frontend clarity](#frontend-clarity). Do
+      not change the creator cost silently.
 - [x] **P2 - vault create input hardening.** `Vault.create` now caps `refundWindow` at
       10 years in the contract (not only the deploy script), and rejects a zero/self
       `sweepTarget` and a zero `factory`. Tests cover the cap, zero factory, zero/self
@@ -544,6 +546,20 @@ submission.
 
 ### Follow-ups from the 2026-11-04 review
 
+- [ ] **P1 - absolute ledger-accounting tests.** Add a LocalNet suite that asserts the
+      exact balance and minimum balance of every wallet and every app account at each
+      lifecycle boundary, not only deltas: campaign creator before/after
+      create/register/delete (589,900 µA locked, fully recovered); vault deployer
+      (307,000 µA app MBR) and vault app account (100,000 µA base + 32,100 µA per
+      campaign box); Factory deployer (228,500 µA app MBR) and Factory app account
+      (100,000 µA base + 18,900 µA per registration box, covered by the creator
+      deposit); the campaign app account (stays 0, never funded); and a backer
+      before/after pledge/refund (nothing locked). Assert the fee total of each
+      operation separately, so "locked" and "spent" are never conflated. Derive the
+      expected app MBR from the ARC-56 schema and page count, pin the constants in one
+      fixture, and fail when a schema/page change or a docs typo makes them diverge.
+      This is the regression test for the 2026-11-04 MBR arithmetic error (321,000 vs
+      571,000). See [`limits.md`](limits.md).
 - [ ] **P2 - campaign duration cap.** Add a maximum deadline (e.g., 365 days) in
       `Campaign.create` and the create form; measure the byte delta. Today only
       `deadline > latestTimestamp` is checked, so a custom client can create a 100-year

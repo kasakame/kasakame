@@ -138,15 +138,22 @@ Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
 73 vault + 41 factory + 2 deployer + 8 deploy-config tests = 168, all green with
 100% line/branch/function coverage).
 
-**Full ledger accounting.** Every integration test asserts the complete money
-ledger, µA-exact, for every actor involved: balance and minimum-balance deltas
-per account, the fee totals of each operation (measured on LocalNet - the
-pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA),
-the vault pool movement, the parked box MBR (32,100 µA per campaign box on the
-vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the creator's
-sponsorship floor (339,900 µA: 321,000 app MBR + 18,900 registration, recovered at
-`delete()`). Rejected transactions are asserted to move **nothing** (atomic
-failure charges no fee). The current size/MBR/fee table is in [`limits.md`](limits.md).
+**Ledger accounting.** The lifecycle integration tests assert the money ledger,
+µA-exact, for the actors involved: balance and minimum-balance deltas per
+account, the fee totals of each operation (measured on LocalNet - the pledge
+group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA), the
+vault pool movement, the parked box MBR (32,100 µA per campaign box on the
+vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
+registration deposit (18,900 µA, returned by `unregister` in the
+`[unregister, delete]` group). Rejected transactions are asserted to move
+**nothing** (atomic failure charges no fee).
+
+These assertions are relative deltas. The absolute app MBR of each deployed app
+is **not** asserted yet, which is how the 2026-11-04 MBR arithmetic error
+(321,000 vs the real 571,000) went unnoticed: every test funded its accounts
+generously and compared before/after. An absolute per-wallet/per-app
+minimum-balance suite is tracked in the roadmap. The current size/MBR/fee table
+is in [`limits.md`](limits.md).
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by

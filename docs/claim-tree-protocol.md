@@ -30,8 +30,8 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   unregister immediately before when its vault has a Factory binding); cancel/refund carry one leaf proof each; claim is a
   single app call with an inner vault call. Every paired call must be a `NoOp` app call: `ClearState` runs the clear-state
   program instead of the method, so it can satisfy a selector check without executing the paired logic.
-- **MBR (current):** creator ≈ 0.34 ALGO (2-page app + schema + 1 extra page + registration, recoverable O(1) via the atomic
-  `[unregister, delete]` group; the 1-page target is ≈ 0.24 ALGO - see [`limits.md`](limits.md));
+- **MBR (current):** creator ≈ 0.59 ALGO (2-page app + schema + 1 extra page + registration, recoverable O(1) via the atomic
+  `[unregister, delete]` group; the 1-page target is ≈ 0.49 ALGO - see [`limits.md`](limits.md));
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer 0 (no
   opt-ins exist).
 
@@ -372,9 +372,9 @@ vault/factory app ids plus the campaign app id.
 
 Exactly as §9: campaign = 10 global slots; vault = one 65-byte box per campaign
 (live and failed; deleted on claim-finalization or finalize). **No local state, no ASA, no per-backer storage anywhere.** Campaign
-account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×25,000 + 6×3,500 = 121,000) + 1 extra page
-(100,000) + registration (18,900) = **339,900 µA (~0.34 ALGO)**, fully recovered in the atomic `[unregister, delete]` group; vault = 32,100 µA
-per live/failed campaign, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer = **0**. The 1-page target was ~0.24 ALGO;
+account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×50,000 + 6×28,500 = 371,000) + 1 extra page
+(100,000) + registration (18,900) = **589,900 µA (~0.59 ALGO)**, fully recovered in the atomic `[unregister, delete]` group; vault = 32,100 µA
+per live/failed campaign, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer = **0**. The 1-page target is ~0.49 ALGO;
 see [`limits.md`](limits.md) for the current footprint and the page-boundary rule.
 
 ## 11. Accounting and solvency
@@ -514,13 +514,13 @@ plus the payout/inner call and overpays small trees; large trees that need 2–3
 sizing is tracked in [`roadmap.md`](roadmap.md). An underfunded transaction fails atomically with no partial state; the client
 retries with a higher fee.
 
-Current program footprint (2026-11-03, `npm run build`; see [`limits.md`](limits.md) for the full table):
+Current program footprint (2026-11-04, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,069 B | 2 (1 extra) | 321,000 µA |
-| ClaimsVault | 2,759 B | 2 (1 extra) | 232,000 µA |
-| Factory | 691 B | 1 | 153,500 µA |
+| Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
+| Factory | 691 B | 1 | 228,500 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
@@ -617,7 +617,7 @@ real consensus, including the races of §7.
 | B - Complete bounded finalization | ✓ with Option B | Protocol resources per campaign = one 32,100 µA box; recovered by `notifyDelete` (claimed) or `finalize` (failed, time-gated) - one transaction, independent of N and of any backer. Without the window (Option A), fails by a constant. |
 | C - No O(N) platform operations | ✓ | No platform operation is per-backer anywhere; frontiers/proofs are computed by backers' own clients and *verified* by the contract. |
 | D - Very high scalability | ✓ | Zero per-backer on-chain structures (no ASA, no boxes-per-backer, no local state, no bitmap). Per-campaign state is constant (10 global slots + one box). Single-call refunds to N ≈ 1,000; `ensureBudget`-pooled refunds to N ≈ 131k with ≤ 3 OpUp inners (§14); argument ceiling N ≤ 2³²−1. |
-| E - Minimal creator capital | ✓ | ≈ 0.34 ALGO now (2-page campaign: app + schema + extra page MBR + registration), fully recovered at `delete()`; the 1-page target is ≈ 0.24 ALGO. See [`limits.md`](limits.md). |
+| E - Minimal creator capital | ✓ | ≈ 0.59 ALGO now (2-page campaign: app + schema + extra page MBR + registration), fully recovered at `delete()`; the 1-page target is ≈ 0.49 ALGO. See [`limits.md`](limits.md). |
 | F - Zero backer action after success | ✓ | Backers hold nothing on-chain after success: no ASA, no opt-in, no local state, nothing to close, sweep, or destroy. |
 
 ## 19. Verdict

@@ -62,7 +62,7 @@ campaign's `unregister` is a no-op (still shaped with the delete next), so the s
 landed.
 
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)). The current create cost is
-**339,900 µA (~0.34 ALGO) locked** (321,000 µA campaign app MBR + 18,900 µA registration deposit) plus ~5,000 µA in transaction
+**589,900 µA (~0.59 ALGO) locked** (571,000 µA campaign app MBR + 18,900 µA registration deposit) plus ~5,000 µA in transaction
 fees; the app MBR and deposit are returned by the atomic `[unregister, delete]` group. The vault box MBR (32,100 µA) is paid by
 the vault on first pledge, not by the creator. See [`limits.md`](limits.md).
 
