@@ -1,9 +1,9 @@
 import { Bytes, OnCompleteAction, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
-import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
 import { ClaimsVault } from '../claimsvault/contract.algo'
+import { programHash as programHashBytes } from '../program-hash'
 import { Factory } from './contract.algo'
 
 /**
@@ -24,9 +24,7 @@ const REGISTER_MBR = 18_900 // µA - the registration box's minimum balance
  * @returns The base64-encoded SHA-256 digest.
  */
 function programHash(approval: Uint8Array, clear: Uint8Array): string {
-  const lengthPrefix = Buffer.alloc(8)
-  lengthPrefix.writeBigUInt64BE(BigInt(approval.length))
-  return createHash('sha256').update(lengthPrefix).update(approval).update(clear).digest('base64')
+  return Buffer.from(programHashBytes(approval, clear)).toString('base64')
 }
 
 // The fake campaign app: an application with a known approval program (preimage), whose length-prefixed hash we set as the official hash.

@@ -465,7 +465,8 @@ If the platform wants zero self-enrichment optics, `sweepTarget` can be a docume
 **Deployed choice:** `sweepTarget` is the platform treasury.
 The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault contract
 and deploy script both cap the window at 10 years, so a misconfiguration cannot overflow `settledAt + refundWindow`; the contract
-also rejects a zero/self `sweepTarget` and a zero `factory` at creation.
+also rejects a zero/self `sweepTarget` and a zero `factory` at creation. The deploy script requires an explicit `SWEEP_TARGET` on
+TestNet/MainNet; LocalNet still defaults to the deployer for convenience.
 Rationale:
 residuals will be dust; a future vault can point at a community fund instead - the address is a vault-creation parameter,
 so no contract change is needed either way. The creator as sweep target was rejected (rewards failure, looks like a backdoor).

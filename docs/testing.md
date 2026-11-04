@@ -134,7 +134,7 @@ files can jump the clock between another file's deploy and pledge, flaking with
 `pledging is closed`. Sequential files keep each suite's chain-relative
 deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
-73 vault + 41 factory + 2 deployer + 5 refund-window parser tests = 165, all green with
+73 vault + 41 factory + 2 deployer + 8 deploy-config tests = 168, all green with
 100% line/branch/function coverage).
 
 **Full ledger accounting.** Every integration test asserts the complete money

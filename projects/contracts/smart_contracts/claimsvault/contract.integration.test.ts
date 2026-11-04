@@ -6,11 +6,11 @@ import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-clie
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import { ABIMethod, OnApplicationComplete, decodeAddress } from 'algosdk'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { programHash } from '../program-hash'
 
 /**
  * LocalNet integration tests for the ClaimsVault pooling and settlement paths: two campaigns sharing one pool prove
@@ -97,16 +97,16 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       suppressLog: true,
     })
 
-    const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-    const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
-    const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
-    const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
-    const programHash = createHash('sha256')
-      .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
-      .digest()
+    if (campaignSpec.byteCode === undefined) {
+      throw new Error('Campaign.arc56.json has no byteCode; run `npm run build` first.')
+    }
+    const approvalHash = programHash(
+      Buffer.from(campaignSpec.byteCode.approval, 'base64'),
+      Buffer.from(campaignSpec.byteCode.clear, 'base64'),
+    )
     await factoryClient.send.call({
       method: 'setApprovalHash(byte[])void',
-      args: [programHash],
+      args: [approvalHash],
       sender: owner.addr,
       suppressLog: true,
     })

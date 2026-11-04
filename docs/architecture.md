@@ -35,7 +35,8 @@ and behavior and leaves the choice of deployment to clients.
 
 Deployment setup order: deploy the Factory, deploy the ClaimsVault with the Factory
 id, then call `Factory.setVault(vault)` as the Factory owner. A new vault therefore
-requires a new Factory.
+requires a new Factory. On TestNet/MainNet, set `SWEEP_TARGET` explicitly; LocalNet
+defaults the residual sweep to the deployer.
 
 ## Creation flow
 

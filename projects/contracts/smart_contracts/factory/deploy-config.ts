@@ -1,10 +1,10 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { resolveDeployerAccount } from '../deployer'
+import { programHash } from '../program-hash'
 
 /**
  * Deploys the platform's `Factory` application - the canonical campaign registry.
@@ -40,9 +40,8 @@ export async function deploy() {
     amount: microAlgos(1_000_000n),
   })
 
-  // The official Campaign program hash: SHA-256 over `itob(approval.length) ‖ approval ‖ clear`, using the ARC-56
-  // bytecode (exactly what the SDK/AppFactory deploys) - not recompiled TEAL, which could differ across assembler
-  // versions. The 8-byte length prefix makes the approval/clear split unambiguous.
+  // The official Campaign program hash, from the ARC-56 bytecode (exactly what the SDK/AppFactory deploys) - not
+  // recompiled TEAL, which could differ across assembler versions.
   const campaignSpecPath = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
   const campaignSpec = JSON.parse(fs.readFileSync(campaignSpecPath, 'utf8')) as Arc56Contract
   if (campaignSpec.byteCode === undefined) {
@@ -50,13 +49,10 @@ export async function deploy() {
   }
   const approvalProgram = Buffer.from(campaignSpec.byteCode.approval, 'base64')
   const clearStateProgram = Buffer.from(campaignSpec.byteCode.clear, 'base64')
-  const approvalLength = Buffer.alloc(8)
-  approvalLength.writeBigUInt64BE(BigInt(approvalProgram.length))
-  const programHash = createHash('sha256').update(approvalLength).update(approvalProgram).update(clearStateProgram).digest()
 
   await appClient.send.call({
     method: 'setApprovalHash(byte[])void',
-    args: [programHash],
+    args: [programHash(approvalProgram, clearStateProgram)],
     sender: deployer.addr,
   })
 

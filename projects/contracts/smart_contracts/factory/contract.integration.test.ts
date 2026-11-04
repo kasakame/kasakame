@@ -5,10 +5,10 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { programHash } from '../program-hash'
 
 /**
  * LocalNet integration tests for the Factory registry: deploy the Factory, hash a real Campaign's approval program, and exercise
@@ -101,11 +101,7 @@ describe('Factory (localnet)', () => {
    */
   async function campaignApprovalHash(appId: bigint): Promise<Uint8Array> {
     const info = await algorand.app.getById(appId)
-    const approval = Buffer.from(info.approvalProgram)
-    const clear = Buffer.from(info.clearStateProgram)
-    const approvalLength = Buffer.alloc(8)
-    approvalLength.writeBigUInt64BE(BigInt(approval.length))
-    return createHash('sha256').update(approvalLength).update(approval).update(clear).digest()
+    return programHash(Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram))
   }
 
   /**

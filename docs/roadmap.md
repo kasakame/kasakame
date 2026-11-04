@@ -515,8 +515,9 @@ submission.
 - [x] **P2 - campaign create zero-vault.** `Campaign.create` now rejects `vault == 0`;
       the test covers it. The app MBR and creator cost are unchanged; see
       [`limits.md`](limits.md) for the current bytes.
-- [ ] **P2 - deploy target default.** Require an explicit `SWEEP_TARGET` on
-      TestNet/MainNet; do not silently default the residual sweep to the deployer.
+- [x] **P2 - deploy target default.** The vault deploy script now requires an explicit
+      `SWEEP_TARGET` on TestNet/MainNet; LocalNet still defaults to the deployer. The
+      resolver is tested for explicit, LocalNet-default, and required-on-TestNet cases.
 - [x] **P2 - direct credit payment check.** `credit` now checks the payment at
       `Txn.groupIndex - 2` directly instead of scanning the group; the pledge/credit
       positions guarantee that is the committed payment. Cheaper and stricter.
