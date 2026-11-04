@@ -111,7 +111,7 @@ slices land one commit each:
       described in [`testing.md`](testing.md): contract integration proves the
       compiled TEAL, but the SDK's group assembly and the CLI's command wiring
       never touch a live chain.
-  - [ ] **SDK suite** - add `projects/sdk/**/*.integration.test.ts`, excluded
+  - [x] **SDK suite** - add `projects/sdk/**/*.integration.test.ts`, excluded
         from `npm test` and coverage. Deploy Factory + ClaimsVault from ARC-56
         bytecode, call `configureSdk`, and run create → pledge → cancel,
         successful claim → delete, and failed campaign → refund before delete →

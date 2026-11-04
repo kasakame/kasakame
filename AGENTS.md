@@ -70,6 +70,7 @@ npm pack --dry-run               # inspect the published package contents
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
+npm run test:integration         # LocalNet (requires algokit localnet start + generated clients for the target contracts)
 
 cd ../cli
 npm run build                    # tsc emit to dist
@@ -263,6 +264,8 @@ Current footprint (2026-11-03, `npm run build`):
 ## Testing
 
 - Contracts: simulator tests for full behavioral coverage (every method × every branch).
+- SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
+  (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
 - Add or update tests in the same change set as the code they cover.
 

@@ -76,7 +76,7 @@ export default defineConfig(
   },
   // Test files get Vitest globals.
   {
-    files: ['**/*.spec.ts'],
+    files: ['**/*.spec.ts', '**/*.integration.test.ts'],
     languageOptions: {
       globals: {
         ...globals.vitest,

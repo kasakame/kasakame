@@ -126,13 +126,14 @@ class as it does not extend Contract or BaseContract".
 
 ## Integration test inventory
 
-All LocalNet integration tests in the repo (run with `npm run test:integration`; 21
-tests across 3 files). Each file deploys its own fixture chain to a live algod.
-Files run **sequentially** (`--no-file-parallelism`): they share one LocalNet
-sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global - parallel
-files can jump the clock between another file's deploy and pledge, flaking with
-`pledging is closed`. Sequential files keep each suite's chain-relative
-deadlines (`+600s` at deploy) valid.
+The contract package's LocalNet integration tests (run with
+`npm run test:integration` in `projects/contracts`; 21 tests across 3 files).
+Each file deploys its own fixture chain to a live algod.
+The contract files run **sequentially** (`--no-file-parallelism`): they share one
+LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
+parallel files can jump the clock between another file's deploy and pledge,
+flaking with `pledging is closed`. Sequential files keep each suite's
+chain-relative deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
 73 vault + 41 factory + 2 deployer + 8 deploy-config tests = 168, all green with
 100% line/branch/function coverage).
@@ -193,6 +194,46 @@ Factory + ClaimsVault + Campaign.
 | 20 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
 | 21 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
 | 22 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
+
+## SDK LocalNet integration
+
+`projects/sdk/src/transactions.integration.test.ts` closes the client send-path
+gap: it deploys a Factory + ClaimsVault from the ARC-56 bytecode embedded in the
+generated clients, calls `configureSdk`, and drives the SDK write helpers against
+a live chain. Three flows run with fresh campaigns and generated-account signers:
+
+1. **create → pledge → cancel → delete** - the open-campaign lifecycle, including
+   the `[pay, campaign.pledge, vault.credit]` group and the backer's withdrawal.
+2. **successful campaign → claim → delete** - the creator payout and the atomic
+   `[unregister, delete]` cleanup.
+3. **failed campaign → refund before delete → delete → refund after delete** -
+   the campaign refund path, then the vault refund path once the app is gone.
+
+Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
+the offset is reset in a `finally`, and the suite runs with
+`--no-file-parallelism` because the offset is chain-global. It is excluded from
+`npm test` and coverage.
+
+Run it with LocalNet up:
+
+```bash
+cd projects/sdk
+npm run test:integration
+```
+
+The suite uses the clients currently in `src/generated`, so it tests the pinned
+specs release by default. To exercise the local contracts instead, build them and
+regenerate against the local artifacts first:
+
+```bash
+cd projects/contracts && npm run build
+cd ../sdk && SDK_SPECS=local npm run codegen
+npm run test:integration
+```
+
+The setup adapts to both shapes: the 2026-11 Factory binds the vault and hashes
+`itob(approval length) ‖ approval ‖ clear`, while the pinned release predates
+both.
 
 ## API cheat sheet (learned the hard way)
 

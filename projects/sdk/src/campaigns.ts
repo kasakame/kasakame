@@ -300,7 +300,13 @@ export async function isRegistered(appId: bigint): Promise<boolean> {
   const { algorand, factoryAppId } = getSdkConfig()
   if (factoryAppId <= 0n) return false
   const factoryClient = new FactoryClient({ algorand, appId: factoryAppId })
-  return (await factoryClient.state.box.registered.value(appId)) !== undefined
+  try {
+    return (await factoryClient.state.box.registered.value(appId)) !== undefined
+  } catch (error) {
+    // A deleted campaign has no registration box; algod reports that as 404 rather than an empty value.
+    if (error instanceof Error && /box not found/i.test(error.message)) return false
+    throw error
+  }
 }
 
 /**
