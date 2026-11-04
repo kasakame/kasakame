@@ -4,7 +4,7 @@
 
 Fixes #
 
-## Why
+## Motivation
 
 <!-- Why is this needed? Link the ticket and any context. -->
 
@@ -18,7 +18,7 @@ Fixes #
 
 ## Checklist
 
-- [ ] PR title is the change name; `Fixes #N` is in the body
+- [ ] PR title describes the change; `Fixes #N` belongs in the body
 - [ ] Tests added/updated and passing
 - [ ] `npm run build` succeeds
 - [ ] No secrets or generated artifacts committed

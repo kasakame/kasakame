@@ -3,17 +3,17 @@ description: A scoped unit of work.
 type: Task
 body:
   - type: textarea
-    id: what-why
+    id: description
     attributes:
-      label: What & why
-      description: One or two sentences. What changes and why.
+      label: Description
+      description: What changes and why. Keep it to one or two sentences.
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Observable outcomes, one per line. Keep the checkboxes.
+      description: One observable outcome per line.
       value: |
         - [ ]
     validations:

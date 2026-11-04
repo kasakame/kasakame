@@ -6,21 +6,21 @@ body:
     id: problem
     attributes:
       label: Problem
-      description: What user problem does this solve?
+      description: The user problem this feature solves, and why it matters.
     validations:
       required: true
   - type: textarea
     id: behavior
     attributes:
       label: Proposed behavior
-      description: What should the user see or be able to do?
+      description: What the user should see or be able to do.
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria
-      description: Observable outcomes, one per line. Keep the checkboxes.
+      description: One observable outcome per line.
       value: |
         - [ ]
     validations:
