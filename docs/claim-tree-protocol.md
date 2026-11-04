@@ -520,11 +520,11 @@ plus the payout/inner call and overpays small trees; large trees that need 2–3
 sizing is tracked in [issue #77](https://github.com/kasakame/kasakame/issues/77). An underfunded transaction fails atomically with no partial state; the client
 retries with a higher fee.
 
-Current program footprint (2026-11-04, `npm run build`; see [`limits.md`](limits.md) for the full table):
+Current program footprint (2026-11-05, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
+| Campaign | 2,081 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,036 B | 1 | 357,000 µA |
 

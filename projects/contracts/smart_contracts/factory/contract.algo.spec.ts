@@ -117,7 +117,7 @@ describe('Factory', () => {
   ): Application {
     const campaign = ctx.contract.create(Campaign)
     // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
-    campaign.create(vault, Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
+    campaign.create(vault, Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 1_000_000)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
     ;(campaign.vault as unknown as { value: unknown }).value = vault.id
     if (fields) {

@@ -48,6 +48,9 @@ const STATUS_CLAIMED = 2
 // A single bytes global-state value is capped at 128 bytes on the AVM.
 const MAX_BYTES_PER_STATE_KEY = 128
 
+// Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
+const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
+
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')
 
@@ -120,6 +123,7 @@ export class Campaign extends Contract {
     assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')
     assert(goal > 0, 'goal must be greater than zero')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
+    assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
 
     this.creator.value = Txn.sender
     this.vault.value = vault

@@ -175,6 +175,20 @@ describe('CreateCampaignForm', () => {
     expect(await screen.findByText(/Duration must be a positive number of days/)).toBeInTheDocument()
   })
 
+  it('rejects a duration beyond the 180-day cap', async () => {
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await user.clear(screen.getByLabelText(/Duration/))
+    await user.type(screen.getByLabelText(/Duration/), '181')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/Duration must be 180 days or fewer/)).toBeInTheDocument()
+    expect(createCampaignMock).not.toHaveBeenCalled()
+  })
+
   it('shows an error when creation fails', async () => {
     createCampaignMock.mockRejectedValue(new Error('boom'))
     const user = userEvent.setup()

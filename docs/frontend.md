@@ -334,7 +334,7 @@ this campaign, and backers can still refund from the vault until the window clos
 
 - **Indexer lag.** After a write (create/pledge/claim/refund), the indexer may lag a
   round or two; the helpers wait on the confirmation round where available.
-- **Clock drift.** Deadline and outcome decisions use chain time (`fetchChainTimestamp`), never the client clock; the create form still clamps the duration to a sane range.
+- **Clock drift.** Deadline and outcome decisions use chain time (`fetchChainTimestamp`), never the client clock; the create form clamps the duration to 180 days, matching the contract.
 - **Bytes vs. characters.** `title`/`metadataUri` are capped at 128 **bytes**;
   keep the `TextEncoder` check.
 - **Pledge > wallet balance.** Validate against the connected account's ALGO balance

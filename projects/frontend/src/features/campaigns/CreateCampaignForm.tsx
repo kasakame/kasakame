@@ -31,6 +31,8 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
 
   // A single bytes global-state value is capped at 128 bytes on the AVM.
   const MAX_BYTES = 128
+  // Keep in sync with Campaign.MAX_DURATION_SECONDS.
+  const MAX_DURATION_DAYS = 180
 
   const canSubmit = title.trim() !== '' && goal.trim() !== '' && !busy && Boolean(activeAddress && transactionSigner)
 
@@ -55,6 +57,10 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
       const daysNumber = Number(days)
       if (!Number.isFinite(daysNumber) || daysNumber <= 0) {
         setMessage('Duration must be a positive number of days.')
+        return
+      }
+      if (daysNumber > MAX_DURATION_DAYS) {
+        setMessage(`Duration must be ${String(MAX_DURATION_DAYS)} days or fewer.`)
         return
       }
 
@@ -198,6 +204,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         <input
           type="number"
           min="1"
+          max={MAX_DURATION_DAYS}
           value={days}
           onChange={(e) => {
             setDays(e.target.value)

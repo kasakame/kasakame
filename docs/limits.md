@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-04,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-05,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,065 B | 4 B | 2,069 B | 1 (2 pages) | 4,096 B | 2,027 B |
+| Campaign | 2,077 B | 4 B | 2,081 B | 1 (2 pages) | 4,096 B | 2,015 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **21 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 21 B would return it to
+The campaign is **33 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 33 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 ## Current app MBR and storage
@@ -93,6 +93,14 @@ The vault box is opened by the first `credit` (first pledge) and released by
 `register` and released by `unregister`. The creator's registration deposit
 covers the Factory box; the vault box is platform-funded and is not charged to
 the creator or backer.
+
+## Campaign duration cap
+
+`Campaign.create` rejects a deadline more than 180 days after creation. A failed
+campaign's vault box therefore stays live for at most the campaign duration plus
+the 730-day refund window (~2.5 years), instead of being pinnable indefinitely by
+a 1 µA pledge. This is a backstop, not a product limit: Kickstarter and Indiegogo
+cap at 60 days, and 180 leaves room for extended raises.
 
 ## Current creator cost (create a campaign)
 
