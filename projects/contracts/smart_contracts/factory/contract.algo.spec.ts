@@ -103,13 +103,31 @@ describe('Factory', () => {
    * A real Campaign app created with the official vault, so `register` can read its `vault` global.
    *
    * @param vault The vault app stored in the campaign's global state.
+
+  * @param fields The campaign globals that gate unregistration.
+   * @param fields.status Campaign status: 0 Open, 1 Failed, 2 Claimed.
+   * @param fields.raised Live pledge total.
+   * @param fields.goal Funding target.
+   * @param fields.deadline Deadline timestamp.
+   * @param fields.n Positions ever appended (non-zero for an all-cancelled campaign).
    * @returns The deployed Campaign application.
    */
-  function realCampaign(vault: ReturnType<typeof vaultApp>): Application {
+  function realCampaign(
+    vault: Application,
+    fields?: { status: number; raised: number; goal: number; deadline: number; n?: number },
+  ): Application {
     const campaign = ctx.contract.create(Campaign)
+    // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
     campaign.create(vault, Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
     ;(campaign.vault as unknown as { value: unknown }).value = vault.id
+    if (fields) {
+      campaign.status.value = fields.status
+      campaign.raised.value = fields.raised
+      campaign.goal.value = fields.goal
+      campaign.deadline.value = fields.deadline
+      campaign.n.value = fields.n ?? 0
+    }
     return ctx.ledger.getApplicationForContract(campaign)
   }
 
@@ -155,15 +173,7 @@ describe('Factory', () => {
     contract: Factory,
     fields: { status: number; raised: number; goal: number; deadline: number; n?: number },
   ): Application {
-    const campaign = ctx.contract.create(Campaign)
-    // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
-    campaign.create(ctx.any.application({ applicationId: 777 }), Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
-    campaign.status.value = fields.status
-    campaign.raised.value = fields.raised
-    campaign.goal.value = fields.goal
-    campaign.deadline.value = fields.deadline
-    campaign.n.value = fields.n ?? 0
-    const app = ctx.ledger.getApplicationForContract(campaign)
+    const app = realCampaign(ctx.any.application({ applicationId: 777 }), fields)
     contract.registered(app.id).value = ctx.defaultSender
     return app
   }
