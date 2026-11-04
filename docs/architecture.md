@@ -111,7 +111,7 @@ Both settlement paths finalize in O(1) time and cost. Refunds stay available for
 
 ## Optional catalog
 
-The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see [`roadmap.md`](roadmap.md)). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 

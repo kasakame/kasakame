@@ -152,13 +152,13 @@ These assertions are relative deltas. The absolute app MBR of each deployed app
 is **not** asserted yet, which is how the 2026-11-04 MBR arithmetic error
 (321,000 vs the real 571,000) went unnoticed: every test funded its accounts
 generously and compared before/after. An absolute per-wallet/per-app
-minimum-balance suite is tracked in the roadmap. The current size/MBR/fee table
+minimum-balance suite is tracked in [#75](https://github.com/kasakame/kasakame/issues/75). The current size/MBR/fee table
 is in [`limits.md`](limits.md).
 
 **Contract sizes.** The compiled approval/clear bytes, page count, and app MBR
 are **not** asserted by a test yet. The measurement command is in
 [`limits.md`](limits.md#measure-the-current-sizes); a size-budget regression test
-is tracked in the roadmap.
+is tracked in [#76](https://github.com/kasakame/kasakame/issues/76).
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by
@@ -396,6 +396,6 @@ coverage, and the build (see [`ci.md`](ci.md#workflow-build-and-test)); the
 release workflow packs the tarball and runs `kasakame --help` before publishing
 (see [`ci.md`](ci.md#workflow-release-cli-separate-file)).
 
-Manual TestNet smoke remains on the [roadmap](roadmap.md#cli): both signers,
-refund before and after a delete, and delete on a fresh campaign. The CLI
-behavior is documented in [`cli.md`](cli.md).
+Manual TestNet smoke remains in the [manual smoke ticket](https://github.com/kasakame/kasakame/issues/126):
+both signers, refund before and after a delete, and delete on a fresh campaign.
+The CLI behavior is documented in [`cli.md`](cli.md).

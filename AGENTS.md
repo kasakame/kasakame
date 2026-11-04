@@ -312,7 +312,7 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1),
-not in a Markdown checklist. `docs/roadmap.md` is being retired.
+not in a Markdown checklist.
 
 - **Components:** `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`,
   `docs`, `maintenance`. Each is an issue of type `Component`; the project field of

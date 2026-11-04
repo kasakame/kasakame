@@ -517,7 +517,7 @@ excluded - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts
 The contract calls `ensureBudget` itself with the estimate above. The SDK currently funds a **fixed** extra fee
 (`FEE_SPEND_EXTRA = 3,000`, `FEE_CREDIT_EXTRA = 1,000`), not a value derived from `(N, k)`: it covers one OpUp iteration
 plus the payout/inner call and overpays small trees; large trees that need 2–3 OpUp iterations can be underfunded. Dynamic
-sizing is tracked in [`roadmap.md`](roadmap.md). An underfunded transaction fails atomically with no partial state; the client
+sizing is tracked in [issue #77](https://github.com/kasakame/kasakame/issues/77). An underfunded transaction fails atomically with no partial state; the client
 retries with a higher fee.
 
 Current program footprint (2026-11-04, `npm run build`; see [`limits.md`](limits.md) for the full table):
