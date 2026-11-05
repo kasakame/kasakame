@@ -58,7 +58,7 @@
     "notistack": "^3.0.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tslib": "^2.6.2"
+    "tslib": "^2.9.1"
   },
   "scripts": {
     "reclaim": "node --env-file-if-exists=.env.testnet --import tsx scripts/reclaim.ts",
