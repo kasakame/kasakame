@@ -29,8 +29,8 @@ not the `.teal` source size. Re-measure after any contract change.
 | Minimum fee | 1,000 µA per txn | `MinTxnFee` |
 | Larger-transaction fee | +1,000 µA per 1,000 B | a 2,267 B create txn needs 3,000 µA; inner txn fees are paid from the group fee pool |
 | Account base MBR | 100,000 µA | app accounts with boxes must hold this; the campaign app account holds 0 |
-| App creation MBR | 100,000 + 25,000 × global bytes + 3,500 × global uints + 100,000 × extra pages | charged to the creator |
-| App opt-in MBR | 100,000 + 25,000 × local bytes + 3,500 × local uints | charged to the opted-in account; not used |
+| App creation MBR | 100,000 + 50,000 × global bytes + 28,500 × global uints + 100,000 × extra pages | charged to the creator |
+| App opt-in MBR | 100,000 + 50,000 × local bytes + 28,500 × local uints | charged to the opted-in account; not used |
 | Box MBR | 2,500 + 400 × (name + value) | charged to the app account that owns the box |
 
 Sources: [protocol parameters](https://dev.algorand.co/concepts/protocol/protocol-parameters/),
@@ -57,6 +57,11 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 The campaign is **40 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 40 B would return it to
 one page and save 100,000 µA of creator MBR.
+
+`npm run test:size` pins these values in
+`smart_contracts/size-budget.fixture.ts` and runs in the `compile-contracts` CI
+job after `npm run build`. A byte, page, or schema change must update the fixture
+and this table together.
 
 ## Current app MBR and storage
 

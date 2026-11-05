@@ -41,7 +41,8 @@ Commands:
 - `npm run test` - offline AVM unit tests only.
 - `npm run test:integration` - LocalNet integration tests (requires
   `algokit localnet start` + `npm run build`).
-- `npm run test:all` - both.
+- `npm run test:size` - contract size budget (requires `npm run build`).
+- `npm run test:all` - all suites (requires `npm run build` for the size budget).
 - `npm run test:coverage` - offline tests with coverage; fails below the
   configured thresholds (see below).
 
@@ -68,6 +69,15 @@ or `.algo.test.ts`. The contract (`contract.algo.ts`) is transformed; **the test
 must also be transformed**, so it must be named `contract.algo.spec.ts` (not plain
 `.spec.ts`). Otherwise contract creation fails with "Cannot create a contract for
 class as it does not extend Contract or BaseContract".
+
+## Contract size budget
+
+`npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
+approval/clear/total bytes, extra pages, page capacity, global schema, and app
+MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
+`compile-contracts` CI job after `npm run build`; update the fixture and
+[`limits.md`](limits.md) together when a contract changes. It is excluded from
+`npm test` and `test:coverage` because those jobs do not build the artifacts.
 
 ## LocalNet integration notes
 

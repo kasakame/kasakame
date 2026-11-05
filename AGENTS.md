@@ -136,6 +136,10 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
   affected group fees, and update `docs/limits.md` plus the affected docs in the
   same change set. The report command is in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
+- **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
+  pages, global schema, and app MBR in
+  `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+  job after `npm run build`. Update the fixture and `docs/limits.md` together.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
   MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
