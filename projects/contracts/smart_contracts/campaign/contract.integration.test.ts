@@ -12,6 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { programHash } from '../program-hash'
+import { SIZE_BUDGET } from '../size-budget.fixture'
 
 /**
  * LocalNet integration tests for the claim-tree architecture: deploy the Factory + ClaimsVault + Campaign v2 TEAL to a
@@ -38,6 +39,14 @@ const FEE_VAULT_REFUND = 4n * FEE // app call + 1 OpUp iteration (create+delete 
 const FEE_CLAIM = 3n * FEE // app call + inner payClaim + inner payment pools
 const FEE_DELETE_SETTLED = 3n * FEE // app call + inner settle/notify + escrow-close pools
 const FEE_UNREGISTER = 2n * FEE // app call + inner deposit-back pool
+
+const CAMPAIGN_MBR = BigInt(SIZE_BUDGET.campaign.appMbr)
+const VAULT_BOX_MBR = 32_100n
+const APP_BASE = 100_000n
+const CREATE_FEE = FEE
+const REGISTER_FEES = 2n * FEE
+const CLEANUP_FEES = FEE_UNREGISTER + FEE_DELETE_SETTLED
+const PLEDGE_FEES = FEE + FEE_PLEDGE_CALL + FEE_CREDIT
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
 const FACTORY_SPEC_PATH = path.resolve(__dirname, '../artifacts/factory/Factory.arc56.json')
@@ -72,6 +81,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
   let factorySpec: Arc56Contract
   let vaultSpec: Arc56Contract
   let factoryId: bigint
+  let factoryAddress: string
   let vaultId: bigint
   let vaultAddress: string
   let vaultClient: AppClient
@@ -93,6 +103,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const factoryClient = (await factoryFactory.send.create({ method: 'create()void', args: [], sender: owner.addr, suppressLog: true }))
       .appClient
     factoryId = factoryClient.appId
+    factoryAddress = factoryClient.appAddress.toString()
     await algorand.send.payment({
       sender: owner.addr,
       receiver: factoryClient.appAddress,
@@ -240,6 +251,15 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     return (await algorand.account.getInformation(addr)).balance.microAlgo
   }
 
+  async function minBalanceOf(addr: string): Promise<bigint> {
+    return (await algorand.account.getInformation(addr)).minBalance.microAlgo
+  }
+
+  async function accountInfo(addr: string): Promise<{ balance: bigint; minBalance: bigint }> {
+    const info = await algorand.account.getInformation(addr)
+    return { balance: info.balance.microAlgo, minBalance: info.minBalance.microAlgo }
+  }
+
   async function advanceTime(seconds: number): Promise<void> {
     const algod = algorand.client.algod
     try {
@@ -264,6 +284,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
    * @returns The app client and id.
    */
   async function deployCampaign(creatorAddr: string, goal = GOAL, deadlineOffset = 600): Promise<{ appClient: AppClient; appId: bigint }> {
+    const creatorBefore = await accountInfo(creatorAddr)
     const status = await algorand.client.algod.status().do()
     const block = await algorand.client.algod.block(status.lastRound).do()
     const deadline = block.block.header.timestamp + BigInt(deadlineOffset)
@@ -278,10 +299,16 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       })
     ).appClient
     const appId = appClient.appId
+    const creatorAfterCreate = await accountInfo(creatorAddr)
+    const createCost = creatorBefore.balance - creatorAfterCreate.balance
+    expect(createCost).toEqual(CREATE_FEE)
+    expect(creatorAfterCreate.minBalance - creatorBefore.minBalance).toEqual(CAMPAIGN_MBR)
+    expect(await accountInfo(appClient.appAddress.toString())).toEqual({ balance: 0n, minBalance: APP_BASE })
 
     const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: creatorAddr }).getAppClientById({
       appId: factoryId,
     })
+    const factoryAppBefore = await accountInfo(factoryClient.appAddress.toString())
     const registerPayment = await algorand.createTransaction.payment({
       sender: creatorAddr,
       receiver: factoryClient.appAddress,
@@ -294,6 +321,13 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       appReferences: [appId],
       suppressLog: true,
     })
+    const creatorAfterRegister = await accountInfo(creatorAddr)
+    const factoryAppAfter = await accountInfo(factoryClient.appAddress.toString())
+    const registerCost = creatorAfterCreate.balance - creatorAfterRegister.balance
+    expect(registerCost - REGISTER_MBR).toEqual(REGISTER_FEES)
+    expect(creatorAfterRegister.minBalance).toEqual(creatorAfterCreate.minBalance)
+    expect(factoryAppAfter.minBalance - factoryAppBefore.minBalance).toEqual(REGISTER_MBR)
+    expect(factoryAppAfter.balance - factoryAppBefore.balance).toEqual(REGISTER_MBR)
     return { appClient, appId }
   }
 
@@ -308,6 +342,9 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
    * @returns The confirmed payment TxID (hex).
    */
   async function pledge(appClient: AppClient, appId: bigint, backerAddr: string, amount: bigint): Promise<string> {
+    const backerBefore = await accountInfo(backerAddr)
+    const vaultBefore = await accountInfo(vaultAddress)
+    const hadBox = await boxExists(appId)
     const front = oracle('frontier') as { peaks: string[] }
     const pay = await algorand.createTransaction.payment({ sender: backerAddr, receiver: vaultAddress, amount: microAlgos(amount) })
     const composer = algorand.send.newGroup()
@@ -332,6 +369,14 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const payTxid = result.txIds[0]
     if (payTxid === undefined) throw new Error('pledge group returned no payment TxID')
     const txidHex = Buffer.from(base32ToBytes(payTxid)).toString('hex')
+
+    const backerAfter = await accountInfo(backerAddr)
+    const vaultAfter = await accountInfo(vaultAddress)
+    const pledgeCost = backerBefore.balance - backerAfter.balance
+    expect(pledgeCost - amount).toEqual(PLEDGE_FEES)
+    expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
+    expect(vaultAfter.balance - vaultBefore.balance).toEqual(amount)
+    expect(vaultAfter.minBalance - vaultBefore.minBalance).toEqual(hadBox ? 0n : VAULT_BOX_MBR)
 
     const exp = oracle('append', addrHex(backerAddr), amount.toString(), txidHex) as OracleState
     const st = await campaignState(appClient)
@@ -364,6 +409,8 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     txidHex: string,
     method: 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'refund(uint64,uint64,byte[],byte[])void',
   ): Promise<void> {
+    const backerBefore = await accountInfo(backerAddr)
+    const vaultBefore = await accountInfo(vaultAddress)
     const p = oracle('path', k.toString()) as OraclePath
     const blob = concatHex([...p.siblings, ...(p.top === null ? [] : [p.top]), ...p.lower])
     await appClient.send.call({
@@ -375,6 +422,13 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       extraFee: microAlgos(3n * FEE),
       suppressLog: true,
     })
+    const backerAfter = await accountInfo(backerAddr)
+    const vaultAfter = await accountInfo(vaultAddress)
+    const spendDelta = backerAfter.balance - backerBefore.balance
+    expect(amount - spendDelta).toEqual(FEE_SPEND)
+    expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
+    expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
+    expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
     const exp = oracle('null', k.toString(), amount.toString()) as OracleState
     const st = await campaignState(appClient)
     expect(st.n).toEqual(BigInt(exp.n))
@@ -389,8 +443,13 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
    *
    * @param appId The campaign application id.
    * @param creatorAddr The campaign creator.
+   * @param expectedVaultBoxRelease True when the delete path releases the vault box (`Claimed`); a failed campaign
+   * keeps the box for the refund window.
    */
-  async function deleteCampaign(appId: bigint, creatorAddr: string): Promise<void> {
+  async function deleteCampaign(appId: bigint, creatorAddr: string, expectedVaultBoxRelease = false): Promise<void> {
+    const creatorBefore = await accountInfo(creatorAddr)
+    const factoryBefore = await accountInfo(factoryAddress)
+    const vaultBefore = await accountInfo(vaultAddress)
     const composer = algorand.send.newGroup()
     composer.addAppCallMethodCall({
       appId: factoryId,
@@ -411,9 +470,18 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       extraFee: microAlgos(2n * FEE),
     })
     await composer.send({ suppressLog: true })
+    const creatorAfter = await accountInfo(creatorAddr)
+    const factoryAfter = await accountInfo(factoryAddress)
+    const vaultAfter = await accountInfo(vaultAddress)
+    expect(creatorBefore.minBalance - creatorAfter.minBalance).toEqual(CAMPAIGN_MBR)
+    const cleanupCost = REGISTER_MBR - (creatorAfter.balance - creatorBefore.balance)
+    expect(cleanupCost).toEqual(CLEANUP_FEES)
+    expect(factoryBefore.minBalance - factoryAfter.minBalance).toEqual(REGISTER_MBR)
+    expect(factoryBefore.balance - factoryAfter.balance).toEqual(REGISTER_MBR)
+    expect(vaultBefore.minBalance - vaultAfter.minBalance).toEqual(expectedVaultBoxRelease ? VAULT_BOX_MBR : 0n)
   }
 
-  test('embedded vault selectors match the vault ARC-56', () => {
+  test('embedded vault selectors and pinned creator totals', () => {
     const approval = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
     for (const method of [
       'payBack(uint64,address,uint64)void',
@@ -437,6 +505,11 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     // The Factory embeds the campaign delete selector (unregister must be followed by delete).
     const factoryApproval = fs.readFileSync(path.resolve(__dirname, '../artifacts/factory/Factory.approval.teal'), 'utf8')
     expect(factoryApproval).toContain(createHash('sha512-256').update('delete()void').digest('hex').slice(0, 8))
+
+    // Pinned totals from docs/limits.md; the lifecycle tests assert the components on-chain.
+    expect(CAMPAIGN_MBR + REGISTER_MBR).toEqual(589_900n)
+    expect(CREATE_FEE + REGISTER_FEES).toEqual(3_000n)
+    expect(CREATE_FEE + REGISTER_FEES + CLEANUP_FEES).toEqual(8_000n)
   })
 
   test('pledge → cancel → refund lifecycle, differentially verified with exact fund movement', async () => {
@@ -464,6 +537,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const front = oracle('frontier') as { peaks: string[] }
     const forged = Buffer.concat(front.peaks.map((p) => Buffer.from(p, 'hex')))
     forged[0] = forged[0] === 0 ? 1 : 0
+    const backerBeforeForged = await balanceOf(addrA)
     const forgedPay = await algorand.createTransaction.payment({ sender: addrA, receiver: vaultAddress, amount: microAlgos(ALGO) })
     await expect(
       appClient.send.call({
@@ -473,6 +547,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/stale or forged frontier/)
+    expect(await balanceOf(addrA)).toEqual(backerBeforeForged)
     const oracleState = oracle('state') as OracleState
     const st = await campaignState(appClient)
     expect(st.n).toEqual(BigInt(oracleState.n))
@@ -496,6 +571,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     // Double refund of k=0: the leaf holds Z now.
     const dup = oracle('path', '0') as OraclePath
     const blob = concatHex([...dup.siblings, ...(dup.top === null ? [] : [dup.top]), ...dup.lower])
+    const backerBeforeDup = await balanceOf(addrA)
     await expect(
       appClient.send.call({
         method: 'refund(uint64,uint64,byte[],byte[])void',
@@ -507,12 +583,14 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/proof does not match root/)
+    expect(await balanceOf(addrA)).toEqual(backerBeforeDup)
   })
 
   test('a pledge without the matching vault credit is rejected', async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const { appClient, appId } = await deployCampaign(creator.addr.toString())
+    const backerBefore = await balanceOf(backer.addr.toString())
     const pay = await algorand.createTransaction.payment({
       sender: backer.addr,
       receiver: vaultAddress,
@@ -527,6 +605,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     })
 
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
+    expect(await balanceOf(backer.addr.toString())).toEqual(backerBefore)
     const st = await campaignState(appClient)
     expect(st.n).toEqual(0n)
     expect(st.raised).toEqual(0n)
@@ -554,6 +633,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const appId = appClient.appId
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const addr = backer.addr.toString()
+    const backerBefore = await balanceOf(addr)
 
     const pay = await algorand.createTransaction.payment({ sender: addr, receiver: vaultAddress, amount: microAlgos(ALGO) })
     const composer = algorand.send.newGroup()
@@ -573,6 +653,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       extraFee: microAlgos(FEE),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/campaign not registered/)
+    expect(await balanceOf(addr)).toEqual(backerBefore)
     expect(await boxExists(appId)).toEqual(false)
   })
 
@@ -585,6 +666,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     await pledge(appClient, appId, backer.addr.toString(), 1n * ALGO)
     const stranger = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const saddr = stranger.addr.toString()
+    const strangerBefore = await balanceOf(saddr)
 
     await expect(
       vaultClient.send.call({
@@ -610,6 +692,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     await expect(
       vaultClient.send.call({ method: 'notifyDelete(uint64)void', args: [appId], sender: saddr, suppressLog: true }),
     ).rejects.toThrow(/not the campaign app/)
+    expect(await balanceOf(saddr)).toEqual(strangerBefore)
   })
 
   test('successful claim pays the creator exactly, then deletes O(1)', async () => {
@@ -625,6 +708,9 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     await advanceTime(900)
 
     const balC0 = await balanceOf(caddr)
+    const creatorMinBeforeClaim = await minBalanceOf(caddr)
+    const vaultBalBeforeClaim = await balanceOf(vaultAddress)
+    const vaultMinBeforeClaim = await minBalanceOf(vaultAddress)
     await appClient.send.call({
       method: 'claim()void',
       args: [],
@@ -636,13 +722,30 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     })
     // 4 ALGO in, 0 out: the creator receives the full live total minus the claim fee.
     expect(await balanceOf(caddr)).toEqual(balC0 + 4n * ALGO - FEE_CLAIM)
+    expect(await minBalanceOf(caddr)).toEqual(creatorMinBeforeClaim)
+    expect(await balanceOf(vaultAddress)).toEqual(vaultBalBeforeClaim - 4n * ALGO)
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMinBeforeClaim)
     const box = await boxOf(appId)
     expect(box.status).toEqual(3)
     expect(box.paidOut).toEqual(box.paidIn)
 
+    const balC2 = await balanceOf(caddr)
+    await expect(
+      appClient.send.call({
+        method: 'claim()void',
+        args: [],
+        sender: caddr,
+        appReferences: [vaultId],
+        boxReferences: [vaultBoxRef(appId)],
+        extraFee: microAlgos(2n * FEE),
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/already claimed/)
+    expect(await balanceOf(caddr)).toEqual(balC2)
+
     // Unregister and delete in one atomic group: the Factory requires the delete immediately after it.
     const balC1 = await balanceOf(caddr)
-    await deleteCampaign(appId, caddr)
+    await deleteCampaign(appId, caddr, true)
     expect(await boxExists(appId)).toEqual(false)
     // Deposit returned; delete releases the box and closes the escrow (the escrow never held funds).
     expect(await balanceOf(caddr)).toEqual(balC1 + REGISTER_MBR - FEE_UNREGISTER - FEE_DELETE_SETTLED)
@@ -670,6 +773,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
 
     // Either backer refunds straight from the vault (no campaign involved).
     const balB = await balanceOf(addrB)
+    const vaultMinBeforeRefund = await minBalanceOf(vaultAddress)
     const pathB = oracle('path', '1') as OraclePath
     const blobB = concatHex([...pathB.siblings, ...(pathB.top === null ? [] : [pathB.top]), ...pathB.lower])
     await vaultClient.send.call({
@@ -681,15 +785,19 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       suppressLog: true,
     })
     expect(await balanceOf(addrB)).toEqual(balB + 1n * ALGO - FEE_VAULT_REFUND)
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMinBeforeRefund)
     const afterRefund = await boxOf(appId)
     expect(afterRefund.paidOut).toEqual(1n * ALGO)
 
     // Finalize before the window closes is rejected; after it, the 3 ALGO residual goes to the sweeper.
+    const balA0 = await balanceOf(addrA)
     await expect(
       vaultClient.send.call({ method: 'finalize(uint64)void', args: [appId], sender: addrA, extraFee: microAlgos(FEE), suppressLog: true }),
     ).rejects.toThrow(/refund window still open/)
+    expect(await balanceOf(addrA)).toEqual(balA0)
     await advanceTime(4_000)
     const balS0 = await balanceOf(sweeperAddr)
+    const vaultMinBeforeFinalize = await minBalanceOf(vaultAddress)
     await vaultClient.send.call({
       method: 'finalize(uint64)void',
       args: [appId],
@@ -698,6 +806,8 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       suppressLog: true,
     })
     expect(await balanceOf(sweeperAddr)).toEqual(balS0 + 3n * ALGO)
+    expect(await balanceOf(addrA)).toEqual(balA0 - 2n * FEE) // app call + inner residual payment
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMinBeforeFinalize - VAULT_BOX_MBR)
     expect(await boxExists(appId)).toEqual(false)
   })
 
@@ -737,6 +847,8 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     await advanceTime(900)
 
     // Anyone settles: reads the live campaign globals, flips the box to FAILED.
+    const strangerBefore = await balanceOf(stranger.addr.toString())
+    const vaultMinBeforeSettle = await minBalanceOf(vaultAddress)
     await vaultClient.send.call({
       method: 'settleOpen(uint64)void',
       args: [appId],
@@ -744,9 +856,12 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       appReferences: [appId],
       suppressLog: true,
     })
+    expect(await balanceOf(stranger.addr.toString())).toEqual(strangerBefore - FEE)
+    expect(await minBalanceOf(vaultAddress)).toEqual(vaultMinBeforeSettle)
     expect((await boxOf(appId)).status).toEqual(2)
 
     // The campaign path now fails at the vault (box not open) - the backer must use vault.refund instead.
+    const backerBefore = await balanceOf(addr)
     const path = oracle('path', '0') as OraclePath
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
     await expect(
@@ -760,5 +875,6 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/campaign is not open/)
+    expect(await balanceOf(addr)).toEqual(backerBefore)
   })
 })

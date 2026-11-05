@@ -9,6 +9,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { programHash } from '../program-hash'
+import { SIZE_BUDGET } from '../size-budget.fixture'
 
 /**
  * LocalNet integration tests for the Factory registry: deploy the Factory, hash a real Campaign's approval program, and exercise
@@ -20,6 +21,12 @@ import { programHash } from '../program-hash'
 const ALGO = 1_000_000n
 const TXN_FEE = 1_000n
 const REGISTER_MBR = 18_900n // the registration box's minimum balance (2500 + 400 × (9 + 32))
+const FACTORY_MBR = BigInt(SIZE_BUDGET.factory.appMbr)
+const VAULT_MBR = BigInt(SIZE_BUDGET.claimsvault.appMbr)
+const CAMPAIGN_MBR = BigInt(SIZE_BUDGET.campaign.appMbr)
+const APP_BASE = 100_000n
+const DEPLOY_FUNDING = 1_000_000n
+const CREATE_FEE = TXN_FEE
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
 const FACTORY_SPEC_PATH = path.resolve(__dirname, '../artifacts/factory/Factory.arc56.json')
@@ -47,6 +54,7 @@ describe('Factory (localnet)', () => {
    * @returns The Factory client and the official vault's app id.
    */
   async function deployFactory(ownerAddr: string) {
+    const ownerBefore = await accountInfo(ownerAddr)
     const factory = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: ownerAddr })
     const { appClient } = await factory.send.create({ method: 'create()void', args: [], sender: ownerAddr, suppressLog: true })
 
@@ -78,6 +86,12 @@ describe('Factory (localnet)', () => {
       appReferences: [vaultClient.appId],
       suppressLog: true,
     })
+    const ownerAfter = await accountInfo(ownerAddr)
+    const deployCost = ownerBefore.balance - ownerAfter.balance
+    expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(FACTORY_MBR + VAULT_MBR)
+    expect(deployCost - DEPLOY_FUNDING).toEqual(5n * TXN_FEE)
+    expect(await accountInfo(appClient.appAddress.toString())).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })
+    expect(await accountInfo(vaultClient.appAddress.toString())).toEqual({ balance: 0n, minBalance: APP_BASE })
     return { factoryClient: appClient, vaultId: vaultClient.appId }
   }
 
@@ -88,6 +102,7 @@ describe('Factory (localnet)', () => {
    * @param vaultId The vault app id stored in the campaign.
    */
   async function deployCampaign(creatorAddr: string, vaultId: bigint): Promise<AppClient> {
+    const creatorBefore = await accountInfo(creatorAddr)
     // Deadline from chain time (not wall time): other suites time-travel the shared LocalNet clock.
     const status = await algorand.client.algod.status().do()
     const block = await algorand.client.algod.block(status.lastRound).do()
@@ -100,6 +115,10 @@ describe('Factory (localnet)', () => {
       appReferences: [vaultId],
       suppressLog: true,
     })
+    const creatorAfter = await accountInfo(creatorAddr)
+    expect(creatorAfter.minBalance - creatorBefore.minBalance).toEqual(CAMPAIGN_MBR)
+    expect(creatorBefore.balance - creatorAfter.balance).toEqual(CREATE_FEE)
+    expect(await accountInfo(appClient.appAddress.toString())).toEqual({ balance: 0n, minBalance: APP_BASE })
     return appClient
   }
 
@@ -156,6 +175,7 @@ describe('Factory (localnet)', () => {
 
     // Register: the creator pays the refundable deposit.
     const factoryBefore = await accountInfo(factoryAddress)
+    const creatorBeforeRegister = await accountInfo(creator.addr.toString())
     const payment = await algorand.createTransaction.payment({
       sender: creator.addr.toString(),
       receiver: factoryAddress,
@@ -171,11 +191,16 @@ describe('Factory (localnet)', () => {
 
     // The deposit landed on the Factory account and the registration box parked its MBR on it.
     const factoryAfterRegister = await accountInfo(factoryAddress)
+    const creatorAfterRegister = await accountInfo(creator.addr.toString())
+    const registerCost = creatorBeforeRegister.balance - creatorAfterRegister.balance
+    expect(registerCost - REGISTER_MBR).toEqual(2n * TXN_FEE)
+    expect(creatorAfterRegister.minBalance).toEqual(creatorBeforeRegister.minBalance)
     expect(factoryAfterRegister.balance - factoryBefore.balance).toEqual(REGISTER_MBR)
     expect(factoryAfterRegister.minBalance - factoryBefore.minBalance).toEqual(REGISTER_MBR) // box MBR == deposit, by design
     expect(await isRegistered(factoryClient, campaignId, owner.addr.toString())).toBe(true)
 
     // Double registration fails.
+    const creatorBeforeDouble = await accountInfo(creator.addr.toString())
     const secondPayment = await algorand.createTransaction.payment({
       sender: creator.addr.toString(),
       receiver: factoryAddress,
@@ -190,6 +215,7 @@ describe('Factory (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/campaign already registered/)
+    expect(await accountInfo(creator.addr.toString())).toEqual(creatorBeforeDouble)
 
     // Unregister + delete in one atomic group: the deposit is returned and the campaign cannot remain live.
     const unregisterComposer = algorand.send.newGroup()

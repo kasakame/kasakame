@@ -332,6 +332,12 @@ not in a Markdown checklist.
   migrated one-line roadmap summaries are a starting point, not the spec.
 - **Fields:** `Component` (single select), `Priority` (`P1`-`P3`), `Target date`;
   `Status` is the project flow (`Todo`, `In Progress`, `Done`).
+- **Keep the epic status in sync manually.** The project has no automatic parent
+  rollup. When you start a ticket, if its epic is still `Todo`, move the epic to
+  `In Progress` with the ticket; if you move the ticket when opening the PR, move
+  the epic then. If you notice an epic still in `Todo` while working on a
+  sub-issue, move it to `In Progress` even when other sub-issues are already
+  `Done` - that means the update was missed.
 - **Milestones:** `v0.2.0` is the coordinated release. Use a version milestone
   for a release; do not create one per package unless a package ships alone.
 - **Query:** `gh project item-list 1 --owner kasakame --limit 100`,
