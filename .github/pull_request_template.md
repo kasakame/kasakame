@@ -18,4 +18,4 @@
 
 ## Related issues
 
-<!-- Write `Closes #123` so GitHub closes the issue on merge; a bare `#123` only references it. -->
+<!-- List the issue, e.g. #123. The `gh issue develop` branch links the PR, so no `Closes`/`Fixes` keyword. -->
