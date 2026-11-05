@@ -2,6 +2,7 @@ import { encodeAddress } from 'algosdk'
 import { describe, expect, it } from 'vitest'
 import { CLAIM_TREE_VECTORS } from './claim-tree.vectors.js'
 import {
+  MAX_TREE_SIZE,
   appendLeaf,
   base32ToBytes,
   concatHashes,
@@ -12,6 +13,8 @@ import {
   nullLeaf,
   pathBlobForRefund,
   pathShape,
+  pledgeOpUpIterations,
+  refundOpUpIterations,
   treeFrontier,
   treePathFor,
   treeRoot,
@@ -76,6 +79,29 @@ describe('claim-tree vectors (differential vs the Python oracle)', () => {
     expect(pathBlobForRefund(state, 0).length).toEqual(64)
     expect(pathShape(3n, 2n)).toEqual({ r: 0, c: 0, hasTop: true })
     expect(pathShape(4n, 0n)).toEqual({ r: 2, c: 0, hasTop: false })
+  })
+})
+
+describe('fee sizing', () => {
+  it('computes pledge OpUp iterations from the tree size', () => {
+    expect(pledgeOpUpIterations(0n)).toEqual(0)
+    expect(pledgeOpUpIterations(4n)).toEqual(0)
+    expect(pledgeOpUpIterations(15n)).toEqual(1)
+    expect(pledgeOpUpIterations(1023n)).toEqual(3)
+    expect(pledgeOpUpIterations(MAX_TREE_SIZE)).toEqual(7)
+  })
+
+  it('computes spend OpUp iterations from the path shape', () => {
+    expect(refundOpUpIterations(1n, 0n)).toEqual(1)
+    expect(refundOpUpIterations(4n, 0n)).toEqual(2)
+    expect(refundOpUpIterations(15n, 0n)).toEqual(3)
+    expect(refundOpUpIterations(100n, 0n)).toEqual(4)
+    expect(refundOpUpIterations(100n, 64n)).toEqual(3)
+    expect(refundOpUpIterations(MAX_TREE_SIZE, 0n)).toEqual(14)
+  })
+
+  it('pins the supported tree size to 2^20 - 1', () => {
+    expect(MAX_TREE_SIZE).toEqual(1_048_575n)
   })
 })
 

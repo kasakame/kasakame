@@ -125,12 +125,12 @@ the product contract. The current numbers and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
 
-Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
+Current footprint (2026-11-06, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
+| Campaign | 2,116 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,778 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,036 B | 1 | 357,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
@@ -142,6 +142,11 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
   pages, global schema, and app MBR in
   `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
+- **The claim-tree size is capped at 2²⁰ − 1 (1,048,575 positions).** This is the
+  largest tree whose worst-case refund fits the 16-inner-transaction limit (14
+  OpUp takes + `payBack` + payment). `Campaign.MAX_TREE_SIZE` and the SDK's
+  `MAX_TREE_SIZE` must stay in sync; the cap counts every appended position,
+  including cancelled leaves.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
   MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is

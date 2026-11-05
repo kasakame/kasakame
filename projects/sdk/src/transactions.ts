@@ -3,8 +3,16 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getApplicationAddress, hexToBytes } from 'algosdk'
 import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from './chain.js'
-import type { BackerLeaf } from './claim-tree.js'
-import { clearTreeCache, frontierForPledge, loadTree, pathBlobForRefund } from './claim-tree.js'
+import type { BackerLeaf, TreeState } from './claim-tree.js'
+import {
+  MAX_TREE_SIZE,
+  clearTreeCache,
+  frontierForPledge,
+  loadTree,
+  pathBlobForRefund,
+  pledgeOpUpIterations,
+  refundOpUpIterations,
+} from './claim-tree.js'
 import { CampaignClient, CampaignFactory } from './generated/CampaignClient.js'
 import { ClaimsVaultClient } from './generated/ClaimsVaultClient.js'
 import { FactoryClient } from './generated/FactoryClient.js'
@@ -63,11 +71,24 @@ const REGISTER_DEPOSIT_MICRO_ALGOS = 18_900n
 
 // Fee headroom per call (measured on LocalNet - see docs/campaign.md "Minimum balances"): the outer call always covers
 // its inners via fee pooling, so every extra inner transaction costs one more minimum fee on the outer call.
+const FEE_MICRO_ALGOS = 1_000n
 const FEE_CREDIT_EXTRA = 1_000n // possible first-touch factory check
-const FEE_SPEND_EXTRA = 3_000n // 1 OpUp iteration (create+delete) + payout call
 const FEE_CLAIM_EXTRA = 2_000n // inner payClaim + inner payment
 const FEE_DELETE_EXTRA = 2_000n // inner settle/notify + escrow close
 const FEE_UNREGISTER_EXTRA = 1_000n // inner deposit-back
+
+/**
+ * Extra fee for a spend: the two payout inner transactions (the vault `payBack` app call and its payment) plus one
+ * 1,000 µA fee per OpUp iteration the contract will request for this path.
+ *
+ * @param tree Current tree (its length is N).
+ * @param position Leaf position.
+ * @returns The extra fee in microAlgos.
+ */
+function spendExtraFee(tree: TreeState, position: number): bigint {
+  const iterations = refundOpUpIterations(BigInt(tree.leaves.length), BigInt(position))
+  return (2n + BigInt(iterations)) * FEE_MICRO_ALGOS
+}
 
 function campaignClientFor(appId: bigint, session: WalletSession): CampaignClient {
   const { algorand } = getSdkConfig()
@@ -290,6 +311,10 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
   algorand.account.setSigner(session.address, session.signer)
   await waitForIndexerCatchUp()
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
+  const n = BigInt(tree.leaves.length)
+  if (n >= MAX_TREE_SIZE) {
+    throw new Error('campaign reached its maximum size; it can no longer accept pledges')
+  }
   const campaignClient = campaignClientFor(appId, session)
   const vaultClient = vaultClientFor(session)
   const composer = algorand.send.newGroup()
@@ -304,6 +329,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
         frontier: frontierForPledge(tree),
       },
       sender: session.address,
+      extraFee: microAlgos(BigInt(pledgeOpUpIterations(n)) * FEE_MICRO_ALGOS),
     }),
   )
   composer.addAppCallMethodCall(
@@ -381,7 +407,7 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
       sender: session.address,
       appReferences: [vaultAppId],
       boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(FEE_SPEND_EXTRA),
+      extraFee: microAlgos(spendExtraFee(tree, leaf.position)),
     })
     return result.confirmation.confirmedRound
   }
@@ -412,6 +438,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
   const path = pathBlobForRefund(tree, leaf.position)
   const txid = hexToBytes(leaf.txidHex)
+  const extraFee = microAlgos(spendExtraFee(tree, leaf.position))
   const composer = algorand.send.newGroup()
   const box = await fetchVaultBox(appId)
   if (box !== undefined && box.status === 2) {
@@ -421,7 +448,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         args: { app: appId, k: leaf.position, amount: leaf.amount, txid, path },
         sender: session.address,
         boxReferences: vaultBoxRef(appId),
-        extraFee: microAlgos(FEE_SPEND_EXTRA),
+        extraFee,
       }),
     )
   } else {
@@ -432,7 +459,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         sender: session.address,
         appReferences: [vaultAppId],
         boxReferences: vaultBoxRef(appId),
-        extraFee: microAlgos(FEE_SPEND_EXTRA),
+        extraFee,
       }),
     )
   }

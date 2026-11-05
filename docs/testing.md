@@ -98,13 +98,16 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
   `advance-time.ts` (`SECONDS=…`, moves the chain clock past deadlines; the
   offset persists until changed, so new campaigns use it as their baseline).
 - Inner transactions need fee pooling via `extraFee: (1000).microAlgo()` per
-  inner txn - and each OpUp iteration submits *two* inners (create + delete), so
-  `ensureBudget` calls cost double: pledge group (pay + pledge + credit with
+  inner txn. Each OpUp iteration submits **one** inner app call (the Puya
+  create-and-delete program), so `ensureBudget` costs 1000 µA per take and adds
+  700 ops. The SDK computes the take count from the tree; localnet tests should
+  use the same `pledgeExtraFee`/`spendExtraFee` helpers (or a generous headroom)
+  rather than fixed 4000 µA. Base groups: pledge (pay + pledge + credit with
   first-touch factory check) → 4000; `cancelPledge`/`refund`/`vault.refund`
-  (1 OpUp iteration + payout call) → 4000; `claim` (inner app call + inner
-  payment) → 3000; `delete` (settle/notify + escrow close) → 3000;
-  `settleOpen` (no inners) → 1000; `finalize` → 2000 with residual, 1000
-  without. Amounts are never reduced by fees.
+  (outer + inner `payBack` + inner payment, plus takes) → from 3000;
+  `claim` (inner app call + inner payment) → 3000; `delete` (settle/notify +
+  escrow close) → 3000; `settleOpen` (no inners) → 1000; `finalize` → 2000 with
+  residual, 1000 without. Amounts are never reduced by fees.
 - `pledge(pay,byte[])` reads the vault's app address from state, so the call
   carries no app references; the payment goes to the **vault app account**,
   never the escrow. The three transactions must form ONE group - and the SDK
@@ -289,8 +292,8 @@ the pinned release predates all three.
   `ctx.txn.lastGroup.lastItxnGroup().getPaymentInnerTxn()`; inner app calls via
   `getApplicationCallInnerTxn()` (its `appArgs(0)` carries the method selector -
   assert it to keep the embedded selectors in sync).
-- `ensureBudget` OpUp loops run offline (each iteration submits two inners); size
-  `extraFee` accordingly on LocalNet (measured table in
+- `ensureBudget` OpUp loops run offline (each iteration submits one inner app
+  call); size `extraFee` from the tree on LocalNet (measured table in
   [`campaign.md`](campaign.md)).
 - Failure assertions: `assert` throws `AssertError` with the message, so
   `expect(() => ...).toThrowError('...')` works verbatim.

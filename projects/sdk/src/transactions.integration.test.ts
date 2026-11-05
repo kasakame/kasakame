@@ -34,7 +34,7 @@ import {
 const ALGO = 1_000_000n
 const WINDOW = 3_600n
 const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch factory check)
-const FEE_SPEND = 4_000n // 1 OpUp iteration (create+delete) + payout call
+const FEE_SPEND = 4_000n // outer + 2 payout inners + 1 OpUp take
 const FEE_CLAIM = 3_000n // inner payClaim + inner payment
 
 describe('SDK send path (localnet)', () => {

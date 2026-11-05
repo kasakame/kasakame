@@ -54,6 +54,10 @@ const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
+// 2^20 - 1: the largest tree whose worst-case refund path (r = c = 19) fits the 16-inner-txn
+// limit (14 OpUp creates + the payBack app call + its payment). Keep in sync with the SDK's MAX_TREE_SIZE.
+const MAX_TREE_SIZE = Uint64(1_048_575)
+
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')
 
@@ -169,9 +173,12 @@ export class Campaign extends Contract {
     assert(payment.amount >= MIN_PLEDGE_MICROALGOS, 'pledge below minimum')
 
     const n = this.n.value
+    assert(n < MAX_TREE_SIZE, 'campaign reached maximum size')
     const p = this.popcount(n)
     assert(frontier.length === p * Uint64(32), 'bad frontier length')
-    ensureBudget(p * Uint64(70) + Uint64(400), OpUpFeeSource.GroupCredit)
+    // 240 per peak covers the hash plus the fold-loop overhead; 400 covers the rest of this
+    // method and the following vault credit, which shares the group's opcode budget.
+    ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
@@ -391,7 +398,12 @@ export class Campaign extends Contract {
       h = h + Uint64(1)
     }
     assert(path.length === h * Uint64(32), 'bad path length')
-    ensureBudget(h * Uint64(70) + Uint64(700), OpUpFeeSource.GroupCredit)
+    // Siblings and lower peaks cost ~250 ops each (hash + loop overhead); a top fold costs ~100.
+    let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)
+    if (hasTop) {
+      requiredOps = requiredOps + Uint64(100)
+    }
+    ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */

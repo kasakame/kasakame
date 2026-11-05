@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-05,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-06,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,084 B | 4 B | 2,088 B | 1 (2 pages) | 4,096 B | 2,008 B |
-| ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
+| Campaign | 2,112 B | 4 B | 2,116 B | 1 (2 pages) | 4,096 B | 1,980 B |
+| ClaimsVault | 2,774 B | 4 B | 2,778 B | 1 (2 pages) | 4,096 B | 1,318 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **40 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 40 B would return it to
+The campaign is **68 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 68 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -113,6 +113,17 @@ cap at 60 days, and 180 leaves room for extended raises.
 vault box MBR and 100× the minimum transaction fee. The floor removes 1 µA dust
 while keeping micro-pledges possible; the principal stays refundable.
 
+## Supported tree size
+
+`Campaign.pledge` rejects a campaign that already has **1,048,575** positions
+(2²⁰ − 1). This is a safety ceiling, not a product target: the worst supported
+refund path is `r = c = 19` (leaf 0 of a `2²⁰ − 1` tree), which needs 14 OpUp
+takes plus the campaign path's inner `payBack` and inner payment - exactly the
+AVM's 16-inner-transaction limit for one app call. The cap counts every position
+ever appended, including cancelled pledges, because positions are never reused.
+Above it the contract rejects the pledge and the SDK fails with a clear
+"maximum size" error.
+
 ## Current creator cost (create a campaign)
 
 The create flow is `[create app call]` then `[deposit payment, register app call]`.
@@ -137,29 +148,32 @@ A create followed immediately by delete spends about 3,000 µA (create fees) +
 
 ## Current transaction fees
 
-The SDK uses fixed extra fees; the "minimum" column is the smallest fee that can
-work for a small tree (no OpUp). The fixed extra is paid even when an OpUp is not
-needed, so the SDK overpays on small campaigns.
+The SDK sizes pledge and spend extras from the claim tree. The contract's
+`ensureBudget` tops the group up in 700-op increments; each increment is one
+inner app call and costs one extra minimum fee (1,000 µA). The contract and SDK
+use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
 
-| Action | Transactions | SDK total | Minimum (small tree) | Notes |
-| --- | --- | ---: | ---: | --- |
-| Create + register | create + deposit + register | 5,000 µA | 3,000 µA | SDK budgets 5,000; measured on-chain 3,000 |
-| Pledge (first touch) | pay + pledge + credit + inner `isRegistered` | 4,000 µA | 4,000 µA | first pledge opens the vault box |
-| Pledge (later) | pay + pledge + credit | 4,000 µA | 3,000 µA | SDK still pays the 1,000 µA extra |
-| Cancel / refund, campaign path | campaign + inner `payBack` + OpUp | 4,000 µA | 2,000 µA | `FEE_SPEND_EXTRA = 3,000` |
-| Refund, vault path | vault + OpUp | 4,000 µA | 1,000 µA | `FEE_SPEND_EXTRA = 3,000` |
-| Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | 3,000 µA | `FEE_CLAIM_EXTRA = 2,000` |
-| `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | 5,000 µA | `FEE_UNREGISTER_EXTRA = 1,000`, `FEE_DELETE_EXTRA = 2,000` |
-| `settleOpen` | vault only | 1,000 µA | 1,000 µA | not exposed in the SDK/CLI yet |
-| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA | not exposed in the SDK/CLI yet |
-| `releaseClaimed` | vault only | 1,000 µA | 1,000 µA | not exposed in the SDK/CLI yet |
-| `Factory.register` | deposit + register | 2,000 µA | 2,000 µA | inside the create flow |
-| `Factory.unregister` | unregister + inner deposit | 2,000 µA | 2,000 µA | inside cleanup |
+| Action | Transactions | SDK total | Notes |
+| --- | --- | ---: | --- |
+| Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
+| Pledge | pay + `pledge` + `credit` + 0..7 OpUp takes | 4,000-11,000 µA | 4,000 base (includes the first-touch factory check headroom); +1,000 per OpUp take |
+| Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 OpUp takes | 4,000-17,000 µA | +1,000 per OpUp take; 5,000 at N=4, 7,000 at N=100 |
+| Refund, vault path | vault + inner payment + 0..14 OpUp takes | 4,000-17,000 µA | same extra as the campaign path; overpays by one inner (no `payBack` app call) |
+| Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
+| `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
+| `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
+| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; not exposed yet |
+| `releaseClaimed` | vault only | 1,000 µA | not exposed yet |
+| `Factory.register` | deposit + register | 2,000 µA | inside the create flow |
+| `Factory.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
 
-OpUp sizing: each `ensureBudget` iteration submits a create + delete inner pair,
-costing ~2,000 µA and adding ~700 ops. The campaign/refund paths size for it;
-the SDK's fixed extras cover one iteration. Large trees may need more. See
-[`claim-tree-protocol.md`](claim-tree-protocol.md) §14.
+OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
+(the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700
+ops. The campaign request is `240 × popcount(N) + 400`; a spend request is
+`250 × (siblings + lower peaks) + 100 × top + 700`. The SDK mirrors those
+formulas with conservative pre-top-up budgets (1,000 for pledge, 500 for a
+spend), so it pays for the takes the contract will request (or one extra on a
+boundary). Small trees overpay at most one take.
 
 ## Current platform cost (deploy)
 

@@ -32,13 +32,37 @@ const WINDOW = 3_600n // refund window (seconds) for the test vault; the deploy 
 const REGISTER_MBR = 18_900n
 
 // Measured fee totals per operation (µA): each inner transaction costs its caller 1,000 via fee pooling.
-const FEE_PLEDGE_CALL = FEE // no inners fire at test-tree sizes (pooled 1,400 covers the estimate)
+const FEE_PLEDGE_CALL = FEE // base pledge call; OpUp headroom is added by the helper below
 const FEE_CREDIT = 2n * FEE // base + extraFee headroom for the possible first-touch factory check (charged always)
-const FEE_SPEND = 4n * FEE // app call + 1 OpUp iteration (create+delete = 2 inners) + inner payBack
-const FEE_VAULT_REFUND = 4n * FEE // app call + 1 OpUp iteration (create+delete = 2 inners) + inner payment
+const FEE_SPEND = 5n * FEE // app call + 2 payout inners + 2 OpUp iterations
+const FEE_VAULT_REFUND = 4n * FEE // app call + 2 OpUp takes + inner payment
 const FEE_CLAIM = 3n * FEE // app call + inner payClaim + inner payment pools
 const FEE_DELETE_SETTLED = 3n * FEE // app call + inner settle/notify + escrow-close pools
 const FEE_UNREGISTER = 2n * FEE // app call + inner deposit-back pool
+
+/**
+ * Extra fee for a pledge at the current tree size (mirrors the SDK's `pledgeOpUpIterations`).
+ *
+ * @param p Frontier peak count (popcount of N).
+ * @returns The extra fee in microAlgos.
+ */
+function pledgeExtraFee(p: number): bigint {
+  const required = p * 240 + 400
+  const iterations = Math.max(0, Math.ceil((required + 10 - 1_000) / 700))
+  return BigInt(iterations) * FEE
+}
+
+/**
+ * Extra fee for a spend (mirrors the SDK's `refundOpUpIterations` plus the payout inner).
+ *
+ * @param path The oracle path for the leaf.
+ * @returns The extra fee in microAlgos.
+ */
+function spendExtraFee(path: OraclePath): bigint {
+  const required = path.siblings.length * 250 + path.lower.length * 250 + (path.top === null ? 0 : 100) + 700
+  const iterations = Math.max(0, Math.ceil((required + 10 - 500) / 700))
+  return BigInt(2 + iterations) * FEE
+}
 
 const CAMPAIGN_MBR = BigInt(SIZE_BUDGET.campaign.appMbr)
 const VAULT_BOX_MBR = 32_100n
@@ -346,6 +370,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const vaultBefore = await accountInfo(vaultAddress)
     const hadBox = await boxExists(appId)
     const front = oracle('frontier') as { peaks: string[] }
+    const extraFee = pledgeExtraFee(front.peaks.length)
     const pay = await algorand.createTransaction.payment({ sender: backerAddr, receiver: vaultAddress, amount: microAlgos(amount) })
     const composer = algorand.send.newGroup()
     // The payment object is referenced by the pledge call, which pulls it into the group ahead of the call.
@@ -355,6 +380,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
       args: [pay, concatHex(front.peaks)],
       sender: backerAddr,
+      ...(extraFee > 0n ? { extraFee: microAlgos(extraFee) } : {}),
     })
     composer.addAppCallMethodCall({
       appId: vaultId,
@@ -373,7 +399,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const backerAfter = await accountInfo(backerAddr)
     const vaultAfter = await accountInfo(vaultAddress)
     const pledgeCost = backerBefore.balance - backerAfter.balance
-    expect(pledgeCost - amount).toEqual(PLEDGE_FEES)
+    expect(pledgeCost - amount).toEqual(PLEDGE_FEES + extraFee)
     expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
     expect(vaultAfter.balance - vaultBefore.balance).toEqual(amount)
     expect(vaultAfter.minBalance - vaultBefore.minBalance).toEqual(hadBox ? 0n : VAULT_BOX_MBR)
@@ -413,19 +439,20 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
     const vaultBefore = await accountInfo(vaultAddress)
     const p = oracle('path', k.toString()) as OraclePath
     const blob = concatHex([...p.siblings, ...(p.top === null ? [] : [p.top]), ...p.lower])
+    const extraFee = spendExtraFee(p)
     await appClient.send.call({
       method,
       args: [BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
       sender: backerAddr,
       appReferences: [vaultId],
       boxReferences: [vaultBoxRef(appId)],
-      extraFee: microAlgos(3n * FEE),
+      extraFee: microAlgos(extraFee),
       suppressLog: true,
     })
     const backerAfter = await accountInfo(backerAddr)
     const vaultAfter = await accountInfo(vaultAddress)
     const spendDelta = backerAfter.balance - backerBefore.balance
-    expect(amount - spendDelta).toEqual(FEE_SPEND)
+    expect(amount - spendDelta).toEqual(FEE + extraFee)
     expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
     expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
     expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
@@ -544,6 +571,7 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
         method: 'pledge(pay,byte[])void',
         args: [forgedPay, new Uint8Array(forged)],
         sender: addrA,
+        extraFee: microAlgos(2n * FEE),
         suppressLog: true,
       }),
     ).rejects.toThrow(/stale or forged frontier/)
@@ -876,5 +904,24 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       }),
     ).rejects.toThrow(/campaign is not open/)
     expect(await balanceOf(addr)).toEqual(backerBefore)
+  })
+
+  test('keeps the pledge group funded past N=15 and refunds a wide path', async () => {
+    freshOracle()
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const addr = backer.addr.toString()
+    const { appClient, appId } = await deployCampaign(creator.addr.toString())
+
+    const txids: string[] = []
+    for (let i = 0; i < 40; i++) {
+      txids.push(await pledge(appClient, appId, addr, 1n * ALGO))
+    }
+    const first = txids[0]
+    if (first === undefined) throw new Error('no pledge txid')
+
+    // N=40, k=0 has r=5, c=1: the old h*70 budget request left the proof underfunded.
+    await spend(appClient, appId, addr, 0, 1n * ALGO, first, 'cancelPledge(uint64,uint64,byte[],byte[])void')
+    expect((await campaignState(appClient)).raised).toEqual(39n * ALGO)
   })
 })

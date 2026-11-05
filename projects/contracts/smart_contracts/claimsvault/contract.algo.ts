@@ -391,7 +391,12 @@ export class ClaimsVault extends Contract {
       h = h + Uint64(1)
     }
     assert(path.length === h * Uint64(32), 'bad path length')
-    ensureBudget(h * Uint64(70) + Uint64(700), OpUpFeeSource.GroupCredit)
+    // Siblings and lower peaks cost ~250 ops each (hash + loop overhead); a top fold costs ~100.
+    let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)
+    if (hasTop) {
+      requiredOps = requiredOps + Uint64(100)
+    }
+    ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(Bytes.fromHex('01').concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */

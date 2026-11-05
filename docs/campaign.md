@@ -135,25 +135,30 @@ The full behavioral matrix lives in `contract.algo.spec.ts` (48 tests, 100% line
 
 ## Fees
 
-Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the fixed SDK extras, is in [`limits.md`](limits.md).
+Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the dynamic SDK extras, is in [`limits.md`](limits.md).
 
-| Call | SDK total | Minimum (small tree) | Notes |
-| --- | ---: | ---: | --- |
-| create + register | 5,000 µA | 3,000 µA | SDK budgets 5,000; measured on-chain 3,000; plus 589,900 µA locked (app MBR + deposit) |
-| pledge group (pay + pledge + credit) | 4,000 µA | 4,000 µA first touch, 3,000 µA later | first touch runs the inner Factory check |
-| `cancelPledge` / campaign `refund` | 4,000 µA | 2,000 µA | app call + inner `payBack` + OpUp |
-| vault `refund` | 4,000 µA | 1,000 µA | app call + OpUp |
-| `claim` | 3,000 µA | 3,000 µA | app call + inner `payClaim` + inner payment |
-| `[unregister, delete]` | 5,000 µA | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
-| `delete` component (inside `[unregister, delete]`) | 3,000 µA | 3,000 µA | settle/notify + escrow close; official campaigns always require the unregister pair |
-| `Factory.unregister` alone | 2,000 µA | 2,000 µA | unregister + inner deposit |
-| `settleOpen` (no inners) | 1,000 µA | 1,000 µA | permissionless; not exposed in the SDK/CLI yet |
-| `finalize` | 2,000 µA with residual, 1,000 µA without | same | permissionless; not exposed yet |
-| `releaseClaimed` | 1,000 µA | 1,000 µA | permissionless; not exposed yet |
+| Call | SDK total | Notes |
+| --- | ---: | --- |
+| create + register | 5,000 µA | measured on-chain 3,000; plus 589,900 µA locked (app MBR + deposit) |
+| pledge group (pay + pledge + credit) | 4,000-11,000 µA | 4,000 base; +1,000 per tree-shape OpUp take |
+| `cancelPledge` / campaign `refund` | 4,000-17,000 µA | outer + inner `payBack` + inner payment; +1,000 per OpUp take |
+| vault `refund` | 4,000-17,000 µA | same extra as the campaign path (overpays one inner) |
+| `claim` | 3,000 µA | app call + inner `payClaim` + inner payment |
+| `[unregister, delete]` | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
+| `delete` component (inside `[unregister, delete]`) | 3,000 µA | settle/notify + escrow close; official campaigns always require the unregister pair |
+| `Factory.unregister` alone | 2,000 µA | unregister + inner deposit |
+| `settleOpen` (no inners) | 1,000 µA | permissionless; not exposed in the SDK/CLI yet |
+| `finalize` | 2,000 µA with residual, 1,000 µA without | permissionless; not exposed yet |
+| `releaseClaimed` | 1,000 µA | permissionless; not exposed yet |
+
+The pledge and spend extras are derived from the tree (`popcount(N)` for a
+pledge, the `(r, c, top)` path shape for a spend); the fee ranges above cover
+the supported tree size, capped at 1,048,575 positions. See
+[`limits.md`](limits.md#supported-tree-size).
 
 ## Implementation notes
 
-1. **OpUp sizing.** Each `ensureBudget` iteration submits two inners (create + delete), so budget calls cost double the iteration count: pledge/cancel/refund size for it, `claim` for the inner call plus payment, `delete` for settle/notify plus close.
+1. **OpUp sizing.** Each `ensureBudget` iteration submits one inner app call (the Puya create-and-delete program), costing 1,000 µA and adding ~700 ops. `pledge` sizes for `240 × popcount(N) + 400`; `spendLeaf`/`vault.refund` size for `250 × (r + c) + 100 × top + 700`. The SDK mirrors these formulas; `claim` and `delete` are fixed (inner call + payment, settle/notify + close).
 2. **Two encoding rules for raw inner appArgs** (see the vault interaction above). ABI-encode dynamic types: the settle `root` (`byte[]`) carries its uint16 length prefix. Static `uint64`/`address` args go raw.
 3. **Delete path.** `delete()` uses the dedicated `send.delete` path (or a manual composer group with `DeleteApplicationOC`). `send.call` with an `onComplete` override mis-encodes the call.
 4. **No `updatable`/`deletable` flags.** Do not pass them to `factory.send.create`; the contract TEAL has no deploy-time templates for them.

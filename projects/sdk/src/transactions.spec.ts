@@ -1,6 +1,8 @@
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type * as ClaimTree from './claim-tree.js'
+import { MAX_TREE_SIZE } from './claim-tree.js'
 import {
   cancelPledge,
   claim,
@@ -144,12 +146,16 @@ vi.mock('./chain.js', () => ({
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
 }))
 
-vi.mock('./claim-tree.js', () => ({
-  clearTreeCache: (...args: unknown[]) => clearTreeCacheMock(...args),
-  loadTree: (...args: unknown[]) => loadTreeMock(...args),
-  frontierForPledge: (...args: unknown[]) => frontierMock(...args),
-  pathBlobForRefund: (...args: unknown[]) => pathBlobMock(...args),
-}))
+vi.mock('./claim-tree.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof ClaimTree>()
+  return {
+    ...actual,
+    clearTreeCache: (...args: unknown[]) => clearTreeCacheMock(...args),
+    loadTree: (...args: unknown[]) => loadTreeMock(...args),
+    frontierForPledge: (...args: unknown[]) => frontierMock(...args),
+    pathBlobForRefund: (...args: unknown[]) => pathBlobMock(...args),
+  }
+})
 
 const session = {
   address: 'ADDRESS',
@@ -164,7 +170,7 @@ describe('transaction helpers', () => {
     vi.clearAllMocks()
     waitForIndexerRoundMock.mockResolvedValue(undefined)
     waitForIndexerCatchUpMock.mockResolvedValue(undefined)
-    loadTreeMock.mockResolvedValue({})
+    loadTreeMock.mockResolvedValue({ leaves: Array.from({ length: 4 }, () => new Uint8Array(32)), raised: 0n })
     frontierMock.mockReturnValue(new Uint8Array())
     pathBlobMock.mockReturnValue(new Uint8Array())
     factoryAppIdMock.mockReturnValue(1001n)
@@ -252,6 +258,19 @@ describe('transaction helpers', () => {
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
   })
 
+  it('scales the pledge fee with the tree size', async () => {
+    loadTreeMock.mockResolvedValue({ leaves: Array.from({ length: 15 }, () => new Uint8Array(32)), raised: 0n })
+    await pledgeGroup(9n, session, 1_000_000n)
+
+    const call = paramsPledgeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(1_000n)
+  })
+
+  it('rejects a pledge at the maximum tree size', async () => {
+    loadTreeMock.mockResolvedValue({ leaves: { length: Number(MAX_TREE_SIZE) }, raised: 0n })
+    await expect(pledgeGroup(9n, session, 1_000_000n)).rejects.toThrow('maximum size')
+  })
+
   it('pledge retries once on a stale frontier, then throws', async () => {
     composerSendMock.mockRejectedValueOnce(new Error('stale or forged frontier')).mockResolvedValueOnce({})
     await pledge(9n, session, 1_000_000n)
@@ -274,11 +293,12 @@ describe('transaction helpers', () => {
     expect(sendCancelPledgeMock).toHaveBeenCalledOnce()
     const call = sendCancelPledgeMock.mock.calls[0]?.[0] as {
       args: { k: number; amount: bigint }
-      extraFee: unknown
+      extraFee: { microAlgo: bigint }
       boxReferences: unknown[]
     }
     expect(call.args.k).toEqual(2)
     expect(call.args.amount).toEqual(1_000_000n)
+    expect(call.extraFee.microAlgo).toEqual(4_000n)
     expect(call.boxReferences).toHaveLength(1)
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
   })
@@ -291,6 +311,15 @@ describe('transaction helpers', () => {
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
     expect(paramsVaultRefundMock).not.toHaveBeenCalled()
     expect(composerSendMock).toHaveBeenCalledOnce()
+  })
+
+  it('scales the refund fee with the tree size', async () => {
+    loadTreeMock.mockResolvedValue({ leaves: Array.from({ length: 100 }, () => new Uint8Array(32)), raised: 0n })
+    campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
+    await refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+
+    const call = paramsCampaignRefundMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(6_000n)
   })
 
   it('refund routes straight to the vault once settled', async () => {
