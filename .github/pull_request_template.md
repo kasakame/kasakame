@@ -18,4 +18,4 @@
 
 ## Related issues
 
-<!-- Link related issues, e.g. #123 or #123, #124. -->
+<!-- List the issue, e.g. #123. The `gh issue develop` branch links the PR, so no `Closes`/`Fixes` keyword. -->
