@@ -52,6 +52,30 @@ describe('PledgeForm', () => {
     expect(onPledged).toHaveBeenCalled()
   })
 
+  it('rejects a pledge below the 0.1 ALGO minimum', async () => {
+    const user = userEvent.setup()
+    render(<PledgeForm appId={42n} onPledged={() => {}} />)
+
+    await user.type(screen.getByPlaceholderText('Amount in ALGO'), '0.000001')
+    await user.click(screen.getByRole('button', { name: 'Pledge' }))
+
+    expect(await screen.findByText(/Minimum pledge is 0.1 ALGO/)).toBeInTheDocument()
+    expect(pledgeMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a pledge exactly at the 0.1 ALGO minimum', async () => {
+    pledgeMock.mockResolvedValue(undefined)
+    const onPledged = vi.fn()
+    const user = userEvent.setup()
+    render(<PledgeForm appId={42n} onPledged={onPledged} />)
+
+    await user.type(screen.getByPlaceholderText('Amount in ALGO'), '0.1')
+    await user.click(screen.getByRole('button', { name: 'Pledge' }))
+
+    expect(pledgeMock).toHaveBeenCalledWith(42n, { address: 'ADDRESS', signer: {} }, 100_000n)
+    expect(onPledged).toHaveBeenCalled()
+  })
+
   it('shows an error message when pledge fails', async () => {
     pledgeMock.mockRejectedValue(new Error('boom'))
     const user = userEvent.setup()

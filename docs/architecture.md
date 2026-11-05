@@ -1,6 +1,6 @@
 # Architecture
 
-This page describes the system pieces, the campaign lifecycle, and the tech stack. The contract reference is in [`campaign.md`](campaign.md); the tree math is in [`claim-tree-protocol.md`](claim-tree-protocol.md).
+This page describes the system pieces, the campaign lifecycle, and the tech stack. The contract reference is in [`campaign.md`](campaign.md); the tree math is in [`claim-tree-protocol.md`](claim-tree-protocol.md); sizes, MBR, limits, and fees are in [`limits.md`](limits.md).
 
 kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaigns with a goal and a deadline; backers pledge ALGO from their own wallets. The UI never holds funds or keys. It reads state from the indexer and builds transaction groups that the wallet signs.
 
@@ -29,13 +29,40 @@ specific Factory. Clients choose which deployments they trust by pinning the
 Factory and vault app IDs; the SDK takes `factoryAppId` and `vaultAppId` as
 config. Each Factory's owner decides which campaign program that deployment
 admits, and binds the deployment's official ClaimsVault with `setVault` (owner-only,
-one-time) after the vault is deployed; the vault must point back at the same Factory,
-so a wrong or foreign vault cannot be bound. The planned standard defines the interface
-and behavior and leaves the choice of deployment to clients.
+one-time) after the vault is deployed; the vault must point back at the same Factory
+and its approval + clear-state programs must match the owner-configured
+`vaultApprovalHash`, so a wrong, foreign, or lookalike vault cannot be bound. The
+planned standard defines the interface and behavior and leaves the choice of
+deployment to clients.
 
 Deployment setup order: deploy the Factory, deploy the ClaimsVault with the Factory
-id, then call `Factory.setVault(vault)` as the Factory owner. A new vault therefore
-requires a new Factory.
+id, set the vault program hash with `Factory.setVaultApprovalHash`, then call
+`Factory.setVault(vault)` as the Factory owner. A new vault therefore requires a new
+Factory. On TestNet/MainNet, set `SWEEP_TARGET` explicitly; LocalNet defaults the
+residual sweep to the deployer.
+
+### Factory governance and revocation
+
+- **Changing the campaign program.** The first `approvalHash` is set immediately at
+  deploy. Later changes use `proposeApprovalHash` + `applyApprovalHash`, with
+  `APPROVAL_HASH_DELAY` (~7 days at 2.8s per round) between them; a direct second
+  `setApprovalHash` is rejected so the timelock cannot be bypassed. `cancelApprovalHash`
+  clears a pending change.
+- **Old registrations stay.** Changing the hash only affects future `register` calls.
+  Every existing `registered[appId]` entry stays, so old campaigns remain official,
+  refundable, and deletable. There is no owner action that pauses, deletes, seizes, or
+  unregisters a campaign; only the campaign creator can run `[unregister, delete]`.
+- **Renouncing.** `renounceOwnership` sets the owner to the zero address. The Factory
+  keeps registering campaigns against the last hash and vault, but no account can
+  change either again. `transferOwnership` is immediate; use a multisig or treasury for
+  production ownership.
+- **Revoking a vault.** The vault binding is one-time and its program hash is checked,
+  so a new vault requires a new Factory. Old campaigns stay bound to the old vault and
+  keep working.
+- **Compromised owner.** A compromised owner can admit a malicious campaign program for
+  *future* registrations after the timelock, and can transfer ownership. Old campaigns
+  are unaffected. Clients should pin the Factory and watch `approvalHash` /
+  `pendingApprovalHash`; the timelock is the reaction window.
 
 ## Creation flow
 
@@ -60,7 +87,10 @@ immediately. Unregister runs first because the campaign state must be read befor
 campaign's `unregister` is a no-op (still shaped with the delete next), so the same group cleans up a registration that never
 landed.
 
-The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)).
+The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)). The current create cost is
+**589,900 µA (~0.59 ALGO) locked** (571,000 µA campaign app MBR + 18,900 µA registration deposit) plus ~5,000 µA in transaction
+fees; the app MBR and deposit are returned by the atomic `[unregister, delete]` group. The vault box MBR (32,100 µA) is paid by
+the vault on first pledge, not by the creator. See [`limits.md`](limits.md).
 
 ## Escrow and vault
 
@@ -81,7 +111,7 @@ Both settlement paths finalize in O(1) time and cost. Refunds stay available for
 
 ## Optional catalog
 
-The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see [`roadmap.md`](roadmap.md)). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 

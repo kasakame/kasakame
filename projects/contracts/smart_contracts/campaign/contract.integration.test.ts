@@ -11,6 +11,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { programHash } from '../program-hash'
 
 /**
  * LocalNet integration tests for the claim-tree architecture: deploy the Factory + ClaimsVault + Campaign v2 TEAL to a
@@ -99,16 +100,16 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       suppressLog: true,
     })
 
-    const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-    const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
-    const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
-    const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
-    const programHash = createHash('sha256')
-      .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
-      .digest()
+    if (campaignSpec.byteCode === undefined) {
+      throw new Error('Campaign.arc56.json has no byteCode; run `npm run build` first.')
+    }
+    const approvalHash = programHash(
+      Buffer.from(campaignSpec.byteCode.approval, 'base64'),
+      Buffer.from(campaignSpec.byteCode.clear, 'base64'),
+    )
     await factoryClient.send.call({
       method: 'setApprovalHash(byte[])void',
-      args: [programHash],
+      args: [approvalHash],
       sender: owner.addr,
       suppressLog: true,
     })
@@ -129,6 +130,15 @@ describe('Campaign + ClaimsVault claim-tree (localnet)', () => {
       sender: owner.addr,
       receiver: vaultClient.appAddress,
       amount: microAlgos(ALGO),
+      suppressLog: true,
+    })
+    if (vaultSpec.byteCode === undefined) {
+      throw new Error('ClaimsVault.arc56.json has no byteCode; run `npm run build` first.')
+    }
+    await factoryClient.send.call({
+      method: 'setVaultApprovalHash(byte[])void',
+      args: [programHash(Buffer.from(vaultSpec.byteCode.approval, 'base64'), Buffer.from(vaultSpec.byteCode.clear, 'base64'))],
+      sender: owner.addr,
       suppressLog: true,
     })
     await factoryClient.send.call({

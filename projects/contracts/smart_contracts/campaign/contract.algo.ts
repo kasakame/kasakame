@@ -24,7 +24,8 @@ import {
  *
  * One stateful application per campaign. Backers' pledged ALGO goes to the **ClaimsVault** (the pooled refund
  * escrow); the campaign app itself holds no funds at all - not even a creator deposit - so creation costs the creator
- * only the global-schema sponsorship floor on their own account (~0.24 ALGO, recovered at `delete()`).
+ * only the global-schema sponsorship floor on their own account (~0.59 ALGO for the current 2-page program,
+ * recovered at `delete()`; see docs/limits.md for the size/MBR table).
  *
  * A backer's receipt is their pledge leaf in the campaign's incremental tree: `leaf = H(0x01 ‖ backer ‖ amount ‖
  * paymentTxId)`, committed at pledge time from the in-group payment (never caller-supplied). The contract stores only
@@ -46,6 +47,12 @@ const STATUS_CLAIMED = 2
 
 // A single bytes global-state value is capped at 128 bytes on the AVM.
 const MAX_BYTES_PER_STATE_KEY = 128
+
+// Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
+const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
+
+// Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
+const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')
@@ -113,11 +120,13 @@ export class Campaign extends Contract {
   @abimethod({ onCreate: 'require' })
   create(vault: Application, title: bytes, metadataUri: bytes, goal: uint64, deadline: uint64): void {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
+    assert(vault.id !== Uint64(0), 'vault required')
     assert(title.length > 0, 'title must not be empty')
     assert(title.length <= MAX_BYTES_PER_STATE_KEY, 'title too long')
     assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')
     assert(goal > 0, 'goal must be greater than zero')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
+    assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
 
     this.creator.value = Txn.sender
     this.vault.value = vault
@@ -154,7 +163,10 @@ export class Campaign extends Contract {
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.amount > Uint64(0), 'pledge must be greater than zero')
     assert(payment.groupIndex === Txn.groupIndex - Uint64(1), 'payment must immediately precede pledge')
+    assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
+    assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
+    assert(payment.amount >= MIN_PLEDGE_MICROALGOS, 'pledge below minimum')
 
     const n = this.n.value
     const p = this.popcount(n)

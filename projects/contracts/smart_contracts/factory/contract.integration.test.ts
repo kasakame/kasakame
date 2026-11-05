@@ -5,10 +5,10 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { programHash } from '../program-hash'
 
 /**
  * LocalNet integration tests for the Factory registry: deploy the Factory, hash a real Campaign's approval program, and exercise
@@ -62,6 +62,15 @@ describe('Factory (localnet)', () => {
       appReferences: [appClient.appId],
       suppressLog: true,
     })
+    if (vaultSpec.byteCode === undefined) {
+      throw new Error('ClaimsVault.arc56.json has no byteCode; run `npm run build` first.')
+    }
+    await appClient.send.call({
+      method: 'setVaultApprovalHash(byte[])void',
+      args: [programHash(Buffer.from(vaultSpec.byteCode.approval, 'base64'), Buffer.from(vaultSpec.byteCode.clear, 'base64'))],
+      sender: ownerAddr,
+      suppressLog: true,
+    })
     await appClient.send.call({
       method: 'setVault(uint64)void',
       args: [vaultClient.appId],
@@ -95,15 +104,13 @@ describe('Factory (localnet)', () => {
   }
 
   /**
-   * The SHA-256 of the deployed Campaign's approval + clear-state programs, exactly what the Factory verifies.
+   * The SHA-256 of `itob(approval.length) ‖ approval ‖ clear` for the deployed Campaign, exactly what the Factory verifies.
    *
    * @param appId The deployed Campaign's application id.
    */
   async function campaignApprovalHash(appId: bigint): Promise<Uint8Array> {
     const info = await algorand.app.getById(appId)
-    return createHash('sha256')
-      .update(Buffer.concat([Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram)]))
-      .digest()
+    return programHash(Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram))
   }
 
   /**

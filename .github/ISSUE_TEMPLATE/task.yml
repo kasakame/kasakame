@@ -1,0 +1,38 @@
+name: Task
+description: A scoped unit of work.
+type: Task
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What needs to change, why it matters, and the background a reader needs to start. Link related issues, docs, or decisions.
+      placeholder: |
+        Current behavior:
+        Why it matters:
+        Relevant decisions or links:
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: One observable outcome per line.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What this ticket deliberately does not cover.
+    validations:
+      required: false
+  - type: textarea
+    id: links
+    attributes:
+      label: Links
+      description: Relevant docs, issues, or references.
+    validations:
+      required: false

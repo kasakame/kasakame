@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_REFUND_WINDOW_SECONDS, MAX_REFUND_WINDOW_SECONDS, parseRefundWindow } from './deploy-config'
+import { DEFAULT_REFUND_WINDOW_SECONDS, MAX_REFUND_WINDOW_SECONDS, parseRefundWindow, resolveSweepTarget } from './deploy-config'
 
 describe('parseRefundWindow', () => {
   it('defaults to 730 days when unset', () => {
@@ -24,5 +24,22 @@ describe('parseRefundWindow', () => {
   it('rejects non-integer values', () => {
     expect(() => parseRefundWindow('1.5')).toThrow('integer number of seconds')
     expect(() => parseRefundWindow('soon')).toThrow('integer number of seconds')
+  })
+})
+
+describe('resolveSweepTarget', () => {
+  it('returns an explicit target on any network', () => {
+    expect(resolveSweepTarget('TREASURY', 'DEPLOYER', true)).toBe('TREASURY')
+    expect(resolveSweepTarget('TREASURY', 'DEPLOYER', false)).toBe('TREASURY')
+  })
+
+  it('defaults to the deployer on LocalNet', () => {
+    expect(resolveSweepTarget(undefined, 'DEPLOYER', true)).toBe('DEPLOYER')
+    expect(resolveSweepTarget('', 'DEPLOYER', true)).toBe('DEPLOYER')
+  })
+
+  it('requires an explicit target on TestNet/MainNet', () => {
+    expect(() => resolveSweepTarget(undefined, 'DEPLOYER', false)).toThrow('SWEEP_TARGET is not set')
+    expect(() => resolveSweepTarget('', 'DEPLOYER', false)).toThrow('SWEEP_TARGET is not set')
   })
 })

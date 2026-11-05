@@ -6,12 +6,14 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     passWithNoTests: true,
+    // LocalNet integration tests deploy apps and fast-forward blocks, which exceeds the default 5s timeout.
+    testTimeout: 120_000,
     coverage: {
       provider: 'v8',
       // The SDK is utils: same 100% gate as the frontend. Genuinely unreachable defensive
       // branches carry `/* v8 ignore next */` with a reason instead of theater tests.
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.spec.ts', 'src/generated/**'],
+      exclude: ['src/**/*.spec.ts', 'src/**/*.integration.test.ts', 'src/generated/**'],
       reporter: ['text', 'json-summary'],
       thresholds: {
         lines: 100,

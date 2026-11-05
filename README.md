@@ -62,6 +62,7 @@ npm run dev             # API on http://127.0.0.1:3001
 | --- | --- |
 | [`docs/architecture.md`](docs/architecture.md) | Pieces, creation and settlement flows, tech stack |
 | [`docs/campaign.md`](docs/campaign.md) | Campaign contract reference: state, methods, fees |
+| [`docs/limits.md`](docs/limits.md) | AVM limits, compiled sizes, page counts, MBR, storage, and fees |
 | [`docs/claim-tree-protocol.md`](docs/claim-tree-protocol.md) | Claim-tree math, proofs, and security analysis |
 | [`docs/frontend.md`](docs/frontend.md) | UI structure, wallet, reads, writes, metadata |
 | [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |
@@ -69,14 +70,15 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/testing.md`](docs/testing.md) | Contract, CLI, and frontend test strategy |
 | [`docs/ci.md`](docs/ci.md) | GitHub Actions workflows and checks |
 | [`docs/conventions.md`](docs/conventions.md) | Lint, format, and TypeScript rules |
-| [`docs/roadmap.md`](docs/roadmap.md) | Done and remaining work |
 | [`docs/design.md`](docs/design.md) | Product decisions and open questions |
+
+Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
 Agent guidance (commands, gotchas, definition of done) is in [`AGENTS.md`](AGENTS.md).
 
 ## Status
 
-Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Current work is tracked in [`docs/roadmap.md`](docs/roadmap.md).
+Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the `v0.2.0` release (contracts, specs, SDK, CLI) is pending. Current work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
 ## License
 

@@ -25,6 +25,11 @@ reasoning behind the splits.
   clients between projects: it regenerates them from the ARC-56 specs, from the
   downloaded artifacts (`SDK_SPECS=local`) in contracts-changed runs and from
   the pinned release otherwise.
+- **The compiled footprint is gated.** `compile-contracts` runs
+  `npm run test:size` after `npm run build`, so a byte, page, or schema change
+  fails unless `smart_contracts/size-budget.fixture.ts` and `docs/limits.md` are
+  updated. `check-contracts` does not build artifacts, so the size test is
+  excluded from `npm test` and `test:coverage`.
 - **Split by prerequisite, not by phase.** Each project has one verification
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
@@ -372,9 +377,8 @@ A new trusted publisher must complete its first publish within 2 days or it
 expires and must be recreated. OIDC publishes do not prompt for 2FA: the job
 exchanges the GitHub identity for a short-lived token. 2FA still gates
 interactive actions (npmjs.com login, `npm trust`, and `npm stage approve`).
-After the first OIDC publish succeeds, set the package's Publishing access to
-"Require two-factor authentication and disallow tokens", delete the
-`NPM_TOKEN` GitHub secret, and revoke the bootstrap token.
+The package's Publishing access is set to "Require two-factor authentication
+and disallow tokens" so only the trusted publisher can publish.
 
 The frontend is built by its own release/deploy workflow against the published
 version; it is not part of the SDK release.
@@ -407,20 +411,22 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
   `--provenance`. It then polls the registry for the version for up to 10
-  minutes, like the SDK release. A dry run stops before the publish and registry
-  check.
+  minutes, like the SDK release. A dry run stops before the publish and
+  registry check.
 
 Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
-`kasakame`, workflow `release-cli.yml`, and no environment. The first-publish
-window, 2FA enforcement, and token cleanup described for the SDK apply here too.
-Release the SDK first: the CLI depends on the published `@kasakame/sdk`. The
-package, its signers, and its commands are documented in [`cli.md`](cli.md).
+`kasakame`, workflow `release-cli.yml`, no environment, and **Allow npm
+publish** enabled. The first-publish window and 2FA enforcement described for
+the SDK apply here too. Release the SDK first: the CLI depends on the published
+`@kasakame/sdk`. The package, its signers, and its commands are documented in
+[`cli.md`](cli.md).
 
 ## Release and distribution
 
 These decisions cover how the protocol and its clients ship; the implementation
-order is in [`roadmap.md`](roadmap.md) (Deployment section, plus the CLI section).
+order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83) and the
+[CLI commands epic](https://github.com/kasakame/kasakame/issues/54).
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |

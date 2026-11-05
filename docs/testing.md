@@ -41,7 +41,8 @@ Commands:
 - `npm run test` - offline AVM unit tests only.
 - `npm run test:integration` - LocalNet integration tests (requires
   `algokit localnet start` + `npm run build`).
-- `npm run test:all` - both.
+- `npm run test:size` - contract size budget (requires `npm run build`).
+- `npm run test:all` - all suites (requires `npm run build` for the size budget).
 - `npm run test:coverage` - offline tests with coverage; fails below the
   configured thresholds (see below).
 
@@ -68,6 +69,15 @@ or `.algo.test.ts`. The contract (`contract.algo.ts`) is transformed; **the test
 must also be transformed**, so it must be named `contract.algo.spec.ts` (not plain
 `.spec.ts`). Otherwise contract creation fails with "Cannot create a contract for
 class as it does not extend Contract or BaseContract".
+
+## Contract size budget
+
+`npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
+approval/clear/total bytes, extra pages, page capacity, global schema, and app
+MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
+`compile-contracts` CI job after `npm run build`; update the fixture and
+[`limits.md`](limits.md) together when a contract changes. It is excluded from
+`npm test` and `test:coverage` because those jobs do not build the artifacts.
 
 ## LocalNet integration notes
 
@@ -126,25 +136,39 @@ class as it does not extend Contract or BaseContract".
 
 ## Integration test inventory
 
-All LocalNet integration tests in the repo (run with `npm run test:integration`; 21
-tests across 3 files). Each file deploys its own fixture chain to a live algod.
-Files run **sequentially** (`--no-file-parallelism`): they share one LocalNet
-sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global - parallel
-files can jump the clock between another file's deploy and pledge, flaking with
-`pledging is closed`. Sequential files keep each suite's chain-relative
-deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 37 campaign +
-57 vault + 26 factory + 2 deployer + 5 refund-window parser tests = 127, all green with
+The contract package's LocalNet integration tests (run with
+`npm run test:integration` in `projects/contracts`; 21 tests across 3 files).
+Each file deploys its own fixture chain to a live algod.
+The contract files run **sequentially** (`--no-file-parallelism`): they share one
+LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
+parallel files can jump the clock between another file's deploy and pledge,
+flaking with `pledging is closed`. Sequential files keep each suite's
+chain-relative deadlines (`+600s` at deploy) valid.
+Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
+73 vault + 63 factory + 2 deployer + 8 deploy-config tests = 190, all green with
 100% line/branch/function coverage).
 
-**Full ledger accounting.** Every integration test asserts the complete money
-ledger, µA-exact, for every actor involved: balance and minimum-balance deltas
-per account, the fee totals of each operation (measured on LocalNet - the
-pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA),
-the vault pool movement, the parked box MBR (32,100 µA per campaign box on the
-vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the creator's sponsorship
-floor (recovered at `delete()`). Rejected transactions are asserted to move
+**Ledger accounting.** The lifecycle integration tests assert the money ledger,
+µA-exact, for the actors involved: balance and minimum-balance deltas per
+account, the fee totals of each operation (measured on LocalNet - the pledge
+group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA), the
+vault pool movement, the parked box MBR (32,100 µA per campaign box on the
+vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
+registration deposit (18,900 µA, returned by `unregister` in the
+`[unregister, delete]` group). Rejected transactions are asserted to move
 **nothing** (atomic failure charges no fee).
+
+These assertions are relative deltas. The absolute app MBR of each deployed app
+is **not** asserted yet, which is how the 2026-11-04 MBR arithmetic error
+(321,000 vs the real 571,000) went unnoticed: every test funded its accounts
+generously and compared before/after. An absolute per-wallet/per-app
+minimum-balance suite is tracked in [#75](https://github.com/kasakame/kasakame/issues/75). The current size/MBR/fee table
+is in [`limits.md`](limits.md).
+
+**Contract sizes.** The compiled approval/clear bytes, page count, and app MBR
+are **not** asserted by a test yet. The measurement command is in
+[`limits.md`](limits.md#measure-the-current-sizes); a size-budget regression test
+is tracked in [#76](https://github.com/kasakame/kasakame/issues/76).
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by
@@ -192,6 +216,46 @@ Factory + ClaimsVault + Campaign.
 | 20 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
 | 21 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
 | 22 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
+
+## SDK LocalNet integration
+
+`projects/sdk/src/transactions.integration.test.ts` closes the client send-path
+gap: it deploys a Factory + ClaimsVault from the ARC-56 bytecode embedded in the
+generated clients, calls `configureSdk`, and drives the SDK write helpers against
+a live chain. Three flows run with fresh campaigns and generated-account signers:
+
+1. **create → pledge → cancel → delete** - the open-campaign lifecycle, including
+   the `[pay, campaign.pledge, vault.credit]` group and the backer's withdrawal.
+2. **successful campaign → claim → delete** - the creator payout and the atomic
+   `[unregister, delete]` cleanup.
+3. **failed campaign → refund before delete → delete → refund after delete** -
+   the campaign refund path, then the vault refund path once the app is gone.
+
+Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
+the offset is reset in a `finally`, and the suite runs with
+`--no-file-parallelism` because the offset is chain-global. It is excluded from
+`npm test` and coverage.
+
+Run it with LocalNet up:
+
+```bash
+cd projects/sdk
+npm run test:integration
+```
+
+The suite uses the clients currently in `src/generated`, so it tests the pinned
+specs release by default. To exercise the local contracts instead, build them and
+regenerate against the local artifacts first:
+
+```bash
+cd projects/contracts && npm run build
+cd ../sdk && SDK_SPECS=local npm run codegen
+npm run test:integration
+```
+
+The setup adapts to both shapes: the 2026-11 Factory binds the vault, pins the
+vault program hash, and hashes `itob(approval length) ‖ approval ‖ clear`, while
+the pinned release predates all three.
 
 ## API cheat sheet (learned the hard way)
 
@@ -247,23 +311,27 @@ Factory + ClaimsVault + Campaign.
 
 | Method | Branch | Covered? |
 | --- | --- | --- |
-| `create` | success / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
-| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
+| `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
+| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
 | `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
-| `ClaimsVault.create` | success / zero window | ✅ |
-| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment | ✅ (+ first-touch happy path on LocalNet) |
+| `ClaimsVault.create` | success / zero window / window above the 10-year cap / zero factory / zero sweep target / vault itself as sweep target | ✅ |
+| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
 | `payClaim` | success (derived amount) / non-campaign caller / unknown / closed box / empty payout | ✅ |
 | `settle` | success / already failed (no-op) / missing box (no-op) / claimed / non-campaign caller / bad root | ✅ |
-| `settleOpen` | success from live globals / unknown / closed box / claimed campaign / early deadline / reached goal | ✅ |
+| `settleOpen` | success from live globals / unknown / closed box / claimed campaign / early deadline / reached goal / malformed root / campaign bound to another vault | ✅ |
 | `vault.refund` | success differentially (LocalNet) / unknown / not failed / window closed / unknown position / bad txid+path / proof mismatch / insufficient | ✅ |
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
-| `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding | ✅ |
-| `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / non-creator / impostor / low deposit / wrong payer / wrong receiver / double registration | ✅ |
+| `Factory.setApprovalHash` | success / non-owner / wrong length / second direct set rejected (timelock bypass) | ✅ |
+| `Factory.proposeApprovalHash` / `applyApprovalHash` / `cancelApprovalHash` | propose stores pending + eligibility / non-owner / wrong length / apply before timelock / no pending / non-owner / apply after timelock / cancel clears / non-owner | ✅ |
+| `Factory.setVaultApprovalHash` | success / non-owner / wrong length / change after vault bound | ✅ |
+| `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding / vault hash not configured / lookalike vault program | ✅ |
+| `Factory.transferOwnership` / `renounceOwnership` | transfer / new owner can configure / old owner rejected / non-owner / zero address / renounce locks configuration / non-owner renounce | ✅ |
+| `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / low deposit / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
 | `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
@@ -338,6 +406,6 @@ coverage, and the build (see [`ci.md`](ci.md#workflow-build-and-test)); the
 release workflow packs the tarball and runs `kasakame --help` before publishing
 (see [`ci.md`](ci.md#workflow-release-cli-separate-file)).
 
-Manual TestNet smoke remains on the [roadmap](roadmap.md#cli): both signers,
-refund before and after a delete, and delete on a fresh campaign. The CLI
-behavior is documented in [`cli.md`](cli.md).
+Manual TestNet smoke remains in the [manual smoke ticket](https://github.com/kasakame/kasakame/issues/126):
+both signers, refund before and after a delete, and delete on a fresh campaign.
+The CLI behavior is documented in [`cli.md`](cli.md).

@@ -1,10 +1,6 @@
 ## Summary
 
-<!-- What does this PR do? One or two sentences. -->
-
-## Motivation
-
-<!-- Why is this needed? Link any issue/roadmap area. -->
+<!-- What does this PR change, and why? Use the change name, not the issue number. -->
 
 ## Changes
 
@@ -12,11 +8,14 @@
 
 ## Testing
 
-<!-- How was this tested? e.g. contract simulator tests, `npm run build`, manual localnet steps. -->
+<!-- How was this tested? e.g. contract simulator tests, `npm run build`, manual LocalNet steps. -->
 
 ## Checklist
 
-- [ ] Tests added/updated and passing
-- [ ] `npm run build` succeeds
+- [ ] Tests added or updated, and passing
+- [ ] Docs updated if behavior, commands, or limits changed
 - [ ] No secrets or generated artifacts committed
-- [ ] Commit messages follow Conventional Commits
+
+## Related issues
+
+<!-- Link related issues, e.g. #123 or #123, #124. -->

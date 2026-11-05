@@ -17,8 +17,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
     `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
   - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured program hash and official vault, `setApprovalHash`,
-    `setVault`, `register`/`unregister`, readonly `isRegistered`)
+    registry (owner-configured campaign hash with a ~7-day `propose`/`apply`
+    timelock, pinned vault program hash, `setVault`, `register`/`unregister`,
+    ownership transfer/renounce, readonly `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
@@ -26,7 +27,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`docs/sdk.md`](docs/sdk.md) for the migration order
 - `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
   (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see
-  [`docs/cli.md`](docs/cli.md) and the [CLI roadmap](docs/roadmap.md#cli)
+  [`docs/cli.md`](docs/cli.md) and the [CLI component](https://github.com/kasakame/kasakame/issues/40)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage; pinning and catalog planned)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
@@ -36,8 +37,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
   [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
-  (lint/format/tsconfig rules), [`roadmap.md`](docs/roadmap.md) (checklist),
-  [`design.md`](docs/design.md) (product plan)
+  (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
+- `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, and Feature
 - [`README.md`](README.md) - project overview, quick start, and docs map
 
 ## Commands
@@ -70,6 +71,7 @@ npm pack --dry-run               # inspect the published package contents
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
+npm run test:integration         # LocalNet (requires algokit localnet start + generated clients for the target contracts)
 
 cd ../cli
 npm run build                    # tsc emit to dist
@@ -93,7 +95,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- Don't create or switch branches or worktrees without explicit approval.
+- Work on a branch per issue (`type/issue-number-slug`), open a PR that links the
+  issue in **Related issues**, and never push to `main`. Do not create worktrees
+  or merge a PR without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
@@ -111,6 +115,57 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   the docs. When the docs are ambiguous, test on LocalNet rather than guessing.
 - When you edit any Markdown file, lint it with the command in
   [Commands](#commands).
+
+## Contract size, storage, and fees
+
+The compiled size, page count, app MBR, box MBR, and transaction fees are part of
+the product contract. The current numbers and the AVM limits are in
+[`docs/limits.md`](docs/limits.md); read it before touching
+`smart_contracts/**/contract.algo.ts`.
+
+Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
+
+| Contract | Approval + clear | Pages | App MBR |
+| --- | ---: | ---: | ---: |
+| Campaign | 2,069 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,759 B | 2 (1 extra) | 307,000 µA |
+| Factory | 1,036 B | 1 | 357,000 µA |
+
+- **Measure before and after.** Run `npm run build` in `projects/contracts`,
+  record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
+  affected group fees, and update `docs/limits.md` plus the affected docs in the
+  same change set. The report command is in
+  [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
+- **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
+  pages, global schema, and app MBR in
+  `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+  job after `npm run build`. Update the fixture and `docs/limits.md` together.
+- **Never silently change the creator cost.** The campaign create cost is a
+  product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
+  MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
+  ~0.49 ALGO. An extra page is +100,000 µA. If a change crosses a page boundary,
+  adds a global/local slot (a byte slice is +50,000 µA, a uint +28,500 µA), adds a
+  box, adds an inner txn to create/register, or changes a group shape or fee, stop
+  and call it out in the commit/PR; get explicit approval before proceeding.
+- **Any campaign program change changes the Factory `approvalHash`.** Update the
+  deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
+  (or redeploy Factory + vault). The current hash is
+  `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
+  binds the approval/clear split. A new Factory sets its first hash immediately;
+  an existing Factory must `proposeApprovalHash`, wait `APPROVAL_HASH_DELAY`
+  (~7 days), then `applyApprovalHash`. The vault is bound once and its program
+  hash is verified in `setVault`.
+- **Locked is not spent.** App/box MBR and the registration deposit are locked
+  and recoverable; transaction fees are spent. The vault box (32,100 µA) is
+  platform-funded; the Factory registration box (18,900 µA) is covered by the
+  creator deposit.
+- **Respect the no-surcharge page limit.** The current limit is 3 extra pages
+  (8,192 B total). Do not rely on the 7-extra-page surcharge path unless the
+  target network supports it and the cost is accepted.
+- **Keep the vault and Factory funded.** New boxes increase their accounts'
+  minimum balances. Check the group/resource limits (8 references, 16 inner
+  txns per app call, 2,048 B app args, 700 opcode budget per app call) when
+  adding a call, box, or reference.
 
 ## Conventions
 
@@ -208,40 +263,83 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 - **Keep docs aligned.** Whenever a change affects behavior, structure, commands, or
   conventions, update the relevant docs in the same change set:
   - `docs/` for technical details and design decisions
-  - `README.md` for spec-level behavior, roadmap status, and getting-started steps
+  - `README.md` for spec-level behavior, the status summary, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
+- **Package READMEs are user-facing.** `projects/sdk/README.md` and
+  `projects/cli/README.md` are the READMEs npm publishes. Keep them to install,
+  usage, documentation links, and license; repository status, work tracking, and
+  contributor instructions belong in the root README or `docs/`.
 
 ## Testing
 
 - Contracts: simulator tests for full behavioral coverage (every method × every branch).
+- SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
+  (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
 - Add or update tests in the same change set as the code they cover.
 
 ## Definition of done
 
-Before marking work complete, run the checks from [Commands](#commands) in order -
-format, lint, check-types, then the relevant test suite - and fix everything until
-green. Don't skip a step because the change "looks small."
+A ticket is done when its acceptance criteria are met and the PR that links it
+is merged. Close the issue after merge unless the PR uses a closing keyword
+(`Closes #N`). Before opening the PR, run the checks from
+[Commands](#commands) in order - format, lint, check-types, then the relevant test
+suite - and fix everything until green. Don't skip a step because the change
+"looks small."
+
+For contract changes, also run `npm run build` in `projects/contracts`, record the
+size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
+[Contract size, storage, and fees](#contract-size-storage-and-fees)).
 
 ## Commits & pull requests
 
 - **Never commit or push automatically** unless asked; always propose a commit message first.
+- **Branch naming:** `type/issue-number-slug`, for example `feat/42-backer-banner`,
+  `fix/51-defly-first-connect`, `docs/69-work-tracking`. Use the commit type as
+  the prefix and the issue number after it.
 - Follow **Conventional Commits**: `<type>(<scope>): <description>`
   - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `perf`, `style`
-  - Scopes: `contracts`, `frontend`, `sdk`, `repo` (workspace/docs/CI). Omit the scope when a
-    change spans everything.
+  - Scopes: `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`, `docs`,
+    `maintenance` (the components). Omit the scope when a change spans several.
   - Description is imperative and ≤ 72 chars.
   - No body unless needed; when present, explain the "why" as a short bullet list.
   - Example: `feat(contracts): add pledge escrow contract`.
-- **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md).
+- **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
+  - The title is the change name in Conventional Commit form.
+  - Link the issue in the **Related issues** section, e.g. `#N`. GitHub closes it
+    on merge only if you add `Closes #N`; otherwise close it after merge.
+  - One issue per PR; squash merge. Do not merge a PR without explicit approval.
+  - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
+    directly.
 
-## Roadmap
+## Work tracking
 
-Work left to do is tracked as a checklist in [`docs/roadmap.md`](docs/roadmap.md),
-organized by area (contract, frontend UX, content, TestNet, CI). Product design and
-open questions live in [`docs/design.md`](docs/design.md). `README.md` carries only
-the short status summary.
+Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1),
+not in a Markdown checklist.
+
+- **Components:** `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`,
+  `docs`, `maintenance`. Each is an issue of type `Component`; the project field of
+  the same name makes them filterable.
+- **Epics:** persistent workstreams inside a component (for example
+  `frontend / UX clarity`). They are issues of type `Epic` and may stay open
+  indefinitely.
+- **Tickets:** type `Task`, `Bug`, or `Feature`; sub-issue of an epic. Use the
+  forms in `.github/ISSUE_TEMPLATE/` and give the ticket context: what changes,
+  why it matters, the background a reader needs, acceptance criteria, out of
+  scope, and links. Bugs add what happened, expected vs actual, steps,
+  environment, logs, and screenshots. Update the body as decisions land; the
+  migrated one-line roadmap summaries are a starting point, not the spec.
+- **Fields:** `Component` (single select), `Priority` (`P1`-`P3`), `Target date`;
+  `Status` is the project flow (`Todo`, `In Progress`, `Done`).
+- **Milestones:** `v0.2.0` is the coordinated release. Use a version milestone
+  for a release; do not create one per package unless a package ships alone.
+- **Query:** `gh project item-list 1 --owner kasakame --limit 100`,
+  `gh issue list --state open`, or open the project with
+  `gh project view 1 --owner kasakame --web`.
+
+Product design and open questions live in [`docs/design.md`](docs/design.md).
+`README.md` carries only the short status summary.
 
 ## References
 
@@ -254,6 +352,17 @@ working from memory on protocol details:
   box MBR, box deletion, app-deletion caveats.
 - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts/inner-txn/) -
   app-account payments and inner-txn fees.
+- [Protocol parameters](https://dev.algorand.co/concepts/protocol/protocol-parameters/) -
+  program size/pages, opcode budget, app args, box and state limits.
+- [Smart contract costs & constraints](https://dev.algorand.co/concepts/smart-contracts/costs-constraints/) -
+  MBR formulas, program size, fees.
+- [Fees](https://dev.algorand.co/concepts/transactions/fees/) - minimum fee,
+  larger-transaction surcharge, fee pooling.
+- [AVM](https://dev.algorand.co/concepts/smart-contracts/avm/) - execution model,
+  resource availability, stack and program limits.
+- [Ledger parameters](https://specs.algorand.co/ledger/ledger-parameters) - exact
+  consensus values (`MaxAppTotalProgramLen`, `MaxExtraAppProgramPages`, MBR
+  parameters, box limits).
 - [Transaction Types](https://dev.algorand.co/concepts/transactions/types/) -
   payment `close`, application call transaction kinds.
 - [Indexer REST API](https://dev.algorand.co/reference/rest-api/indexer/) -

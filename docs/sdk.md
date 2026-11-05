@@ -284,6 +284,14 @@ Creation chains `create` to Factory `register`. Pledges are one atomic group `[p
 
 Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk`.
 
+LocalNet integration lives in `src/transactions.integration.test.ts` and is
+excluded from `npm test` and coverage. `npm run test:integration` deploys its own
+Factory + ClaimsVault from the generated clients' ARC-56 bytecode and runs the
+create/cancel, claim/delete, and failed-refund flows. The clients decide which
+contracts are under test: the pinned specs release by default, or the local
+artifacts after `SDK_SPECS=local npm run codegen` (see
+[`testing.md`](testing.md#sdk-localnet-integration)).
+
 ## Release info
 
 - Version `0.1.0`, following the contracts' breaking changes while they churn.

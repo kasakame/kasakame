@@ -1,5 +1,5 @@
 import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
-import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
+import { Bytes, Global, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
@@ -45,9 +45,9 @@ describe('ClaimsVault', () => {
     return JSON.parse(out) as unknown
   }
 
-  function createVault(sweep = ctx.defaultSender, window = WINDOW): ClaimsVault {
+  function createVault(sweep = ctx.defaultSender, window = WINDOW, factoryId = FACTORY_APP_ID): ClaimsVault {
     const vault = ctx.contract.create(ClaimsVault)
-    vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), sweep, window)
+    vault.create(ctx.any.application({ applicationId: factoryId }), sweep, window)
     return vault
   }
 
@@ -137,6 +137,7 @@ describe('ClaimsVault', () => {
   /**
    * A real Campaign contract standing in as the foreign app for `settleOpen` (its globals are readable on-chain).
    *
+   * @param vault The vault the campaign must point at.
    * @param fields The campaign globals.
    * @param fields.status Campaign status.
    * @param fields.raised Live pledge total.
@@ -146,8 +147,13 @@ describe('ClaimsVault', () => {
    * @param fields.n Position count.
    * @returns The application reference and its id (vault boxes are keyed by it).
    */
-  function foreignCampaign(fields: { status: number; raised: number; goal: number; deadline: number; root: string; n: number }) {
+  function foreignCampaign(
+    vault: ClaimsVault,
+    fields: { status: number; raised: number; goal: number; deadline: number; root: string; n: number },
+  ) {
     const campaign = ctx.contract.create(Campaign)
+    // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
+    ;(campaign.vault as unknown as { value: unknown }).value = toExternalValue(ctx.ledger.getApplicationForContract(vault).id)
     campaign.status.value = fields.status
     campaign.raised.value = fields.raised
     campaign.goal.value = fields.goal
@@ -170,6 +176,35 @@ describe('ClaimsVault', () => {
       expect(() => {
         vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, 0)
       }).toThrow('refund window must be positive')
+    })
+
+    test('rejects a window above the cap', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      expect(() => {
+        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, 10 * 365 * 24 * 60 * 60 + 1)
+      }).toThrow('refund window too long')
+    })
+
+    test('rejects a zero factory', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      expect(() => {
+        vault.create(ctx.any.application({ applicationId: 0 }), ctx.defaultSender, WINDOW)
+      }).toThrow('factory required')
+    })
+
+    test('rejects a zero sweep target', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      expect(() => {
+        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), Global.zeroAddress, WINDOW)
+      }).toThrow('sweep target must not be zero')
+    })
+
+    test('rejects the vault itself as sweep target', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      const vaultApp = ctx.ledger.getApplicationForContract(vault)
+      expect(() => {
+        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), vaultApp.address, WINDOW)
+      }).toThrow('sweep target must not be the vault')
     })
   })
 
@@ -372,6 +407,111 @@ describe('ClaimsVault', () => {
           expect(() => {
             vault.credit(app, 500)
           }).toThrow('matching payment not found in group')
+        })
+    })
+
+    test('rejects a non-payment immediately before the pledge', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 500)
+          }).toThrow('matching payment not found in group')
+        })
+    })
+
+    test('rejects a payment to the wrong receiver', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: caller, amount: 500 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 500)
+          }).toThrow('matching payment not found in group')
+        })
+    })
+
+    test('rejects a payment with the wrong amount', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 400 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 500)
+          }).toThrow('matching payment not found in group')
+        })
+    })
+
+    test('rejects a payment that closes the sender account', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500, closeRemainderTo: vaultAccount(vault) }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 500)
+          }).toThrow('payment must not close')
+        })
+    })
+
+    test('rejects a payment that rekeys the sender', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.defaultSender
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 500, rekeyTo: ctx.any.account() }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 500)
+          }).toThrow('payment must not rekey')
         })
     })
 
@@ -635,7 +775,7 @@ describe('ClaimsVault', () => {
 
     test('rejects an already claimed campaign', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign({ status: 2, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, { status: 2, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -645,7 +785,7 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign before its deadline', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign({ status: 0, raised: 500, goal: 1000, deadline: 5_000, root: Z_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, { status: 0, raised: 500, goal: 1000, deadline: 5_000, root: Z_HEX, n: 1 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -655,7 +795,7 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign that reached its goal', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign({ status: 0, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, { status: 0, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -663,10 +803,31 @@ describe('ClaimsVault', () => {
       }).toThrow('goal was reached')
     })
 
+    test('rejects a campaign bound to another vault', () => {
+      const vault = createVault()
+      const otherVault = createVault(ctx.defaultSender, WINDOW, FACTORY_APP_ID + 1)
+      const { app, id } = foreignCampaign(otherVault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: Z_HEX, n: 4 })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      expect(() => {
+        vault.settleOpen(app)
+      }).toThrow('campaign vault mismatch')
+    })
+
+    test('rejects a non-32-byte root', () => {
+      const vault = createVault()
+      const { app, id } = foreignCampaign(vault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: '22'.repeat(31), n: 4 })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      expect(() => {
+        vault.settleOpen(app)
+      }).toThrow('bad root length')
+    })
+
     test('settles a failed campaign from its live global state', () => {
       const vault = createVault()
       const root = '22'.repeat(32)
-      const { app, id } = foreignCampaign({ status: 1, raised: 800, goal: 1000, deadline: 100, root, n: 4 })
+      const { app, id } = foreignCampaign(vault, { status: 1, raised: 800, goal: 1000, deadline: 100, root, n: 4 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       vault.settleOpen(app)

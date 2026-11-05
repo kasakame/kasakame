@@ -1,10 +1,10 @@
-import { Bytes, OnCompleteAction, type Application } from '@algorandfoundation/algorand-typescript'
+import { Bytes, Global, OnCompleteAction, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
-import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
 import { ClaimsVault } from '../claimsvault/contract.algo'
-import { Factory } from './contract.algo'
+import { programHash as programHashBytes } from '../program-hash'
+import { APPROVAL_HASH_DELAY, Factory } from './contract.algo'
 
 /**
  * Behavioral tests for the Factory registry, run against the offline AVM emulation provided by `algorand-typescript-testing`.
@@ -16,10 +16,21 @@ import { Factory } from './contract.algo'
 
 const REGISTER_MBR = 18_900 // µA - the registration box's minimum balance
 
-// The fake campaign app: an application with a known approval program (preimage), whose SHA-256 we set as the official hash.
+/**
+ * The official program hash: `sha256(itob(approval.length) ‖ approval ‖ clear)`.
+ *
+ * @param approval The approval program bytes.
+ * @param clear The clear-state program bytes.
+ * @returns The base64-encoded SHA-256 digest.
+ */
+function programHash(approval: Uint8Array, clear: Uint8Array): string {
+  return Buffer.from(programHashBytes(approval, clear)).toString('base64')
+}
+
+// The fake campaign app: an application with a known approval program (preimage), whose length-prefixed hash we set as the official hash.
 const FAKE_APP_ID = 1234
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
-const FAKE_PROGRAM_HASH = createHash('sha256').update(FAKE_PROGRAM).digest('base64')
+const FAKE_PROGRAM_HASH = programHash(FAKE_PROGRAM, new Uint8Array())
 
 // A non-official vault app id for mismatch tests.
 const VAULT_APP_ID = 777
@@ -29,7 +40,7 @@ describe('Factory', () => {
 
   beforeEach(() => {
     ctx.reset()
-    ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
+    ctx.ledger.patchGlobalData({ latestTimestamp: 1_000, round: 1_000 })
   })
 
   function createFactory() {
@@ -57,12 +68,23 @@ describe('Factory', () => {
   }
 
   /**
-   * Bind the Factory's official vault (owner-only, one-time).
+   * The SHA-256 of a real ClaimsVault app's approval + clear-state programs, exactly what `setVault` verifies.
+   *
+   * @param vault The vault app.
+   * @returns The base64-encoded digest.
+   */
+  function vaultHash(vault: ReturnType<typeof vaultApp>): string {
+    return programHash(toExternalValue(vault.approvalProgram), toExternalValue(vault.clearStateProgram))
+  }
+
+  /**
+   * Bind the Factory's official vault hash and app (owner-only, one-time).
    *
    * @param contract The factory.
    * @param vault The official vault app.
    */
   function setVault(contract: Factory, vault: ReturnType<typeof vaultApp>) {
+    contract.setVaultApprovalHash(Bytes.fromBase64(vaultHash(vault)))
     contract.setVault(vault)
   }
 
@@ -73,9 +95,7 @@ describe('Factory', () => {
    * @param app The real Campaign app.
    */
   function setCampaignHash(contract: Factory, app: Application) {
-    const hash = createHash('sha256')
-      .update(Buffer.concat([toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram)]))
-      .digest('base64')
+    const hash = programHash(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
     setHash(contract, Bytes.fromBase64(hash))
   }
 
@@ -83,13 +103,30 @@ describe('Factory', () => {
    * A real Campaign app created with the official vault, so `register` can read its `vault` global.
    *
    * @param vault The vault app stored in the campaign's global state.
+   * @param fields The campaign globals that gate unregistration.
+   * @param fields.status Campaign status: 0 Open, 1 Failed, 2 Claimed.
+   * @param fields.raised Live pledge total.
+   * @param fields.goal Funding target.
+   * @param fields.deadline Deadline timestamp.
+   * @param fields.n Positions ever appended (non-zero for an all-cancelled campaign).
    * @returns The deployed Campaign application.
    */
-  function realCampaign(vault: ReturnType<typeof vaultApp>): Application {
+  function realCampaign(
+    vault: Application,
+    fields?: { status: number; raised: number; goal: number; deadline: number; n?: number },
+  ): Application {
     const campaign = ctx.contract.create(Campaign)
-    campaign.create(vault, Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
+    // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
+    campaign.create(vault, Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 1_000_000)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
     ;(campaign.vault as unknown as { value: unknown }).value = vault.id
+    if (fields) {
+      campaign.status.value = fields.status
+      campaign.raised.value = fields.raised
+      campaign.goal.value = fields.goal
+      campaign.deadline.value = fields.deadline
+      campaign.n.value = fields.n ?? 0
+    }
     return ctx.ledger.getApplicationForContract(campaign)
   }
 
@@ -135,15 +172,7 @@ describe('Factory', () => {
     contract: Factory,
     fields: { status: number; raised: number; goal: number; deadline: number; n?: number },
   ): Application {
-    const campaign = ctx.contract.create(Campaign)
-    // Create the app for real so it is not marked as "creating"; the mock delete's app id resolves normally.
-    campaign.create(ctx.any.application({ applicationId: 777 }), Bytes('Test campaign'), Bytes('ipfs://test'), 1_000, 4_000_000_000)
-    campaign.status.value = fields.status
-    campaign.raised.value = fields.raised
-    campaign.goal.value = fields.goal
-    campaign.deadline.value = fields.deadline
-    campaign.n.value = fields.n ?? 0
-    const app = ctx.ledger.getApplicationForContract(campaign)
+    const app = realCampaign(ctx.any.application({ applicationId: 777 }), fields)
     contract.registered(app.id).value = ctx.defaultSender
     return app
   }
@@ -163,11 +192,14 @@ describe('Factory', () => {
   }
 
   describe('create', () => {
-    test('sets the deployer as owner and leaves the program hash and vault empty', () => {
+    test('sets the deployer as owner and leaves the hashes and vault empty', () => {
       const factory = createFactory()
       expect(factory.owner.value).toEqual(ctx.defaultSender)
       expect(factory.approvalHash.value).toEqual(Bytes(''))
+      expect(factory.pendingApprovalHash.value).toEqual(Bytes(''))
+      expect(factory.approvalHashEligibleAt.value).toEqual(0)
       expect(factory.vault.value).toEqual(0)
+      expect(factory.vaultApprovalHash.value).toEqual(Bytes(''))
     })
   })
 
@@ -194,9 +226,155 @@ describe('Factory', () => {
         factory.setApprovalHash(Bytes('too short'))
       }).toThrow('program hash must be 32 bytes')
     })
+
+    test('rejects a direct second set, so the timelock cannot be bypassed', () => {
+      const factory = createFactory()
+      setHash(factory)
+      expect(() => {
+        factory.setApprovalHash(Bytes.fromBase64(programHash(new Uint8Array(32).fill(1), new Uint8Array())))
+      }).toThrow('program hash already configured')
+    })
+  })
+
+  describe('proposeApprovalHash / applyApprovalHash / cancelApprovalHash', () => {
+    const replacement = Bytes.fromBase64(programHash(new Uint8Array(32).fill(7), new Uint8Array()))
+
+    test('propose stores the pending hash and the eligibility round', () => {
+      const factory = createFactory()
+      factory.proposeApprovalHash(replacement)
+      expect(factory.pendingApprovalHash.value).toEqual(replacement)
+      expect(factory.approvalHashEligibleAt.value).toEqual(1_000 + APPROVAL_HASH_DELAY)
+    })
+
+    test('propose rejects a non-owner caller', () => {
+      const factory = createFactory()
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.proposeApprovalHash(replacement)
+        }).toThrow('only the owner can propose the program hash')
+      })
+    })
+
+    test('propose rejects a hash of the wrong length', () => {
+      const factory = createFactory()
+      expect(() => {
+        factory.proposeApprovalHash(Bytes('too short'))
+      }).toThrow('program hash must be 32 bytes')
+    })
+
+    test('apply rejects before the timelock elapses', () => {
+      const factory = createFactory()
+      factory.proposeApprovalHash(replacement)
+      expect(() => {
+        factory.applyApprovalHash()
+      }).toThrow('program hash timelock not elapsed')
+    })
+
+    test('apply rejects when nothing is pending', () => {
+      const factory = createFactory()
+      expect(() => {
+        factory.applyApprovalHash()
+      }).toThrow('no pending program hash')
+    })
+
+    test('apply rejects a non-owner caller', () => {
+      const factory = createFactory()
+      factory.proposeApprovalHash(replacement)
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.applyApprovalHash()
+        }).toThrow('only the owner can apply the program hash')
+      })
+    })
+
+    test('apply switches the hash after the timelock and clears the proposal', () => {
+      const factory = createFactory()
+      setHash(factory)
+      factory.proposeApprovalHash(replacement)
+      ctx.ledger.patchGlobalData({ round: 1_000 + APPROVAL_HASH_DELAY })
+      factory.applyApprovalHash()
+      expect(factory.approvalHash.value).toEqual(replacement)
+      expect(factory.pendingApprovalHash.value).toEqual(Bytes(''))
+      expect(factory.approvalHashEligibleAt.value).toEqual(0)
+    })
+
+    test('cancel clears the proposal and leaves the active hash', () => {
+      const factory = createFactory()
+      setHash(factory)
+      factory.proposeApprovalHash(replacement)
+      factory.cancelApprovalHash()
+      expect(factory.pendingApprovalHash.value).toEqual(Bytes(''))
+      expect(factory.approvalHashEligibleAt.value).toEqual(0)
+      expect(factory.approvalHash.value).toEqual(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+    })
+
+    test('cancel rejects a non-owner caller', () => {
+      const factory = createFactory()
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.cancelApprovalHash()
+        }).toThrow('only the owner can cancel the program hash')
+      })
+    })
+  })
+
+  describe('setVaultApprovalHash', () => {
+    test('stores the official vault hash', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      factory.setVaultApprovalHash(Bytes.fromBase64(vaultHash(vault)))
+      expect(factory.vaultApprovalHash.value).toEqual(Bytes.fromBase64(vaultHash(vault)))
+    })
+
+    test('rejects a non-owner caller', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.setVaultApprovalHash(Bytes.fromBase64(vaultHash(vault)))
+        }).toThrow('only the owner can set the vault hash')
+      })
+    })
+
+    test('rejects a hash of the wrong length', () => {
+      const factory = createFactory()
+      expect(() => {
+        factory.setVaultApprovalHash(Bytes('too short'))
+      }).toThrow('vault hash must be 32 bytes')
+    })
+
+    test('rejects a change after the vault is bound', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      expect(() => {
+        factory.setVaultApprovalHash(Bytes.fromBase64(vaultHash(vault)))
+      }).toThrow('vault already set')
+    })
   })
 
   describe('setVault', () => {
+    test('rejects before the official vault hash is configured', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      expect(() => {
+        factory.setVault(vault)
+      }).toThrow('official vault hash not configured')
+    })
+
+    test('rejects a lookalike vault with a different program', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      factory.setVaultApprovalHash(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+      expect(() => {
+        factory.setVault(vault)
+      }).toThrow('not the official vault program')
+    })
+
     test('stores the official vault once', () => {
       const factory = createFactory()
       const vault = vaultApp(factory)
@@ -232,6 +410,64 @@ describe('Factory', () => {
       expect(() => {
         factory.setVault(ctx.any.application({ applicationId: VAULT_APP_ID }))
       }).toThrow('vault is not bound to this factory')
+    })
+  })
+
+  describe('transferOwnership / renounceOwnership', () => {
+    test('transfers ownership to a new account', () => {
+      const factory = createFactory()
+      const newOwner = ctx.any.account()
+      factory.transferOwnership(newOwner)
+      expect(factory.owner.value).toEqual(newOwner)
+    })
+
+    test('the new owner can configure, the old owner cannot', () => {
+      const factory = createFactory()
+      const newOwner = ctx.any.account()
+      factory.transferOwnership(newOwner)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: newOwner })]).execute(() => {
+        factory.setApprovalHash(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+      })
+      expect(factory.approvalHash.value).toEqual(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+      expect(() => {
+        factory.proposeApprovalHash(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+      }).toThrow('only the owner can propose the program hash')
+    })
+
+    test('rejects a non-owner transfer', () => {
+      const factory = createFactory()
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.transferOwnership(other)
+        }).toThrow('only the owner can transfer ownership')
+      })
+    })
+
+    test('rejects the zero address', () => {
+      const factory = createFactory()
+      expect(() => {
+        factory.transferOwnership(Global.zeroAddress)
+      }).toThrow('new owner must not be zero')
+    })
+
+    test('renounce clears the owner and locks configuration', () => {
+      const factory = createFactory()
+      factory.renounceOwnership()
+      expect(factory.owner.value).toEqual(Global.zeroAddress)
+      expect(() => {
+        factory.setApprovalHash(Bytes.fromBase64(FAKE_PROGRAM_HASH))
+      }).toThrow('only the owner can set the program hash')
+    })
+
+    test('rejects a non-owner renounce', () => {
+      const factory = createFactory()
+      const other = ctx.any.account()
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: other })]).execute(() => {
+        expect(() => {
+          factory.renounceOwnership()
+        }).toThrow('only the owner can renounce ownership')
+      })
     })
   })
 
@@ -328,6 +564,23 @@ describe('Factory', () => {
       }).toThrow('not an official kasakame campaign')
     })
 
+    test('rejects a different approval/clear split of the official bytes', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      const clear = new Uint8Array([0x0b, 0x81, 0x01, 0x43])
+      setHash(factory, Bytes.fromBase64(programHash(FAKE_PROGRAM, clear)))
+      // Same official byte sequence, but the first clear byte is moved into the approval program. The length prefix
+      // binds the split, so this must not match the official hash.
+      const splitApproval = new Uint8Array([...FAKE_PROGRAM, clear[0] ?? 0])
+      const splitClear = clear.slice(1)
+      const app = campaignApp(ctx.defaultSender, splitApproval, splitClear)
+
+      expect(() => {
+        registerAs(factory, app)
+      }).toThrow('not an official kasakame campaign')
+    })
+
     test('rejects a deposit below the registration minimum balance', () => {
       const factory = createFactory()
       const vault = vaultApp(factory)
@@ -372,6 +625,52 @@ describe('Factory', () => {
         expect(() => {
           factory.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: ctx.defaultSender, amount: REGISTER_MBR }))
         }).toThrow('payment must be made to the factory')
+      })
+    })
+
+    test('rejects a registration payment that closes the sender account', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      setHash(factory)
+      const app = campaignApp()
+      const factoryAddress = ctx.ledger.getApplicationForContract(factory).address
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.register(
+            app,
+            ctx.any.txn.payment({
+              sender: ctx.defaultSender,
+              receiver: factoryAddress,
+              amount: REGISTER_MBR,
+              closeRemainderTo: factoryAddress,
+            }),
+          )
+        }).toThrow('payment must not close')
+      })
+    })
+
+    test('rejects a registration payment that rekeys the sender', () => {
+      const factory = createFactory()
+      const vault = vaultApp(factory)
+      setVault(factory, vault)
+      setHash(factory)
+      const app = campaignApp()
+      const factoryAddress = ctx.ledger.getApplicationForContract(factory).address
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.register(
+            app,
+            ctx.any.txn.payment({
+              sender: ctx.defaultSender,
+              receiver: factoryAddress,
+              amount: REGISTER_MBR,
+              rekeyTo: ctx.any.account(),
+            }),
+          )
+        }).toThrow('payment must not rekey')
       })
     })
 

@@ -1,10 +1,10 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import { resolveDeployerAccount } from '../deployer'
+import { programHash } from '../program-hash'
 
 /**
  * Deploys the platform's `Factory` application - the canonical campaign registry.
@@ -40,18 +40,20 @@ export async function deploy() {
     amount: microAlgos(1_000_000n),
   })
 
-  // The official Campaign program hash: SHA-256 over the compiled approval + clear-state programs, exactly what `register()` verifies.
-  const campaignApprovalTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.approval.teal'), 'utf8')
-  const campaignClearTeal = fs.readFileSync(path.resolve(__dirname, '../artifacts/campaign/Campaign.clear.teal'), 'utf8')
-  const compiledApproval = await algorand.app.compileTeal(campaignApprovalTeal)
-  const compiledClear = await algorand.app.compileTeal(campaignClearTeal)
-  const programHash = createHash('sha256')
-    .update(Buffer.concat([compiledApproval.compiledBase64ToBytes, compiledClear.compiledBase64ToBytes]))
-    .digest()
+  // The official Campaign program hash, from the ARC-56 bytecode (exactly what the SDK/AppFactory deploys) - not
+  // recompiled TEAL, which could differ across assembler versions.
+  const campaignSpecPath = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
+  const campaignSpec = JSON.parse(fs.readFileSync(campaignSpecPath, 'utf8')) as Arc56Contract
+  if (campaignSpec.byteCode === undefined) {
+    throw new Error('Campaign.arc56.json has no byteCode; run `npm run build` first.')
+  }
+  const approvalProgram = Buffer.from(campaignSpec.byteCode.approval, 'base64')
+  const clearStateProgram = Buffer.from(campaignSpec.byteCode.clear, 'base64')
 
+  // This is the Factory's first hash, so it is set immediately; later changes go through the propose/apply timelock.
   await appClient.send.call({
     method: 'setApprovalHash(byte[])void',
-    args: [programHash],
+    args: [programHash(approvalProgram, clearStateProgram)],
     sender: deployer.addr,
   })
 

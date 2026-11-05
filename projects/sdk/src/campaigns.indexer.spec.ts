@@ -208,6 +208,16 @@ describe('isRegistered', () => {
     await expect(isRegistered(42n)).resolves.toBe(false)
   })
 
+  it('returns false when algod reports the registration box missing', async () => {
+    registeredValueMock.mockRejectedValue(new Error('Network request error. Received status 404 (Not Found): box not found'))
+    await expect(isRegistered(42n)).resolves.toBe(false)
+  })
+
+  it('rethrows other registration read errors', async () => {
+    registeredValueMock.mockRejectedValue(new Error('algod unavailable'))
+    await expect(isRegistered(42n)).rejects.toThrow('algod unavailable')
+  })
+
   it('returns false without a configured Factory', async () => {
     configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
     await expect(isRegistered(42n)).resolves.toBe(false)

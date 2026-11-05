@@ -1,6 +1,6 @@
 # Campaign contract
 
-This page is the reference for the Campaign app: its state, its methods, and the rules each method enforces. The tree math behind pledges and refunds is in [`claim-tree-protocol.md`](claim-tree-protocol.md); the system around the contract is in [`architecture.md`](architecture.md).
+This page is the reference for the Campaign app: its state, its methods, and the rules each method enforces. The tree math behind pledges and refunds is in [`claim-tree-protocol.md`](claim-tree-protocol.md); the system around the contract is in [`architecture.md`](architecture.md). Compiled sizes, page counts, MBR, and fee formulas are in [`limits.md`](limits.md).
 
 The chain is the source of truth; the indexer is a read model. Escrow and fee behavior below is verified on LocalNet.
 
@@ -32,7 +32,7 @@ The contract owns the root; the frontend owns reconstruction. A stale or forged 
 | `title` | bytes | `create` | Short on-chain title, max 128 bytes |
 | `metadataUri` | bytes | `create` | Off-chain metadata pointer (ARC-3-style JSON), max 128 bytes |
 | `goal` | uint64 | `create` | Raise target in microAlgos, must be > 0 |
-| `deadline` | uint64 | `create` | UNIX seconds; must be in the future at creation |
+| `deadline` | uint64 | `create` | UNIX seconds; must be in the future and at most 180 days after creation |
 | `raised` | uint64 | pledges/spends | Live pledged total; rises on `pledge`, falls on `cancelPledge`/`refund` |
 | `status` | uint64 | settlement | `0 = Open`, `1 = Failed`, `2 = Claimed` |
 | `root` | bytes32 | pledges/spends | Current Merkle root |
@@ -74,7 +74,7 @@ Transitions:
 | `claim()` | creator | after deadline, goal met | Vault pays the creator `paidIn - paidOut`; writes `Claimed` |
 | `delete()` | creator | settled, or open with no live pledges | Settles through the vault, pays leftover balance to the creator, closes the app |
 
-`create` rejects an empty title, a title or URI over 128 bytes, a zero goal, and a past deadline. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, with a zero amount, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
+`create` rejects an empty title, a title or URI over 128 bytes, a zero goal, a past deadline, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
 
 ## Pledge accounting
 
@@ -97,8 +97,8 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
-7. **Creator pays the way.** Nothing funds the campaign app itself. Creation costs the creator the global-schema sponsorship floor on their own account plus the 18,900 µA registration deposit (≈ 0.24 ALGO combined), all of it returned O(1) in the atomic `[unregister, delete]` group. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`.
-8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain creator updates feed ([`roadmap.md`](roadmap.md)), and mutability can return later via the off-chain JSON.
+7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,088 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~5,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
+8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain [creator updates feed](https://github.com/kasakame/kasakame/issues/58), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
 
@@ -131,20 +131,25 @@ Inner calls authenticate the caller as the campaign app address; top-level calls
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (37 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (44 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 
-Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees.
+Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the fixed SDK extras, is in [`limits.md`](limits.md).
 
-| Call | Cost |
-| --- | --- |
-| pledge group (pay + pledge + credit) | 4,000 µA |
-| `cancelPledge` / `refund` / vault `refund` (app call + OpUp iteration + payout call) | 4,000 µA |
-| `claim` (app call + inner app call + inner payment) | 3,000 µA |
-| `delete` (settle/notify + escrow close) | 3,000 µA |
-| `settleOpen` (no inners) | 1,000 µA |
-| `finalize` | 2,000 µA with residual, 1,000 µA without |
+| Call | SDK total | Minimum (small tree) | Notes |
+| --- | ---: | ---: | --- |
+| create + register | 5,000 µA | 5,000 µA | plus 589,900 µA locked (app MBR + deposit) |
+| pledge group (pay + pledge + credit) | 4,000 µA | 4,000 µA first touch, 3,000 µA later | first touch runs the inner Factory check |
+| `cancelPledge` / campaign `refund` | 4,000 µA | 2,000 µA | app call + inner `payBack` + OpUp |
+| vault `refund` | 4,000 µA | 1,000 µA | app call + OpUp |
+| `claim` | 3,000 µA | 3,000 µA | app call + inner `payClaim` + inner payment |
+| `[unregister, delete]` | 5,000 µA | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
+| `delete` alone (campaign) | 3,000 µA | 3,000 µA | settle/notify + escrow close |
+| `Factory.unregister` alone | 2,000 µA | 2,000 µA | unregister + inner deposit |
+| `settleOpen` (no inners) | 1,000 µA | 1,000 µA | permissionless; not exposed in the SDK/CLI yet |
+| `finalize` | 2,000 µA with residual, 1,000 µA without | same | permissionless; not exposed yet |
+| `releaseClaimed` | 1,000 µA | 1,000 µA | permissionless; not exposed yet |
 
 ## Implementation notes
 
@@ -152,4 +157,4 @@ Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 
 2. **Two encoding rules for raw inner appArgs** (see the vault interaction above). ABI-encode dynamic types: the settle `root` (`byte[]`) carries its uint16 length prefix. Static `uint64`/`address` args go raw.
 3. **Delete path.** `delete()` uses the dedicated `send.delete` path (or a manual composer group with `DeleteApplicationOC`). `send.call` with an `onComplete` override mis-encodes the call.
 4. **No `updatable`/`deletable` flags.** Do not pass them to `factory.send.create`; the contract TEAL has no deploy-time templates for them.
-5. **Factory program hash.** Registration compares the full SHA-256 over the approval **and clear-state** programs. After any contract rebuild, set the new hash on the Factory before registering.
+5. **Factory program hash.** Registration compares `sha256(itob(approval.length) ‖ approval ‖ clear)` over the approval **and clear-state** programs. The 8-byte length prefix binds the approval/clear split, so moving bytes between the two programs changes the hash. The deploy script hashes the ARC-56 bytecode, exactly what the SDK/AppFactory deploys. A new Factory sets the first hash immediately; an existing Factory must `proposeApprovalHash`, wait `APPROVAL_HASH_DELAY` (~7 days), then `applyApprovalHash`. Old registrations stay valid; the new hash only gates future registrations. See [`limits.md`](limits.md) and [`architecture.md`](architecture.md#factory-governance-and-revocation).

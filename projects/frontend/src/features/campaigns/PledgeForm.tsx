@@ -13,6 +13,9 @@ interface PledgeFormProps {
   onPledged: () => void
 }
 
+// Keep in sync with Campaign.MIN_PLEDGE_MICROALGOS.
+const MIN_PLEDGE_MICROALGOS = 100_000n
+
 const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
   const { activeAddress, activeWallet, transactionSigner } = useWallet()
   const [amount, setAmount] = useState('')
@@ -31,6 +34,10 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
     try {
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
       const microAlgos = parseAlgoToMicroAlgos(amount)
+      if (microAlgos < MIN_PLEDGE_MICROALGOS) {
+        setMessage('Minimum pledge is 0.1 ALGO.')
+        return
+      }
       await pledge(appId, { address: activeAddress, signer: transactionSigner }, microAlgos)
       setAmount('')
       setMessage('Pledge sent!')

@@ -1,0 +1,66 @@
+name: Bug report
+description: Something is broken.
+type: Bug
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is broken, who is affected, and why it matters. Add the context a maintainer needs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected-actual
+    attributes:
+      label: Expected vs actual
+      description: What should happen, and what happens instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Start from a known state and number each step.
+      placeholder: |
+        1. Go to ...
+        2. Click ...
+        3. See ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Fill in what applies; write "N/A" for the rest.
+      value: |
+        - Network:
+        - Browser:
+        - Wallet:
+        - OS:
+        - App version:
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Definition of done
+      description: Maintainer-owned - the fix and the regression test that proves it. Reporters can leave this blank.
+      value: |
+        - [ ]
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. Formatted as a code block.
+      render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or links
+      description: Screenshots, recordings, or links to the failing run.
+    validations:
+      required: false
