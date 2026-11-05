@@ -3,10 +3,14 @@ description: A scoped unit of work.
 type: Task
 body:
   - type: textarea
-    id: description
+    id: context
     attributes:
-      label: Description
-      description: What changes and why. Keep it to one or two sentences.
+      label: Context
+      description: What needs to change, why it matters, and the background a reader needs to start. Link related issues, docs, or decisions.
+      placeholder: |
+        Current behavior:
+        Why it matters:
+        Relevant decisions or links:
     validations:
       required: true
   - type: textarea

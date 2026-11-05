@@ -95,9 +95,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- Work on a branch per issue (`type/issue-number-slug`), open a PR with
-  `Fixes #N`, and never push to `main`. Do not create worktrees or merge a PR
-  without explicit approval.
+- Work on a branch per issue (`type/issue-number-slug`), open a PR that links the
+  issue in **Related issues**, and never push to `main`. Do not create worktrees
+  or merge a PR without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
@@ -281,8 +281,9 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
 
 ## Definition of done
 
-A ticket is done when its acceptance criteria are met and the PR that closes it
-(`Fixes #N`) is merged. Before opening the PR, run the checks from
+A ticket is done when its acceptance criteria are met and the PR that links it
+is merged. Close the issue after merge unless the PR uses a closing keyword
+(`Closes #N`). Before opening the PR, run the checks from
 [Commands](#commands) in order - format, lint, check-types, then the relevant test
 suite - and fix everything until green. Don't skip a step because the change
 "looks small."
@@ -305,10 +306,9 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - No body unless needed; when present, explain the "why" as a short bullet list.
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
-  - The title is the change name in Conventional Commit form; do not put `Fixes #N`
-    in the title.
-  - Put `Fixes #N` in the body so the issue closes on merge; use `Refs #N` for
-    related issues that should stay open.
+  - The title is the change name in Conventional Commit form.
+  - Link the issue in the **Related issues** section, e.g. `#N`. GitHub closes it
+    on merge only if you add `Closes #N`; otherwise close it after merge.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
   - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
     directly.
@@ -325,9 +325,11 @@ not in a Markdown checklist.
   `frontend / UX clarity`). They are issues of type `Epic` and may stay open
   indefinitely.
 - **Tickets:** type `Task`, `Bug`, or `Feature`; sub-issue of an epic. Use the
-  forms in `.github/ISSUE_TEMPLATE/` and keep the body short: Description,
-  Acceptance criteria, Out of scope, Links; bugs add Expected vs actual, Steps to
-  reproduce, Environment, Evidence.
+  forms in `.github/ISSUE_TEMPLATE/` and give the ticket context: what changes,
+  why it matters, the background a reader needs, acceptance criteria, out of
+  scope, and links. Bugs add what happened, expected vs actual, steps,
+  environment, logs, and screenshots. Update the body as decisions land; the
+  migrated one-line roadmap summaries are a starting point, not the spec.
 - **Fields:** `Component` (single select), `Priority` (`P1`-`P3`), `Target date`;
   `Status` is the project flow (`Todo`, `In Progress`, `Done`).
 - **Milestones:** `v0.2.0` is the coordinated release. Use a version milestone

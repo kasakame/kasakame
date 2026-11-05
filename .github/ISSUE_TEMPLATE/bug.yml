@@ -1,4 +1,4 @@
-name: Bug
+name: Bug report
 description: Something is broken.
 type: Bug
 body:
@@ -6,7 +6,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: A concise description of the bug.
+      description: What is broken, who is affected, and why it matters. Add the context a maintainer needs.
     validations:
       required: true
   - type: textarea
@@ -27,28 +27,40 @@ body:
         3. See ...
     validations:
       required: true
-  - type: input
+  - type: textarea
     id: environment
     attributes:
       label: Environment
-      description: Network, browser, wallet, OS, and app version.
-      placeholder: "LocalNet, Chrome 140, Defly 6.x, Linux"
-    validations:
-      required: false
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: Acceptance criteria
-      description: The fix and the regression test that proves it.
+      description: Fill in what applies; write "N/A" for the rest.
       value: |
-        - [ ]
+        - Network:
+        - Browser:
+        - Wallet:
+        - OS:
+        - App version:
     validations:
       required: true
   - type: textarea
-    id: evidence
+    id: acceptance
     attributes:
-      label: Evidence
-      description: Logs, screenshots, or links. Logs are formatted automatically.
+      label: Definition of done
+      description: Maintainer-owned - the fix and the regression test that proves it. Reporters can leave this blank.
+      value: |
+        - [ ]
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. Formatted as a code block.
       render: shell
+    validations:
+      required: false
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots or links
+      description: Screenshots, recordings, or links to the failing run.
     validations:
       required: false
