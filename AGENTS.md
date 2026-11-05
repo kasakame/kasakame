@@ -95,9 +95,10 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- Work on a branch per issue (`type/issue-number-slug`), open a PR that links the
-  issue in **Related issues**, and never push to `main`. Do not create worktrees
-  or merge a PR without explicit approval.
+- Work on a branch per issue (`type/issue-number-slug`), created with
+  `gh issue develop <N> --name type/N-slug --checkout` so the PR attaches to the
+  issue automatically, and never push to `main`. Do not create worktrees or merge
+  a PR without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
@@ -282,8 +283,9 @@ Current footprint (2026-11-04, `npm run build`; app MBR measured on LocalNet):
 ## Definition of done
 
 A ticket is done when its acceptance criteria are met and the PR that links it
-is merged. Close the issue after merge unless the PR uses a closing keyword
-(`Closes #N`). Before opening the PR, run the checks from
+is merged. GitHub closes the issue on merge when the PR uses a closing keyword
+(`Closes #N`) or was opened from a `gh issue develop` branch; otherwise close it
+after merge. Before opening the PR, run the checks from
 [Commands](#commands) in order - format, lint, check-types, then the relevant test
 suite - and fix everything until green. Don't skip a step because the change
 "looks small."
@@ -307,8 +309,9 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
   - The title is the change name in Conventional Commit form.
-  - Link the issue in the **Related issues** section, e.g. `#N`. GitHub closes it
-    on merge only if you add `Closes #N`; otherwise close it after merge.
+  - Link the issue in the **Related issues** section, e.g. `#N`. A PR from a
+    `gh issue develop` branch closes it on merge automatically; otherwise add
+    `Closes #N` (a bare `#N` only references it). Close it after merge if open.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
   - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
     directly.

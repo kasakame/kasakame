@@ -18,4 +18,4 @@
 
 ## Related issues
 
-<!-- Link related issues, e.g. #123 or #123, #124. -->
+<!-- Write `Closes #123` so GitHub closes the issue on merge; a bare `#123` only references it. -->
