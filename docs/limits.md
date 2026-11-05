@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,077 B | 4 B | 2,081 B | 1 (2 pages) | 4,096 B | 2,015 B |
+| Campaign | 2,084 B | 4 B | 2,088 B | 1 (2 pages) | 4,096 B | 2,008 B |
 | ClaimsVault | 2,755 B | 4 B | 2,759 B | 1 (2 pages) | 4,096 B | 1,337 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **33 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 33 B would return it to
+The campaign is **40 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 40 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 ## Current app MBR and storage
@@ -101,6 +101,12 @@ campaign's vault box therefore stays live for at most the campaign duration plus
 the 730-day refund window (~2.5 years), instead of being pinnable indefinitely by
 a 1 µA pledge. This is a backstop, not a product limit: Kickstarter and Indiegogo
 cap at 60 days, and 180 leaves room for extended raises.
+
+## Minimum pledge
+
+`Campaign.pledge` rejects payments below 0.1 ALGO (100,000 µA), about 3× the
+vault box MBR and 100× the minimum transaction fee. The floor removes 1 µA dust
+while keeping micro-pledges possible; the principal stays refundable.
 
 ## Current creator cost (create a campaign)
 

@@ -51,6 +51,9 @@ const MAX_BYTES_PER_STATE_KEY = 128
 // Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
 const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 
+// Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
+const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
+
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')
 
@@ -163,6 +166,7 @@ export class Campaign extends Contract {
     assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
+    assert(payment.amount >= MIN_PLEDGE_MICROALGOS, 'pledge below minimum')
 
     const n = this.n.value
     const p = this.popcount(n)
