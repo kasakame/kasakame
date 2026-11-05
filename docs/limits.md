@@ -27,7 +27,7 @@ not the `.teal` source size. Re-measure after any contract change.
 | Stack | 1,000 entries; byte array ≤ 4,096 B | `MaxStackDepth`, `MaxStackSize` |
 | Logs | 32 calls, 1,024 B each | not used by these contracts |
 | Minimum fee | 1,000 µA per txn | `MinTxnFee` |
-| Larger-transaction fee | +1,000 µA per 1,000 B | a 2,267 B create txn needs 3,000 µA; inner txn fees are paid from the group fee pool |
+| Larger-transaction fee | +1,000 µA per 1,000 B | a 2,267 B transaction needs 3,000 µA; inner txn fees are paid from the group fee pool |
 | Account base MBR | 100,000 µA | app accounts with boxes must hold this; the campaign app account holds 0 |
 | App creation MBR | 100,000 + 50,000 × global bytes + 28,500 × global uints + 100,000 × extra pages | charged to the creator |
 | App opt-in MBR | 100,000 + 50,000 × local bytes + 28,500 × local uints | charged to the opted-in account; not used |
@@ -121,19 +121,19 @@ The create flow is `[create app call]` then `[deposit payment, register app call
 | --- | ---: | --- |
 | Campaign app MBR | 571,000 µA | locked on the creator's account; released on `delete` |
 | Registration deposit | 18,900 µA | paid to the Factory; returned by `unregister` |
-| Create app-call fee | 3,000 µA | spent (2,267 B txn) |
+| Create app-call fee | 1,000 µA | spent |
 | Deposit payment fee | 1,000 µA | spent |
 | Register app-call fee | 1,000 µA | spent |
 | **Total capital locked** | **589,900 µA (~0.59 ALGO)** | recoverable on `[unregister, delete]` |
-| **Total fees spent** | **5,000 µA** | not recoverable |
+| **Total fees spent** | **3,000 µA** | not recoverable |
 
 The current campaign is 2 pages, so the creator locks **~0.59 ALGO**. The 1-page
 target is **~0.49 ALGO**: 471,000 app MBR + 18,900 deposit = 489,900 µA. An extra
 page adds 100,000 µA. The create flow does **not** fund the campaign app account
 and does **not** pay the vault box MBR.
 
-A create followed immediately by delete spends about 5,000 µA (create fees) +
-5,000 µA (cleanup fees) = ~10,000 µA, and returns the 589,900 µA capital.
+A create followed immediately by delete spends about 3,000 µA (create fees) +
+5,000 µA (cleanup fees) = ~8,000 µA, and returns the 589,900 µA capital.
 
 ## Current transaction fees
 
@@ -143,7 +143,7 @@ needed, so the SDK overpays on small campaigns.
 
 | Action | Transactions | SDK total | Minimum (small tree) | Notes |
 | --- | --- | ---: | ---: | --- |
-| Create + register | create + deposit + register | 5,000 µA | 5,000 µA | create txn is 2,267 B → 3,000 µA |
+| Create + register | create + deposit + register | 5,000 µA | 3,000 µA | SDK budgets 5,000; measured on-chain 3,000 |
 | Pledge (first touch) | pay + pledge + credit + inner `isRegistered` | 4,000 µA | 4,000 µA | first pledge opens the vault box |
 | Pledge (later) | pay + pledge + credit | 4,000 µA | 3,000 µA | SDK still pays the 1,000 µA extra |
 | Cancel / refund, campaign path | campaign + inner `payBack` + OpUp | 4,000 µA | 2,000 µA | `FEE_SPEND_EXTRA = 3,000` |

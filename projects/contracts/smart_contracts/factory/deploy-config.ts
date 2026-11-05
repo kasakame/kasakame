@@ -3,7 +3,7 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveDeployerAccount } from '../deployer'
+import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from '../deployer'
 import { programHash } from '../program-hash'
 
 /**
@@ -37,7 +37,7 @@ export async function deploy() {
   await algorand.send.payment({
     sender: deployer.addr,
     receiver: appClient.appAddress,
-    amount: microAlgos(1_000_000n),
+    amount: microAlgos(PLATFORM_STORAGE_RESERVE),
   })
 
   // The official Campaign program hash, from the ARC-56 bytecode (exactly what the SDK/AppFactory deploys) - not

@@ -3,7 +3,7 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveDeployerAccount } from '../deployer'
+import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from '../deployer'
 import { programHash } from '../program-hash'
 
 /** Default refund window: 730 days, per the spec recommendation. */
@@ -104,7 +104,7 @@ export async function deploy() {
   await algorand.send.payment({
     sender: deployer.addr,
     receiver: appClient.appAddress,
-    amount: microAlgos(1_000_000n),
+    amount: microAlgos(PLATFORM_STORAGE_RESERVE),
   })
 
   // Bind the vault to the Factory (owner-only, one-time). The Factory is deployed first, so the binding happens here.

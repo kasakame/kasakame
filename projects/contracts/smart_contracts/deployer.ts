@@ -4,6 +4,9 @@ import type { Address } from 'algosdk'
 import { addressWithSignersFromRawEd25519Signer, encodeAddress } from 'algosdk'
 import { mnemonicToSeedSync } from 'bip39'
 
+/** Platform storage reserve funded to each app account at deploy: 1 ALGO. */
+export const PLATFORM_STORAGE_RESERVE = 1_000_000n
+
 type XhdWalletModule = typeof XhdWalletApi
 
 // CommonJS transpilation of dynamic imports can turn them into `require`, which cannot load this ESM-only

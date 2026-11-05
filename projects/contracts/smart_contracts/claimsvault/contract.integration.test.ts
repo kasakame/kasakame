@@ -27,6 +27,8 @@ const GOAL = 10n * ALGO
 const WINDOW = 3_600n
 const REGISTER_MBR = 18_900n
 const BOX_MBR = 32_100n
+const APP_BASE = 100_000n
+const DEPLOY_FUNDING = 1_000_000n
 const Z_HEX = '00'.repeat(32)
 
 const FEE_CREDIT_FIRST = 2n * FEE // base + inner factory check pool
@@ -386,6 +388,8 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
 
     const vaultBal0 = await balanceOf(vaultAddress)
     const vaultMin0 = await minBalanceOf(vaultAddress)
+    expect(vaultBal0).toEqual(DEPLOY_FUNDING)
+    expect(vaultMin0).toEqual(APP_BASE)
     const balB0 = await balanceOf(backer.addr.toString())
     await pledge(appId, backer.addr.toString(), 2n * ALGO, tree)
 
@@ -459,6 +463,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     expect(await balanceOf(addr)).toEqual(balB + 2n * ALGO - FEE_VAULT_REFUND)
     const dup = tree.cmd('path', '0') as OraclePath
     const blob = concatHex([...dup.siblings, ...(dup.top === null ? [] : [dup.top]), ...dup.lower])
+    const balBDup = await balanceOf(addr)
     await expect(
       vaultClient.send.call({
         method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
@@ -469,6 +474,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/proof does not match root/)
+    expect(await balanceOf(addr)).toEqual(balBDup)
 
     // Nothing left: finalize deletes the box with no payment even before the window closes (fully paid out).
     const vaultMin = await minBalanceOf(vaultAddress)
@@ -494,6 +500,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
 
     // Pay + credit with no pledge call: the vault requires the pledge immediately before credit, so this is rejected and
     // no box is created. A donation must be expressed as a pledge (a backer who chooses not to refund).
+    const balBefore = await balanceOf(addr)
     const pay = await algorand.createTransaction.payment({ sender: addr, receiver: vaultAddress, amount: microAlgos(ALGO) })
     const composer = algorand.send.newGroup()
     composer.addTransaction(pay)
@@ -507,6 +514,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       extraFee: microAlgos(FEE),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
+    expect(await balanceOf(addr)).toEqual(balBefore)
     expect(await boxExists(appId)).toEqual(false)
   })
 
@@ -515,6 +523,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const { appId } = await deployCampaign(creator.addr.toString())
 
+    const balBefore = await balanceOf(backer.addr.toString())
     const pay = await algorand.createTransaction.payment({
       sender: backer.addr,
       receiver: vaultAddress,
@@ -536,6 +545,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
     }
 
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/final transaction in the group/)
+    expect(await balanceOf(backer.addr.toString())).toEqual(balBefore)
     expect(await boxExists(appId)).toEqual(false)
   })
 
@@ -598,6 +608,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
 
     const vaultBal0 = await balanceOf(vaultAddress)
     const vaultMin0 = await minBalanceOf(vaultAddress)
+    const strangerBefore = await balanceOf(stranger.addr.toString())
     await vaultClient.send.call({
       method: 'releaseClaimed(uint64)void',
       args: [appId],
@@ -605,6 +616,7 @@ describe('ClaimsVault pooling + settlement (localnet)', () => {
       boxReferences: [vaultBoxRef(appId)],
       suppressLog: true,
     })
+    expect(await balanceOf(stranger.addr.toString())).toEqual(strangerBefore - FEE)
     expect(await boxExists(appId)).toEqual(false)
     expect(await balanceOf(vaultAddress)).toEqual(vaultBal0)
     expect(await minBalanceOf(vaultAddress)).toEqual(vaultMin0 - BOX_MBR)

@@ -53,7 +53,7 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
 | Program size | 2,048 B combined approval + clear base; +2,048 B per extra page; 3 extra pages without surcharge (up to 7 with a fee surcharge on newer consensus) | `MaxAppTotalProgramLen`, `MaxExtraAppProgramPages`; [`limits.md`](limits.md) |
 | Inner transactions | 16 per app call; 256 per group | `MaxInnerTransactions`; [`limits.md`](limits.md) |
 | Box | 2,500 + 400×(name+value) µA MBR; name ≤ 64 B, value ≤ 32 KB; 8 refs/call; 2,048 B IO budget per ref | docs, `consensus.go` v36, repo constants |
-| App opt-in (local state) MBR | 100,000 + 25,000/byte-slice + 3,500/uint, on the **opted-in account**; app deletion does **not** release it | `userBalance.go`, `deleteApplication` |
+| App opt-in (local state) MBR | 100,000 + 50,000/byte-slice + 28,500/uint, on the **opted-in account**; app deletion does **not** release it | `userBalance.go`, `deleteApplication` |
 | No history access | `block` = header fields only; no opcode reads past transactions or logs; no state-proof verification | `opcodes.go` |
 
 ## 2. Formal protocol definition

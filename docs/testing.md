@@ -137,38 +137,34 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 21 tests across 3 files).
+`npm run test:integration` in `projects/contracts`; 22 tests across 3 files).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
 parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 44 campaign +
-73 vault + 63 factory + 2 deployer + 8 deploy-config tests = 190, all green with
+Offline specs live next to each contract (`contract.algo.spec.ts`: 48 campaign +
+73 vault + 63 factory + 3 deployer + 8 deploy-config tests = 195, all green with
 100% line/branch/function coverage).
 
-**Ledger accounting.** The lifecycle integration tests assert the money ledger,
-µA-exact, for the actors involved: balance and minimum-balance deltas per
-account, the fee totals of each operation (measured on LocalNet - the pledge
-group costs 4000 µA, spends and vault refunds 4000 µA, claims 3000 µA), the
-vault pool movement, the parked box MBR (32,100 µA per campaign box on the
-vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
+**Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
+for the actors involved: absolute balance and minimum-balance checks at each
+boundary (creator app MBR and deposit, Factory and Vault deployer app MBRs, app
+account bases, box MBRs), the fee totals of each operation (measured on LocalNet -
+the pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims
+3000 µA), the vault pool movement, the parked box MBR (32,100 µA per campaign box
+on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
 `[unregister, delete]` group). Rejected transactions are asserted to move
-**nothing** (atomic failure charges no fee).
+**nothing** (atomic failure charges no fee). The expected app MBRs come from
+`size-budget.fixture.ts`, so a schema or page change fails until the fixture and
+`docs/limits.md` are updated.
 
-These assertions are relative deltas. The absolute app MBR of each deployed app
-is **not** asserted yet, which is how the 2026-11-04 MBR arithmetic error
-(321,000 vs the real 571,000) went unnoticed: every test funded its accounts
-generously and compared before/after. An absolute per-wallet/per-app
-minimum-balance suite is tracked in [#75](https://github.com/kasakame/kasakame/issues/75). The current size/MBR/fee table
-is in [`limits.md`](limits.md).
-
-**Contract sizes.** The compiled approval/clear bytes, page count, and app MBR
-are **not** asserted by a test yet. The measurement command is in
-[`limits.md`](limits.md#measure-the-current-sizes); a size-budget regression test
-is tracked in [#76](https://github.com/kasakame/kasakame/issues/76).
+**Contract sizes.** `npm run test:size` reads the built ARC-56 bytecode and pins
+the approval/clear bytes, page count, schema, and app MBR in
+`smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+job after `npm run build`. See [`limits.md`](limits.md) for the current values.
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
 reference oracle (`smart_contracts/oracle.py`, backed by
@@ -184,7 +180,7 @@ Factory + ClaimsVault + Campaign.
 
 | # | Test | Verifies |
 | --- | --- | --- |
-| 1 | embedded selectors match the ARC-56 specs | The four inner-call selectors plus the pledge's `credit` selector appear in the campaign TEAL; the vault embeds the campaign pledge selector; the Factory embeds the campaign delete selector |
+| 1 | embedded selectors and pinned creator totals | The four inner-call selectors plus the pledge's `credit` selector appear in the campaign TEAL; the vault embeds the campaign pledge selector; the Factory embeds the campaign delete selector; the pinned 589,900 locked / 3,000 create-register / 8,000 full-lifecycle totals match `docs/limits.md` |
 | 2 | pledge → cancel → refund lifecycle, differentially verified | Four pledges (one re-pledge) with per-step root/n/raised + `paidIn`; forged-frontier rejection; pre-deadline cancel; non-sequential post-deadline refunds to zero; double-refund rejection |
 | 3 | unregistered campaigns cannot touch the vault | First-touch `credit` fails with `campaign not registered`; no box is created |
 | 4 | inner-only vault methods reject top-level callers | Direct `payBack`/`payClaim`/`settle`/`notifyDelete` fail with `not the campaign app` - the payout authority is unusable off the campaign path |
