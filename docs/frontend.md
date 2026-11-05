@@ -34,7 +34,7 @@ projects/frontend/src/
 │   │   ├── CampaignDetail.tsx      # single campaign + per-leaf pledge/cancel/refund, claim/delete, window banner
 │   │   ├── CampaignImage.tsx       # metadata image with failure fallback
 │   │   ├── CreateCampaignForm.tsx  # create → register action
-│   │   ├── PledgeForm.tsx          # pledge() amount input (+ fee note)
+│   │   ├── PledgeForm.tsx          # pledge() amount input (+ fee note, 0.1 ALGO minimum)
 │   │   └── useCampaignMetadata.ts  # metadata blob fetch hook
 │   └── app/                  # shared app chrome
 │       ├── Nav.tsx                 # brand, wallet button, address badge
