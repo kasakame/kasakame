@@ -25,6 +25,11 @@ reasoning behind the splits.
   clients between projects: it regenerates them from the ARC-56 specs, from the
   downloaded artifacts (`SDK_SPECS=local`) in contracts-changed runs and from
   the pinned release otherwise.
+- **The compiled footprint is gated.** `compile-contracts` runs
+  `npm run test:size` after `npm run build`, so a byte, page, or schema change
+  fails unless `smart_contracts/size-budget.fixture.ts` and `docs/limits.md` are
+  updated. `check-contracts` does not build artifacts, so the size test is
+  excluded from `npm test` and `test:coverage`.
 - **Split by prerequisite, not by phase.** Each project has one verification
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
