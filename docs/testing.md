@@ -42,7 +42,8 @@ Commands:
 - `npm run test:integration` - LocalNet integration tests (requires
   `algokit localnet start` + `npm run build`).
 - `npm run test:size` - contract size budget (requires `npm run build`).
-- `npm run test:all` - all suites (requires `npm run build` for the size budget).
+- `npm run test:all` - every contract suite, including LocalNet integration and the
+  size budget (requires `algokit localnet start` and `npm run build`).
 - `npm run test:coverage` - offline tests with coverage; fails below the
   configured thresholds (see below).
 
@@ -61,6 +62,43 @@ line is covered.
 Run it with `npm run test:coverage`. The thresholds live in
 `vitest.config.mts` and are enforced as a CI gate by the `check-contracts` job
 (see [`ci.md`](ci.md)).
+
+## Suite map
+
+| Suite | File pattern | Command | CI job | Trigger |
+| --- | --- | --- | --- | --- |
+| Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
+| Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
+| Contract LocalNet, normal lane | `**/contract.integration.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
+| Contract LocalNet, heavy lane (planned, #162) | same suite, larger parameters | `npm run test:integration` with the scale config from #162 | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
+| CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
+
+The normal lane uses small, deterministic shapes (4-5 backers, about 10 campaigns).
+The heavy lane raises the same parameters (large N, many campaigns/backers) without
+changing the test code. Counts, N, and seeds are helper parameters, not constants
+inside the suites. The shared cross-project harness is #164.
+
+## Shared LocalNet helpers
+
+The three contract suites import their fixture, oracle, ledger, box, and fee
+helpers from `smart_contracts/testing/localnet.ts`:
+
+- `deployStack` deploys and funds the Factory, deploys and binds the vault, and
+  optionally configures the campaign hash. `deployCampaign`, `registerCampaign`,
+  and `deleteCampaign` assert the create/register/cleanup fees and MBRs.
+- `pledge`, `spendCampaign`, `spendVault`, and `claimCampaign` send the real
+  groups, assert the exact balance/MBR/fee delta for the actor and the vault, and
+  compare campaign state and the vault box with the Python oracle.
+- `ClaimTreeOracle` wraps `oracle.py` with one state file per campaign.
+  `pledgeExtraFee`, `spendExtraFee`, and `spendFee` mirror the contract/SDK take
+  formulas.
+- `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, `registrationBoxRef`,
+  `accountInfo`, `balanceOf`, `minBalanceOf`, `advanceTime`, `concatHex`,
+  `base32ToBytes`, and `addrHex` are the shared primitives.
+
+`testing/localnet.spec.ts` pins the fee formulas and the embedded selectors
+offline, so a contract or SDK formula change fails without LocalNet.
 
 ## Test file naming (important)
 
@@ -140,7 +178,7 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 22 tests across 3 files).
+`npm run test:integration` in `projects/contracts`; 23 tests across 3 files).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
@@ -148,15 +186,17 @@ parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+600s` at deploy) valid.
 Offline specs live next to each contract (`contract.algo.spec.ts`: 48 campaign +
-73 vault + 63 factory + 3 deployer + 8 deploy-config tests = 195, all green with
-100% line/branch/function coverage).
+73 vault + 63 factory + 3 deployer + 8 deploy-config tests = 195) plus 3 helper
+formula/selector tests in `testing/localnet.spec.ts` (198 total), all green with
+100% line/branch/function coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
 for the actors involved: absolute balance and minimum-balance checks at each
 boundary (creator app MBR and deposit, Factory and Vault deployer app MBRs, app
 account bases, box MBRs), the fee totals of each operation (measured on LocalNet -
-the pledge group costs 4000 µA, spends and vault refunds 4000 µA, claims
-3000 µA), the vault pool movement, the parked box MBR (32,100 µA per campaign box
+the pledge group costs 4000 µA at small trees, campaign spends start at 4000 µA,
+vault refunds at 3000 µA, and claims 3000 µA; each OpUp take adds 1000 µA), the
+vault pool movement, the parked box MBR (32,100 µA per campaign box
 on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
 `[unregister, delete]` group). Rejected transactions are asserted to move
@@ -176,7 +216,7 @@ and assert `root`/`n`/`raised` - plus the vault box's `paidIn`/`paidOut` - after
 every step. Forged frontiers, stale proofs, and double-spends are asserted to
 reject with state untouched.
 
-### `smart_contracts/campaign/contract.integration.test.ts` (9 tests)
+### `smart_contracts/campaign/contract.integration.test.ts` (10 tests)
 
 The full claim-tree lifecycle plus the attack matrix, deployed against a real
 Factory + ClaimsVault + Campaign.
@@ -192,29 +232,30 @@ Factory + ClaimsVault + Campaign.
 | 7 | pristine and all-cancelled campaigns delete cleanly | Both clean up through the atomic `[unregister, delete]` group; no-box settle no-ops; fully-cancelled delete settles to `Failed` with nothing owed; `finalize` releases the balanced box immediately |
 | 8 | settleOpen lets a stranger settle a vanished-creator campaign | Permissionless settle from live globals; the campaign path then rejects (box not open) and the vault path serves refunds |
 | 9 | a pledge without the matching vault credit is rejected | `pledge` requires the vault credit immediately next; the group is rejected and n/raised stay 0 |
+| 10 | keeps the pledge group funded past N=15 and refunds a wide path | 40 pledges; an N=40 path refund proves the dynamic budget the old fixed fee underfunded |
 
 ### `smart_contracts/claimsvault/contract.integration.test.ts` (7 tests)
 
 | # | Test | Verifies |
 | --- | --- | --- |
-| 10 | first touch creates the box with exact MBR accounting | Box fields on first pledge; pool total rises by exactly the pledge; minimum balance parks exactly 32,100 µA |
-| 11 | two campaigns share the pool with per-campaign isolation | Draining campaign A leaves B's box (root, `paidOut` 0) untouched; the pool holds exactly B's live pledge |
-| 12 | settleOpen + vault refunds + zero-residual finalize | Stranger settlement; direct refund + double-refund rejection; `finalize` with nothing left deletes the box with no payment even before the window and frees the MBR |
-| 13 | a credit without a pledge is rejected (spec §17 #29) | The vault requires the campaign pledge immediately before `credit`; the group is rejected and no box is created |
-| 14 | a deleted campaign cannot be pledged, so it cannot be credited | The pristine campaign is deleted through the atomic cleanup group (registration removed); a pledge group to the deleted app fails at the pledge call; no box is created |
-| 15 | releaseClaimed recovers a claimed box permissionlessly; delete still works | A stranger deletes the Claimed box and frees its MBR; the creator's later `delete` succeeds because `notifyDelete` is a no-op |
-| 16 | one payment cannot back two credits in one group | The first `credit` is not the group's final transaction (and the second has no preceding pledge); the whole group is rejected and no box is created |
+| 11 | first touch creates the box with exact MBR accounting | Box fields on first pledge; pool total rises by exactly the pledge; minimum balance parks exactly 32,100 µA |
+| 12 | two campaigns share the pool with per-campaign isolation | Draining campaign A leaves B's box (root, `paidOut` 0) untouched; the pool holds exactly B's live pledge |
+| 13 | settleOpen + vault refunds + zero-residual finalize | Stranger settlement; direct refund + double-refund rejection; `finalize` with nothing left deletes the box with no payment even before the window and frees the MBR |
+| 14 | a credit without a pledge is rejected (spec §17 #29) | The vault requires the campaign pledge immediately before `credit`; the group is rejected and no box is created |
+| 15 | a deleted campaign cannot be pledged, so it cannot be credited | The pristine campaign is deleted through the atomic cleanup group (registration removed); a pledge group to the deleted app fails at the pledge call; no box is created |
+| 16 | releaseClaimed recovers a claimed box permissionlessly; delete still works | A stranger deletes the Claimed box and frees its MBR; the creator's later `delete` succeeds because `notifyDelete` is a no-op |
+| 17 | one payment cannot back two credits in one group | The first `credit` is not the group's final transaction (and the second has no preceding pledge); the whole group is rejected and no box is created |
 
 ### `smart_contracts/factory/contract.integration.test.ts` (6 tests)
 
 | # | Test | Verifies |
 | --- | --- | --- |
-| 17 | register/isRegistered/unregister round trip with a real Campaign | Registration against the real deployed program hash and the bound official vault; the deposit lands on the Factory and returns in the atomic `[unregister, delete]` group; `isRegistered` reflects the state |
-| 18 | an impostor copy of the Campaign contract cannot register | The program-hash check rejects a non-official program |
-| 19 | a campaign bound to a different vault cannot register | The Factory's vault binding rejects a campaign whose `vault` global differs |
-| 20 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
-| 21 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
-| 22 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
+| 18 | register/isRegistered/unregister round trip with a real Campaign | Registration against the real deployed program hash and the bound official vault; the deposit lands on the Factory and returns in the atomic `[unregister, delete]` group; `isRegistered` reflects the state |
+| 19 | an impostor copy of the Campaign contract cannot register | The program-hash check rejects a non-official program |
+| 20 | a campaign bound to a different vault cannot register | The Factory's vault binding rejects a campaign whose `vault` global differs |
+| 21 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
+| 22 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
+| 23 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
 
 ## SDK LocalNet integration
 
