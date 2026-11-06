@@ -78,16 +78,17 @@ const FEE_DELETE_EXTRA = 2_000n // inner settle/notify + escrow close
 const FEE_UNREGISTER_EXTRA = 1_000n // inner deposit-back
 
 /**
- * Extra fee for a spend: the two payout inner transactions (the vault `payBack` app call and its payment) plus one
- * 1,000 µA fee per OpUp iteration the contract will request for this path.
+ * Extra fee for a spend: the payout inner transactions for this path plus one 1,000 µA fee per OpUp
+ * iteration the contract will request.
  *
  * @param tree Current tree (its length is N).
  * @param position Leaf position.
+ * @param payoutInners 2 for the campaign path (`payBack` app call + payment), 1 for the vault path (payment).
  * @returns The extra fee in microAlgos.
  */
-function spendExtraFee(tree: TreeState, position: number): bigint {
+function spendExtraFee(tree: TreeState, position: number, payoutInners: 1 | 2): bigint {
   const iterations = refundOpUpIterations(BigInt(tree.leaves.length), BigInt(position))
-  return (2n + BigInt(iterations)) * FEE_MICRO_ALGOS
+  return (BigInt(payoutInners) + BigInt(iterations)) * FEE_MICRO_ALGOS
 }
 
 function campaignClientFor(appId: bigint, session: WalletSession): CampaignClient {
@@ -407,7 +408,7 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
       sender: session.address,
       appReferences: [vaultAppId],
       boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(spendExtraFee(tree, leaf.position)),
+      extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2)),
     })
     return result.confirmation.confirmedRound
   }
@@ -438,7 +439,6 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
   const path = pathBlobForRefund(tree, leaf.position)
   const txid = hexToBytes(leaf.txidHex)
-  const extraFee = microAlgos(spendExtraFee(tree, leaf.position))
   const composer = algorand.send.newGroup()
   const box = await fetchVaultBox(appId)
   if (box !== undefined && box.status === 2) {
@@ -448,7 +448,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         args: { app: appId, k: leaf.position, amount: leaf.amount, txid, path },
         sender: session.address,
         boxReferences: vaultBoxRef(appId),
-        extraFee,
+        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 1)),
       }),
     )
   } else {
@@ -459,7 +459,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         sender: session.address,
         appReferences: [vaultAppId],
         boxReferences: vaultBoxRef(appId),
-        extraFee,
+        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2)),
       }),
     )
   }

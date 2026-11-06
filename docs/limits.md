@@ -115,14 +115,15 @@ while keeping micro-pledges possible; the principal stays refundable.
 
 ## Supported tree size
 
-`Campaign.pledge` rejects a campaign that already has **1,048,575** positions
-(2²⁰ − 1). This is a safety ceiling, not a product target: the worst supported
-refund path is `r = c = 19` (leaf 0 of a `2²⁰ − 1` tree), which needs 14 OpUp
-takes plus the campaign path's inner `payBack` and inner payment - exactly the
-AVM's 16-inner-transaction limit for one app call. The cap counts every position
-ever appended, including cancelled pledges, because positions are never reused.
-Above it the contract rejects the pledge and the SDK fails with a clear
-"maximum size" error.
+`Campaign.pledge` rejects a campaign that already has **524,287** positions
+(2¹⁹ − 1). This is the largest tree whose worst-case refund path fits the AVM's
+16-inner-transaction limit: at `N = 2¹⁹ − 1`, leaf 0 has `r = c = 18`, which
+needs 14 OpUp takes plus the campaign path's inner `payBack` and inner payment =
+16 inner transactions, even with a zero-op prelude. A larger tree can have
+`r = 19, c = 18`, whose 9,950-op target can request a 15th take. The cap counts
+every position ever appended, including cancelled pledges, because positions
+are never reused. Above it the contract rejects the pledge and the SDK fails
+with a clear "maximum size" error.
 
 ## Current creator cost (create a campaign)
 
@@ -156,9 +157,9 @@ use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-prot
 | Action | Transactions | SDK total | Notes |
 | --- | --- | ---: | --- |
 | Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
-| Pledge | pay + `pledge` + `credit` + 0..7 OpUp takes | 4,000-11,000 µA | 4,000 base (includes the first-touch factory check headroom); +1,000 per OpUp take |
+| Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch factory check headroom); +1,000 per OpUp take |
 | Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 OpUp takes | 4,000-17,000 µA | +1,000 per OpUp take; 5,000 at N=4, 7,000 at N=100 |
-| Refund, vault path | vault + inner payment + 0..14 OpUp takes | 4,000-17,000 µA | same extra as the campaign path; overpays by one inner (no `payBack` app call) |
+| Refund, vault path | vault + inner payment + 0..14 OpUp takes | 3,000-16,000 µA | one payout inner; +1,000 per OpUp take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
 | `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
 | `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |

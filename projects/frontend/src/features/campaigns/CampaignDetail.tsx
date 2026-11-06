@@ -45,7 +45,7 @@ interface LeafState {
   items: BackerLeaf[]
 }
 
-const NETWORK_FEE_ALGO = '≈0.004–0.017 ALGO'
+const NETWORK_FEE_ALGO = '≈0.003–0.017 ALGO'
 const CLAIM_FEE_ALGO = '≈0.003 ALGO'
 const DELETE_FEE_ALGO = '≈0.005 ALGO'
 

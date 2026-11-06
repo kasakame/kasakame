@@ -83,7 +83,7 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
       </button>
       {!activeAddress && <p className="mb-3 text-sm text-muted">Connect your wallet to pledge.</p>}
       <p className="text-sm text-muted">
-        Network fee ≈0.004–0.011 ALGO, depending on campaign size. Refunds stay open after failure - no opt-ins needed.
+        Network fee ≈0.004–0.010 ALGO, depending on campaign size. Refunds stay open after failure - no opt-ins needed.
       </p>
       {message && <p className="mt-3 mb-0 text-sm text-muted">{message}</p>}
     </div>

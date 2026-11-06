@@ -331,6 +331,8 @@ describe('transaction helpers', () => {
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
     expect(paramsCampaignRefundMock).not.toHaveBeenCalled()
+    const call = paramsVaultRefundMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(3_000n)
   })
 
   it('refund routes through the campaign when no box exists yet', async () => {

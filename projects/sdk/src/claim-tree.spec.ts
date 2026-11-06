@@ -1,4 +1,7 @@
 import { encodeAddress } from 'algosdk'
+import fs from 'node:fs'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { CLAIM_TREE_VECTORS } from './claim-tree.vectors.js'
 import {
@@ -88,7 +91,7 @@ describe('fee sizing', () => {
     expect(pledgeOpUpIterations(4n)).toEqual(0)
     expect(pledgeOpUpIterations(15n)).toEqual(1)
     expect(pledgeOpUpIterations(1023n)).toEqual(3)
-    expect(pledgeOpUpIterations(MAX_TREE_SIZE)).toEqual(7)
+    expect(pledgeOpUpIterations(MAX_TREE_SIZE)).toEqual(6)
   })
 
   it('computes spend OpUp iterations from the path shape', () => {
@@ -100,8 +103,21 @@ describe('fee sizing', () => {
     expect(refundOpUpIterations(MAX_TREE_SIZE, 0n)).toEqual(14)
   })
 
-  it('pins the supported tree size to 2^20 - 1', () => {
-    expect(MAX_TREE_SIZE).toEqual(1_048_575n)
+  it('pins the supported tree size to 524,287', () => {
+    expect(MAX_TREE_SIZE).toEqual(524_287n)
+  })
+
+  it('matches the contract budget constants', () => {
+    const contracts = fileURLToPath(new URL('../../contracts/smart_contracts', import.meta.url))
+    const campaign = fs.readFileSync(path.join(contracts, 'campaign/contract.algo.ts'), 'utf8')
+    const vault = fs.readFileSync(path.join(contracts, 'claimsvault/contract.algo.ts'), 'utf8')
+    expect(campaign).toContain('const MAX_TREE_SIZE = Uint64(524_287)')
+    expect(campaign).toContain('ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)')
+    for (const source of [campaign, vault]) {
+      expect(source).toContain('let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)')
+      expect(source).toContain('requiredOps = requiredOps + Uint64(100)')
+      expect(source).toContain('ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)')
+    }
   })
 })
 

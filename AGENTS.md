@@ -142,9 +142,10 @@ Current footprint (2026-11-06, `npm run build`; app MBR measured on LocalNet):
   pages, global schema, and app MBR in
   `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
-- **The claim-tree size is capped at 2²⁰ − 1 (1,048,575 positions).** This is the
-  largest tree whose worst-case refund fits the 16-inner-transaction limit (14
-  OpUp takes + `payBack` + payment). `Campaign.MAX_TREE_SIZE` and the SDK's
+- **The claim-tree size is capped at 2¹⁹ − 1 (524,287 positions).** This is the
+  largest tree whose worst-case refund path (`r = c = 18`) fits the
+  16-inner-transaction limit (14 OpUp takes + `payBack` + payment). A larger
+  tree can need a 15th take. `Campaign.MAX_TREE_SIZE` and the SDK's
   `MAX_TREE_SIZE` must stay in sync; the cap counts every appended position,
   including cancelled leaves.
 - **Never silently change the creator cost.** The campaign create cost is a

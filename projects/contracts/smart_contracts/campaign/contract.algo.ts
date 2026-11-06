@@ -54,9 +54,11 @@ const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
-// 2^20 - 1: the largest tree whose worst-case refund path (r = c = 19) fits the 16-inner-txn
-// limit (14 OpUp creates + the payBack app call + its payment). Keep in sync with the SDK's MAX_TREE_SIZE.
-const MAX_TREE_SIZE = Uint64(1_048_575)
+// 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18) needs 14 OpUp
+// takes + payBack + payment = 16 inner txns from any prelude budget. Any larger tree can
+// have r = 19, c = 18, whose target can request a 15th take.
+// Keep in sync with the SDK's MAX_TREE_SIZE.
+const MAX_TREE_SIZE = Uint64(524_287)
 
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')

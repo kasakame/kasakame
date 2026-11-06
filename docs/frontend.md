@@ -314,9 +314,9 @@ target) once settled:
 | Action | Transactions | Estimated network fee |
 | --- | --- | --- |
 | create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.005 ALGO fees + ≈ 0.59 ALGO locked |
-| `pledge()` | 1 payment + 2 app calls + tree-shape OpUp takes | ≈ 0.004-0.011 ALGO |
+| `pledge()` | 1 payment + 2 app calls + tree-shape OpUp takes | ≈ 0.004-0.010 ALGO |
 | `refund()` / `cancelPledge()` | 1 app call + 1 inner app call + 1 inner payment + tree-shape OpUp takes | ≈ 0.004-0.017 ALGO |
-| `refund()` via the vault (post-settle) | 1 app call + 1 inner payment + tree-shape OpUp takes | ≈ 0.004-0.017 ALGO |
+| `refund()` via the vault (post-settle) | 1 app call + 1 inner payment + tree-shape OpUp takes | ≈ 0.003-0.016 ALGO |
 | `claim()` | 1 app call + 1 inner app call + 1 inner payment | ≈ 0.003 ALGO |
 | `[unregister, delete]` | 1 atomic group (2 app calls) + inner txns | ≈ 0.005 ALGO |
 

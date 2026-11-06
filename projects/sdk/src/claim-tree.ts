@@ -252,10 +252,10 @@ export function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop:
 }
 
 /**
- * Maximum campaign tree size (2^20 - 1). Must match `Campaign.MAX_TREE_SIZE`: the largest tree whose worst-case refund
- * path still fits the AVM's 16-inner-transaction limit.
+ * Maximum campaign tree size (2^19 - 1 = 524,287). Must match `Campaign.MAX_TREE_SIZE`: the largest tree whose
+ * worst-case refund path (r = c = 18) needs 14 OpUp takes + two payout inners = 16 inner transactions.
  */
-export const MAX_TREE_SIZE = 1_048_575n
+export const MAX_TREE_SIZE = 524_287n
 
 // Contract budget estimates (docs/claim-tree-protocol.md §14). The available pool is the group's
 // opcode budget minus the method's prelude; these constants are conservative LocalNet measurements.

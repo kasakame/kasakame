@@ -140,9 +140,9 @@ Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 
 | Call | SDK total | Notes |
 | --- | ---: | --- |
 | create + register | 5,000 µA | measured on-chain 3,000; plus 589,900 µA locked (app MBR + deposit) |
-| pledge group (pay + pledge + credit) | 4,000-11,000 µA | 4,000 base; +1,000 per tree-shape OpUp take |
+| pledge group (pay + pledge + credit) | 4,000-10,000 µA | 4,000 base; +1,000 per tree-shape OpUp take |
 | `cancelPledge` / campaign `refund` | 4,000-17,000 µA | outer + inner `payBack` + inner payment; +1,000 per OpUp take |
-| vault `refund` | 4,000-17,000 µA | same extra as the campaign path (overpays one inner) |
+| vault `refund` | 3,000-16,000 µA | outer + inner payment; +1,000 per OpUp take |
 | `claim` | 3,000 µA | app call + inner `payClaim` + inner payment |
 | `[unregister, delete]` | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
 | `delete` component (inside `[unregister, delete]`) | 3,000 µA | settle/notify + escrow close; official campaigns always require the unregister pair |
@@ -153,7 +153,7 @@ Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 
 
 The pledge and spend extras are derived from the tree (`popcount(N)` for a
 pledge, the `(r, c, top)` path shape for a spend); the fee ranges above cover
-the supported tree size, capped at 1,048,575 positions. See
+the supported tree size, capped at 524,287 positions. See
 [`limits.md`](limits.md#supported-tree-size).
 
 ## Implementation notes

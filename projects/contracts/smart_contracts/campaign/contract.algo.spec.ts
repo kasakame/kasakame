@@ -267,7 +267,7 @@ describe('Campaign', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
-      ctx.ledger.setGlobalState(contract, Bytes('n'), 1_048_575)
+      ctx.ledger.setGlobalState(contract, Bytes('n'), 524_287)
       const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
       const group = [
         pay,
@@ -283,7 +283,7 @@ describe('Campaign', () => {
           contract.pledge(pay, Bytes(new Uint8Array()))
         }).toThrow('campaign reached maximum size')
       })
-      expect(contract.n.value).toEqual(1_048_575)
+      expect(contract.n.value).toEqual(524_287)
     })
 
     test('rejects reusing one payment for a second pledge', () => {
