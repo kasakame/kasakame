@@ -34,7 +34,8 @@ import {
 const ALGO = 1_000_000n
 const WINDOW = 3_600n
 const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch factory check)
-const FEE_SPEND = 4_000n // 1 OpUp iteration (create+delete) + payout call
+const FEE_SPEND = 4_000n // outer + 2 payout inners + 1 OpUp take
+const FEE_VAULT_REFUND = 3_000n // outer + 1 payout inner + 1 OpUp take
 const FEE_CLAIM = 3_000n // inner payClaim + inner payment
 
 describe('SDK send path (localnet)', () => {
@@ -217,7 +218,7 @@ describe('SDK send path (localnet)', () => {
     if (leafB === undefined) throw new Error('backer B leaf missing')
     const backerBBefore = await balanceOf(backerB.address)
     await refund(appId, backerB, leafB)
-    expect(await balanceOf(backerB.address)).toEqual(backerBBefore + 2n * ALGO - FEE_SPEND)
+    expect(await balanceOf(backerB.address)).toEqual(backerBBefore + 2n * ALGO - FEE_VAULT_REFUND)
     expect(await fetchMyLeaves(appId, backerB.address)).toEqual([])
     const box = await fetchVaultBox(appId)
     expect(box?.paidIn).toEqual(5n * ALGO)

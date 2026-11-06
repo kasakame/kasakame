@@ -20,6 +20,10 @@ describe('classifyError', () => {
     expect(classifyError(new Error('proof does not match root'))).toBe('stale-proof')
   })
 
+  it('detects the campaign size cap', () => {
+    expect(classifyError(new Error('campaign reached its maximum size; it can no longer accept pledges'))).toBe('max-size')
+  })
+
   it('falls back to unknown', () => {
     expect(classifyError(new Error('boom'))).toBe('unknown')
     expect(classifyError('boom')).toBe('unknown')
@@ -57,5 +61,6 @@ describe('errorMessage', () => {
       'Transaction failed. Another pledge or refund may have landed first - please try again.',
     )
     expect(errorMessage('stale-proof', 'pledge')).toBe('Failed to pledge. Please try again.')
+    expect(errorMessage('max-size', 'pledge')).toBe("This campaign has reached its maximum size and can't accept new pledges.")
   })
 })

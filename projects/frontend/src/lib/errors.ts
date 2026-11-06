@@ -11,11 +11,12 @@
 
 import { isStaleProofError } from '@kasakame/sdk'
 
-export type ErrorKind = 'session' | 'stale-proof' | 'rejected' | 'unknown'
+export type ErrorKind = 'session' | 'stale-proof' | 'max-size' | 'rejected' | 'unknown'
 
 export type FailedAction = 'pledge' | 'create' | 'transaction'
 
 const SESSION_PATTERN = /not initialized correctly|session expired|no session|has disconnected|disconnected|no signer found/i
+const MAX_SIZE_PATTERN = /maximum size|no longer accept pledges/i
 const REJECTION_PATTERN = /\breject|\bdenied|dismissed|cancelled by user|\bcancelled\b/i
 // Connect-flow dismissals (verified against the installed vendor bundles): closing the wallet popup
 // rejects `connect()` with one of these instead of connecting.
@@ -31,6 +32,7 @@ export function classifyError(error: unknown): ErrorKind {
   if (!(error instanceof Error)) return 'unknown'
   if (REJECTION_PATTERN.test(error.message)) return 'rejected'
   if (SESSION_PATTERN.test(error.message)) return 'session'
+  if (MAX_SIZE_PATTERN.test(error.message)) return 'max-size'
   if (isStaleProofError(error)) return 'stale-proof'
   return 'unknown'
 }
@@ -64,8 +66,9 @@ export function isDismissalError(error: unknown): boolean {
  * @param action The action that failed.
  * @returns Message text for the UI.
  */
-export function errorMessage(kind: 'rejected' | 'stale-proof' | 'unknown', action: FailedAction): string {
+export function errorMessage(kind: 'rejected' | 'stale-proof' | 'max-size' | 'unknown', action: FailedAction): string {
   if (kind === 'rejected') return 'Transaction rejected in your wallet.'
+  if (kind === 'max-size') return "This campaign has reached its maximum size and can't accept new pledges."
   switch (action) {
     case 'pledge':
       return 'Failed to pledge. Please try again.'

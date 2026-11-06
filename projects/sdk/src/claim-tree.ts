@@ -252,6 +252,67 @@ export function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop:
 }
 
 /**
+ * Maximum campaign tree size (2^19 - 1 = 524,287). Must match `Campaign.MAX_TREE_SIZE`: the largest tree whose
+ * worst-case refund path (r = c = 18) needs 14 OpUp takes + two payout inners = 16 inner transactions.
+ */
+export const MAX_TREE_SIZE = 524_287n
+
+// Contract budget estimates (docs/claim-tree-protocol.md §14). The available pool is the group's
+// opcode budget minus the method's prelude; these constants are conservative LocalNet measurements.
+const OPUP_BUDGET_PER_ITERATION = 700
+const PLEDGE_AVAILABLE_BUDGET = 1_000
+const SPEND_AVAILABLE_BUDGET = 500
+
+/**
+ * OpUp iterations the campaign will request for a pledge at the current tree size.
+ *
+ * @param n Tree size (positions ever appended).
+ * @returns The number of 700-op budget top-ups.
+ */
+export function pledgeOpUpIterations(n: bigint): number {
+  const required = popcount(n) * 240 + 400
+  return opUpIterations(required, PLEDGE_AVAILABLE_BUDGET)
+}
+
+/**
+ * OpUp iterations the campaign or vault will request for a spend at position `k`.
+ *
+ * @param n Tree size (positions ever appended).
+ * @param k Leaf position.
+ * @returns The number of 700-op budget top-ups.
+ */
+export function refundOpUpIterations(n: bigint, k: bigint): number {
+  const { r, c, hasTop } = pathShape(n, k)
+  const required = r * 250 + c * 250 + (hasTop ? 100 : 0) + 700
+  return opUpIterations(required, SPEND_AVAILABLE_BUDGET)
+}
+
+/**
+ * Number of 700-op top-ups needed to reach the contract's required budget.
+ *
+ * @param required Contract target (`ensureBudget` argument).
+ * @param available Conservative pre-top-up budget.
+ * @returns The iteration count.
+ */
+function opUpIterations(required: number, available: number): number {
+  return Math.max(0, Math.ceil((required + 10 - available) / OPUP_BUDGET_PER_ITERATION))
+}
+
+/**
+ * Count set bits in a uint64-sized value.
+ *
+ * @param n The value.
+ * @returns The popcount.
+ */
+function popcount(n: bigint): number {
+  let count = 0
+  for (let value = n; value > 0n; value >>= 1n) {
+    count += Number(value & 1n)
+  }
+  return count
+}
+
+/**
  * The authentication path for position k against the current leaves.
  *
  * @param state Current tree state.

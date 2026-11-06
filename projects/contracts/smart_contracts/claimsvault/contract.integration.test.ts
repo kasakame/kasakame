@@ -32,7 +32,7 @@ const DEPLOY_FUNDING = 1_000_000n
 const Z_HEX = '00'.repeat(32)
 
 const FEE_CREDIT_FIRST = 2n * FEE // base + inner factory check pool
-const FEE_VAULT_REFUND = 4n * FEE // app call + 1 OpUp iteration (create+delete) + inner payment
+const FEE_VAULT_REFUND = 4n * FEE // app call + 2 OpUp takes + inner payment
 const FEE_FINALIZE_BARE = FEE // app call only
 
 const CAMPAIGN_SPEC_PATH = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')

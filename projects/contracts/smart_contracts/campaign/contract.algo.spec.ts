@@ -263,6 +263,29 @@ describe('Campaign', () => {
       expect(contract.raised.value).toEqual(7_000_000)
     })
 
+    test('rejects a pledge at the supported tree size cap', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      ctx.ledger.setGlobalState(contract, Bytes('n'), 524_287)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(MIN_PLEDGE)],
+        }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        expect(() => {
+          contract.pledge(pay, Bytes(new Uint8Array()))
+        }).toThrow('campaign reached maximum size')
+      })
+      expect(contract.n.value).toEqual(524_287)
+    })
+
     test('rejects reusing one payment for a second pledge', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
