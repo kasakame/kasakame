@@ -90,6 +90,7 @@ heavy lane.
 | `integration/00-deploy.test.ts` | `CON-001`..`CON-003` | `smoke`, `always` | Factory + Vault deploy, hashes, vault binding, app accounts, selectors |
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete; one full solo workflow |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`/`CON-041` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows |
+| `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061` | `happy`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
@@ -101,6 +102,7 @@ cd projects/contracts
 npx vitest run integration/00-deploy.test.ts integration/01-single-campaign.test.ts
 npx vitest run integration/01-single-campaign.test.ts -t "CON-014"
 npx vitest run integration/02-funding.test.ts -t "CON-040"
+npx vitest run integration/03-multi-actor.test.ts -t "CON-060"
 npx vitest run integration --tags-filter="smoke"
 npm run test:integration
 ```
@@ -204,8 +206,8 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 44 tests across 6 files -
-23 legacy tests in 3 files plus the 21 new order `00`-`02` tests).
+`npm run test:integration` in `projects/contracts`; 52 tests across 7 files -
+23 legacy tests in 3 files plus the 29 new order `00`-`03` tests).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
