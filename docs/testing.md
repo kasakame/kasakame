@@ -69,7 +69,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | --- | --- | --- | --- | --- |
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet, normal lane | `**/contract.integration.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
+| Contract LocalNet, normal lane | `integration/*.test.ts`, `**/contract.integration.test.ts` (legacy) | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
 | Contract LocalNet, heavy lane (planned, #162) | same suite, larger parameters | `npm run test:integration` with the scale config from #162 | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
@@ -78,6 +78,30 @@ The normal lane uses small, deterministic shapes (4-5 backers, about 10 campaign
 The heavy lane raises the same parameters (large N, many campaigns/backers) without
 changing the test code. Counts, N, and seeds are helper parameters, not constants
 inside the suites. The shared cross-project harness is #164.
+
+## Incremental test order (in progress)
+
+The new contract integration tests are numbered files. The number is the order;
+tests inside keep their own IDs. Files `00`-`04` are the normal lane, `05` is the
+heavy lane.
+
+| File | Tests | Tags | What it proves |
+| --- | --- | --- | --- |
+| `integration/00-deploy.test.ts` | `CON-001`..`CON-003` | `smoke`, `always` | Factory + Vault deploy, hashes, vault binding, app accounts, selectors |
+| `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete; one full solo workflow |
+
+- `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
+- `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
+- `chain` tests share campaign A and skip the rest of the chain after the first failure.
+- The legacy `smart_contracts/**/contract.integration.test.ts` files still run during the migration.
+
+```bash
+cd projects/contracts
+npx vitest run integration/00-deploy.test.ts integration/01-single-campaign.test.ts
+npx vitest run integration/01-single-campaign.test.ts -t "CON-014"
+npx vitest run integration --tags-filter="smoke"
+npm run test:integration
+```
 
 ## Shared LocalNet helpers
 
@@ -178,7 +202,8 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 23 tests across 3 files).
+`npm run test:integration` in `projects/contracts`; 32 tests across 5 files -
+23 legacy tests in 3 files plus the 9 new order `00`-`01` tests).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -

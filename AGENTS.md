@@ -10,6 +10,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 ## Layout
 
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
+  - `integration/` - ordered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...) with shared setup helpers in `integration/support/`
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
     escrow is never funded and holds nothing
