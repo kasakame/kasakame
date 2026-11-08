@@ -89,6 +89,7 @@ heavy lane.
 | --- | --- | --- | --- |
 | `integration/00-deploy.test.ts` | `CON-001`..`CON-003` | `smoke`, `always` | Factory + Vault deploy, hashes, vault binding, app accounts, selectors |
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete; one full solo workflow |
+| `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`/`CON-041` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
@@ -99,6 +100,7 @@ heavy lane.
 cd projects/contracts
 npx vitest run integration/00-deploy.test.ts integration/01-single-campaign.test.ts
 npx vitest run integration/01-single-campaign.test.ts -t "CON-014"
+npx vitest run integration/02-funding.test.ts -t "CON-040"
 npx vitest run integration --tags-filter="smoke"
 npm run test:integration
 ```
@@ -202,8 +204,8 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 32 tests across 5 files -
-23 legacy tests in 3 files plus the 9 new order `00`-`01` tests).
+`npm run test:integration` in `projects/contracts`; 44 tests across 6 files -
+23 legacy tests in 3 files plus the 21 new order `00`-`02` tests).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
