@@ -59,7 +59,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet normal lane (files 00-04)
-npm run test:integration:heavy   # LocalNet heavy lane (file 05)
+npm run test:integration:heavy   # LocalNet heavy lane (files 05-06)
 
 cd ../frontend
 npm run dev:localnet             # Vite with the LocalNet env (published SDK)

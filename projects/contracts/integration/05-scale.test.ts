@@ -34,79 +34,12 @@ async function createCampaign(fixture: AlgorandFixture, stack: ContractStack, op
   return { ...campaign, oracle: new ClaimTreeOracle('scale-') }
 }
 
-describe('05 scale and heavy lane', () => {
+describe('05 many actors and campaigns', () => {
   const fixture = algorandFixture()
   let stack: ContractStack
 
   beforeAll(async () => {
     stack = await deployStack(fixture)
-  })
-
-  test('CON-200 N=16 crosses the first OpUp take and refunds leaf 0', { tags: ['scale', 'happy', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * ALGO })
-    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-
-    const txids: string[] = []
-    for (let i = 0; i < 16; i++) {
-      txids.push(await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle))
-    }
-
-    const state = await campaignState(campaign.appClient)
-    expect(state.n).toEqual(16n)
-    expect(state.raised).toEqual(16n * ALGO)
-
-    await advanceTime(fixture, 900)
-    await spendCampaign(
-      stack,
-      campaign.appClient,
-      campaign.appId,
-      backer.addr.toString(),
-      0,
-      1n * ALGO,
-      at(txids, 0),
-      'refund(uint64,uint64,byte[],byte[])void',
-      campaign.oracle,
-    )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(15n * ALGO)
-  })
-
-  test('CON-201 N=100 refunds the worst-case and an interior leaf', { tags: ['scale', 'happy', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * ALGO })
-    const backer = await fixture.context.generateAccount({ initialFunds: (200).algo(), suppressLog: true })
-
-    const txids: string[] = []
-    for (let i = 0; i < 100; i++) {
-      txids.push(await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle))
-    }
-
-    const state = await campaignState(campaign.appClient)
-    expect(state.n).toEqual(100n)
-    expect(state.raised).toEqual(100n * ALGO)
-
-    await advanceTime(fixture, 900)
-    await spendCampaign(
-      stack,
-      campaign.appClient,
-      campaign.appId,
-      backer.addr.toString(),
-      0,
-      1n * ALGO,
-      at(txids, 0),
-      'refund(uint64,uint64,byte[],byte[])void',
-      campaign.oracle,
-    )
-    await spendCampaign(
-      stack,
-      campaign.appClient,
-      campaign.appId,
-      backer.addr.toString(),
-      50,
-      1n * ALGO,
-      at(txids, 50),
-      'refund(uint64,uint64,byte[],byte[])void',
-      campaign.oracle,
-    )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(98n * ALGO)
   })
 
   test('CON-202 25 campaigns by 25 creators with 4 backers each', { tags: ['scale', 'happy', 'always'] }, async () => {

@@ -23,7 +23,7 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "test:integration:heavy": "vitest run --no-color --no-file-parallelism integration/05-*.test.ts",
+    "test:integration:heavy": "vitest run --no-color --no-file-parallelism integration/05-*.test.ts integration/06-*.test.ts",
     "test:integration:all": "vitest run --no-color --no-file-parallelism integration"
   },
   "engines": {
