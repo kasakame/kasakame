@@ -12,7 +12,7 @@ export default defineConfig({
       { name: 'smoke', description: 'Deployment and basic happy-path integration.' },
       { name: 'happy', description: 'Successful user flows.' },
       { name: 'bad', description: 'Rejection and adversarial paths.' },
-      { name: 'scale', description: 'Large-N and many-campaign stress cases.' },
+      { name: 'scale', description: 'Large-N and many-campaign stress cases.', timeout: 600_000 },
       { name: 'always', description: 'Independent test; runs alone and after unrelated failures.' },
       { name: 'chain', description: 'Ordered test; shares state with earlier tests in its file.' },
     ],

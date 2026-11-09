@@ -39,8 +39,10 @@ Run with `npm run test` (see `package.json`).
 Commands:
 
 - `npm run test` - offline AVM unit tests only.
-- `npm run test:integration` - LocalNet integration tests (requires
+- `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
   `algokit localnet start` + `npm run build`).
+- `npm run test:integration:heavy` - LocalNet heavy lane, file `05`.
+- `npm run test:integration:all` - both LocalNet lanes.
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
   size budget (requires `algokit localnet start` and `npm run build`).
@@ -70,7 +72,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet, normal lane | `integration/*.test.ts`, `**/contract.integration.test.ts` (legacy) | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane (planned, #162) | same suite, larger parameters | `npm run test:integration` with the scale config from #162 | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| Contract LocalNet, heavy lane | `integration/05-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
@@ -92,6 +94,7 @@ heavy lane.
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`/`CON-041` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows |
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061` | `happy`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting |
 | `integration/04-bad-paths.test.ts` | `CON-100`..`CON-118` | `bad`, `always` | pledge guards, stale frontier, missing credit, spend guards, delete pairing, vault inner-call guards, Factory negatives |
+| `integration/05-scale.test.ts` | `CON-200`..`CON-202` | `scale`, `always` | N=16/100 boundaries, 25 campaigns/100 backers, campaign isolation under load |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
@@ -107,6 +110,7 @@ npx vitest run integration/03-multi-actor.test.ts -t "CON-060"
 npx vitest run integration/04-bad-paths.test.ts -t "CON-100"
 npx vitest run integration --tags-filter="smoke"
 npm run test:integration
+npm run test:integration:heavy
 ```
 
 ## Shared LocalNet helpers
@@ -208,8 +212,8 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 71 tests across 8 files -
-23 legacy tests in 3 files plus the 48 new order `00`-`04` tests).
+`npm run test:integration` in `projects/contracts`; 71 normal-lane tests across 8 files
+(23 legacy + 48 new) plus 3 heavy-lane tests in `05-scale.test.ts`).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
