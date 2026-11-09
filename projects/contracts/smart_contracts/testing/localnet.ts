@@ -176,7 +176,9 @@ export function pledgeExtraFee(peaks: number): bigint {
 }
 
 /**
- * Extra fee for a spend (mirrors the SDK's `refundOpUpIterations` plus the payout inners).
+ * Extra fee for a spend: the payout inners plus one fee per OpUp take, assuming no budget survives the method
+ * prelude. That is an upper bound on the takes the contract requests (the real headroom shrinks with the path size),
+ * so the group is always funded; fee minimality belongs to the SDK.
  *
  * @param path The oracle path for the leaf.
  * @param payoutInners 2 on the campaign path (`payBack` + payment), 1 on the vault path.
@@ -184,7 +186,7 @@ export function pledgeExtraFee(peaks: number): bigint {
  */
 export function spendExtraFee(path: OraclePath, payoutInners: 1 | 2): bigint {
   const required = path.siblings.length * 250 + path.lower.length * 250 + (path.top === null ? 0 : 100) + 700
-  const iterations = Math.max(0, Math.ceil((required + 10 - 500) / 700))
+  const iterations = Math.max(0, Math.ceil((required + 10) / 700))
   return BigInt(payoutInners + iterations) * FEE
 }
 
@@ -704,13 +706,22 @@ export async function pledge(
   expect(st.root).toEqual(exp.root)
   expect(st.raised).toEqual(BigInt(exp.raised))
   const box = await campaignBox(stack.vault.client, appId)
-  expect(box.paidIn).toEqual(BigInt(exp.raised))
-  expect(box.paidOut).toEqual(0n)
+  expect(box.paidIn - box.paidOut).toEqual(BigInt(exp.raised))
   return txidHex
 }
 
 /** The campaign spend entry points. */
 export type SpendMethod = 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'refund(uint64,uint64,byte[],byte[])void'
+
+/** Options for the spend helpers. */
+export interface SpendOptions {
+  /**
+   * Add a second top-level app call (the Factory's readonly `isRegistered`) so the group starts with 1,400 opcodes
+   * instead of 700. The campaign's path-shape derivation alone can exceed 700 on large trees, before `ensureBudget`
+   * runs; the extra call lets the heavy boundary tests reach sizes the single-call client path cannot. See #162.
+   */
+  budgetBooster?: boolean
+}
 
 /**
  * Spend a leaf through the campaign (`cancelPledge`/`refund`), asserting state, box, and ledger.
@@ -724,6 +735,7 @@ export type SpendMethod = 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'ref
  * @param txidHex Pledge payment TxID (hex).
  * @param method Which spend entry point to exercise.
  * @param oracle The campaign's reference tree.
+ * @param options Spend options.
  */
 export async function spendCampaign(
   stack: ContractStack,
@@ -735,23 +747,36 @@ export async function spendCampaign(
   txidHex: string,
   method: SpendMethod,
   oracle: ClaimTreeOracle,
+  options: SpendOptions = {},
 ): Promise<void> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-  await appClient.send.call({
-    method,
+  const composer = stack.algorand.newGroup()
+  if (options.budgetBooster === true) {
+    composer.addAppCallMethodCall({
+      appId: stack.factory.appId,
+      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
+      args: [appId],
+      sender: backerAddr,
+      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
+    })
+  }
+  composer.addAppCallMethodCall({
+    appId,
+    method: ABIMethod.fromSignature(method),
     args: [BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
     sender: backerAddr,
     appReferences: [stack.vault.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 2)),
-    suppressLog: true,
   })
+  await composer.send({ suppressLog: true })
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2))
+  const boosterFee = options.budgetBooster === true ? FEE : 0n
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2) - boosterFee)
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
@@ -775,6 +800,7 @@ export async function spendCampaign(
  * @param amount Pledged amount committed by the leaf.
  * @param txidHex Pledge payment TxID (hex).
  * @param oracle The campaign's reference tree.
+ * @param options Spend options.
  */
 export async function spendVault(
   stack: ContractStack,
@@ -784,22 +810,35 @@ export async function spendVault(
   amount: bigint,
   txidHex: string,
   oracle: ClaimTreeOracle,
+  options: SpendOptions = {},
 ): Promise<void> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-  await stack.vault.client.send.call({
-    method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
+  const composer = stack.algorand.newGroup()
+  if (options.budgetBooster === true) {
+    composer.addAppCallMethodCall({
+      appId: stack.factory.appId,
+      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
+      args: [appId],
+      sender: backerAddr,
+      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
+    })
+  }
+  composer.addAppCallMethodCall({
+    appId: stack.vault.appId,
+    method: ABIMethod.fromSignature('refund(uint64,uint64,uint64,byte[],byte[])void'),
     args: [appId, BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
     sender: backerAddr,
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 1)),
-    suppressLog: true,
   })
+  await composer.send({ suppressLog: true })
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1))
+  const boosterFee = options.budgetBooster === true ? FEE : 0n
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1) - boosterFee)
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)

@@ -513,8 +513,11 @@ excluded - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts
 
 - **Pledge** (group: 2 app calls; the contract's prelude leaves ~1,000 ops): N=15 → 1 take; N=1,000 → 2; N=131,071 → 5;
   the 2¹⁹−1 cap → 6.
-- **Refund, campaign or vault path** (the outer call's prelude leaves ~500 ops): N=4, k=2 → 2 takes; N=100, k=0 → 4;
-  N=131,071, k=0 → 12; the 2¹⁹−1 cap, k=0 → 14.
+- **Refund, campaign or vault path**: the method's own prelude (ABI routing, box read, `pathLen`/`popcount`) consumes
+  several hundred opcodes before `ensureBudget` runs, and the headroom shrinks with the path shape. N=4, k=2 → 2 takes;
+  N=100, k=0 → 4; N=131,071, k=0 → 12; the 2¹⁹−1 cap, k=0 → 14 on paper. At deeper paths (r ≈ 9) the prelude alone can
+  exhaust the 700-op base budget, so a single-call group cannot reach `ensureBudget`; the caller needs a second
+  top-level app call (the heavy `06` ladder does this at N=1,000/1,024).
 
 The SDK derives the take count from the same `(N, k)` shape and pays for it:
 `FEE_CREDIT_EXTRA = 1,000` covers the first-touch factory check; pledge adds one

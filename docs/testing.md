@@ -95,11 +95,12 @@ heavy lane.
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061` | `happy`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting |
 | `integration/04-bad-paths.test.ts` | `CON-100`..`CON-118` | `bad`, `always` | pledge guards, stale frontier, missing credit, spend guards, delete pairing, vault inner-call guards, Factory negatives |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
-| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201` | `scale`, `always` | N=16/100 tree sizes and refund paths |
+| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-221` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; settlement, campaign refund, vault refund, and finalize at 1,024 |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
 - `chain` tests share campaign A and skip the rest of the chain after the first failure.
+- The `06` ladder grows one campaign through N=15..1,024; run it in order (only `CON-210` creates the campaign).
 - The legacy `smart_contracts/**/contract.integration.test.ts` files still run during the migration.
 
 ```bash
@@ -214,7 +215,7 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 
 The contract package's LocalNet integration tests (run with
 `npm run test:integration` in `projects/contracts`; 71 normal-lane tests across 8 files
-(23 legacy + 48 new) plus 3 heavy-lane tests across `05`/`06`).
+(23 legacy + 48 new) plus 15 heavy-lane tests across `05`/`06`).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
@@ -231,7 +232,9 @@ for the actors involved: absolute balance and minimum-balance checks at each
 boundary (creator app MBR and deposit, Factory and Vault deployer app MBRs, app
 account bases, box MBRs), the fee totals of each operation (measured on LocalNet -
 the pledge group costs 4000 µA at small trees, campaign spends start at 4000 µA,
-vault refunds at 3000 µA, and claims 3000 µA; each OpUp take adds 1000 µA), the
+vault refunds at 3000 µA, and claims 3000 µA; each OpUp take adds 1000 µA; the
+spend helper funds one extra take as headroom, so its asserts start at 5000 µA
+for campaign spends and 4000 µA for vault refunds), the
 vault pool movement, the parked box MBR (32,100 µA per campaign box
 on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
