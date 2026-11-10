@@ -21,6 +21,10 @@ import {
   spendCampaign,
   type ContractStack,
 } from './support/localnet'
+import { describeScale, scaleConfig } from './support/scale'
+import { runSequence } from './support/sequence'
+
+const scale = scaleConfig('normal')
 
 interface CampaignFixture {
   appClient: AppClient
@@ -65,9 +69,13 @@ describe('03 multiple actors and campaigns', () => {
       })
     })
 
-    test('CON-050 create 10 campaigns by 10 creators', async () => {
-      for (let i = 0; i < 10; i++) {
-        const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    test(`CON-050 create ${scale.campaigns.toString()} campaigns by ${scale.creators.toString()} creators`, async () => {
+      expect(scale.campaigns).toBeGreaterThanOrEqual(3)
+      for (let i = 0; i < scale.creators; i++) {
+        creators.push(await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true }))
+      }
+      for (let i = 0; i < scale.campaigns; i++) {
+        const creator = at(creators, i % creators.length)
         const campaign = await deployCampaign(stack, creator.addr.toString())
         const oracle = new ClaimTreeOracle(`multi-${i.toString()}-`)
 
@@ -75,15 +83,14 @@ describe('03 multiple actors and campaigns', () => {
         expect((await campaignState(campaign.appClient)).raised).toEqual(0n)
         expect(await isRegistered(stack.factory.client, campaign.appId, stack.ownerAddress)).toEqual(true)
 
-        creators.push(creator)
         campaigns.push(campaign)
         oracles.push(oracle)
       }
-      expect(new Set(campaigns.map((campaign) => campaign.appId.toString())).size).toEqual(10)
+      expect(new Set(campaigns.map((campaign) => campaign.appId.toString())).size).toEqual(scale.campaigns)
     })
 
-    test('CON-051 five backers pledge to campaign 0', async () => {
-      for (let i = 0; i < 5; i++) {
+    test(`CON-051 ${scale.backers.toString()} backers pledge to campaign 0`, async () => {
+      for (let i = 0; i < scale.backers; i++) {
         const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
         backers.push(backer)
         campaign0Txids.push(
@@ -92,13 +99,14 @@ describe('03 multiple actors and campaigns', () => {
       }
 
       const state = await campaignState(at(campaigns, 0).appClient)
-      expect(state.n).toEqual(5n)
-      expect(state.raised).toEqual(5n * ALGO)
+      expect(state.n).toEqual(BigInt(scale.backers))
+      expect(state.raised).toEqual(BigInt(scale.backers) * ALGO)
     })
 
     test('CON-052 one backer pledges to several campaigns', async () => {
-      await pledge(stack, at(campaigns, 1).appClient, at(campaigns, 1).appId, at(backers, 4).addr.toString(), 2n * ALGO, at(oracles, 1))
-      await pledge(stack, at(campaigns, 2).appClient, at(campaigns, 2).appId, at(backers, 4).addr.toString(), 1n * ALGO, at(oracles, 2))
+      const backer = at(backers, backers.length - 1)
+      await pledge(stack, at(campaigns, 1).appClient, at(campaigns, 1).appId, backer.addr.toString(), 2n * ALGO, at(oracles, 1))
+      await pledge(stack, at(campaigns, 2).appClient, at(campaigns, 2).appId, backer.addr.toString(), 1n * ALGO, at(oracles, 2))
 
       expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(2n * ALGO)
       expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * ALGO)
@@ -107,7 +115,7 @@ describe('03 multiple actors and campaigns', () => {
     test('CON-053 a creator backs another campaign', async () => {
       await pledge(stack, at(campaigns, 1).appClient, at(campaigns, 1).appId, at(creators, 0).addr.toString(), 1n * ALGO, at(oracles, 1))
 
-      expect((await campaignState(at(campaigns, 0).appClient)).raised).toEqual(5n * ALGO)
+      expect((await campaignState(at(campaigns, 0).appClient)).raised).toEqual(BigInt(scale.backers) * ALGO)
       expect((await campaignState(at(campaigns, 1).appClient)).n).toEqual(2n)
       expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * ALGO)
     })
@@ -129,7 +137,7 @@ describe('03 multiple actors and campaigns', () => {
       }
 
       const drained = await campaignState(at(campaigns, 0).appClient)
-      expect(drained.n).toEqual(5n)
+      expect(drained.n).toEqual(BigInt(scale.backers))
       expect(drained.raised).toEqual(0n)
       expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * ALGO)
       expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * ALGO)
@@ -137,8 +145,8 @@ describe('03 multiple actors and campaigns', () => {
       const box0 = await campaignBox(stack.vault.client, at(campaigns, 0).appId)
       const box1 = await campaignBox(stack.vault.client, at(campaigns, 1).appId)
       const box2 = await campaignBox(stack.vault.client, at(campaigns, 2).appId)
-      expect(box0.paidIn).toEqual(5n * ALGO)
-      expect(box0.paidOut).toEqual(5n * ALGO)
+      expect(box0.paidIn).toEqual(BigInt(scale.backers) * ALGO)
+      expect(box0.paidOut).toEqual(BigInt(scale.backers) * ALGO)
       expect(box1.paidIn).toEqual(3n * ALGO)
       expect(box1.paidOut).toEqual(0n)
       expect(box2.paidIn).toEqual(1n * ALGO)
@@ -196,5 +204,10 @@ describe('03 multiple actors and campaigns', () => {
     expect(await campaignBoxExists(stack.vault.client, campaignA.appId)).toEqual(true)
     expect(await campaignBoxExists(stack.vault.client, campaignB.appId)).toEqual(false)
     expect(oracleB.state().n).toEqual(0)
+  })
+
+  test('CON-062 seeded pledge/cancel/refund/finalize sequence', { tags: ['scale', 'happy', 'always'] }, async () => {
+    console.log(describeScale(scale))
+    await runSequence(fixture, stack, scale, scale.seed)
   })
 })

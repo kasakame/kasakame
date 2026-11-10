@@ -59,7 +59,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet normal lane (files 00-04)
-npm run test:integration:heavy   # LocalNet heavy lane (files 05-06)
+npm run test:integration:heavy   # LocalNet heavy lane (files 05-07)
 
 cd ../frontend
 npm run dev:localnet             # Vite with the LocalNet env (published SDK)
@@ -330,6 +330,10 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1),
 not in a Markdown checklist.
 
+Hierarchy: **Component** (type `Component`, no parent) -> **Epic** (type `Epic`,
+parent = component) -> **Ticket** (type `Task`, `Bug`, or `Feature`, parent = epic).
+A ticket never sits under another ticket; link sibling tickets in the body.
+
 - **Components:** `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`,
   `docs`, `maintenance`. Each is an issue of type `Component`; the project field of
   the same name makes them filterable.
@@ -344,6 +348,18 @@ not in a Markdown checklist.
   migrated one-line roadmap summaries are a starting point, not the spec.
 - **Fields:** `Component` (single select), `Priority` (`P1`-`P3`), `Target date`;
   `Status` is the project flow (`Todo`, `In Progress`, `Done`).
+
+**Creating an issue.** Forms set only the body. After creating: set the type
+(`gh issue edit <n> --type Task|Bug|Feature`), the parent epic (`--parent <epic>`),
+the milestone (`--milestone v0.2.0` for release work), and the project
+`Component`/`Priority` fields (`gh project item-add 1 --owner kasakame --url <url>`,
+then `gh project item-edit ... --field Component --value contracts`). Verify
+`gh issue view <n> --json issueType,parent`; type and parent are not inferred.
+
+**Where it goes.** The epic is the workstream, not the file you touch: contract and
+contract-test coverage belongs under #183 (`contracts`); cross-project tooling
+(shared harness, catalog/runner, scripts) belongs under #66 (`maintenance`).
+
 - **Keep the epic status in sync manually.** The project has no automatic parent
   rollup. When you start a ticket, if its epic is still `Todo`, move the epic to
   `In Progress` with the ticket; if you move the ticket when opening the PR, move
