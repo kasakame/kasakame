@@ -41,7 +41,7 @@ Commands:
 - `npm run test` - offline AVM unit tests only.
 - `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
   `algokit localnet start` + `npm run build`).
-- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`06`.
+- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`.
 - `npm run test:integration:all` - both LocalNet lanes.
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
@@ -72,19 +72,19 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet, normal lane | `integration/*.test.ts`, `**/contract.integration.test.ts` (legacy) | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
-The normal lane uses small, deterministic shapes (4-5 backers, about 10 campaigns).
-The heavy lane raises the same parameters (large N, many campaigns/backers) without
-changing the test code. Counts, N, and seeds are helper parameters, not constants
-inside the suites. The shared cross-project harness is #164.
+The normal lane uses small shapes (4-5 backers, about 10 campaigns) and one
+seeded sequence. The heavy lane raises N, campaigns/backers, and seed count through
+the same config, without changing the test code. Counts, N, and seeds are helper
+parameters, not constants inside the suites. The shared cross-project harness is #164.
 
 ## Incremental test order (in progress)
 
 The new contract integration tests are numbered files. The number is the order;
-tests inside keep their own IDs. Files `00`-`04` are the normal lane, `05`-`06` are the
+tests inside keep their own IDs. Files `00`-`04` are the normal lane, `05`-`07` are the
 heavy lane.
 
 | File | Tests | Tags | What it proves |
@@ -92,16 +92,27 @@ heavy lane.
 | `integration/00-deploy.test.ts` | `CON-001`..`CON-003` | `smoke`, `always` | Factory + Vault deploy, hashes, vault binding, app accounts, selectors |
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete; one full solo workflow |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`/`CON-041` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows |
-| `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061` | `happy`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting |
+| `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
 | `integration/04-bad-paths.test.ts` | `CON-100`..`CON-118` | `bad`, `always` | pledge guards, stale frontier, missing credit, spend guards, delete pairing, vault inner-call guards, Factory negatives |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-221` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; settlement, campaign refund, vault refund, and finalize at 1,024 |
+| `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
 - `chain` tests share campaign A and skip the rest of the chain after the first failure.
 - The `06` ladder grows one campaign through N=15..1,024; run it in order (only `CON-210` creates the campaign).
+- `07` runs three heavy seeds; `CON-062` runs one normal-lane seed through the same engine.
 - The legacy `smart_contracts/**/contract.integration.test.ts` files still run during the migration.
+
+### Scale config and seeds
+
+`integration/support/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
+normal/heavy presets and `07` runs the heavy seeds through the same
+`integration/support/sequence.ts` engine. Every field has an env override:
+`KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
+`KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
+`KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
 
 ```bash
 cd projects/contracts
@@ -214,8 +225,8 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 71 normal-lane tests across 8 files
-(23 legacy + 48 new) plus 15 heavy-lane tests across `05`/`06`).
+`npm run test:integration` in `projects/contracts`; 72 normal-lane tests across 8 files
+(23 legacy + 49 new) plus 16 heavy-lane tests across `05`/`06`/`07`).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
