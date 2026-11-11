@@ -1042,6 +1042,43 @@ describe('ClaimsVault', () => {
       expect(box.root).toEqual(expected.root)
       expect(box.paidOut).toEqual(BigInt(AMOUNT))
     })
+
+    test('refunds at N=524,287 within the 16-inner-transaction limit', () => {
+      const vault = createVault()
+      const caller = ctx.any.account()
+      const txid = 'ab'.repeat(32)
+      const bulk = oracle('bulk', '524287', '0', accountHex(caller), AMOUNT.toString(), txid) as {
+        root: string
+        path: { siblings: string[]; top: string | null; lower: string[] }
+      }
+      writeBox(vault, CAMPAIGN_APP_ID, {
+        paidIn: AMOUNT,
+        paidOut: 0,
+        root: bulk.root,
+        n: 524_287,
+        status: FAILED,
+        settledAt: 100,
+      })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 200 })
+      const blob = Buffer.concat([
+        ...bulk.path.siblings.map((s) => Buffer.from(s, 'hex')),
+        ...(bulk.path.top === null ? [] : [Buffer.from(bulk.path.top, 'hex')]),
+        ...bulk.path.lower.map((s) => Buffer.from(s, 'hex')),
+      ])
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: caller })]).execute(() => {
+        vault.refund(campaignApp(), 0, AMOUNT, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
+      })
+
+      // The offline emulator does not enforce the 700-op base budget, so assert the take request from the cap path:
+      // 14 OpUps + the vault payment = 15, within the 16-inner limit.
+      const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
+      let takes = 0
+      while (takes * 700 < required + 10) takes += 1
+      expect(takes).toEqual(14)
+      expect(takes + 1).toBeLessThanOrEqual(16)
+      const box = readBox(vault, CAMPAIGN_APP_ID)
+      expect(box.paidOut).toEqual(BigInt(AMOUNT))
+    })
   })
 
   describe('notifyDelete', () => {

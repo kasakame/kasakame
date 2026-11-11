@@ -532,7 +532,9 @@ At that size, leaf 0 has `r = c = 18`, which needs 14 takes plus the campaign
 path's `payBack` and payment = 16 inner transactions even with a zero-op
 prelude. A larger tree can have `r = 19, c = 18`, whose 9,950-op target can
 request a 15th take. The cap counts every appended position (including
-cancelled leaves), and the SDK fails with a clear error above it.
+cancelled leaves), and the SDK fails with a clear error above it. The offline
+cap tests pin N=524,286/524,287 and the 14-take/16-inner refund; the heavy `06`
+ladder pins the take count at each boundary.
 
 Current program footprint (2026-11-06, `npm run build`; see [`limits.md`](limits.md) for the full table):
 

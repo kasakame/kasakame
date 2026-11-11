@@ -114,6 +114,16 @@ normal/heavy presets and `07` runs the heavy seeds through the same
 `KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
 `KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
 
+### Budget and cap regressions
+
+`06` pins the exact OpUp take count at every ladder boundary (`LADDER_TAKES`); a
+contract budget change that requests one more take fails the step. The offline
+cap tests use the `oracle.py bulk` synthetic tree: N=524,286 accepts the last
+append, N=524,287 rejects the next, and the refund path asserts 14 takes + 2
+payouts = 16 inners. The offline emulator does not enforce the 700-op base
+budget, so that count is asserted from the path shape; the LocalNet ladder
+exercises the real takes.
+
 ```bash
 cd projects/contracts
 npx vitest run integration/00-deploy.test.ts integration/01-single-campaign.test.ts
