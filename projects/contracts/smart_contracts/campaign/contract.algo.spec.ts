@@ -16,7 +16,7 @@ import { Campaign } from './contract.algo'
  * Every tree operation runs differentially: expected roots come from the Python reference oracle (`../oracle.py`),
  * driven with the mock payments' real `txnId`s. The vault inner calls (`payBack`/`payClaim`/`settle`/`notifyDelete`)
  * target the stub vault app and succeed as no-ops offline - their real routing and effects run on LocalNet in
- * `contract.integration.test.ts`.
+ * `integration/02-funding.test.ts` and `integration/04-bad-paths.test.ts`.
  */
 
 const GOAL = 10_000_000

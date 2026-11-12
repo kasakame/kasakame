@@ -19,8 +19,9 @@ import { SIZE_BUDGET } from '../size-budget.fixture'
  * Shared LocalNet helpers for the contract integration suites: fixture deployment, the claim-tree reference oracle,
  * ledger assertions, box reads, and the fee formulas the contracts actually request.
  *
- * The three `contract.integration.test.ts` files use this module so a formula or ledger check changes in one place.
- * It is test-only and not published. The cross-project harness is tracked separately (#164).
+ * The numbered `integration/` suites use this module so a formula or ledger check changes in one place. It stays under
+ * `smart_contracts/testing/` until the cross-project harness (#164) moves it: the helper unit spec runs with `npm test`,
+ * while `integration/**` is reserved for LocalNet tests. It is test-only and not published.
  */
 
 /** MicroAlgos in one ALGO. */
