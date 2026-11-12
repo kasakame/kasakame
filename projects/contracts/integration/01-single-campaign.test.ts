@@ -95,10 +95,11 @@ describe('01 single campaign', () => {
 
       await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(true)
+      expect(await isRegistered(stack.factory.client, campaign.appId, stack.ownerAddress)).toEqual(false)
     })
   })
 
-  test('CON-014 delete a pristine campaign', { tags: ['smoke', 'happy', 'always'] }, async () => {
+  test('CON-014 delete a pristine campaign, registered and unregistered', { tags: ['smoke', 'happy', 'always'] }, async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const campaign = await deployCampaign(stack, creator.addr.toString())
 
@@ -106,6 +107,11 @@ describe('01 single campaign', () => {
 
     await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
+
+    const unregisteredCreator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const unregistered = await deployCampaign(stack, unregisteredCreator.addr.toString(), { register: false })
+    await deleteCampaign(stack, unregistered.appId, unregisteredCreator.addr.toString(), { registered: false })
+    await expect(stack.algorand.app.getById(unregistered.appId)).rejects.toThrow()
   })
 
   test('CON-015 single-test happy path: create, pledge, cancel, delete', { tags: ['smoke', 'happy', 'always'] }, async () => {
