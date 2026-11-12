@@ -9,6 +9,8 @@ Usage:  oracle.py STATE CMD [args...]     (prints one JSON object to stdout)
 
     init                                        reset state to the empty tree
     frontier                                    current {n, peaks[]} (ascending level, hex)
+    bulk N [K BACKER_HEX AMOUNT TXID_HEX]       synthetic tree of N zero leaves, optionally with leaf K set;
+                                                returns {n, root, peaks[], path?} without saving state
     append BACKER_HEX AMOUNT TXID_HEX           append one leaf -> {n, root, raised}
     path K                                      auth path + leaf record for K -> {siblings[], top|null, lower[], root, backer, amount, txid}
     null K AMOUNT                                null position K -> {n, root, raised}
@@ -54,6 +56,35 @@ def main() -> None:
     elif cmd == "frontier":
         n = len(leaves)
         print(json.dumps({"n": n, "peaks": [p.hex() for p in ref.peaks(n, ref.build_nodes(leaves))] if n else []}))
+        return
+    elif cmd == "bulk":
+        n = int(sys.argv[3])
+        leaves = [ref.Z] * n
+        k = None
+        if len(sys.argv) > 4:
+            k = int(sys.argv[4])
+            if not 0 <= k < n:
+                raise SystemExit(f"position out of range: {k}")
+            backer, amount, txid = (
+                bytes.fromhex(sys.argv[5]),
+                int(sys.argv[6]),
+                bytes.fromhex(sys.argv[7]),
+            )
+            leaves[k] = ref.leaf(backer, amount, txid)
+        nodes = ref.build_nodes(leaves)
+        result = {
+            "n": n,
+            "root": ref.root_of(leaves).hex(),
+            "peaks": [p.hex() for p in (ref.peaks(n, nodes) if n else [])],
+        }
+        if k is not None:
+            siblings, top, lower = ref.path_of(k, leaves)
+            result["path"] = {
+                "siblings": [s.hex() for s in siblings],
+                "top": top.hex() if top is not None else None,
+                "lower": [s.hex() for s in lower],
+            }
+        print(json.dumps(result))
         return
     elif cmd == "append":
         backer, amount, txid = bytes.fromhex(sys.argv[3]), int(sys.argv[4]), bytes.fromhex(sys.argv[5])

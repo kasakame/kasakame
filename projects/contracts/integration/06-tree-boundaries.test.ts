@@ -73,6 +73,7 @@ describe('06 tree boundaries', () => {
       at(txids, 0),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
+      { expectedTakes: 2 },
     )
     expect((await campaignState(campaign.appClient)).raised).toEqual(15n * ALGO)
   })
@@ -101,6 +102,7 @@ describe('06 tree boundaries', () => {
       at(txids, 0),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
+      { expectedTakes: 4 },
     )
     await spendCampaign(
       stack,
@@ -112,6 +114,7 @@ describe('06 tree boundaries', () => {
       at(txids, 50),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
+      { expectedTakes: 4 },
     )
     expect((await campaignState(campaign.appClient)).raised).toEqual(98n * ALGO)
   })
@@ -130,6 +133,23 @@ describe('06 tree boundaries', () => {
     { id: 'CON-220', n: 1_000 },
     { id: 'CON-221', n: 1_024 },
   ] as const
+
+  // Pinned LocalNet measurements: the OpUp takes the contract requests at each boundary. The spend helper funds the
+  // zero-headroom upper bound, so the paid fee can be higher; these counts catch a contract requesting one more take.
+  const LADDER_TAKES: Record<string, number> = {
+    'CON-210': 3,
+    'CON-211': 2,
+    'CON-212': 4,
+    'CON-213': 3,
+    'CON-214': 5,
+    'CON-215': 3,
+    'CON-216': 4,
+    'CON-217': 6,
+    'CON-218': 4,
+    'CON-219': 7,
+    'CON-220': 6,
+    'CON-221': 4,
+  }
 
   // One campaign grows through the ladder; only CON-210 creates it, so run this block in order.
   describe('cumulative boundary ladder', { tags: ['scale', 'happy', 'chain'] }, () => {
@@ -160,7 +180,7 @@ describe('06 tree boundaries', () => {
       currentN = target
     }
 
-    async function cancelNext(boost = false): Promise<void> {
+    async function cancelNext(boost = false, expectedTakes?: number): Promise<void> {
       const index = nextLeaf
       nextLeaf += 1
       await spendCampaign(
@@ -173,7 +193,7 @@ describe('06 tree boundaries', () => {
         at(txids, index),
         'cancelPledge(uint64,uint64,byte[],byte[])void',
         campaign.oracle,
-        { budgetBooster: boost },
+        { budgetBooster: boost, expectedTakes },
       )
       refunded += 1
     }
@@ -195,7 +215,7 @@ describe('06 tree boundaries', () => {
         expect(before.n).toEqual(BigInt(boundary.n))
         expect(before.raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
 
-        await cancelNext(boundary.n >= 1_000)
+        await cancelNext(boundary.n >= 1_000, LADDER_TAKES[boundary.id])
         expect((await campaignState(campaign.appClient)).raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
 
         if (boundary.n === 1_024) {
@@ -214,7 +234,7 @@ describe('06 tree boundaries', () => {
             at(txids, refundIndex),
             'refund(uint64,uint64,byte[],byte[])void',
             campaign.oracle,
-            { budgetBooster: true },
+            { budgetBooster: true, expectedTakes: 4 },
           )
 
           await deleteCampaign(stack, campaign.appId, creator.addr.toString())
@@ -230,7 +250,7 @@ describe('06 tree boundaries', () => {
             1n * ALGO,
             at(txids, vaultIndex),
             campaign.oracle,
-            { budgetBooster: true },
+            { budgetBooster: true, expectedTakes: 4 },
           )
 
           const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)

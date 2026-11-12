@@ -721,6 +721,26 @@ export interface SpendOptions {
    * runs; the extra call lets the heavy boundary tests reach sizes the single-call client path cannot. See #162.
    */
   budgetBooster?: boolean
+  /** Pinned number of OpUp inner transactions; asserted when set (LocalNet boundary regression guard). */
+  expectedTakes?: number | undefined
+}
+
+interface PendingInnerTxn {
+  innerTxns?: unknown[]
+}
+
+/**
+ * Count the OpUp takes from a simulated group. The last top-level call is the campaign or vault spend; its direct inner
+ * transactions are the OpUp app creates plus one payout call (`payBack` or the vault payment), so `length - 1` is the
+ * take count. The simulator returns the same inners as the send and does not mutate state.
+ *
+ * @param composer The built spend group.
+ * @returns The OpUp take count.
+ */
+async function simulatedTakeCount(composer: ReturnType<AlgorandClient['newGroup']>): Promise<number> {
+  const simulation = await composer.simulate({ allowUnnamedResources: true, skipSignatures: true })
+  const last = simulation.simulateResponse.txnGroups[0]?.txnResults.at(-1)?.txnResult as PendingInnerTxn | undefined
+  return Math.max(0, (last?.innerTxns?.length ?? 1) - 1)
 }
 
 /**
@@ -736,6 +756,7 @@ export interface SpendOptions {
  * @param method Which spend entry point to exercise.
  * @param oracle The campaign's reference tree.
  * @param options Spend options.
+ * @returns The OpUp take count.
  */
 export async function spendCampaign(
   stack: ContractStack,
@@ -748,7 +769,7 @@ export async function spendCampaign(
   method: SpendMethod,
   oracle: ClaimTreeOracle,
   options: SpendOptions = {},
-): Promise<void> {
+): Promise<number> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
@@ -772,7 +793,9 @@ export async function spendCampaign(
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 2)),
   })
+  const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
+  if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
   const boosterFee = options.budgetBooster === true ? FEE : 0n
@@ -788,6 +811,7 @@ export async function spendCampaign(
   expect(st.raised).toEqual(BigInt(exp.raised))
   const box = await campaignBox(stack.vault.client, appId)
   expect(box.paidOut).toEqual(box.paidIn - BigInt(exp.raised))
+  return takes
 }
 
 /**
@@ -801,6 +825,7 @@ export async function spendCampaign(
  * @param txidHex Pledge payment TxID (hex).
  * @param oracle The campaign's reference tree.
  * @param options Spend options.
+ * @returns The OpUp take count.
  */
 export async function spendVault(
   stack: ContractStack,
@@ -811,7 +836,7 @@ export async function spendVault(
   txidHex: string,
   oracle: ClaimTreeOracle,
   options: SpendOptions = {},
-): Promise<void> {
+): Promise<number> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
@@ -834,7 +859,9 @@ export async function spendVault(
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 1)),
   })
+  const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
+  if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
   const boosterFee = options.budgetBooster === true ? FEE : 0n
@@ -847,6 +874,7 @@ export async function spendVault(
   const box = await campaignBox(stack.vault.client, appId)
   expect(box.root).toEqual(exp.root)
   expect(box.paidOut).toEqual(box.paidIn - BigInt(exp.raised))
+  return takes
 }
 
 /**
