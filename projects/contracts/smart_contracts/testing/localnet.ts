@@ -414,7 +414,14 @@ export function loadContractSpecs(): ContractSpecs {
   }
 }
 
-function specProgramHash(spec: Arc56Contract, name: string): Uint8Array {
+/**
+ * Hash a compiled program's approval + clear-state bytecode the way the Factory binds it.
+ *
+ * @param spec The ARC-56 spec with compiled bytecode.
+ * @param name Spec name, used in the missing-bytecode error.
+ * @returns The SHA-256 program hash.
+ */
+export function specProgramHash(spec: Arc56Contract, name: string): Uint8Array {
   if (spec.byteCode === undefined) throw new Error(`${name} has no byteCode; run \`npm run build\` first.`)
   return programHash(Buffer.from(spec.byteCode.approval, 'base64'), Buffer.from(spec.byteCode.clear, 'base64'))
 }
@@ -448,6 +455,8 @@ export interface DeployStackOptions {
   fundVault?: bigint
   /** Configure the official campaign hash. Defaults to true; Factory tests set it per deployed program. */
   configureCampaignHash?: boolean
+  /** Bind the vault to the Factory. Defaults to true; Factory setVault tests start unbound. */
+  bindVault?: boolean
 }
 
 async function deployFactory(algorand: AlgorandClient, spec: Arc56Contract, ownerAddr: string): Promise<DeployedApp> {
@@ -516,6 +525,7 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   const sweeperAddress = sweeper.addr.toString()
   const fundVault = options.fundVault ?? DEPLOY_FUNDING
   const configureCampaignHash = options.configureCampaignHash ?? true
+  const bindVaultToFactory = options.bindVault ?? true
 
   const ownerBefore = await accountInfo(algorand, ownerAddress)
   const factory = await deployFactory(algorand, specs.factory, ownerAddress)
@@ -526,7 +536,9 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
     windowSeconds: options.vaultWindowSeconds ?? TEST_VAULT_WINDOW,
     funding: fundVault,
   })
-  await bindVault(factory.client, specs.vault, vault.appId, ownerAddress)
+  if (bindVaultToFactory) {
+    await bindVault(factory.client, specs.vault, vault.appId, ownerAddress)
+  }
   if (configureCampaignHash) {
     await factory.client.send.call({
       method: 'setApprovalHash(byte[])void',
@@ -537,7 +549,7 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   }
 
   const ownerAfter = await accountInfo(algorand, ownerAddress)
-  const operations = 3 + (fundVault > 0n ? 1 : 0) + 2 + (configureCampaignHash ? 1 : 0)
+  const operations = 3 + (fundVault > 0n ? 1 : 0) + (bindVaultToFactory ? 2 : 0) + (configureCampaignHash ? 1 : 0)
   expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(FACTORY_MBR + VAULT_MBR)
   expect(ownerBefore.balance - ownerAfter.balance - DEPLOY_FUNDING - fundVault).toEqual(BigInt(operations) * FEE)
   expect(await accountInfo(algorand, factory.address)).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })

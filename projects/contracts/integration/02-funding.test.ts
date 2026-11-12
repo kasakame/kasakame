@@ -15,13 +15,16 @@ import {
   campaignBoxExists,
   campaignState,
   claimCampaign,
+  concatHex,
   deleteCampaign,
   deployCampaign,
   deployStack,
   minBalanceOf,
   pledge,
   spendCampaign,
+  spendExtraFee,
   spendVault,
+  vaultBoxRef,
   type ContractStack,
 } from './support/localnet'
 
@@ -246,5 +249,116 @@ describe('02 funding outcomes', () => {
 
     await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
+  })
+
+  test('CON-042 settleOpen, vault refund, and zero-residual finalize', { tags: ['happy', 'always'] }, async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const campaign = await deployCampaign(stack, creator.addr.toString())
+    const oracle = new ClaimTreeOracle('settle-open-')
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
+    await advanceTime(fixture, 900)
+
+    const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+    await stack.vault.client.send.call({
+      method: 'settleOpen(uint64)void',
+      args: [campaign.appId],
+      sender: stranger.addr,
+      appReferences: [campaign.appId],
+      suppressLog: true,
+    })
+    expect((await campaignBox(stack.vault.client, campaign.appId)).status).toEqual(2)
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore)
+
+    await spendVault(stack, campaign.appId, backer.addr.toString(), 0, 2n * ALGO, txid, oracle)
+
+    const dup = oracle.path(0)
+    const blob = concatHex([...dup.siblings, ...(dup.top === null ? [] : [dup.top]), ...dup.lower])
+    const backerBefore = await balanceOf(stack.algorand, backer.addr.toString())
+    await expect(
+      stack.vault.client.send.call({
+        method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
+        args: [campaign.appId, 0n, 2n * ALGO, Buffer.from(txid, 'hex'), blob],
+        sender: backer.addr,
+        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+        extraFee: microAlgos(3n * FEE),
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/proof does not match root/)
+    expect(await balanceOf(stack.algorand, backer.addr.toString())).toEqual(backerBefore)
+
+    const vaultMin = await minBalanceOf(stack.algorand, stack.vault.address)
+    await stack.vault.client.send.call({
+      method: 'finalize(uint64)void',
+      args: [campaign.appId],
+      sender: backer.addr,
+      suppressLog: true,
+    })
+    expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR)
+  })
+
+  test('CON-043 settleOpen makes the campaign refund path reject', { tags: ['bad', 'always'] }, async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const campaign = await deployCampaign(stack, creator.addr.toString())
+    const oracle = new ClaimTreeOracle('settle-open-reject-')
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
+    await advanceTime(fixture, 900)
+    await stack.vault.client.send.call({
+      method: 'settleOpen(uint64)void',
+      args: [campaign.appId],
+      sender: stranger.addr,
+      appReferences: [campaign.appId],
+      suppressLog: true,
+    })
+
+    const path = oracle.path(0)
+    const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
+    const backerBefore = await balanceOf(stack.algorand, backer.addr.toString())
+    await expect(
+      campaign.appClient.send.call({
+        method: 'refund(uint64,uint64,byte[],byte[])void',
+        args: [0n, 2n * ALGO, Buffer.from(txid, 'hex'), blob],
+        sender: backer.addr,
+        appReferences: [stack.vault.appId],
+        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+        extraFee: microAlgos(spendExtraFee(path, 2)),
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/campaign is not open/)
+    expect(await balanceOf(stack.algorand, backer.addr.toString())).toEqual(backerBefore)
+  })
+
+  test('CON-044 releaseClaimed recovers a claimed box permissionlessly', { tags: ['happy', 'always'] }, async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * ALGO })
+    const oracle = new ClaimTreeOracle('release-claimed-')
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
+    await advanceTime(fixture, 900)
+    await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
+    const box = await campaignBox(stack.vault.client, campaign.appId)
+    expect(box.status).toEqual(3)
+    expect(box.paidIn).toEqual(box.paidOut)
+
+    const vaultBalance = await balanceOf(stack.algorand, stack.vault.address)
+    const vaultMin = await minBalanceOf(stack.algorand, stack.vault.address)
+    await stack.vault.client.send.call({
+      method: 'releaseClaimed(uint64)void',
+      args: [campaign.appId],
+      sender: stranger.addr,
+      boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+      suppressLog: true,
+    })
+    expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
+    expect(await balanceOf(stack.algorand, stack.vault.address)).toEqual(vaultBalance)
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR)
+
+    await deleteCampaign(stack, campaign.appId, creator.addr.toString())
+    await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
   })
 })
