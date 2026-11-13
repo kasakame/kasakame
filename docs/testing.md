@@ -126,15 +126,30 @@ exercises the real takes.
 
 ```bash
 cd projects/contracts
-npx vitest run integration/00-deploy.test.ts integration/01-single-campaign.test.ts
-npx vitest run integration/01-single-campaign.test.ts -t "CON-014"
-npx vitest run integration/02-funding.test.ts -t "CON-040"
-npx vitest run integration/03-multi-actor.test.ts -t "CON-060"
-npx vitest run integration/04-bad-paths.test.ts -t "CON-100"
+
+# find which file owns an ID
+npx vitest list integration -t "CON-042"
+
+# run one test by ID (always tests)
+npx vitest run integration -t "CON-042"
+
+# chain tests depend on the earlier tests in their file: run the file
+npx vitest run integration/02-funding.test.ts
+
+# run by tag
 npx vitest run integration --tags-filter="smoke"
+npx vitest run integration --tags-filter="bad"
+
+# lanes
 npm run test:integration
 npm run test:integration:heavy
 ```
+
+Every test title starts with its `CON-<NNN>` ID, so `-t` selects a single test
+across the whole folder. `chain` tests reuse state created by earlier tests in the
+same file, so `-t` on one of them fails on the missing prerequisite; use
+`vitest list` to find the file, then run the file. `--tags-filter` selects by
+`smoke`, `happy`, `bad`, or `scale`.
 
 ## Shared LocalNet helpers
 
