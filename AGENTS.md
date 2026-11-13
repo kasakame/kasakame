@@ -60,6 +60,8 @@ npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet normal lane (files 00-04)
 npm run test:integration:heavy   # LocalNet heavy lane (files 05-07)
+npx vitest list integration -t "CON-042"  # find the file that owns a test ID
+npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
 
 cd ../frontend
 npm run dev:localnet             # Vite with the LocalNet env (published SDK)
