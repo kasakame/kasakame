@@ -8,6 +8,14 @@ export default defineConfig({
     setupFiles: 'vitest.setup.ts',
     // LocalNet integration tests deploy apps and fast-forward blocks, which occasionally exceeds the default 5s test timeout.
     testTimeout: 120_000,
+    tags: [
+      { name: 'smoke', description: 'Deployment and basic happy-path integration.' },
+      { name: 'happy', description: 'Successful user flows.' },
+      { name: 'bad', description: 'Rejection and adversarial paths.' },
+      { name: 'scale', description: 'Large-N and many-campaign stress cases.', timeout: 600_000 },
+      { name: 'always', description: 'Independent test; runs alone and after unrelated failures.' },
+      { name: 'chain', description: 'Ordered test; shares state with earlier tests in its file.' },
+    ],
     // Coverage measures the contract source only (tests and generated
     // artifacts are excluded). The offline AVM tests exercise the contract
     // through the puya transformer, and V8's line/branch coverage over the

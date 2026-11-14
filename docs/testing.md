@@ -10,7 +10,7 @@ Two complementary layers:
 1. **Offline AVM unit tests** (`algorand-typescript-testing` + Vitest) - the main
    behavioral matrix. Runs in-process, no network, deterministic and fast. This is
    where "every method × every branch" is proven.
-2. **LocalNet integration** (`contract.integration.test.ts`) - deploy the compiled
+2. **LocalNet integration** (`integration/*.test.ts`) - deploy the compiled
    TEAL to a live algod and exercise the flow end-to-end. Proves the compiled
    bytecode behaves as the unit tests expect.
 
@@ -39,8 +39,10 @@ Run with `npm run test` (see `package.json`).
 Commands:
 
 - `npm run test` - offline AVM unit tests only.
-- `npm run test:integration` - LocalNet integration tests (requires
+- `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
   `algokit localnet start` + `npm run build`).
+- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`.
+- `npm run test:integration:all` - both LocalNet lanes.
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
   size budget (requires `algokit localnet start` and `npm run build`).
@@ -67,22 +69,95 @@ Run it with `npm run test:coverage`. The thresholds live in
 
 | Suite | File pattern | Command | CI job | Trigger |
 | --- | --- | --- | --- | --- |
-| Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
+| Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet, normal lane | `**/contract.integration.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane (planned, #162) | same suite, larger parameters | `npm run test:integration` with the scale config from #162 | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| Contract LocalNet, normal lane | `integration/*.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
+| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
-The normal lane uses small, deterministic shapes (4-5 backers, about 10 campaigns).
-The heavy lane raises the same parameters (large N, many campaigns/backers) without
-changing the test code. Counts, N, and seeds are helper parameters, not constants
-inside the suites. The shared cross-project harness is #164.
+The normal lane uses small shapes (4-5 backers, about 10 campaigns) and one
+seeded sequence. The heavy lane raises N, campaigns/backers, and seed count through
+the same config, without changing the test code. Counts, N, and seeds are helper
+parameters, not constants inside the suites. The shared cross-project harness is #164.
+
+## Integration test order
+
+The contract integration tests are numbered files. The number is the order;
+tests inside keep their own IDs. Files `00`-`04` are the normal lane, `05`-`07` are the
+heavy lane.
+
+| File | Tests | Tags | What it proves |
+| --- | --- | --- | --- |
+| `integration/00-deploy.test.ts` | `CON-001`..`CON-006` | `smoke`, `always` | Factory + Vault deploy, hashes, vault binding, app accounts, selectors; hash timelock propose/apply/cancel, ownership transfer/renounce, setVault lookalike/wrong-program/already-set guards |
+| `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
+| `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
+| `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
+| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-127` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards |
+| `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
+| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-221` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; settlement, campaign refund, vault refund, and finalize at 1,024 |
+| `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
+
+- `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
+- `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
+- `chain` tests share campaign A and skip the rest of the chain after the first failure.
+- The `06` ladder grows one campaign through N=15..1,024; run it in order (only `CON-210` creates the campaign).
+- `07` runs three heavy seeds; `CON-062` runs one normal-lane seed through the same engine.
+- The legacy `smart_contracts/**/contract.integration.test.ts` files are retired; their coverage lives in these files (see [Legacy migration map](#legacy-migration-map)).
+
+### Scale config and seeds
+
+`integration/support/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
+normal/heavy presets and `07` runs the heavy seeds through the same
+`integration/support/sequence.ts` engine. Every field has an env override:
+`KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
+`KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
+`KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
+
+### Budget and cap regressions
+
+`06` pins the exact OpUp take count at every ladder boundary (`LADDER_TAKES`); a
+contract budget change that requests one more take fails the step. The offline
+cap tests use the `oracle.py bulk` synthetic tree: N=524,286 accepts the last
+append, N=524,287 rejects the next, and the refund path asserts 14 takes + 2
+payouts = 16 inners. The offline emulator does not enforce the 700-op base
+budget, so that count is asserted from the path shape; the LocalNet ladder
+exercises the real takes.
+
+```bash
+cd projects/contracts
+
+# find which file owns an ID
+npx vitest list integration -t "CON-042"
+
+# run one test by ID (always tests)
+npx vitest run integration -t "CON-042"
+
+# chain tests depend on the earlier tests in their file: run the file
+npx vitest run integration/02-funding.test.ts
+
+# run by tag
+npx vitest run integration --tags-filter="smoke"
+npx vitest run integration --tags-filter="bad"
+
+# lanes
+npm run test:integration
+npm run test:integration:heavy
+```
+
+Every test title starts with its `CON-<NNN>` ID, so `-t` selects a single test
+across the whole folder. `chain` tests reuse state created by earlier tests in the
+same file, so `-t` on one of them fails on the missing prerequisite; use
+`vitest list` to find the file, then run the file. `--tags-filter` selects by
+`smoke`, `happy`, `bad`, or `scale`.
 
 ## Shared LocalNet helpers
 
-The three contract suites import their fixture, oracle, ledger, box, and fee
-helpers from `smart_contracts/testing/localnet.ts`:
+The contract suites import their fixture, oracle, ledger, box, and fee helpers from
+`smart_contracts/testing/localnet.ts` through the `integration/support/localnet.ts`
+re-export. The helper stays under `smart_contracts/testing/` until the
+cross-project harness (#164) moves it; the helper unit spec runs with `npm test`,
+while `integration/**` is reserved for LocalNet tests:
 
 - `deployStack` deploys and funds the Factory, deploys and binds the vault, and
   optionally configures the campaign hash. `deployCampaign`, `registerCampaign`,
@@ -97,7 +172,7 @@ helpers from `smart_contracts/testing/localnet.ts`:
   `accountInfo`, `balanceOf`, `minBalanceOf`, `advanceTime`, `concatHex`,
   `base32ToBytes`, and `addrHex` are the shared primitives.
 
-`testing/localnet.spec.ts` pins the fee formulas and the embedded selectors
+`smart_contracts/testing/localnet.spec.ts` pins the fee formulas and the embedded selectors
 offline, so a contract or SDK formula change fails without LocalNet.
 
 ## Test file naming (important)
@@ -119,8 +194,7 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 
 ## LocalNet integration notes
 
-- Integration tests live in `campaign/contract.integration.test.ts`,
-  `claimsvault/contract.integration.test.ts`, and `factory/contract.integration.test.ts` -
+- Integration tests live in `integration/*.test.ts` (files `00`-`07`) -
   **plain `.test.ts`** files, so the puya
   transformer skips them (no AVM emulation; they talk to real algod).
 - Uses `algorandFixture()` to fund throwaway accounts from the LocalNet dispenser.
@@ -178,24 +252,27 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 23 tests across 3 files).
+`npm run test:integration` in `projects/contracts`; 64 normal-lane tests across 5 files
+plus 16 heavy-lane tests across `05`/`06`/`07`, 80 total).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
 parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 48 campaign +
-73 vault + 63 factory + 3 deployer + 8 deploy-config tests = 195) plus 3 helper
-formula/selector tests in `testing/localnet.spec.ts` (198 total), all green with
-100% line/branch/function coverage of the contracts.
+Offline specs live next to each contract (`contract.algo.spec.ts`: 51 campaign +
+74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 199) plus 3 helper
+formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (202 total), all
+green with 100% line/branch/function coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
 for the actors involved: absolute balance and minimum-balance checks at each
 boundary (creator app MBR and deposit, Factory and Vault deployer app MBRs, app
 account bases, box MBRs), the fee totals of each operation (measured on LocalNet -
 the pledge group costs 4000 µA at small trees, campaign spends start at 4000 µA,
-vault refunds at 3000 µA, and claims 3000 µA; each OpUp take adds 1000 µA), the
+vault refunds at 3000 µA, and claims 3000 µA; each OpUp take adds 1000 µA; the
+spend helper funds one extra take as headroom, so its asserts start at 5000 µA
+for campaign spends and 4000 µA for vault refunds), the
 vault pool movement, the parked box MBR (32,100 µA per campaign box
 on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
@@ -216,46 +293,161 @@ and assert `root`/`n`/`raised` - plus the vault box's `paidIn`/`paidOut` - after
 every step. Forged frontiers, stale proofs, and double-spends are asserted to
 reject with state untouched.
 
-### `smart_contracts/campaign/contract.integration.test.ts` (10 tests)
+### Test inventory
 
-The full claim-tree lifecycle plus the attack matrix, deployed against a real
-Factory + ClaimsVault + Campaign.
+Every integration test carries a stable `CON-<NNN>` ID in its title. `Class` is
+`always` (independent; runs alone with `vitest -t <ID>`) or `chain` (depends on
+earlier tests in the same file, which stop on first failure).
 
-| # | Test | Verifies |
-| --- | --- | --- |
-| 1 | embedded selectors and pinned creator totals | The four inner-call selectors plus the pledge's `credit` selector appear in the campaign TEAL; the vault embeds the campaign pledge selector; the Factory embeds the campaign delete selector; the pinned 589,900 locked / 3,000 create-register / 8,000 full-lifecycle totals match `docs/limits.md` |
-| 2 | pledge → cancel → refund lifecycle, differentially verified | Four pledges (one re-pledge) with per-step root/n/raised + `paidIn`; forged-frontier rejection; pre-deadline cancel; non-sequential post-deadline refunds to zero; double-refund rejection |
-| 3 | unregistered campaigns cannot touch the vault | First-touch `credit` fails with `campaign not registered`; no box is created |
-| 4 | inner-only vault methods reject top-level callers | Direct `payBack`/`payClaim`/`settle`/`notifyDelete` fail with `not the campaign app` - the payout authority is unusable off the campaign path |
-| 5 | successful claim pays the creator exactly, then deletes O(1) | Goal reached → creator paid the full live total; box `Claimed`; atomic `[unregister, delete]` returns the deposit, releases the box, and deletes the app |
-| 6 | failed campaign settles on delete; vault refunds after deletion; finalize sweeps the residual | `settle` writes root/N/`Failed`; permissionless `vault.refund` pays post-delete; early `finalize` with a residual is rejected; post-window residual goes to the sweep target and the box is gone |
-| 7 | pristine and all-cancelled campaigns delete cleanly | Both clean up through the atomic `[unregister, delete]` group; no-box settle no-ops; fully-cancelled delete settles to `Failed` with nothing owed; `finalize` releases the balanced box immediately |
-| 8 | settleOpen lets a stranger settle a vanished-creator campaign | Permissionless settle from live globals; the campaign path then rejects (box not open) and the vault path serves refunds |
-| 9 | a pledge without the matching vault credit is rejected | `pledge` requires the vault credit immediately next; the group is rejected and n/raised stay 0 |
-| 10 | keeps the pledge group funded past N=15 and refunds a wide path | 40 pledges; an N=40 path refund proves the dynamic budget the old fixed fee underfunded |
+#### `integration/00-deploy.test.ts` (6 tests)
 
-### `smart_contracts/claimsvault/contract.integration.test.ts` (7 tests)
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-001` | Factory is owned and bound to the official vault | always | Owner, bound vault, campaign hash equals the compiled bytecode, Factory app-account funding, owner MBR |
+| `CON-002` | ClaimsVault records the Factory, sweep target, and window | always | Vault globals (factory, sweep target, refund window) and app-account funding |
+| `CON-003` | contracts embed the expected inner-call selectors | always | Campaign/Vault/Factory TEAL embeds the selectors used by the inner calls |
+| `CON-004` | Factory hash timelock: propose, reject early apply, cancel | always | Owner-only propose, eligible round = propose round + `APPROVAL_HASH_DELAY`, early apply rejected, cancel clears the proposal, apply with no pending rejected |
+| `CON-005` | Factory ownership transfer and renounce | always | Non-owner rejected, zero address rejected, transfer gives control to the new owner, old owner loses it, renounce leaves nobody able to configure |
+| `CON-006` | Factory setVault guards: wrong factory, wrong program, already set | always | Foreign vault, wrong program hash, non-owner, and already-bound rejection; the binding stays unset on failure |
 
-| # | Test | Verifies |
-| --- | --- | --- |
-| 11 | first touch creates the box with exact MBR accounting | Box fields on first pledge; pool total rises by exactly the pledge; minimum balance parks exactly 32,100 µA |
-| 12 | two campaigns share the pool with per-campaign isolation | Draining campaign A leaves B's box (root, `paidOut` 0) untouched; the pool holds exactly B's live pledge |
-| 13 | settleOpen + vault refunds + zero-residual finalize | Stranger settlement; direct refund + double-refund rejection; `finalize` with nothing left deletes the box with no payment even before the window and frees the MBR |
-| 14 | a credit without a pledge is rejected (spec §17 #29) | The vault requires the campaign pledge immediately before `credit`; the group is rejected and no box is created |
-| 15 | a deleted campaign cannot be pledged, so it cannot be credited | The pristine campaign is deleted through the atomic cleanup group (registration removed); a pledge group to the deleted app fails at the pledge call; no box is created |
-| 16 | releaseClaimed recovers a claimed box permissionlessly; delete still works | A stranger deletes the Claimed box and frees its MBR; the creator's later `delete` succeeds because `notifyDelete` is a no-op |
-| 17 | one payment cannot back two credits in one group | The first `credit` is not the group's final transaction (and the second has no preceding pledge); the whole group is rejected and no box is created |
+#### `integration/01-single-campaign.test.ts` (6 tests)
 
-### `smart_contracts/factory/contract.integration.test.ts` (6 tests)
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-010` | create campaign A | chain | Campaign create, `n=0`, `raised=0`, no vault box yet, `isRegistered` true |
+| `CON-011` | pledge to campaign A | chain | `[pay, pledge, credit]` group; `n=1`, `raised=2 ALGO`, vault box created |
+| `CON-012` | cancel the pledge | chain | `cancelPledge` nulls the leaf, `raised=0`, exact payback through the vault |
+| `CON-013` | delete the cancelled campaign | chain | App deleted, campaign box retained for `finalize`, `isRegistered` false (unregister round trip) |
+| `CON-014` | delete a pristine campaign, registered and unregistered | always | Both cleanup paths: registered returns the deposit; unregistered `unregister` is a no-op; app gone |
+| `CON-015` | single-test happy path: create, pledge, cancel, delete | always | One standalone end-to-end lifecycle with ledger assertions |
 
-| # | Test | Verifies |
-| --- | --- | --- |
-| 18 | register/isRegistered/unregister round trip with a real Campaign | Registration against the real deployed program hash and the bound official vault; the deposit lands on the Factory and returns in the atomic `[unregister, delete]` group; `isRegistered` reflects the state |
-| 19 | an impostor copy of the Campaign contract cannot register | The program-hash check rejects a non-official program |
-| 20 | a campaign bound to a different vault cannot register | The Factory's vault binding rejects a campaign whose `vault` global differs |
-| 21 | a non-creator cannot register someone else's campaign, and registration is refused before the hash is configured | Creator gating; unconfigured-hash refusal |
-| 22 | only the owner can set the official hash, and only the registered creator can unregister | Factory ownership, deposit protection, and the required delete pairing |
-| 23 | an unregistered campaign cleans up through the same group | `unregister` no-ops for an unregistered campaign, the campaign requires the preceding unregister, and the delete removes the app |
+#### `integration/02-funding.test.ts` (15 tests)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-020` | create campaign F | chain | Failed-path campaign create and ledger |
+| `CON-021` | three backers pledge below the goal | chain | Three distinct leaves, box `paidIn`, `n`, `raised` |
+| `CON-022` | advance and refund one backer through the campaign | chain | Post-deadline campaign refund flips the status to Failed once and pays the backer |
+| `CON-023` | delete the failed campaign | chain | `delete` settles the vault box with the final root/N/`settledAt` |
+| `CON-024` | refund another backer through the vault after delete | chain | Vault refund works after the app is gone; double refund rejected |
+| `CON-025` | reject early finalize, then sweep the residual | chain | `finalize` rejects while funds remain; after the window the residual goes to the sweep target and the box is gone |
+| `CON-030` | create campaign S with a 3 ALGO goal | chain | Successful-path campaign create |
+| `CON-031` | fund the campaign to its goal | chain | Goal reached, one leaf, box totals |
+| `CON-032` | advance and claim | chain | Creator paid exactly, box Claimed, `paidIn == paidOut` |
+| `CON-033` | delete the claimed campaign and release its box | chain | Atomic `[unregister, delete]`, deposit returned, box MBR released |
+| `CON-040` | standalone failed campaign workflow | always | Create → pledge → deadline → campaign refund → delete → vault refund |
+| `CON-041` | standalone successful claim workflow | always | Create → pledge → claim → delete with no other test state |
+| `CON-042` | `settleOpen`, vault refund, and zero-residual finalize | always | Stranger settles a vanished-creator campaign, backer refunds from the vault, `finalize` frees the empty box |
+| `CON-043` | `settleOpen` makes the campaign refund path reject | always | After permissionless settlement the campaign path rejects; the backer balance is unchanged |
+| `CON-044` | `releaseClaimed` recovers a claimed box permissionlessly | always | Stranger releases a fully-paid Claimed box and its MBR; the creator's later `delete` still works |
+
+#### `integration/03-multi-actor.test.ts` (9 tests)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-050` | create 10 campaigns by 10 creators (config-driven) | chain | Many creators and campaigns share the Factory/Vault |
+| `CON-051` | 5 backers pledge to campaign 0 (config-driven) | chain | Multiple distinct leaves on one campaign |
+| `CON-052` | one backer pledges to several campaigns | chain | The same account can hold leaves in different campaigns |
+| `CON-053` | a creator backs another campaign | chain | Creator-as-backer is allowed on someone else's campaign |
+| `CON-054` | drain campaign 0 without touching the others | chain | Cancels/refunds are isolated per campaign |
+| `CON-055` | vault pool holds only the live pledges | chain | Pool balance equals the sum of live `paidIn - paidOut` |
+| `CON-060` | creators can back each other | always | Two creators pledge to each other's campaigns |
+| `CON-061` | refunding one campaign leaves the other untouched | always | Per-campaign accounting isolation |
+| `CON-062` | seeded pledge/cancel/refund/finalize sequence | always | One normal-lane seed through the shared sequence engine (N ≤ 100) |
+
+#### `integration/04-bad-paths.test.ts` (28 tests)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-100` | creator cannot pledge to their own campaign | always | Self-pledge rejected, no state change |
+| `CON-101` | pledge payment must go to the vault | always | Wrong receiver rejected |
+| `CON-102` | pledge payment sender must be the caller | always | Payment sender mismatch rejected |
+| `CON-103` | zero pledge is rejected | always | `amount > 0` guard |
+| `CON-104` | pledge below the minimum is rejected | always | 100,000 µA dust guard |
+| `CON-105` | stale frontier after a real pledge is rejected | always | Frontier must fold to the stored root |
+| `CON-106` | pledge without the matching credit is rejected | always | The credit must immediately follow the pledge |
+| `CON-107` | unregistered campaign cannot be credited | always | First touch requires Factory registration; no box created |
+| `CON-108` | cancel after the deadline is rejected | always | `cancelPledge` before the deadline |
+| `CON-109` | refund before the deadline is rejected | always | Campaign refund after the deadline |
+| `CON-110` | refund after the goal was reached is rejected | always | Failed-only refund guard |
+| `CON-111` | only the creator can claim | always | Claim authorization |
+| `CON-112` | raw delete is rejected | always | `delete` requires the preceding Factory `unregister` |
+| `CON-113` | a live campaign cannot be unregistered | always | Live-campaign guard, plus non-creator `unregister` rejection |
+| `CON-114` | credit without a preceding pledge is rejected | always | Vault credit group-shape guard |
+| `CON-115` | top-level vault inner methods are rejected | always | Direct `payBack`/`payClaim`/`settle`/`notifyDelete` fail with `not the campaign app` |
+| `CON-116` | only the Factory owner can set the program hash | always | Owner authorization |
+| `CON-117` | program hash must be 32 bytes | always | Hash length guard |
+| `CON-118` | an impostor campaign cannot register | always | Program-hash admission rule |
+| `CON-119` | vault refund rejects an open box, a claimed box, a closed window, and an unknown position | always | Four refund guards; state and box unchanged |
+| `CON-120` | `settleOpen` rejects before the deadline, after the goal, on a claimed box, and on a failed box | always | Four settlement guards |
+| `CON-121` | `releaseClaimed` rejects a non-claimed box | always | Claimed-only guard |
+| `CON-122` | pledge payment cannot close or rekey | always | Closing/rekeying payments rejected (fee-payer group) |
+| `CON-123` | credit guards reject ClearState, wrong amount/app/selector, non-final, and repeated credits | always | Six credit shape guards, including one payment backing two credits |
+| `CON-124` | a deleted campaign cannot be pledged or credited | always | `pledge` to a deleted app fails; no box is created |
+| `CON-125` | double spends and stale proofs are rejected | always | Stale and forged proofs, same-group double spend, atomic rollback, then a successful retry |
+| `CON-126` | Factory register rejects non-creators, different vaults, and double registration | always | Three register guards |
+| `CON-127` | Factory register deposit and group guards | always | Deposit amount, receiver/sender, final position, rekey, unconfigured hash; no ledger or state change |
+
+#### `integration/05-scale.test.ts` (1 test)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-202` | 25 campaigns by 25 creators with 4 backers each (config-driven) | always | Heavy-lane isolation and pool accounting under load |
+
+#### `integration/06-tree-boundaries.test.ts` (14 tests)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-200` | N=16 crosses the first OpUp take and refunds leaf 0 | always | First budget-take boundary; refund path root/box/ledger |
+| `CON-201` | N=100 refunds the worst-case and an interior leaf | always | Deep-path refund and an interior leaf at N=100 |
+| `CON-210`..`CON-221` | cumulative ladder at N=15,16,31,32,63,64,100,127,128,255,1,000,1,024 | chain | Each boundary pledges up to N and cancels one leaf with its pinned take count; at N=1,024 it also settles, refunds through the campaign, deletes, refunds through the vault, and finalizes |
+
+#### `integration/07-sequences.test.ts` (1 test)
+
+| ID | Test | Class | Verifies |
+| --- | --- | --- | --- |
+| `CON-230` | seeded pledge/cancel/refund/finalize sequences | always | Three heavy seeds of random actions with oracle assertions; seed and ordered actions printed on failure |
+
+### Legacy migration map
+
+`#189` moved the legacy-only coverage into the numbered suite, and `#188` deleted
+the three legacy files. This map records where each legacy test's coverage now lives:
+
+| Legacy test | New-suite equivalent |
+| --- | --- |
+| campaign 1: embedded selectors and pinned creator totals | `00` `CON-003`; the lifecycle helpers assert the pinned fee/MBR totals |
+| campaign 2: pledge → cancel → refund lifecycle | `01` `CON-010`..`CON-012`, `02` `CON-020`..`CON-024`, `04` `CON-105`/`CON-125` |
+| campaign 3: unregistered campaigns cannot touch the vault | `04` `CON-107` |
+| campaign 4: inner-only vault methods reject top-level callers | `04` `CON-115` (`payBack`, `payClaim`, `settle`, `notifyDelete`) |
+| campaign 5: successful claim pays the creator, then deletes | `02` `CON-030`..`CON-033`, `CON-041` |
+| campaign 6: failed campaign settles on delete; refunds after deletion; finalize | `02` `CON-020`..`CON-025`, `CON-040` |
+| campaign 7: pristine and all-cancelled cleanup | `01` `CON-013`/`CON-014` |
+| campaign 8: `settleOpen` by a stranger | `02` `CON-042`, `04` `CON-120` |
+| campaign 9: pledge without the matching credit | `04` `CON-106` |
+| campaign 10: funding past N=15 and a wide refund | `06` `CON-200`/`CON-201` and the N=15..1,024 ladder |
+| vault 11: first-touch box MBR | every `pledge`/`spendVault` helper ledger assert; `02` `CON-021`/`CON-031` |
+| vault 12: two campaigns share the pool with isolation | `03` `CON-055`/`CON-061` |
+| vault 13: `settleOpen` + vault refunds + zero-residual finalize | `02` `CON-042` |
+| vault 14: credit without a pledge | `04` `CON-114` |
+| vault 15: a deleted campaign cannot be pledged or credited | `04` `CON-124` |
+| vault 16: `releaseClaimed` and delete still works | `02` `CON-044`, `04` `CON-121` |
+| vault 17: one payment cannot back two credits | `04` `CON-123` |
+| factory 18: register/isRegistered/unregister round trip | `01` `CON-010` + `CON-013`; the register/delete helpers assert the deposit ledger |
+| factory 19: impostor program cannot register | `04` `CON-118` |
+| factory 20: campaign bound to a different vault cannot register | `04` `CON-126`; `00` `CON-006` covers the Factory side |
+| factory 21: non-creator register and unconfigured hash | `04` `CON-126` + `CON-127` |
+| factory 22: owner-only hash and creator-only unregister | `00` `CON-004`; `04` `CON-116`/`CON-113`/`CON-126` |
+| factory 23: unregistered campaign cleanup | `01` `CON-014` |
+
+Four cases stay offline-only because LocalNet cannot produce the state or wait
+the required rounds:
+
+| Case | Why |
+| --- | --- |
+| vault refund `insufficient` | Needs `paidIn - paidOut` below a valid leaf amount, which no real flow leaves behind; the offline spec patches the box |
+| Factory successful `applyApprovalHash` | Needs `APPROVAL_HASH_DELAY` = 216,000 rounds; LocalNet pins the eligible round and tests early-apply rejection and cancel |
+| Factory `register` payment `closeRemainderTo` | The campaign creator has an outstanding created app, so the protocol rejects the closing payment before `register` runs; the offline spec covers the guard. The pledge payment close is covered on LocalNet (`04` `CON-122`) because the backer is a plain account |
+| `settleOpen` on a Claimed box with campaign status Claimed | A successful claim already settles the box to Claimed, which the box-status guard rejects first; the offline spec constructs the unreachable mixed state |
 
 ## SDK LocalNet integration
 

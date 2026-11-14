@@ -19,8 +19,9 @@ import { SIZE_BUDGET } from '../size-budget.fixture'
  * Shared LocalNet helpers for the contract integration suites: fixture deployment, the claim-tree reference oracle,
  * ledger assertions, box reads, and the fee formulas the contracts actually request.
  *
- * The three `contract.integration.test.ts` files use this module so a formula or ledger check changes in one place.
- * It is test-only and not published. The cross-project harness is tracked separately (#164).
+ * The numbered `integration/` suites use this module so a formula or ledger check changes in one place. It stays under
+ * `smart_contracts/testing/` until the cross-project harness (#164) moves it: the helper unit spec runs with `npm test`,
+ * while `integration/**` is reserved for LocalNet tests. It is test-only and not published.
  */
 
 /** MicroAlgos in one ALGO. */
@@ -176,7 +177,9 @@ export function pledgeExtraFee(peaks: number): bigint {
 }
 
 /**
- * Extra fee for a spend (mirrors the SDK's `refundOpUpIterations` plus the payout inners).
+ * Extra fee for a spend: the payout inners plus one fee per OpUp take, assuming no budget survives the method
+ * prelude. That is an upper bound on the takes the contract requests (the real headroom shrinks with the path size),
+ * so the group is always funded; fee minimality belongs to the SDK.
  *
  * @param path The oracle path for the leaf.
  * @param payoutInners 2 on the campaign path (`payBack` + payment), 1 on the vault path.
@@ -184,7 +187,7 @@ export function pledgeExtraFee(peaks: number): bigint {
  */
 export function spendExtraFee(path: OraclePath, payoutInners: 1 | 2): bigint {
   const required = path.siblings.length * 250 + path.lower.length * 250 + (path.top === null ? 0 : 100) + 700
-  const iterations = Math.max(0, Math.ceil((required + 10 - 500) / 700))
+  const iterations = Math.max(0, Math.ceil((required + 10) / 700))
   return BigInt(payoutInners + iterations) * FEE
 }
 
@@ -412,7 +415,14 @@ export function loadContractSpecs(): ContractSpecs {
   }
 }
 
-function specProgramHash(spec: Arc56Contract, name: string): Uint8Array {
+/**
+ * Hash a compiled program's approval + clear-state bytecode the way the Factory binds it.
+ *
+ * @param spec The ARC-56 spec with compiled bytecode.
+ * @param name Spec name, used in the missing-bytecode error.
+ * @returns The SHA-256 program hash.
+ */
+export function specProgramHash(spec: Arc56Contract, name: string): Uint8Array {
   if (spec.byteCode === undefined) throw new Error(`${name} has no byteCode; run \`npm run build\` first.`)
   return programHash(Buffer.from(spec.byteCode.approval, 'base64'), Buffer.from(spec.byteCode.clear, 'base64'))
 }
@@ -446,6 +456,8 @@ export interface DeployStackOptions {
   fundVault?: bigint
   /** Configure the official campaign hash. Defaults to true; Factory tests set it per deployed program. */
   configureCampaignHash?: boolean
+  /** Bind the vault to the Factory. Defaults to true; Factory setVault tests start unbound. */
+  bindVault?: boolean
 }
 
 async function deployFactory(algorand: AlgorandClient, spec: Arc56Contract, ownerAddr: string): Promise<DeployedApp> {
@@ -514,6 +526,7 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   const sweeperAddress = sweeper.addr.toString()
   const fundVault = options.fundVault ?? DEPLOY_FUNDING
   const configureCampaignHash = options.configureCampaignHash ?? true
+  const bindVaultToFactory = options.bindVault ?? true
 
   const ownerBefore = await accountInfo(algorand, ownerAddress)
   const factory = await deployFactory(algorand, specs.factory, ownerAddress)
@@ -524,7 +537,9 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
     windowSeconds: options.vaultWindowSeconds ?? TEST_VAULT_WINDOW,
     funding: fundVault,
   })
-  await bindVault(factory.client, specs.vault, vault.appId, ownerAddress)
+  if (bindVaultToFactory) {
+    await bindVault(factory.client, specs.vault, vault.appId, ownerAddress)
+  }
   if (configureCampaignHash) {
     await factory.client.send.call({
       method: 'setApprovalHash(byte[])void',
@@ -535,7 +550,7 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   }
 
   const ownerAfter = await accountInfo(algorand, ownerAddress)
-  const operations = 3 + (fundVault > 0n ? 1 : 0) + 2 + (configureCampaignHash ? 1 : 0)
+  const operations = 3 + (fundVault > 0n ? 1 : 0) + (bindVaultToFactory ? 2 : 0) + (configureCampaignHash ? 1 : 0)
   expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(FACTORY_MBR + VAULT_MBR)
   expect(ownerBefore.balance - ownerAfter.balance - DEPLOY_FUNDING - fundVault).toEqual(BigInt(operations) * FEE)
   expect(await accountInfo(algorand, factory.address)).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })
@@ -704,13 +719,42 @@ export async function pledge(
   expect(st.root).toEqual(exp.root)
   expect(st.raised).toEqual(BigInt(exp.raised))
   const box = await campaignBox(stack.vault.client, appId)
-  expect(box.paidIn).toEqual(BigInt(exp.raised))
-  expect(box.paidOut).toEqual(0n)
+  expect(box.paidIn - box.paidOut).toEqual(BigInt(exp.raised))
   return txidHex
 }
 
 /** The campaign spend entry points. */
 export type SpendMethod = 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'refund(uint64,uint64,byte[],byte[])void'
+
+/** Options for the spend helpers. */
+export interface SpendOptions {
+  /**
+   * Add a second top-level app call (the Factory's readonly `isRegistered`) so the group starts with 1,400 opcodes
+   * instead of 700. The campaign's path-shape derivation alone can exceed 700 on large trees, before `ensureBudget`
+   * runs; the extra call lets the heavy boundary tests reach sizes the single-call client path cannot. See #162.
+   */
+  budgetBooster?: boolean
+  /** Pinned number of OpUp inner transactions; asserted when set (LocalNet boundary regression guard). */
+  expectedTakes?: number | undefined
+}
+
+interface PendingInnerTxn {
+  innerTxns?: unknown[]
+}
+
+/**
+ * Count the OpUp takes from a simulated group. The last top-level call is the campaign or vault spend; its direct inner
+ * transactions are the OpUp app creates plus one payout call (`payBack` or the vault payment), so `length - 1` is the
+ * take count. The simulator returns the same inners as the send and does not mutate state.
+ *
+ * @param composer The built spend group.
+ * @returns The OpUp take count.
+ */
+async function simulatedTakeCount(composer: ReturnType<AlgorandClient['newGroup']>): Promise<number> {
+  const simulation = await composer.simulate({ allowUnnamedResources: true, skipSignatures: true })
+  const last = simulation.simulateResponse.txnGroups[0]?.txnResults.at(-1)?.txnResult as PendingInnerTxn | undefined
+  return Math.max(0, (last?.innerTxns?.length ?? 1) - 1)
+}
 
 /**
  * Spend a leaf through the campaign (`cancelPledge`/`refund`), asserting state, box, and ledger.
@@ -724,6 +768,8 @@ export type SpendMethod = 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'ref
  * @param txidHex Pledge payment TxID (hex).
  * @param method Which spend entry point to exercise.
  * @param oracle The campaign's reference tree.
+ * @param options Spend options.
+ * @returns The OpUp take count.
  */
 export async function spendCampaign(
   stack: ContractStack,
@@ -735,23 +781,38 @@ export async function spendCampaign(
   txidHex: string,
   method: SpendMethod,
   oracle: ClaimTreeOracle,
-): Promise<void> {
+  options: SpendOptions = {},
+): Promise<number> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-  await appClient.send.call({
-    method,
+  const composer = stack.algorand.newGroup()
+  if (options.budgetBooster === true) {
+    composer.addAppCallMethodCall({
+      appId: stack.factory.appId,
+      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
+      args: [appId],
+      sender: backerAddr,
+      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
+    })
+  }
+  composer.addAppCallMethodCall({
+    appId,
+    method: ABIMethod.fromSignature(method),
     args: [BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
     sender: backerAddr,
     appReferences: [stack.vault.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 2)),
-    suppressLog: true,
   })
+  const takes = await simulatedTakeCount(composer)
+  await composer.send({ suppressLog: true })
+  if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2))
+  const boosterFee = options.budgetBooster === true ? FEE : 0n
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2) - boosterFee)
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
@@ -763,6 +824,7 @@ export async function spendCampaign(
   expect(st.raised).toEqual(BigInt(exp.raised))
   const box = await campaignBox(stack.vault.client, appId)
   expect(box.paidOut).toEqual(box.paidIn - BigInt(exp.raised))
+  return takes
 }
 
 /**
@@ -775,6 +837,8 @@ export async function spendCampaign(
  * @param amount Pledged amount committed by the leaf.
  * @param txidHex Pledge payment TxID (hex).
  * @param oracle The campaign's reference tree.
+ * @param options Spend options.
+ * @returns The OpUp take count.
  */
 export async function spendVault(
   stack: ContractStack,
@@ -784,22 +848,37 @@ export async function spendVault(
   amount: bigint,
   txidHex: string,
   oracle: ClaimTreeOracle,
-): Promise<void> {
+  options: SpendOptions = {},
+): Promise<number> {
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-  await stack.vault.client.send.call({
-    method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
+  const composer = stack.algorand.newGroup()
+  if (options.budgetBooster === true) {
+    composer.addAppCallMethodCall({
+      appId: stack.factory.appId,
+      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
+      args: [appId],
+      sender: backerAddr,
+      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
+    })
+  }
+  composer.addAppCallMethodCall({
+    appId: stack.vault.appId,
+    method: ABIMethod.fromSignature('refund(uint64,uint64,uint64,byte[],byte[])void'),
     args: [appId, BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
     sender: backerAddr,
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
     extraFee: microAlgos(spendExtraFee(path, 1)),
-    suppressLog: true,
   })
+  const takes = await simulatedTakeCount(composer)
+  await composer.send({ suppressLog: true })
+  if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1))
+  const boosterFee = options.budgetBooster === true ? FEE : 0n
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1) - boosterFee)
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
@@ -808,6 +887,7 @@ export async function spendVault(
   const box = await campaignBox(stack.vault.client, appId)
   expect(box.root).toEqual(exp.root)
   expect(box.paidOut).toEqual(box.paidIn - BigInt(exp.raised))
+  return takes
 }
 
 /**

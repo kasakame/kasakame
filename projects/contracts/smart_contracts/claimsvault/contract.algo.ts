@@ -177,7 +177,7 @@ export class ClaimsVault extends Contract {
    * @param app The campaign application.
    */
   /* v8 ignore next - the offline ledger executes the inner call but cannot emulate its log; the registration gate is
-   * covered by the LocalNet integration tests (contract.integration.test.ts). */
+   * covered by the LocalNet integration tests (`integration/04-bad-paths.test.ts`, CON-107). */
   private checkRegistration(app: Application): void {
     const registrationCheck = itxn
       .applicationCall({

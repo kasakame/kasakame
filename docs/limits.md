@@ -172,9 +172,10 @@ OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
 (the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700
 ops. The campaign request is `240 × popcount(N) + 400`; a spend request is
 `250 × (siblings + lower peaks) + 100 × top + 700`. The SDK mirrors those
-formulas with conservative pre-top-up budgets (1,000 for pledge, 500 for a
-spend), so it pays for the takes the contract will request (or one extra on a
-boundary). Small trees overpay at most one take.
+formulas with assumed pre-top-up budgets (1,000 for pledge, 500 for a spend);
+the measured spend prelude is larger than that assumption on long paths, so
+the take count must be sized from the real remaining budget (see
+[`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
 
 ## Current platform cost (deploy)
 

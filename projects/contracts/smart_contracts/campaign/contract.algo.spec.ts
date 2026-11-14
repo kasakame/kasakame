@@ -16,7 +16,7 @@ import { Campaign } from './contract.algo'
  * Every tree operation runs differentially: expected roots come from the Python reference oracle (`../oracle.py`),
  * driven with the mock payments' real `txnId`s. The vault inner calls (`payBack`/`payClaim`/`settle`/`notifyDelete`)
  * target the stub vault app and succeed as no-ops offline - their real routing and effects run on LocalNet in
- * `contract.integration.test.ts`.
+ * `integration/02-funding.test.ts` and `integration/04-bad-paths.test.ts`.
  */
 
 const GOAL = 10_000_000
@@ -284,6 +284,37 @@ describe('Campaign', () => {
         }).toThrow('campaign reached maximum size')
       })
       expect(contract.n.value).toEqual(524_287)
+    })
+
+    test('accepts the last pledge at N=524,286', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const before = oracle('bulk', '524286') as { root: string; peaks: string[] }
+      ctx.ledger.setGlobalState(contract, Bytes('n'), 524_286)
+      ctx.ledger.setGlobalState(contract, Bytes('root'), Bytes(Buffer.from(before.root, 'hex')))
+      const frontier = Buffer.concat(before.peaks.map((p) => Buffer.from(p, 'hex')))
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(MIN_PLEDGE)],
+        }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        const scopedPay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
+        const txid = Buffer.from(toExternalValue(scopedPay.txnId)).toString('hex')
+        const after = oracle('bulk', '524287', '524286', accountHex(backer), MIN_PLEDGE.toString(), txid) as {
+          root: string
+        }
+        contract.pledge(scopedPay, Bytes(frontier))
+        expect(contract.n.value).toEqual(524_287)
+        expect(rootHex(contract)).toEqual(after.root)
+        expect(contract.raised.value).toEqual(MIN_PLEDGE)
+      })
     })
 
     test('rejects reusing one payment for a second pledge', () => {
@@ -701,6 +732,40 @@ describe('Campaign', () => {
       expect(contract.raised.value).toEqual(0)
       expect(contract.n.value).toEqual(3)
     })
+  })
+
+  test('refunds at N=524,287 within the 16-inner-transaction limit', () => {
+    const contract = createCampaign()
+    const backer = ctx.any.account()
+    const amount = MIN_PLEDGE
+    const txid = 'ab'.repeat(32)
+    const bulk = oracle('bulk', '524287', '0', accountHex(backer), amount.toString(), txid) as {
+      root: string
+      path: { siblings: string[]; top: string | null; lower: string[] }
+    }
+    expect([bulk.path.siblings.length, bulk.path.lower.length]).toEqual([18, 18])
+    ctx.ledger.setGlobalState(contract, Bytes('n'), 524_287)
+    ctx.ledger.setGlobalState(contract, Bytes('root'), Bytes(Buffer.from(bulk.root, 'hex')))
+    ctx.ledger.setGlobalState(contract, Bytes('raised'), amount)
+    ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE + 1 })
+    const blob = Buffer.concat([
+      ...bulk.path.siblings.map((s) => Buffer.from(s, 'hex')),
+      ...(bulk.path.top === null ? [] : [Buffer.from(bulk.path.top, 'hex')]),
+      ...bulk.path.lower.map((s) => Buffer.from(s, 'hex')),
+    ])
+    ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: backer })]).execute(() => {
+      contract.refund(0, amount, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
+    })
+
+    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. Assert the
+    // contract's take request from the cap path (r = c = 18): 14 OpUps plus the campaign payBack + vault payment = 16.
+    const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
+    let takes = 0
+    while (takes * 700 < required + 10) takes += 1
+    expect(takes).toEqual(14)
+    expect(takes + 2).toBeLessThanOrEqual(16)
+    expect(contract.n.value).toEqual(524_287)
+    expect(contract.raised.value).toEqual(0)
   })
 
   describe('claim', () => {

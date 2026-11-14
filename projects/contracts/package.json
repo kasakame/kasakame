@@ -14,15 +14,17 @@
     "unseed:localnet": "tsx --env-file-if-exists=.env.localnet scripts/unseed-demo.ts",
     "unseed:testnet": "tsx --env-file-if-exists=.env.testnet scripts/unseed-demo.ts",
     "check-types": "tsc --noEmit",
-    "test": "vitest run --no-color --exclude '**/*.integration.test.ts' --exclude '**/size-budget.spec.ts'",
-    "test:integration": "vitest run --no-color --no-file-parallelism integration",
+    "test": "vitest run --no-color --exclude '**/size-budget.spec.ts' --exclude 'integration/**'",
+    "test:integration": "vitest run --no-color --no-file-parallelism integration --exclude 'integration/05-*.test.ts' --exclude 'integration/06-*.test.ts' --exclude 'integration/07-*.test.ts'",
     "test:size": "vitest run --no-color smart_contracts/size-budget.spec.ts",
     "test:all": "vitest run --no-color",
-    "test:coverage": "vitest run --no-color --coverage --exclude '**/*.integration.test.ts' --exclude '**/size-budget.spec.ts'",
+    "test:coverage": "vitest run --no-color --coverage --exclude '**/size-budget.spec.ts' --exclude 'integration/**'",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "test:integration:heavy": "vitest run --no-color --no-file-parallelism integration/05-*.test.ts integration/06-*.test.ts integration/07-*.test.ts",
+    "test:integration:all": "vitest run --no-color --no-file-parallelism integration"
   },
   "engines": {
     "node": ">=24.0.0",
