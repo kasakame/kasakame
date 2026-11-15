@@ -62,7 +62,7 @@ describe('06 tree boundaries', () => {
     expect(state.n).toEqual(16n)
     expect(state.raised).toEqual(16n * ALGO)
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaign.appClient,
@@ -91,7 +91,7 @@ describe('06 tree boundaries', () => {
     expect(state.n).toEqual(100n)
     expect(state.raised).toEqual(100n * ALGO)
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaign.appClient,
@@ -219,7 +219,7 @@ describe('06 tree boundaries', () => {
         expect((await campaignState(campaign.appClient)).raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
 
         if (boundary.n === 1_024) {
-          await advanceTime(fixture, 900)
+          await advanceTime(fixture, 86_400)
 
           const refundIndex = nextLeaf
           nextLeaf += 1

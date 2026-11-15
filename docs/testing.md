@@ -93,7 +93,7 @@ heavy lane.
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-127` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards |
+| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-128` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards, create byte caps |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-221` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
@@ -252,17 +252,17 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 64 normal-lane tests across 5 files
-plus 16 heavy-lane tests across `05`/`06`/`07`, 80 total).
+`npm run test:integration` in `projects/contracts`; 65 normal-lane tests across 5 files
+plus 16 heavy-lane tests across `05`/`06`/`07`, 81 total).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
 parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
-chain-relative deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 51 campaign +
-74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 199) plus 3 helper
-formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (202 total), all
+chain-relative deadlines (`+1 day` at deploy) valid.
+Offline specs live next to each contract (`contract.algo.spec.ts`: 57 campaign +
+74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 205) plus 3 helper
+formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (208 total), all
 green with 100% line/branch/function coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
@@ -387,6 +387,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-125` | double spends and stale proofs are rejected | always | Stale and forged proofs, same-group double spend, atomic rollback, then a successful retry |
 | `CON-126` | Factory register rejects non-creators, different vaults, and double registration | always | Three register guards |
 | `CON-127` | Factory register deposit and group guards | always | Deposit amount, receiver/sender, final position, rekey, unconfigured hash; no ledger or state change |
+| `CON-128` | create accepts 123/117 byte metadata and rejects 124/118 | always | Campaign create boundary at the state-entry caps; rejected creates make no app |
 
 #### `integration/05-scale.test.ts` (1 test)
 
@@ -543,7 +544,7 @@ the pinned release predates all three.
 
 | Method | Branch | Covered? |
 | --- | --- | --- |
-| `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
+| `create` | success / zero vault / empty title / title 123/124 / URI 117/118 / `goal == 0` / goal above the total supply / deadline below and at the one-day minimum / past deadline | ✅ |
 | `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
