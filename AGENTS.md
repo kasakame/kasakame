@@ -134,7 +134,7 @@ Current footprint (2026-11-15, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,140 B | 2 (1 extra) | 571,000 µA |
+| Campaign | 2,138 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,778 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,036 B | 1 | 357,000 µA |
 

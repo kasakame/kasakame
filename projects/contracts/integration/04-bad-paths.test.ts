@@ -917,4 +917,23 @@ describe('04 bad paths', () => {
       }),
     ).rejects.toThrow(/official program hash not configured/)
   })
+
+  test('CON-128 create accepts 123/117 byte metadata and rejects 124/118', { tags: ['bad', 'always'] }, async () => {
+    const creator = stack.owner.addr.toString()
+    const campaign = await deployCampaign(stack, creator, {
+      title: 't'.repeat(123),
+      uri: 'u'.repeat(117),
+    })
+    const title = (await campaign.appClient.state.global.getValue('title')) as Uint8Array
+    const uri = (await campaign.appClient.state.global.getValue('metadataUri')) as Uint8Array
+    expect(title.length).toEqual(123)
+    expect(uri.length).toEqual(117)
+
+    await expect(deployCampaign(stack, creator, { title: 't'.repeat(124) })).rejects.toThrow(
+      /title must be 123 bytes or fewer/,
+    )
+    await expect(deployCampaign(stack, creator, { uri: 'u'.repeat(118) })).rejects.toThrow(
+      /metadata uri must be 117 bytes or fewer/,
+    )
+  })
 })

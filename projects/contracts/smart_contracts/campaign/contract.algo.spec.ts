@@ -206,18 +206,30 @@ describe('Campaign', () => {
       }).toThrow('title must not be empty')
     })
 
-    test('rejects an overlong title', () => {
+    test('accepts a title at the 123-byte cap', () => {
       const contract = ctx.contract.create(Campaign)
-      expect(() => {
-        contract.create(vaultApp(), Bytes(Buffer.alloc(129)), METADATA_URI, GOAL, DEADLINE)
-      }).toThrow('title too long')
+      contract.create(vaultApp(), Bytes(Buffer.alloc(123)), METADATA_URI, GOAL, DEADLINE)
+      expect(contract.title.value.length).toEqual(123)
     })
 
-    test('rejects an overlong metadata uri', () => {
+    test('rejects a title over 123 bytes', () => {
       const contract = ctx.contract.create(Campaign)
       expect(() => {
-        contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(129)), GOAL, DEADLINE)
-      }).toThrow('metadata uri too long')
+        contract.create(vaultApp(), Bytes(Buffer.alloc(124)), METADATA_URI, GOAL, DEADLINE)
+      }).toThrow('title must be 123 bytes or fewer')
+    })
+
+    test('accepts a metadata uri at the 117-byte cap', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(117)), GOAL, DEADLINE)
+      expect(contract.metadataUri.value.length).toEqual(117)
+    })
+
+    test('rejects a metadata uri over 117 bytes', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(118)), GOAL, DEADLINE)
+      }).toThrow('metadata uri must be 117 bytes or fewer')
     })
 
     test('rejects a goal of zero', () => {

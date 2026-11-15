@@ -45,8 +45,11 @@ const STATUS_OPEN = 0
 const STATUS_FAILED = 1
 const STATUS_CLAIMED = 2
 
-// A single bytes global-state value is capped at 128 bytes on the AVM.
+// The AVM caps a global-state entry at 128 bytes including the key.
 const MAX_BYTES_PER_STATE_KEY = 128
+// 'title' is 5 bytes and 'metadataUri' is 11 bytes, so their values are capped at 123 and 117.
+const MAX_TITLE_BYTES = MAX_BYTES_PER_STATE_KEY - 5
+const MAX_METADATA_URI_BYTES = MAX_BYTES_PER_STATE_KEY - 11
 
 // Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
 const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
@@ -134,8 +137,8 @@ export class Campaign extends Contract {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     assert(vault.id !== Uint64(0), 'vault required')
     assert(title.length > 0, 'title must not be empty')
-    assert(title.length <= MAX_BYTES_PER_STATE_KEY, 'title too long')
-    assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')
+    assert(title.length <= MAX_TITLE_BYTES, 'title must be 123 bytes or fewer')
+    assert(metadataUri.length <= MAX_METADATA_URI_BYTES, 'metadata uri must be 117 bytes or fewer')
     assert(goal > 0, 'goal must be greater than zero')
     assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
