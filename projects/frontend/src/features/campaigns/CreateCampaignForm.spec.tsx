@@ -129,6 +129,17 @@ describe('CreateCampaignForm', () => {
     expect(await screen.findByText(/Goal must be greater than zero/)).toBeInTheDocument()
   })
 
+  it('shows an error for a goal above the total ALGO supply', async () => {
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10000000001')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/Goal must be 10 billion ALGO or less/)).toBeInTheDocument()
+  })
+
   it('shows an error for a title longer than 128 bytes', async () => {
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)

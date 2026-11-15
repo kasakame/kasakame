@@ -74,7 +74,7 @@ Transitions:
 | `claim()` | creator | after deadline, goal met | Vault pays the creator `paidIn - paidOut`; writes `Claimed` |
 | `delete()` | creator | settled, or open with no live pledges | Settles through the vault, pays leftover balance to the creator, closes the app |
 
-`create` rejects an empty title, a title or URI over 128 bytes, a zero goal, a past deadline, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
+`create` rejects an empty title, a title or URI over 128 bytes, a zero goal, a goal above 10 billion ALGO (the total ALGO supply), a past deadline, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
 
 ## Pledge accounting
 

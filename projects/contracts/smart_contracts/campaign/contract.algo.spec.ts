@@ -1,5 +1,5 @@
 import type { Account, Application, bytes } from '@algorandfoundation/algorand-typescript'
-import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
+import { Bytes, OnCompleteAction, Uint64 } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
@@ -20,6 +20,7 @@ import { Campaign } from './contract.algo'
  */
 
 const GOAL = 10_000_000
+const MAX_GOAL = 10_000_000_000_000_000n
 const CREATION_TIME = 1_000
 const DEADLINE = 2_000
 const MAX_DURATION = 180 * 24 * 60 * 60
@@ -223,6 +224,19 @@ describe('Campaign', () => {
       expect(() => {
         contract.create(vaultApp(), TITLE, METADATA_URI, 0, DEADLINE)
       }).toThrow('goal must be greater than zero')
+    })
+
+    test('accepts a goal at the total ALGO supply', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, Uint64(MAX_GOAL), DEADLINE)
+      expect(BigInt(contract.goal.value)).toEqual(MAX_GOAL)
+    })
+
+    test('rejects a goal above the total ALGO supply', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, Uint64(MAX_GOAL + 1n), DEADLINE)
+      }).toThrow('goal too large')
     })
 
     test('rejects a deadline in the past', () => {
