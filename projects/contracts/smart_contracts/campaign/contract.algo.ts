@@ -54,6 +54,9 @@ const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
+// 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
+const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
+
 // 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18) needs 14 OpUp
 // takes + payBack + payment = 16 inner txns from any prelude budget. Any larger tree can
 // have r = 19, c = 18, whose target can request a 15th take.
@@ -131,6 +134,7 @@ export class Campaign extends Contract {
     assert(title.length <= MAX_BYTES_PER_STATE_KEY, 'title too long')
     assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')
     assert(goal > 0, 'goal must be greater than zero')
+    assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
     assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
 

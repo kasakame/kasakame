@@ -33,6 +33,9 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
   const MAX_BYTES = 128
   // Keep in sync with Campaign.MAX_DURATION_SECONDS.
   const MAX_DURATION_DAYS = 180
+  // Keep in sync with Campaign.MAX_GOAL_MICROALGOS: 10 billion ALGO, the total supply.
+  const MAX_GOAL_ALGO = 10_000_000_000
+  const MAX_GOAL_MICROALGOS = BigInt(MAX_GOAL_ALGO) * 1_000_000n
 
   const canSubmit = title.trim() !== '' && goal.trim() !== '' && !busy && Boolean(activeAddress && transactionSigner)
 
@@ -52,6 +55,10 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
       const goalMicroAlgos = parseAlgoToMicroAlgos(goal)
       if (goalMicroAlgos <= 0n) {
         setMessage('Goal must be greater than zero.')
+        return
+      }
+      if (goalMicroAlgos > MAX_GOAL_MICROALGOS) {
+        setMessage('Goal must be 10 billion ALGO or less.')
         return
       }
       const daysNumber = Number(days)
@@ -190,6 +197,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         <input
           type="number"
           min="0"
+          max={MAX_GOAL_ALGO}
           step="any"
           placeholder="e.g. 100"
           value={goal}
