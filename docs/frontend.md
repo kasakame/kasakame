@@ -62,7 +62,7 @@ navigation (selected campaign id) is enough.
 | --- | --- | --- | --- |
 | **Browse** | Grid of campaign cards (Factory-registered) plus a Deleted campaigns section for vault-box campaigns still holding refunds | indexer list + Factory box search + vault boxes | - |
 | **Detail** | Full campaign state, progress bar, per-pledge actions | indexer detail + live leaves + vault box | pledge / claim / refund / cancelPledge / delete |
-| **Create** | Title + metadata URI + goal (ALGO) + deadline form | - | `create()` + `factory.register()` |
+| **Create** | Title + metadata URI + goal (ALGO) + end date/time picker | - | `create()` + `factory.register()` |
 | **Pledge** | Amount input on the detail page | tree replay (frontier) | payment + `pledge()` + `credit()` (one atomic group) |
 | **My pledges** | Grid of the connected wallet's campaigns with live pledge leaves, deleted ones included (their vault refunds stay open) | campaign enumerate + headers + `fetchMyLeaves` replay per campaign | - |
 
@@ -105,8 +105,9 @@ from one already claimed.
 ## Campaign metadata
 
 The contract stores a short `title` on-chain plus a `metadataUri` pointer to
-off-chain JSON (see [`campaign.md`](campaign.md)). The 128-byte cap on both
-fields is enforced on-chain and re-checked in the create form.
+off-chain JSON (see [`campaign.md`](campaign.md)). The AVM caps a state entry at
+128 bytes including the key, so the effective limits are 123 bytes for `title`
+and 117 bytes for `metadataUri`; the create form checks those exact limits.
 
 The JSON follows an ARC-3-style shape (`{name, description, image, category}`,
 all optional; `lib/metadata.ts`). `ipfs://` URIs resolve through the public
