@@ -86,7 +86,7 @@ describe('05 many actors and campaigns', () => {
       expect(new Set(backers.flat().map((backer) => backer.addr.toString())).size).toEqual(scale.backers)
       expect(creators.length).toEqual(scale.creators)
 
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       for (let leaf = 0; leaf < total; leaf++) {
         const backer = at(at(backers, 0), Math.floor(leaf / scale.pledgesPerBacker))
         await spendCampaign(

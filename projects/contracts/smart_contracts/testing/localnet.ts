@@ -600,7 +600,7 @@ export async function registerCampaign(stack: ContractStack, appId: bigint, crea
 export interface DeployCampaignOptions {
   /** Funding target. Defaults to {@link DEFAULT_GOAL}. */
   goal?: bigint
-  /** Seconds from chain time to the deadline. Defaults to 600. */
+  /** Seconds from chain time to the deadline. Defaults to one day. */
   deadlineOffset?: number
   /** Campaign title. */
   title?: string
@@ -628,7 +628,7 @@ export async function deployCampaign(
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
   const status = await stack.algorand.client.algod.status().do()
   const block = await stack.algorand.client.algod.block(status.lastRound).do()
-  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 600)
+  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 24 * 60 * 60)
   const vaultId = options.vaultId ?? stack.vault.appId
   const factory = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
   const { appClient } = await factory.send.create({
