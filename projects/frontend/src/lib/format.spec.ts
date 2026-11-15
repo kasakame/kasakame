@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatAlgo, formatCountdown, formatDeadline, parseAlgoToMicroAlgos } from './format'
+import { formatAlgo, formatCountdown, formatDeadline, parseAlgoToMicroAlgos, toDateTimeLocal } from './format'
 
 describe('formatAlgo', () => {
   it('formats whole ALGO amounts without decimals', () => {
@@ -52,6 +52,14 @@ describe('formatDeadline', () => {
     const result = formatDeadline(1_767_225_600n)
     expect(typeof result).toBe('string')
     expect(result.length).toBeGreaterThan(0)
+  })
+})
+
+describe('toDateTimeLocal', () => {
+  it('formats a minute-aligned timestamp as a local datetime-local value', () => {
+    const value = toDateTimeLocal(1_000_000_020n)
+    expect(value).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    expect(new Date(value).getTime()).toBe(1_000_000_020_000)
   })
 })
 
