@@ -22,7 +22,8 @@ import { Campaign } from './contract.algo'
 const GOAL = 10_000_000
 const MAX_GOAL = 10_000_000_000_000_000n
 const CREATION_TIME = 1_000
-const DEADLINE = 2_000
+const MIN_DURATION = 24 * 60 * 60
+const DEADLINE = CREATION_TIME + MIN_DURATION
 const MAX_DURATION = 180 * 24 * 60 * 60
 const MIN_PLEDGE = 100_000
 const TITLE = Bytes('My first novel')
@@ -244,6 +245,19 @@ describe('Campaign', () => {
       expect(() => {
         contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME)
       }).toThrow('deadline must be in the future')
+    })
+
+    test('rejects a deadline below the one-day minimum', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MIN_DURATION - 1)
+      }).toThrow('deadline must be at least one day out')
+    })
+
+    test('accepts a deadline exactly at the one-day minimum', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MIN_DURATION)
+      expect(contract.deadline.value).toEqual(CREATION_TIME + MIN_DURATION)
     })
 
     test('accepts a deadline exactly at the maximum duration', () => {

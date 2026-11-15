@@ -157,7 +157,7 @@ async function failedCampaign(
   const campaign = await createCampaign(fixture, stack, { goal })
   const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
   const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), amount, campaign.oracle)
-  await advanceTime(fixture, 900)
+  await advanceTime(fixture, 86_400)
   return { campaign, backer, txid }
 }
 
@@ -280,7 +280,7 @@ describe('04 bad paths', () => {
     const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
 
     await expect(
       campaign.appClient.send.call({
@@ -321,7 +321,7 @@ describe('04 bad paths', () => {
     const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, campaign.oracle)
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
 
     await expect(
       campaign.appClient.send.call({
@@ -340,7 +340,7 @@ describe('04 bad paths', () => {
     const campaign = await createCampaign(fixture, stack, { goal: 1n * ALGO })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
 
     await expect(
       campaign.appClient.send.call({
@@ -552,7 +552,7 @@ describe('04 bad paths', () => {
       const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * ALGO })
       const claimedOracle = new ClaimTreeOracle('claimed-guard-')
       const claimedTxid = await pledge(stack, claimed.appClient, claimed.appId, claimedBacker.addr.toString(), 1n * ALGO, claimedOracle)
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       await claimCampaign(stack, claimed.appClient, claimed.appId, claimedCreator.addr.toString())
       await expect(
         refundFromVault(
@@ -606,7 +606,7 @@ describe('04 bad paths', () => {
       const goal = await createCampaign(fixture, stack, { goal: 1n * ALGO })
       const goalBacker = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       await pledge(stack, goal.appClient, goal.appId, goalBacker.addr.toString(), 1n * ALGO, goal.oracle)
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       await expect(settleOpen(stack, goal.appId, goalBacker.addr.toString())).rejects.toThrow(/goal was reached/)
 
       const claimedCreator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
@@ -614,7 +614,7 @@ describe('04 bad paths', () => {
       const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * ALGO })
       const claimedOracle = new ClaimTreeOracle('settle-claimed-')
       await pledge(stack, claimed.appClient, claimed.appId, claimedBacker.addr.toString(), 1n * ALGO, claimedOracle)
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       await claimCampaign(stack, claimed.appClient, claimed.appId, claimedCreator.addr.toString())
       await expect(settleOpen(stack, claimed.appId, claimedBacker.addr.toString())).rejects.toThrow(/campaign is not open/)
 

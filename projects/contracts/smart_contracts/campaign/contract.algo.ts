@@ -51,6 +51,9 @@ const MAX_BYTES_PER_STATE_KEY = 128
 // Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
 const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 
+// Give backers a real review and pledge window; reject flash campaigns.
+const MIN_DURATION_SECONDS = Uint64(24 * 60 * 60)
+
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
@@ -136,6 +139,7 @@ export class Campaign extends Contract {
     assert(goal > 0, 'goal must be greater than zero')
     assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
+    assert(deadline >= Global.latestTimestamp + MIN_DURATION_SECONDS, 'deadline must be at least one day out')
     assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
 
     this.creator.value = Txn.sender

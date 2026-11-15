@@ -259,10 +259,10 @@ The contract files run **sequentially** (`--no-file-parallelism`): they share on
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
 parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
-chain-relative deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 53 campaign +
-74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 201) plus 3 helper
-formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (204 total), all
+chain-relative deadlines (`+1 day` at deploy) valid.
+Offline specs live next to each contract (`contract.algo.spec.ts`: 55 campaign +
+74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 203) plus 3 helper
+formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (206 total), all
 green with 100% line/branch/function coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
@@ -543,7 +543,7 @@ the pinned release predates all three.
 
 | Method | Branch | Covered? |
 | --- | --- | --- |
-| `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / goal above the total supply / past deadline | ✅ |
+| `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / goal above the total supply / deadline below and at the one-day minimum / past deadline | ✅ |
 | `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |

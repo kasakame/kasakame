@@ -31,7 +31,8 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
 
   // A single bytes global-state value is capped at 128 bytes on the AVM.
   const MAX_BYTES = 128
-  // Keep in sync with Campaign.MAX_DURATION_SECONDS.
+  // Keep in sync with Campaign.MIN_DURATION_SECONDS and MAX_DURATION_SECONDS.
+  const MIN_DURATION_DAYS = 1
   const MAX_DURATION_DAYS = 180
   // Keep in sync with Campaign.MAX_GOAL_MICROALGOS: 10 billion ALGO, the total supply.
   const MAX_GOAL_ALGO = 10_000_000_000
@@ -62,8 +63,8 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         return
       }
       const daysNumber = Number(days)
-      if (!Number.isFinite(daysNumber) || daysNumber <= 0) {
-        setMessage('Duration must be a positive number of days.')
+      if (!Number.isFinite(daysNumber) || daysNumber < MIN_DURATION_DAYS) {
+        setMessage('Duration must be at least 1 day.')
         return
       }
       if (daysNumber > MAX_DURATION_DAYS) {
@@ -211,7 +212,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         Duration (days)
         <input
           type="number"
-          min="1"
+          min={MIN_DURATION_DAYS}
           max={MAX_DURATION_DAYS}
           value={days}
           onChange={(e) => {

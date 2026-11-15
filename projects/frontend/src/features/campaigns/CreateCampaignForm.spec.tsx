@@ -173,7 +173,7 @@ describe('CreateCampaignForm', () => {
     expect(await screen.findByText(/Metadata URI must be 128 bytes or fewer/)).toBeInTheDocument()
   })
 
-  it('shows an error for an invalid duration', async () => {
+  it('shows an error for a duration below one day', async () => {
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
 
@@ -183,7 +183,21 @@ describe('CreateCampaignForm', () => {
     await user.type(screen.getByLabelText(/Duration/), '0')
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(await screen.findByText(/Duration must be a positive number of days/)).toBeInTheDocument()
+    expect(await screen.findByText(/Duration must be at least 1 day/)).toBeInTheDocument()
+  })
+
+  it('rejects a sub-day duration', async () => {
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await user.clear(screen.getByLabelText(/Duration/))
+    await user.type(screen.getByLabelText(/Duration/), '0.5')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/Duration must be at least 1 day/)).toBeInTheDocument()
+    expect(createCampaignMock).not.toHaveBeenCalled()
   })
 
   it('rejects a duration beyond the 180-day cap', async () => {
