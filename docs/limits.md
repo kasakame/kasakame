@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-06,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-15,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,112 B | 4 B | 2,116 B | 1 (2 pages) | 4,096 B | 1,980 B |
+| Campaign | 2,134 B | 4 B | 2,138 B | 1 (2 pages) | 4,096 B | 1,958 B |
 | ClaimsVault | 2,774 B | 4 B | 2,778 B | 1 (2 pages) | 4,096 B | 1,318 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **68 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 68 B would return it to
+The campaign is **90 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 90 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -99,13 +99,36 @@ The vault box is opened by the first `credit` (first pledge) and released by
 covers the Factory box; the vault box is platform-funded and is not charged to
 the creator or backer.
 
-## Campaign duration cap
+## Campaign duration bounds
 
-`Campaign.create` rejects a deadline more than 180 days after creation. A failed
-campaign's vault box therefore stays live for at most the campaign duration plus
-the 730-day refund window (~2.5 years), instead of being pinnable indefinitely by
-a 1 µA pledge. This is a backstop, not a product limit: Kickstarter and Indiegogo
-cap at 60 days, and 180 leaves room for extended raises.
+`Campaign.create` rejects a deadline less than 24 hours or more than 180 days
+after creation.
+
+The one-day minimum gives backers a review and pledge window and blocks flash
+campaigns that exist only to settle and delete. It is a UX guard, not a fix for
+the vault-box pinning path: an attacker can wait out the day, pledge the minimum,
+settle, and leave the platform-funded 32,100 µA box for the 730-day refund
+window. The refund window is the lever for that case.
+
+The 180-day maximum bounds how long a failed campaign's vault box can stay live:
+campaign duration plus the 730-day refund window (~2.5 years), instead of being
+pinnable indefinitely by a 1 µA pledge. It is a backstop, not a product limit:
+Kickstarter and Indiegogo cap at 60 days, and 180 leaves room for extended raises.
+
+## Goal cap
+
+`Campaign.create` rejects a goal above **10,000,000,000 ALGO** (10¹⁶ µA), the
+total ALGO supply. A larger goal can never be reached. The cap is a UX guard,
+not a resource guard: a huge goal does not consume platform resources, it only
+makes the campaign fail. The goal is stored in a uint64, and the total supply
+stays far below the uint64 maximum.
+
+## Title and metadata URI caps
+
+The AVM caps a global-state entry at 128 bytes including the key. `title` is a
+5-byte key, so its value is capped at 123 bytes. `metadataUri` is an 11-byte key,
+so its value is capped at 117 bytes. `Campaign.create` rejects longer values
+before the state write.
 
 ## Minimum pledge
 
