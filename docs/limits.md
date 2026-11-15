@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,136 B | 4 B | 2,140 B | 1 (2 pages) | 4,096 B | 1,956 B |
+| Campaign | 2,134 B | 4 B | 2,138 B | 1 (2 pages) | 4,096 B | 1,958 B |
 | ClaimsVault | 2,774 B | 4 B | 2,778 B | 1 (2 pages) | 4,096 B | 1,318 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **92 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 92 B would return it to
+The campaign is **90 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 90 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -122,6 +122,13 @@ total ALGO supply. A larger goal can never be reached. The cap is a UX guard,
 not a resource guard: a huge goal does not consume platform resources, it only
 makes the campaign fail. The goal is stored in a uint64, and the total supply
 stays far below the uint64 maximum.
+
+## Title and metadata URI caps
+
+The AVM caps a global-state entry at 128 bytes including the key. `title` is a
+5-byte key, so its value is capped at 123 bytes. `metadataUri` is an 11-byte key,
+so its value is capped at 117 bytes. `Campaign.create` rejects longer values
+before the state write.
 
 ## Minimum pledge
 
