@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,125 B | 4 B | 2,129 B | 1 (2 pages) | 4,096 B | 1,967 B |
+| Campaign | 2,136 B | 4 B | 2,140 B | 1 (2 pages) | 4,096 B | 1,956 B |
 | ClaimsVault | 2,774 B | 4 B | 2,778 B | 1 (2 pages) | 4,096 B | 1,318 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **81 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 81 B would return it to
+The campaign is **92 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 92 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -99,13 +99,21 @@ The vault box is opened by the first `credit` (first pledge) and released by
 covers the Factory box; the vault box is platform-funded and is not charged to
 the creator or backer.
 
-## Campaign duration cap
+## Campaign duration bounds
 
-`Campaign.create` rejects a deadline more than 180 days after creation. A failed
-campaign's vault box therefore stays live for at most the campaign duration plus
-the 730-day refund window (~2.5 years), instead of being pinnable indefinitely by
-a 1 µA pledge. This is a backstop, not a product limit: Kickstarter and Indiegogo
-cap at 60 days, and 180 leaves room for extended raises.
+`Campaign.create` rejects a deadline less than 24 hours or more than 180 days
+after creation.
+
+The one-day minimum gives backers a review and pledge window and blocks flash
+campaigns that exist only to settle and delete. It is a UX guard, not a fix for
+the vault-box pinning path: an attacker can wait out the day, pledge the minimum,
+settle, and leave the platform-funded 32,100 µA box for the 730-day refund
+window. The refund window is the lever for that case.
+
+The 180-day maximum bounds how long a failed campaign's vault box can stay live:
+campaign duration plus the 730-day refund window (~2.5 years), instead of being
+pinnable indefinitely by a 1 µA pledge. It is a backstop, not a product limit:
+Kickstarter and Indiegogo cap at 60 days, and 180 leaves room for extended raises.
 
 ## Goal cap
 
