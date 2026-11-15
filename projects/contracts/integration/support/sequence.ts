@@ -102,7 +102,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
       actions.push(`pledge:${i.toString()}:backer=${(i % backers.length).toString()}`)
     }
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     const campaignRefunds = Math.max(1, Math.floor(config.maxN / CAMPAIGN_REFUND_DIVISOR))
     for (let i = 0; i < campaignRefunds; i++) {
       const index = pickUnspent(random, leaves)

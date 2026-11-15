@@ -121,7 +121,7 @@ describe('03 multiple actors and campaigns', () => {
     })
 
     test('CON-054 drain campaign 0 without touching the others', async () => {
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       for (let i = 0; i < backers.length; i++) {
         await spendCampaign(
           stack,
@@ -185,7 +185,7 @@ describe('03 multiple actors and campaigns', () => {
     const oracleB = new ClaimTreeOracle('isolated-b-')
 
     const txid = await pledge(stack, campaignA.appClient, campaignA.appId, backer.addr.toString(), 2n * ALGO, oracleA)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaignA.appClient,

@@ -45,14 +45,23 @@ const STATUS_OPEN = 0
 const STATUS_FAILED = 1
 const STATUS_CLAIMED = 2
 
-// A single bytes global-state value is capped at 128 bytes on the AVM.
+// The AVM caps a global-state entry at 128 bytes including the key.
 const MAX_BYTES_PER_STATE_KEY = 128
+// 'title' is 5 bytes and 'metadataUri' is 11 bytes, so their values are capped at 123 and 117.
+const MAX_TITLE_BYTES = MAX_BYTES_PER_STATE_KEY - 5
+const MAX_METADATA_URI_BYTES = MAX_BYTES_PER_STATE_KEY - 11
 
 // Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
 const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 
+// Give backers a real review and pledge window; reject flash campaigns.
+const MIN_DURATION_SECONDS = Uint64(24 * 60 * 60)
+
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
+
+// 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
+const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
 
 // 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18) needs 14 OpUp
 // takes + payBack + payment = 16 inner txns from any prelude budget. Any larger tree can
@@ -128,10 +137,12 @@ export class Campaign extends Contract {
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     assert(vault.id !== Uint64(0), 'vault required')
     assert(title.length > 0, 'title must not be empty')
-    assert(title.length <= MAX_BYTES_PER_STATE_KEY, 'title too long')
-    assert(metadataUri.length <= MAX_BYTES_PER_STATE_KEY, 'metadata uri too long')
+    assert(title.length <= MAX_TITLE_BYTES, 'title must be 123 bytes or fewer')
+    assert(metadataUri.length <= MAX_METADATA_URI_BYTES, 'metadata uri must be 117 bytes or fewer')
     assert(goal > 0, 'goal must be greater than zero')
+    assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
+    assert(deadline >= Global.latestTimestamp + MIN_DURATION_SECONDS, 'deadline must be at least one day out')
     assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
 
     this.creator.value = Txn.sender

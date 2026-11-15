@@ -1,9 +1,13 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ScopeType } from '@txnlab/use-wallet'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearSession } from '../../lib/backend'
+import { toDateTimeLocal } from '../../lib/format'
 import CreateCampaignForm from './CreateCampaignForm'
+
+const CHAIN_NOW = 1_000_000_020n
+const VALID_DEADLINE = CHAIN_NOW + 30n * 86_400n
 
 const createCampaignMock = vi.fn()
 const fetchChainTimestampMock = vi.fn()
@@ -47,7 +51,7 @@ describe('CreateCampaignForm', () => {
       transactionSigner: {},
     })
     useNetworkMock.mockReturnValue({ activeNetworkConfig: { caipChainId: 'algorand:testnet' } })
-    fetchChainTimestampMock.mockResolvedValue(1_000_000_000n)
+    fetchChainTimestampMock.mockResolvedValue(CHAIN_NOW)
   })
 
   afterEach(() => {
@@ -55,6 +59,14 @@ describe('CreateCampaignForm', () => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
+
+  async function setDeadline(seconds: bigint) {
+    const input = screen.getByLabelText(/End date and time/)
+    await waitFor(() => {
+      expect(input).not.toHaveValue('')
+    })
+    fireEvent.change(input, { target: { value: toDateTimeLocal(seconds) } })
+  }
 
   it('creates a campaign and calls onCreated with the new app id', async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
@@ -75,8 +87,7 @@ describe('CreateCampaignForm', () => {
     await user.type(screen.getByLabelText(/Description/), 'A tale of algorithms')
     await user.selectOptions(screen.getByLabelText(/Category/), 'Games')
     await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
-    await user.clear(screen.getByLabelText(/Duration/))
-    await user.type(screen.getByLabelText(/Duration/), '7')
+    await setDeadline(VALID_DEADLINE)
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
     const calls = fetchMock.mock.calls as unknown[][]
@@ -90,7 +101,7 @@ describe('CreateCampaignForm', () => {
       'My first novel',
       'ipfs://QmMeta',
       expect.anything(),
-      expect.anything(),
+      VALID_DEADLINE,
     )
     expect(onCreated).toHaveBeenCalledWith(99n)
     // Cover and metadata share the one session: a single wallet signature.
@@ -112,7 +123,7 @@ describe('CreateCampaignForm', () => {
       'My first novel',
       '',
       expect.anything(),
-      expect.anything(),
+      VALID_DEADLINE,
     )
     expect(onCreated).toHaveBeenCalledWith(99n)
     expect(signDataMock).not.toHaveBeenCalled()
@@ -129,18 +140,29 @@ describe('CreateCampaignForm', () => {
     expect(await screen.findByText(/Goal must be greater than zero/)).toBeInTheDocument()
   })
 
-  it('shows an error for a title longer than 128 bytes', async () => {
+  it('shows an error for a goal above the total ALGO supply', async () => {
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
 
-    await user.type(screen.getByLabelText(/Title/), 'x'.repeat(129))
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10000000001')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/Goal must be 10 billion ALGO or less/)).toBeInTheDocument()
+  })
+
+  it('shows an error for a title longer than 123 bytes', async () => {
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'x'.repeat(124))
     await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(await screen.findByText(/Title must be 128 bytes or fewer/)).toBeInTheDocument()
+    expect(await screen.findByText(/Title must be 123 bytes or fewer/)).toBeInTheDocument()
   })
 
-  it('shows an error when the uploaded URI is longer than 128 bytes', async () => {
+  it('shows an error when the uploaded URI is longer than 117 bytes', async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
     vi.stubGlobal(
       'fetch',
@@ -159,34 +181,89 @@ describe('CreateCampaignForm', () => {
     await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(await screen.findByText(/Metadata URI must be 128 bytes or fewer/)).toBeInTheDocument()
+    expect(await screen.findByText(/Metadata URI must be 117 bytes or fewer/)).toBeInTheDocument()
   })
 
-  it('shows an error for an invalid duration', async () => {
+  it('rejects a deadline below the one-day minimum', async () => {
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
 
     await user.type(screen.getByLabelText(/Title/), 'My first novel')
     await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
-    await user.clear(screen.getByLabelText(/Duration/))
-    await user.type(screen.getByLabelText(/Duration/), '0')
+    await setDeadline(CHAIN_NOW + 86_400n)
     await user.click(screen.getByRole('button', { name: 'Create' }))
 
-    expect(await screen.findByText(/Duration must be a positive number of days/)).toBeInTheDocument()
-  })
-
-  it('rejects a duration beyond the 180-day cap', async () => {
-    const user = userEvent.setup()
-    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
-
-    await user.type(screen.getByLabelText(/Title/), 'My first novel')
-    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
-    await user.clear(screen.getByLabelText(/Duration/))
-    await user.type(screen.getByLabelText(/Duration/), '181')
-    await user.click(screen.getByRole('button', { name: 'Create' }))
-
-    expect(await screen.findByText(/Duration must be 180 days or fewer/)).toBeInTheDocument()
+    expect(await screen.findByText(/End date must be at least 1 day from now/)).toBeInTheDocument()
     expect(createCampaignMock).not.toHaveBeenCalled()
+  })
+
+  it('accepts a deadline at the picker minimum', async () => {
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    const onCreated = vi.fn()
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    const atMinimum = CHAIN_NOW + 86_400n + 300n
+    await setDeadline(atMinimum)
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(createCampaignMock).toHaveBeenCalledWith({ address: 'ADDRESS', signer: {} }, 'My first novel', '', 10_000_000n, atMinimum)
+    expect(onCreated).toHaveBeenCalledWith(99n)
+  })
+
+  it('rejects a deadline above the 180-day maximum', async () => {
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await setDeadline(CHAIN_NOW + 180n * 86_400n + 60n)
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/End date must be 180 days or less from now/)).toBeInTheDocument()
+    expect(createCampaignMock).not.toHaveBeenCalled()
+  })
+
+  it('sets the deadline picker bounds from the chain time', async () => {
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+    const input = screen.getByLabelText(/End date and time/)
+
+    await waitFor(() => {
+      expect(input).toHaveAttribute('min', toDateTimeLocal(CHAIN_NOW + 86_400n + 300n))
+      expect(input).toHaveAttribute('max', toDateTimeLocal(CHAIN_NOW + 180n * 86_400n))
+    })
+  })
+
+  it('sets a default deadline after loading the chain time', async () => {
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+    const input = screen.getByLabelText(/End date and time/)
+
+    await waitFor(() => {
+      expect(input).toHaveValue(toDateTimeLocal(VALID_DEADLINE))
+    })
+  })
+
+  it('shows a message when the chain time cannot be loaded', async () => {
+    fetchChainTimestampMock.mockRejectedValueOnce(new Error('offline'))
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    expect(await screen.findByText(/Could not read the chain time/)).toBeInTheDocument()
+  })
+
+  it('uses the default deadline when the chain time failed on load', async () => {
+    fetchChainTimestampMock.mockRejectedValueOnce(new Error('offline'))
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
+
+    expect(await screen.findByText(/Could not read the chain time/)).toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(createCampaignMock).toHaveBeenCalledWith({ address: 'ADDRESS', signer: {} }, 'My first novel', '', 10_000_000n, VALID_DEADLINE)
   })
 
   it('shows an error when creation fails', async () => {

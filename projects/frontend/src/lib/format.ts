@@ -53,6 +53,18 @@ export function formatDeadline(deadlineSeconds: bigint): string {
 }
 
 /**
+ * Format a UNIX-seconds timestamp as a local `datetime-local` input value, e.g. `"2026-11-16T14:32"`.
+ *
+ * @param seconds UNIX timestamp in seconds.
+ * @returns Local date and time with minute precision.
+ */
+export function toDateTimeLocal(seconds: bigint): string {
+  const date = new Date(Number(seconds) * 1000)
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+/**
  * Human-readable countdown to a UNIX-seconds deadline, e.g. `"2d 3h"` or `"closed"`.
  *
  * @param deadlineSeconds Deadline as a UNIX timestamp (seconds).

@@ -1,9 +1,9 @@
 import { useNetwork, useWallet } from '@txnlab/use-wallet-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
 import { adaptSignData, adaptSignTransaction, backendUrl, uploadCover, uploadMetadata } from '../../lib/backend'
 import { classifyError, errorMessage } from '../../lib/errors'
-import { parseAlgoToMicroAlgos } from '../../lib/format'
+import { formatDeadline, parseAlgoToMicroAlgos, toDateTimeLocal } from '../../lib/format'
 import { logError } from '../../lib/log'
 import { ensureLiveSessionFor } from '../../lib/session'
 import { createCampaign, disconnectQuietly } from '../../lib/transaction'
@@ -17,6 +17,31 @@ interface CreateCampaignFormProps {
 
 const CATEGORIES = ['Art', 'Music', 'Film', 'Games', 'Books', 'Tech']
 
+// Global-state byte caps: the 128-byte entry limit includes the key.
+const MAX_TITLE_BYTES = 123
+const MAX_METADATA_URI_BYTES = 117
+// Keep in sync with Campaign.MIN_DURATION_SECONDS and MAX_DURATION_SECONDS.
+const MIN_DURATION_DAYS = 1
+const MAX_DURATION_DAYS = 180
+const DEFAULT_DURATION_DAYS = 30
+const SECONDS_PER_DAY = 86_400
+// The create transaction lands in a later block, so keep a margin over the 24-hour minimum.
+const DEADLINE_BUFFER_SECONDS = 300
+// Keep in sync with Campaign.MAX_GOAL_MICROALGOS: 10 billion ALGO, the total supply.
+const MAX_GOAL_ALGO = 10_000_000_000
+const MAX_GOAL_MICROALGOS = BigInt(MAX_GOAL_ALGO) * 1_000_000n
+
+/**
+ * Parse a `datetime-local` value as a local date and time.
+ *
+ * @param value The input value.
+ * @returns UNIX seconds, or undefined when the value is empty or invalid.
+ */
+function parseDeadline(value: string): bigint | undefined {
+  if (value === '') return undefined
+  return BigInt(Math.floor(new Date(value).getTime() / 1000))
+}
+
 const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) => {
   const { activeAddress, activeWallet, signData, signTransactions, transactionSigner } = useWallet()
   const { activeNetworkConfig } = useNetwork()
@@ -25,16 +50,29 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
   const [description, setDescription] = useState('')
   const [category, setCategory] = useState('')
   const [goal, setGoal] = useState('')
-  const [days, setDays] = useState('30')
+  const [deadline, setDeadline] = useState('')
+  const [chainNow, setChainNow] = useState<bigint | null>(null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
 
-  // A single bytes global-state value is capped at 128 bytes on the AVM.
-  const MAX_BYTES = 128
-  // Keep in sync with Campaign.MAX_DURATION_SECONDS.
-  const MAX_DURATION_DAYS = 180
-
   const canSubmit = title.trim() !== '' && goal.trim() !== '' && !busy && Boolean(activeAddress && transactionSigner)
+
+  useEffect(() => {
+    void fetchChainTimestamp()
+      .then((now) => {
+        setChainNow(now)
+        setDeadline(toDateTimeLocal(now + BigInt(DEFAULT_DURATION_DAYS * SECONDS_PER_DAY)))
+      })
+      .catch(() => {
+        setMessage('Could not read the chain time. Reload the page and try again.')
+      })
+  }, [])
+
+  const chosenDeadlinePreview = parseDeadline(deadline)
+  const deadlinePreview = chosenDeadlinePreview === undefined ? undefined : formatDeadline(chosenDeadlinePreview)
+  const minDeadline =
+    chainNow === null ? undefined : toDateTimeLocal(chainNow + BigInt(MIN_DURATION_DAYS * SECONDS_PER_DAY + DEADLINE_BUFFER_SECONDS))
+  const maxDeadline = chainNow === null ? undefined : toDateTimeLocal(chainNow + BigInt(MAX_DURATION_DAYS * SECONDS_PER_DAY))
 
   const handleSubmit = async () => {
     // Defensive: the submit button is disabled while disconnected, so this is unreachable in the UI.
@@ -45,8 +83,8 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
     setMessage(null)
     try {
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
-      if (new TextEncoder().encode(title).length > MAX_BYTES) {
-        setMessage('Title must be 128 bytes or fewer.')
+      if (new TextEncoder().encode(title).length > MAX_TITLE_BYTES) {
+        setMessage(`Title must be ${String(MAX_TITLE_BYTES)} bytes or fewer.`)
         return
       }
       const goalMicroAlgos = parseAlgoToMicroAlgos(goal)
@@ -54,13 +92,21 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         setMessage('Goal must be greater than zero.')
         return
       }
-      const daysNumber = Number(days)
-      if (!Number.isFinite(daysNumber) || daysNumber <= 0) {
-        setMessage('Duration must be a positive number of days.')
+      if (goalMicroAlgos > MAX_GOAL_MICROALGOS) {
+        setMessage('Goal must be 10 billion ALGO or less.')
         return
       }
-      if (daysNumber > MAX_DURATION_DAYS) {
-        setMessage(`Duration must be ${String(MAX_DURATION_DAYS)} days or fewer.`)
+      const now = await fetchChainTimestamp()
+      const chosenDeadline = parseDeadline(deadline) ?? now + BigInt(DEFAULT_DURATION_DAYS * SECONDS_PER_DAY)
+      if (deadline === '') setDeadline(toDateTimeLocal(chosenDeadline))
+      const minDeadline = now + BigInt(MIN_DURATION_DAYS * SECONDS_PER_DAY + DEADLINE_BUFFER_SECONDS)
+      const maxDeadline = now + BigInt(MAX_DURATION_DAYS * SECONDS_PER_DAY)
+      if (chosenDeadline < minDeadline) {
+        setMessage('End date must be at least 1 day from now.')
+        return
+      }
+      if (chosenDeadline > maxDeadline) {
+        setMessage(`End date must be ${String(MAX_DURATION_DAYS)} days or less from now.`)
         return
       }
 
@@ -89,18 +135,17 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
           return
         }
       }
-      if (new TextEncoder().encode(metadataUri).length > MAX_BYTES) {
-        setMessage('Metadata URI must be 128 bytes or fewer.')
+      if (new TextEncoder().encode(metadataUri).length > MAX_METADATA_URI_BYTES) {
+        setMessage(`Metadata URI must be ${String(MAX_METADATA_URI_BYTES)} bytes or fewer.`)
         return
       }
-      const deadlineSeconds = (await fetchChainTimestamp()) + BigInt(Math.floor(daysNumber)) * 86_400n
 
       const { appId } = await createCampaign(
         { address: activeAddress, signer: transactionSigner },
         title.trim(),
         metadataUri.trim(),
         goalMicroAlgos,
-        deadlineSeconds,
+        chosenDeadline,
       )
       onCreated(appId)
     } catch (error) {
@@ -190,6 +235,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         <input
           type="number"
           min="0"
+          max={MAX_GOAL_ALGO}
           step="any"
           placeholder="e.g. 100"
           value={goal}
@@ -200,17 +246,20 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         />
       </label>
       <label className="mb-3 block text-sm text-muted">
-        Duration (days)
+        End date and time
         <input
-          type="number"
-          min="1"
-          max={MAX_DURATION_DAYS}
-          value={days}
+          type="datetime-local"
+          min={minDeadline}
+          max={maxDeadline}
+          value={deadline}
           onChange={(e) => {
-            setDays(e.target.value)
+            setDeadline(e.target.value)
           }}
-          className="mb-3 w-full rounded-md border border-line px-3 py-2 focus:border-teal focus:outline-none"
+          className="mb-1 w-full rounded-md border border-line px-3 py-2 focus:border-teal focus:outline-none"
         />
+        <span className="block text-xs text-muted">
+          {deadlinePreview === undefined ? 'Choose when the campaign ends.' : `Ends ${deadlinePreview}.`} Between 1 and 180 days from now.
+        </span>
       </label>
       <div className="flex gap-2">
         <button
