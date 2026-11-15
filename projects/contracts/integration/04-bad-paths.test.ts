@@ -929,11 +929,7 @@ describe('04 bad paths', () => {
     expect(title.length).toEqual(123)
     expect(uri.length).toEqual(117)
 
-    await expect(deployCampaign(stack, creator, { title: 't'.repeat(124) })).rejects.toThrow(
-      /title must be 123 bytes or fewer/,
-    )
-    await expect(deployCampaign(stack, creator, { uri: 'u'.repeat(118) })).rejects.toThrow(
-      /metadata uri must be 117 bytes or fewer/,
-    )
+    await expect(deployCampaign(stack, creator, { title: 't'.repeat(124) })).rejects.toThrow(/title must be 123 bytes or fewer/)
+    await expect(deployCampaign(stack, creator, { uri: 'u'.repeat(118) })).rejects.toThrow(/metadata uri must be 117 bytes or fewer/)
   })
 })
