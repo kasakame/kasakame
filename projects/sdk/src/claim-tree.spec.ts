@@ -94,13 +94,15 @@ describe('fee sizing', () => {
     expect(pledgeOpUpIterations(MAX_TREE_SIZE)).toEqual(6)
   })
 
-  it('computes spend OpUp iterations from the path shape', () => {
-    expect(refundOpUpIterations(1n, 0n)).toEqual(1)
+  it('computes spend OpUp iterations from the zero-headroom path bound', () => {
+    expect(refundOpUpIterations(1n, 0n)).toEqual(2)
     expect(refundOpUpIterations(4n, 0n)).toEqual(2)
-    expect(refundOpUpIterations(15n, 0n)).toEqual(3)
-    expect(refundOpUpIterations(100n, 0n)).toEqual(4)
-    expect(refundOpUpIterations(100n, 64n)).toEqual(3)
-    expect(refundOpUpIterations(MAX_TREE_SIZE, 0n)).toEqual(14)
+    expect(refundOpUpIterations(15n, 0n)).toEqual(4)
+    expect(refundOpUpIterations(47n, 0n)).toEqual(5)
+    expect(refundOpUpIterations(100n, 0n)).toEqual(5)
+    expect(refundOpUpIterations(100n, 64n)).toEqual(4)
+    expect(refundOpUpIterations(1_024n, 0n)).toEqual(5)
+    expect(refundOpUpIterations(MAX_TREE_SIZE, 0n)).toEqual(15)
   })
 
   it('pins the supported tree size to 524,287', () => {
@@ -114,9 +116,8 @@ describe('fee sizing', () => {
     expect(campaign).toContain('const MAX_TREE_SIZE = Uint64(524_287)')
     expect(campaign).toContain('ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)')
     for (const source of [campaign, vault]) {
-      expect(source).toContain('let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)')
-      expect(source).toContain('requiredOps = requiredOps + Uint64(100)')
-      expect(source).toContain('ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)')
+      expect(source).toContain('op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700)')
+      expect(source).not.toContain('requiredOps')
     }
   })
 })

@@ -6,9 +6,9 @@
 export const SIZE_BUDGET = {
   campaign: {
     contract: 'Campaign',
-    approval: 2_134,
+    approval: 2_121,
     clear: 4,
-    total: 2_138,
+    total: 2_125,
     extraPages: 1,
     pageCapacity: 4_096,
     globalBytes: 4,
@@ -17,9 +17,9 @@ export const SIZE_BUDGET = {
   },
   claimsvault: {
     contract: 'ClaimsVault',
-    approval: 2_774,
+    approval: 2_765,
     clear: 4,
-    total: 2_778,
+    total: 2_769,
     extraPages: 1,
     pageCapacity: 4_096,
     globalBytes: 1,

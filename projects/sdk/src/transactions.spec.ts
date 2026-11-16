@@ -319,7 +319,7 @@ describe('transaction helpers', () => {
     await refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
 
     const call = paramsCampaignRefundMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
-    expect(call.extraFee.microAlgo).toEqual(6_000n)
+    expect(call.extraFee.microAlgo).toEqual(7_000n)
   })
 
   it('refund routes straight to the vault once settled', async () => {

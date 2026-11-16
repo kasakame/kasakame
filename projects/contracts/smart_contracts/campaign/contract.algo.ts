@@ -63,9 +63,11 @@ const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 // 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
 const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
 
-// 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18) needs 14 OpUp
-// takes + payBack + payment = 16 inner txns from any prelude budget. Any larger tree can
-// have r = 19, c = 18, whose target can request a 15th take.
+// 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18, 36 path elements)
+// fits the 16-inner limit with the measured ~600-op prelude budget: 14 OpUp takes +
+// payBack + payment = 16. The SDK's zero-headroom fee bound funds 15 takes, so the group
+// never underpays. The N=1,023 ladder rung pins the prelude headroom; a larger tree can
+// request a 15th take, over the per-transaction inner limit.
 // Keep in sync with the SDK's MAX_TREE_SIZE.
 const MAX_TREE_SIZE = Uint64(524_287)
 
@@ -401,8 +403,11 @@ export class Campaign extends Contract {
     const n = this.n.value
     assert(k < n, 'unknown position')
 
-    // Derive the expected path shape from (n, k), then size the opcode budget from it (spec §14): the caller funds the
-    // OpUp headroom, and an underfunded call fails atomically.
+    // Reserve the whole spend from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
+    // base budget. The blob length is validated below, and an underfunded group fails atomically.
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+
+    // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)
     const c = this.popcount(n - op.shl(op.shr(n, r), r))
     const hasTop = op.shr(n, r + Uint64(1)) > Uint64(0)
@@ -411,12 +416,6 @@ export class Campaign extends Contract {
       h = h + Uint64(1)
     }
     assert(path.length === h * Uint64(32), 'bad path length')
-    // Siblings and lower peaks cost ~250 ops each (hash + loop overhead); a top fold costs ~100.
-    let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)
-    if (hasTop) {
-      requiredOps = requiredOps + Uint64(100)
-    }
-    ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
