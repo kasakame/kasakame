@@ -41,7 +41,9 @@ Commands:
 - `npm run test` - offline AVM unit tests only.
 - `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
   `algokit localnet start` + `npm run build`).
-- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`.
+- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`. CI
+  runs it in the separate `heavy-tests` workflow (weekly + manual); it is not
+  part of the PR gate.
 - `npm run test:integration:all` - both LocalNet lanes.
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
@@ -72,7 +74,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet, normal lane | `integration/*.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
