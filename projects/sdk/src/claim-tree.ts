@@ -252,16 +252,20 @@ export function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop:
 }
 
 /**
- * Maximum campaign tree size (2^19 - 1 = 524,287). Must match `Campaign.MAX_TREE_SIZE`: the largest tree whose
- * worst-case refund path (r = c = 18) needs 14 OpUp takes + two payout inners = 16 inner transactions.
+ * Maximum campaign tree size (2^19 - 1 = 524,287). Must match `Campaign.MAX_TREE_SIZE`: at the worst-case refund
+ * path (r = c = 18, 36 elements) the zero-headroom fee bound funds 15 OpUp takes, while the measured ~600-op prelude
+ * makes the contract request 14, so 14 + two payout inners = 16 inner transactions. The extra funded take is never
+ * requested.
  */
 export const MAX_TREE_SIZE = 524_287n
 
-// Contract budget estimates (docs/claim-tree-protocol.md §14). The available pool is the group's
-// opcode budget minus the method's prelude; these constants are conservative LocalNet measurements.
+// Contract budget estimates (docs/claim-tree-protocol.md §14), measured on LocalNet.
 const OPUP_BUDGET_PER_ITERATION = 700
 const PLEDGE_AVAILABLE_BUDGET = 1_000
-const SPEND_AVAILABLE_BUDGET = 500
+// A spend top-up adds 700 ops but its loop costs ~25, so each take nets ~671-675. The contract funds the prelude
+// before it runs, so size from zero headroom: this may overpay one take, never underfund.
+const OPUP_SPEND_NET_BUDGET = 670
+const SPEND_TOP_UP_OVERHEAD = 12
 
 /**
  * OpUp iterations the campaign will request for a pledge at the current tree size.
@@ -283,8 +287,9 @@ export function pledgeOpUpIterations(n: bigint): number {
  */
 export function refundOpUpIterations(n: bigint, k: bigint): number {
   const { r, c, hasTop } = pathShape(n, k)
-  const required = r * 250 + c * 250 + (hasTop ? 100 : 0) + 700
-  return opUpIterations(required, SPEND_AVAILABLE_BUDGET)
+  const pathElements = r + c + (hasTop ? 1 : 0)
+  const required = pathElements * 250 + 700
+  return Math.max(0, Math.ceil((required + SPEND_TOP_UP_OVERHEAD) / OPUP_SPEND_NET_BUDGET))
 }
 
 /**

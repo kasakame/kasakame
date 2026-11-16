@@ -34,13 +34,15 @@ import {
 const ALGO = 1_000_000n
 const WINDOW = 3_600n
 const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch factory check)
-const FEE_SPEND = 4_000n // outer + 2 payout inners + 1 OpUp take
-const FEE_VAULT_REFUND = 3_000n // outer + 1 payout inner + 1 OpUp take
+const FEE_SPEND = 5_000n // outer + 2 payout inners + 2 OpUp takes (zero-headroom sizing)
+const FEE_VAULT_REFUND = 4_000n // outer + 1 payout inner + 2 OpUp takes
 const FEE_CLAIM = 3_000n // inner payClaim + inner payment
 
 describe('SDK send path (localnet)', () => {
   const fixture = algorandFixture()
   let algorand: AlgorandClient
+  // The pinned specs release predates the early budget top-up, so the multi-take proofs only run against local artifacts.
+  let legacyClients = false
 
   beforeAll(async () => {
     await fixture.newScope()
@@ -66,6 +68,7 @@ describe('SDK send path (localnet)', () => {
 
     // 2026-11 Factory specs bind the vault and hash approval ‖ clear with a length prefix; the pinned release predates both.
     const legacyFactory = !factory.appSpec.methods.some((method) => method.name === 'setVault')
+    legacyClients = legacyFactory
     if (!legacyFactory) {
       if (factory.appSpec.methods.some((method) => method.name === 'setVaultApprovalHash')) {
         const vaultSpec = vaultFactory.appSpec
@@ -136,7 +139,7 @@ describe('SDK send path (localnet)', () => {
   test('create → pledge → cancel → delete', async () => {
     const creator = await session(50n)
     const backer = await session(50n)
-    const deadline = (await fetchChainTimestamp()) + 3_600n
+    const deadline = (await fetchChainTimestamp()) + 90_000n
     const { appId } = await createCampaign(creator, 'SDK open campaign', 'ipfs://sdk-open', 10n * ALGO, deadline)
     expect(await isRegistered(appId)).toBe(true)
 
@@ -163,11 +166,11 @@ describe('SDK send path (localnet)', () => {
   test('successful campaign → claim → delete', async () => {
     const creator = await session(50n)
     const backer = await session(50n)
-    const deadline = (await fetchChainTimestamp()) + 60n
+    const deadline = (await fetchChainTimestamp()) + 90_000n
     const { appId } = await createCampaign(creator, 'SDK successful campaign', 'ipfs://sdk-success', ALGO, deadline)
 
     await pledge(appId, backer, ALGO)
-    await advanceTime(120)
+    await advanceTime(90_001)
 
     const creatorBefore = await balanceOf(creator.address)
     await claim(appId, creator)
@@ -188,12 +191,12 @@ describe('SDK send path (localnet)', () => {
     const creator = await session(50n)
     const backerA = await session(50n)
     const backerB = await session(50n)
-    const deadline = (await fetchChainTimestamp()) + 60n
+    const deadline = (await fetchChainTimestamp()) + 90_000n
     const { appId } = await createCampaign(creator, 'SDK failed campaign', 'ipfs://sdk-failed', 10n * ALGO, deadline)
 
     await pledge(appId, backerA, 3n * ALGO)
     await pledge(appId, backerB, 2n * ALGO)
-    await advanceTime(120)
+    await advanceTime(90_001)
 
     const leafA = (await fetchMyLeaves(appId, backerA.address))[0]
     if (leafA === undefined) throw new Error('backer A leaf missing')
@@ -223,6 +226,73 @@ describe('SDK send path (localnet)', () => {
     const box = await fetchVaultBox(appId)
     expect(box?.paidIn).toEqual(5n * ALGO)
     expect(box?.paidOut).toEqual(5n * ALGO)
+  })
+
+  test('mid-size tree → cancel and refund on both paths', async (ctx) => {
+    if (legacyClients) return ctx.skip()
+    const creator = await session(50n)
+    const backer = await session(100n)
+    const deadline = (await fetchChainTimestamp()) + 90_000n
+    const { appId } = await createCampaign(creator, 'SDK mid-size campaign', 'ipfs://sdk-mid', 100n * ALGO, deadline)
+
+    for (let i = 0; i < 47; i++) await pledge(appId, backer, ALGO)
+    const initial = await fetchMyLeaves(appId, backer.address)
+    expect(initial).toHaveLength(47)
+
+    // N=47, k=0: r=5, c=4 (nine path elements), so the cancel needs several OpUp takes.
+    const leaf0 = initial.find((leaf) => leaf.position === 0)
+    if (leaf0 === undefined) throw new Error('leaf 0 missing')
+    await cancelPledge(appId, backer, leaf0)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(46n * ALGO)
+
+    await advanceTime(90_001)
+
+    const leaf1 = (await fetchMyLeaves(appId, backer.address)).find((leaf) => leaf.position === 1)
+    if (leaf1 === undefined) throw new Error('leaf 1 missing')
+    await refund(appId, backer, leaf1)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(45n * ALGO)
+    expect((await headerOf(appId)).status).toEqual('failed')
+
+    await deleteCampaign(appId, creator)
+
+    const leaf2 = (await fetchMyLeaves(appId, backer.address)).find((leaf) => leaf.position === 2)
+    if (leaf2 === undefined) throw new Error('leaf 2 missing')
+    await refund(appId, backer, leaf2)
+    const box = await fetchVaultBox(appId)
+    expect(box?.paidIn).toEqual(47n * ALGO)
+    expect(box?.paidOut).toEqual(3n * ALGO)
+  })
+
+  test('large tree → cancel and refund with a deep path', { timeout: 300_000 }, async (ctx) => {
+    if (legacyClients) return ctx.skip()
+    const creator = await session(50n)
+    const backer = await session(300n)
+    const deadline = (await fetchChainTimestamp()) + 90_000n
+    const { appId } = await createCampaign(creator, 'SDK large campaign', 'ipfs://sdk-large', 1_000n * ALGO, deadline)
+
+    for (let i = 0; i < 255; i++) await pledge(appId, backer, ALGO)
+    const initial = await fetchMyLeaves(appId, backer.address)
+    expect(initial).toHaveLength(255)
+
+    // N=255, k=9: r=c=7 (14 path elements), the heaviest shape exercised by the contract ladder.
+    const leaf9 = initial.find((leaf) => leaf.position === 9)
+    if (leaf9 === undefined) throw new Error('leaf 9 missing')
+    await cancelPledge(appId, backer, leaf9)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(254n * ALGO)
+
+    await advanceTime(90_001)
+
+    const leaf10 = (await fetchMyLeaves(appId, backer.address)).find((leaf) => leaf.position === 10)
+    if (leaf10 === undefined) throw new Error('leaf 10 missing')
+    await refund(appId, backer, leaf10)
+    await deleteCampaign(appId, creator)
+
+    const leaf11 = (await fetchMyLeaves(appId, backer.address)).find((leaf) => leaf.position === 11)
+    if (leaf11 === undefined) throw new Error('leaf 11 missing')
+    await refund(appId, backer, leaf11)
+    const box = await fetchVaultBox(appId)
+    expect(box?.paidIn).toEqual(255n * ALGO)
+    expect(box?.paidOut).toEqual(3n * ALGO)
   })
 })
 

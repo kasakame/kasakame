@@ -797,11 +797,16 @@ describe('Campaign', () => {
       contract.refund(0, amount, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
     })
 
-    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. Assert the
-    // contract's take request from the cap path (r = c = 18): 14 OpUps plus the campaign payBack + vault payment = 16.
+    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. The SDK's
+    // zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487 ops, so the
+    // contract actually requests 14. 14 + the campaign payBack + vault payment = 16.
     const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
+    // The Puya transformer makes `/` integer division in this spec; count the takes with a loop.
+    let funded = 0
+    while (funded * 670 < required + 12) funded += 1
     let takes = 0
-    while (takes * 700 < required + 10) takes += 1
+    while (takes * 675 < required + 12 - 487) takes += 1
+    expect(funded).toEqual(15)
     expect(takes).toEqual(14)
     expect(takes + 2).toBeLessThanOrEqual(16)
     expect(contract.n.value).toEqual(524_287)

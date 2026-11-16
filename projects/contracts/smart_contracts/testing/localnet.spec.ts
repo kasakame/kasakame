@@ -22,10 +22,11 @@ describe('contract LocalNet helpers', () => {
     expect(spendFee(smallPath, 2)).toEqual(5n * FEE)
     expect(spendFee(smallPath, 1)).toEqual(4n * FEE)
 
-    // The 2^19 - 1 cap, leaf 0: r = c = 18, so the campaign path fits exactly 16 inner transactions.
+    // The 2^19 - 1 cap, leaf 0: r = c = 18. The zero-headroom fee funds 15 takes; the group pays for them even
+    // though the contract requests 14, so 2 payouts + 15 = 17 fees on the campaign path.
     const capPath = { siblings: Array<string>(18).fill('00'), top: null, lower: Array<string>(18).fill('00') }
-    expect(spendExtraFee(capPath, 2)).toEqual(16n * FEE)
-    expect(spendExtraFee(capPath, 1)).toEqual(15n * FEE)
+    expect(spendExtraFee(capPath, 2)).toEqual(17n * FEE)
+    expect(spendExtraFee(capPath, 1)).toEqual(16n * FEE)
   })
 
   it('pins the embedded selectors', () => {
