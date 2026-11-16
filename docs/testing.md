@@ -41,7 +41,9 @@ Commands:
 - `npm run test` - offline AVM unit tests only.
 - `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
   `algokit localnet start` + `npm run build`).
-- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`.
+- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`. CI
+  runs it in the separate `heavy-tests` workflow (weekly + manual); it is not
+  part of the PR gate.
 - `npm run test:integration:all` - both LocalNet lanes.
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
@@ -72,7 +74,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet, normal lane | `integration/*.test.ts` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | separate scheduled job (#122), not required for PRs | weekly `schedule` + `workflow_dispatch` |
+| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
@@ -93,9 +95,9 @@ heavy lane.
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-127` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards |
+| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-128` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards, create byte caps |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
-| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-221` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; settlement, campaign refund, vault refund, and finalize at 1,024 |
+| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
@@ -117,12 +119,15 @@ normal/heavy presets and `07` runs the heavy seeds through the same
 ### Budget and cap regressions
 
 `06` pins the exact OpUp take count at every ladder boundary (`LADDER_TAKES`); a
-contract budget change that requests one more take fails the step. The offline
-cap tests use the `oracle.py bulk` synthetic tree: N=524,286 accepts the last
-append, N=524,287 rejects the next, and the refund path asserts 14 takes + 2
-payouts = 16 inners. The offline emulator does not enforce the 700-op base
-budget, so that count is asserted from the path shape; the LocalNet ladder
-exercises the real takes.
+contract budget change that requests one more take fails the step. The N=1,023
+rung (h=18, 7 takes) is also the prelude guard: it proves at least 487 of the
+700 base opcodes survive the ABI router and guards, above the ~262 the 2¹⁹−1 cap
+needs for 14 takes + 2 payouts = 16 inners. The offline cap tests use the
+`oracle.py bulk` synthetic tree: N=524,286 accepts the last append, N=524,287
+rejects the next, and the refund path asserts the SDK funds 15 takes while the
+contract requests 14. The offline emulator does not enforce the 700-op base
+budget, so those counts are asserted from the path shape and the measured
+prelude; the LocalNet ladder exercises the real takes.
 
 ```bash
 cd projects/contracts
@@ -252,17 +257,17 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 64 normal-lane tests across 5 files
-plus 16 heavy-lane tests across `05`/`06`/`07`, 80 total).
+`npm run test:integration` in `projects/contracts`; 65 normal-lane tests across 5 files
+plus 17 heavy-lane tests across `05`/`06`/`07`, 82 total).
 Each file deploys its own fixture chain to a live algod.
 The contract files run **sequentially** (`--no-file-parallelism`): they share one
 LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is chain-global -
 parallel files can jump the clock between another file's deploy and pledge,
 flaking with `pledging is closed`. Sequential files keep each suite's
-chain-relative deadlines (`+600s` at deploy) valid.
-Offline specs live next to each contract (`contract.algo.spec.ts`: 51 campaign +
-74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 199) plus 3 helper
-formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (202 total), all
+chain-relative deadlines (`+1 day` at deploy) valid.
+Offline specs live next to each contract (`contract.algo.spec.ts`: 57 campaign +
+74 vault + 63 factory + 3 deployer + 8 deploy-config tests = 205) plus 3 helper
+formula/selector tests in `smart_contracts/testing/localnet.spec.ts` (208 total), all
 green with 100% line/branch/function coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
@@ -387,6 +392,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-125` | double spends and stale proofs are rejected | always | Stale and forged proofs, same-group double spend, atomic rollback, then a successful retry |
 | `CON-126` | Factory register rejects non-creators, different vaults, and double registration | always | Three register guards |
 | `CON-127` | Factory register deposit and group guards | always | Deposit amount, receiver/sender, final position, rekey, unconfigured hash; no ledger or state change |
+| `CON-128` | create accepts 123/117 byte metadata and rejects 124/118 | always | Campaign create boundary at the state-entry caps; rejected creates make no app |
 
 #### `integration/05-scale.test.ts` (1 test)
 
@@ -400,7 +406,7 @@ earlier tests in the same file, which stop on first failure).
 | --- | --- | --- | --- |
 | `CON-200` | N=16 crosses the first OpUp take and refunds leaf 0 | always | First budget-take boundary; refund path root/box/ledger |
 | `CON-201` | N=100 refunds the worst-case and an interior leaf | always | Deep-path refund and an interior leaf at N=100 |
-| `CON-210`..`CON-221` | cumulative ladder at N=15,16,31,32,63,64,100,127,128,255,1,000,1,024 | chain | Each boundary pledges up to N and cancels one leaf with its pinned take count; at N=1,024 it also settles, refunds through the campaign, deletes, refunds through the vault, and finalizes |
+| `CON-210`..`CON-222` | cumulative ladder at N=15,16,31,32,63,64,100,127,128,255,1,000,1,023,1,024 | chain | Each boundary pledges up to N and cancels one leaf with its pinned take count; N=1,023/k=11 pins the h=18 prelude guard; at N=1,024 it also settles, refunds through the campaign, deletes, refunds through the vault, and finalizes |
 
 #### `integration/07-sequences.test.ts` (1 test)
 
@@ -454,7 +460,9 @@ the required rounds:
 `projects/sdk/src/transactions.integration.test.ts` closes the client send-path
 gap: it deploys a Factory + ClaimsVault from the ARC-56 bytecode embedded in the
 generated clients, calls `configureSdk`, and drives the SDK write helpers against
-a live chain. Three flows run with fresh campaigns and generated-account signers:
+a live chain. Five flows run with fresh campaigns and generated-account signers
+(the last two only when `SDK_SPECS=local` generated clients deploy the fixed
+contracts; the pinned release predates the early budget top-up):
 
 1. **create → pledge → cancel → delete** - the open-campaign lifecycle, including
    the `[pay, campaign.pledge, vault.credit]` group and the backer's withdrawal.
@@ -462,6 +470,11 @@ a live chain. Three flows run with fresh campaigns and generated-account signers
    `[unregister, delete]` cleanup.
 3. **failed campaign → refund before delete → delete → refund after delete** -
    the campaign refund path, then the vault refund path once the app is gone.
+4. **mid-size tree (N=47) → cancel and refund on both paths** - a multi-take
+   proof path through the SDK's fee sizing.
+5. **large tree (N=255) → cancel and refund with a deep path** - 14 path
+   elements, the heaviest shape the contract ladder exercises; it raises the
+   per-test timeout because the SDK re-reads the tree for every pledge.
 
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
 the offset is reset in a `finally`, and the suite runs with
@@ -543,7 +556,7 @@ the pinned release predates all three.
 
 | Method | Branch | Covered? |
 | --- | --- | --- |
-| `create` | success / zero vault / empty title / overlong title+uri / `goal == 0` / past deadline | ✅ |
+| `create` | success / zero vault / empty title / title 123/124 / URI 117/118 / `goal == 0` / goal above the total supply / deadline below and at the one-day minimum / past deadline | ✅ |
 | `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |

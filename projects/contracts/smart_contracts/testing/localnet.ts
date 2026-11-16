@@ -177,17 +177,18 @@ export function pledgeExtraFee(peaks: number): bigint {
 }
 
 /**
- * Extra fee for a spend: the payout inners plus one fee per OpUp take, assuming no budget survives the method
- * prelude. That is an upper bound on the takes the contract requests (the real headroom shrinks with the path size),
- * so the group is always funded; fee minimality belongs to the SDK.
+ * Extra fee for a spend: the payout inners plus one fee per OpUp take, sizing from the early path-length upper bound
+ * with no assumed pre-top-up headroom. That may overpay one take but never underfunds; fee minimality belongs to the
+ * SDK.
  *
  * @param path The oracle path for the leaf.
  * @param payoutInners 2 on the campaign path (`payBack` + payment), 1 on the vault path.
  * @returns The extra fee in microAlgos.
  */
 export function spendExtraFee(path: OraclePath, payoutInners: 1 | 2): bigint {
-  const required = path.siblings.length * 250 + path.lower.length * 250 + (path.top === null ? 0 : 100) + 700
-  const iterations = Math.max(0, Math.ceil((required + 10) / 700))
+  const pathElements = path.siblings.length + path.lower.length + (path.top === null ? 0 : 1)
+  const required = pathElements * 250 + 700
+  const iterations = Math.max(0, Math.ceil((required + 12) / 670))
   return BigInt(payoutInners + iterations) * FEE
 }
 
@@ -600,7 +601,7 @@ export async function registerCampaign(stack: ContractStack, appId: bigint, crea
 export interface DeployCampaignOptions {
   /** Funding target. Defaults to {@link DEFAULT_GOAL}. */
   goal?: bigint
-  /** Seconds from chain time to the deadline. Defaults to 600. */
+  /** Seconds from chain time to the deadline. Defaults to one day. */
   deadlineOffset?: number
   /** Campaign title. */
   title?: string
@@ -628,7 +629,7 @@ export async function deployCampaign(
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
   const status = await stack.algorand.client.algod.status().do()
   const block = await stack.algorand.client.algod.block(status.lastRound).do()
-  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 600)
+  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 24 * 60 * 60)
   const vaultId = options.vaultId ?? stack.vault.appId
   const factory = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
   const { appClient } = await factory.send.create({
@@ -728,12 +729,6 @@ export type SpendMethod = 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'ref
 
 /** Options for the spend helpers. */
 export interface SpendOptions {
-  /**
-   * Add a second top-level app call (the Factory's readonly `isRegistered`) so the group starts with 1,400 opcodes
-   * instead of 700. The campaign's path-shape derivation alone can exceed 700 on large trees, before `ensureBudget`
-   * runs; the extra call lets the heavy boundary tests reach sizes the single-call client path cannot. See #162.
-   */
-  budgetBooster?: boolean
   /** Pinned number of OpUp inner transactions; asserted when set (LocalNet boundary regression guard). */
   expectedTakes?: number | undefined
 }
@@ -788,15 +783,6 @@ export async function spendCampaign(
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
   const composer = stack.algorand.newGroup()
-  if (options.budgetBooster === true) {
-    composer.addAppCallMethodCall({
-      appId: stack.factory.appId,
-      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
-      args: [appId],
-      sender: backerAddr,
-      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
-    })
-  }
   composer.addAppCallMethodCall({
     appId,
     method: ABIMethod.fromSignature(method),
@@ -811,8 +797,7 @@ export async function spendCampaign(
   if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  const boosterFee = options.budgetBooster === true ? FEE : 0n
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2) - boosterFee)
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 2))
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)
@@ -855,15 +840,6 @@ export async function spendVault(
   const path = oracle.path(k)
   const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
   const composer = stack.algorand.newGroup()
-  if (options.budgetBooster === true) {
-    composer.addAppCallMethodCall({
-      appId: stack.factory.appId,
-      method: ABIMethod.fromSignature('isRegistered(uint64)bool'),
-      args: [appId],
-      sender: backerAddr,
-      boxReferences: [registrationBoxRef(stack.factory.appId, appId)],
-    })
-  }
   composer.addAppCallMethodCall({
     appId: stack.vault.appId,
     method: ABIMethod.fromSignature('refund(uint64,uint64,uint64,byte[],byte[])void'),
@@ -877,8 +853,7 @@ export async function spendVault(
   if (options.expectedTakes !== undefined) expect(takes).toEqual(options.expectedTakes)
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  const boosterFee = options.budgetBooster === true ? FEE : 0n
-  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1) - boosterFee)
+  expect(backerAfter.balance - backerBefore.balance).toEqual(amount - spendFee(path, 1))
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultBefore.balance - vaultAfter.balance).toEqual(amount)
   expect(vaultAfter.minBalance).toEqual(vaultBefore.minBalance)

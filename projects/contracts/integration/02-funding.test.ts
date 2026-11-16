@@ -90,7 +90,7 @@ describe('02 funding outcomes', () => {
     })
 
     test('CON-022 advance and refund one backer through the campaign', async () => {
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       await spendCampaign(
         stack,
         campaign.appClient,
@@ -185,7 +185,7 @@ describe('02 funding outcomes', () => {
 
     test('CON-032 advance and claim', async () => {
       const creatorBefore = await balanceOf(stack.algorand, creator.addr.toString())
-      await advanceTime(fixture, 900)
+      await advanceTime(fixture, 86_400)
       await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
 
       expect(await balanceOf(stack.algorand, creator.addr.toString())).toEqual(creatorBefore + 3n * ALGO - FEE_CLAIM)
@@ -210,7 +210,7 @@ describe('02 funding outcomes', () => {
 
     const txA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 2n * ALGO, oracle)
     const txB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaign.appClient,
@@ -243,7 +243,7 @@ describe('02 funding outcomes', () => {
     const oracle = new ClaimTreeOracle('standalone-claim-')
 
     await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
     await deleteCampaign(stack, campaign.appId, creator.addr.toString(), { vaultBoxRelease: true })
 
@@ -258,7 +258,7 @@ describe('02 funding outcomes', () => {
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('settle-open-')
     const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
 
     const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
     await stack.vault.client.send.call({
@@ -306,7 +306,7 @@ describe('02 funding outcomes', () => {
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('settle-open-reject-')
     const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await stack.vault.client.send.call({
       method: 'settleOpen(uint64)void',
       args: [campaign.appId],
@@ -339,7 +339,7 @@ describe('02 funding outcomes', () => {
     const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * ALGO })
     const oracle = new ClaimTreeOracle('release-claimed-')
     await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
     const box = await campaignBox(stack.vault.client, campaign.appId)
     expect(box.status).toEqual(3)

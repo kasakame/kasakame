@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-06,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-16,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,112 B | 4 B | 2,116 B | 1 (2 pages) | 4,096 B | 1,980 B |
-| ClaimsVault | 2,774 B | 4 B | 2,778 B | 1 (2 pages) | 4,096 B | 1,318 B |
+| Campaign | 2,121 B | 4 B | 2,125 B | 1 (2 pages) | 4,096 B | 1,971 B |
+| ClaimsVault | 2,765 B | 4 B | 2,769 B | 1 (2 pages) | 4,096 B | 1,327 B |
 | Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
 
-The campaign is **68 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 68 B would return it to
+The campaign is **77 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 77 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -99,13 +99,36 @@ The vault box is opened by the first `credit` (first pledge) and released by
 covers the Factory box; the vault box is platform-funded and is not charged to
 the creator or backer.
 
-## Campaign duration cap
+## Campaign duration bounds
 
-`Campaign.create` rejects a deadline more than 180 days after creation. A failed
-campaign's vault box therefore stays live for at most the campaign duration plus
-the 730-day refund window (~2.5 years), instead of being pinnable indefinitely by
-a 1 µA pledge. This is a backstop, not a product limit: Kickstarter and Indiegogo
-cap at 60 days, and 180 leaves room for extended raises.
+`Campaign.create` rejects a deadline less than 24 hours or more than 180 days
+after creation.
+
+The one-day minimum gives backers a review and pledge window and blocks flash
+campaigns that exist only to settle and delete. It is a UX guard, not a fix for
+the vault-box pinning path: an attacker can wait out the day, pledge the minimum,
+settle, and leave the platform-funded 32,100 µA box for the 730-day refund
+window. The refund window is the lever for that case.
+
+The 180-day maximum bounds how long a failed campaign's vault box can stay live:
+campaign duration plus the 730-day refund window (~2.5 years), instead of being
+pinnable indefinitely by a 1 µA pledge. It is a backstop, not a product limit:
+Kickstarter and Indiegogo cap at 60 days, and 180 leaves room for extended raises.
+
+## Goal cap
+
+`Campaign.create` rejects a goal above **10,000,000,000 ALGO** (10¹⁶ µA), the
+total ALGO supply. A larger goal can never be reached. The cap is a UX guard,
+not a resource guard: a huge goal does not consume platform resources, it only
+makes the campaign fail. The goal is stored in a uint64, and the total supply
+stays far below the uint64 maximum.
+
+## Title and metadata URI caps
+
+The AVM caps a global-state entry at 128 bytes including the key. `title` is a
+5-byte key, so its value is capped at 123 bytes. `metadataUri` is an 11-byte key,
+so its value is capped at 117 bytes. `Campaign.create` rejects longer values
+before the state write.
 
 ## Minimum pledge
 
@@ -116,14 +139,18 @@ while keeping micro-pledges possible; the principal stays refundable.
 ## Supported tree size
 
 `Campaign.pledge` rejects a campaign that already has **524,287** positions
-(2¹⁹ − 1). This is the largest tree whose worst-case refund path fits the AVM's
-16-inner-transaction limit: at `N = 2¹⁹ − 1`, leaf 0 has `r = c = 18`, which
-needs 14 OpUp takes plus the campaign path's inner `payBack` and inner payment =
-16 inner transactions, even with a zero-op prelude. A larger tree can have
-`r = 19, c = 18`, whose 9,950-op target can request a 15th take. The cap counts
-every position ever appended, including cancelled pledges, because positions
-are never reused. Above it the contract rejects the pledge and the SDK fails
-with a clear "maximum size" error.
+(2¹⁹ − 1). At that size leaf 0 has `r = c = 18` (36 path elements), whose hashing
+needs 14 OpUp takes. The ABI router and guards consume ~100 of the 700 base
+opcodes (measured ~614 remain at the top-up call), so 14 takes + the campaign
+path's `payBack` + payment = 16 inner transactions, the per-transaction limit.
+The SDK's zero-headroom fee bound funds **15** takes, so a group is never
+underpaid; the contract simply never requests the 15th. The `06` ladder's
+N=1,023 rung (h=18, 7 takes) proves at least 487 base ops survive the prelude,
+above the ~262 the cap needs. If a contract change ever pushes the prelude past
+that guard, the rung fails before the cap breaks. The cap counts every position
+ever appended, including cancelled pledges, because positions are never reused.
+Above it the contract rejects the pledge and the SDK fails with a clear
+"maximum size" error.
 
 ## Current creator cost (create a campaign)
 
@@ -158,8 +185,8 @@ use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-prot
 | --- | --- | ---: | --- |
 | Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
 | Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch factory check headroom); +1,000 per OpUp take |
-| Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 OpUp takes | 4,000-17,000 µA | +1,000 per OpUp take; 5,000 at N=4, 7,000 at N=100 |
-| Refund, vault path | vault + inner payment + 0..14 OpUp takes | 3,000-16,000 µA | one payout inner; +1,000 per OpUp take |
+| Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 actual OpUp takes (15 funded) | 5,000-18,000 µA | +1,000 per funded take; 5,000 at N=4, 8,000 at N=100 |
+| Refund, vault path | vault + inner payment + 0..14 actual OpUp takes (15 funded) | 4,000-17,000 µA | one payout inner; +1,000 per funded take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
 | `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
 | `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
@@ -170,12 +197,15 @@ use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-prot
 
 OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
 (the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700
-ops. The campaign request is `240 × popcount(N) + 400`; a spend request is
-`250 × (siblings + lower peaks) + 100 × top + 700`. The SDK mirrors those
-formulas with assumed pre-top-up budgets (1,000 for pledge, 500 for a spend);
-the measured spend prelude is larger than that assumption on long paths, so
-the take count must be sized from the real remaining budget (see
-[`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
+ops, of which the top-up loop itself spends ~25. The campaign request is
+`240 × popcount(N) + 400`; a spend request is `250 × path elements + 700`,
+sized from the caller-supplied path blob *before* `pathLen`/`popcount` run. The
+ABI router and guards consume ~100 of the 700 base opcodes, leaving ~600 for
+the proof; the N=1,023 ladder rung pins that headroom. The SDK mirrors the
+formulas with assumed pre-top-up budgets (1,000 for pledge, zero for a spend)
+and a 670-op net per spend take, so it may fund one more take than the contract
+requests but never underfunds. See
+[`claim-tree-protocol.md`](claim-tree-protocol.md) §14.
 
 ## Current platform cost (deploy)
 

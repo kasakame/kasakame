@@ -381,8 +381,11 @@ export class ClaimsVault extends Contract {
     assert(Global.latestTimestamp <= settledAt + this.refundWindow.value, 'refund window closed')
     assert(k < n, 'unknown position')
 
-    // Derive the expected path shape from (n, k), then size the opcode budget from it (spec §14): the caller funds the
-    // OpUp headroom, and an underfunded call fails atomically.
+    // Reserve the whole refund from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
+    // base budget. The blob length is validated below, and an underfunded group fails atomically.
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+
+    // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)
     const c = this.popcount(n - op.shl(op.shr(n, r), r))
     const hasTop = op.shr(n, r + Uint64(1)) > Uint64(0)
@@ -391,12 +394,6 @@ export class ClaimsVault extends Contract {
       h = h + Uint64(1)
     }
     assert(path.length === h * Uint64(32), 'bad path length')
-    // Siblings and lower peaks cost ~250 ops each (hash + loop overhead); a top fold costs ~100.
-    let requiredOps: uint64 = r * Uint64(250) + c * Uint64(250)
-    if (hasTop) {
-      requiredOps = requiredOps + Uint64(100)
-    }
-    ensureBudget(requiredOps + Uint64(700), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(Bytes.fromHex('01').concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */

@@ -1069,11 +1069,15 @@ describe('ClaimsVault', () => {
         vault.refund(campaignApp(), 0, AMOUNT, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
       })
 
-      // The offline emulator does not enforce the 700-op base budget, so assert the take request from the cap path:
-      // 14 OpUps + the vault payment = 15, within the 16-inner limit.
+      // The SDK's zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487
+      // ops, so the vault actually requests 14 + its payment inner = 15, within the 16-inner limit.
       const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
+      // The Puya transformer makes `/` integer division in this spec; count the takes with a loop.
+      let funded = 0
+      while (funded * 670 < required + 12) funded += 1
       let takes = 0
-      while (takes * 700 < required + 10) takes += 1
+      while (takes * 675 < required + 12 - 487) takes += 1
+      expect(funded).toEqual(15)
       expect(takes).toEqual(14)
       expect(takes + 1).toBeLessThanOrEqual(16)
       const box = readBox(vault, CAMPAIGN_APP_ID)

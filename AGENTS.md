@@ -59,7 +59,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet normal lane (files 00-04)
-npm run test:integration:heavy   # LocalNet heavy lane (files 05-07)
+npm run test:integration:heavy   # LocalNet heavy lane (files 05-07); separate heavy-tests workflow
 npx vitest list integration -t "CON-042"  # find the file that owns a test ID
 npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
 
@@ -130,12 +130,12 @@ the product contract. The current numbers and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
 
-Current footprint (2026-11-06, `npm run build`; app MBR measured on LocalNet):
+Current footprint (2026-11-16, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,116 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,778 B | 2 (1 extra) | 307,000 µA |
+| Campaign | 2,125 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,769 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,036 B | 1 | 357,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
@@ -147,10 +147,14 @@ Current footprint (2026-11-06, `npm run build`; app MBR measured on LocalNet):
   pages, global schema, and app MBR in
   `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
-- **The claim-tree size is capped at 2¹⁹ − 1 (524,287 positions).** This is the
-  largest tree whose worst-case refund path (`r = c = 18`) fits the
-  16-inner-transaction limit (14 OpUp takes + `payBack` + payment). A larger
-  tree can need a 15th take. `Campaign.MAX_TREE_SIZE` and the SDK's
+- **The claim-tree size is capped at 2¹⁹ − 1 (524,287 positions).** At the
+  worst-case refund path (`r = c = 18`, 36 elements) the contract needs 14
+  actual OpUp takes. The ABI router and guards consume ~100 of the 700 base
+  opcodes, leaving ~600, so 14 + `payBack` + payment = 16 inner transactions.
+  The SDK's zero-headroom fee bound funds 15, so groups never underpay. The
+  `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves at
+  least 487 ops, above the ~262 the cap needs; if a contract change breaks that
+  guard, re-measure and lower the cap. `Campaign.MAX_TREE_SIZE` and the SDK's
   `MAX_TREE_SIZE` must stay in sync; the cap counts every appended position,
   including cancelled leaves.
 - **Never silently change the creator cost.** The campaign create cost is a

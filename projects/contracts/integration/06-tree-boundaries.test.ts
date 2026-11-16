@@ -62,7 +62,7 @@ describe('06 tree boundaries', () => {
     expect(state.n).toEqual(16n)
     expect(state.raised).toEqual(16n * ALGO)
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaign.appClient,
@@ -91,7 +91,7 @@ describe('06 tree boundaries', () => {
     expect(state.n).toEqual(100n)
     expect(state.raised).toEqual(100n * ALGO)
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     await spendCampaign(
       stack,
       campaign.appClient,
@@ -131,24 +131,28 @@ describe('06 tree boundaries', () => {
     { id: 'CON-218', n: 128 },
     { id: 'CON-219', n: 255 },
     { id: 'CON-220', n: 1_000 },
-    { id: 'CON-221', n: 1_024 },
+    { id: 'CON-221', n: 1_023 },
+    { id: 'CON-222', n: 1_024 },
   ] as const
 
   // Pinned LocalNet measurements: the OpUp takes the contract requests at each boundary. The spend helper funds the
   // zero-headroom upper bound, so the paid fee can be higher; these counts catch a contract requesting one more take.
+  // CON-221 (N=1,023, k=11, h=18) is also the prelude guard: 7 takes proves at least 487 ops survive the ABI router and
+  // guards, above the ~260 the 2^19-1 cap needs for 14 takes + 2 payouts = 16 inner txns.
   const LADDER_TAKES: Record<string, number> = {
     'CON-210': 3,
     'CON-211': 2,
     'CON-212': 4,
     'CON-213': 3,
-    'CON-214': 5,
+    'CON-214': 4,
     'CON-215': 3,
     'CON-216': 4,
-    'CON-217': 6,
-    'CON-218': 4,
-    'CON-219': 7,
+    'CON-217': 5,
+    'CON-218': 3,
+    'CON-219': 6,
     'CON-220': 6,
-    'CON-221': 4,
+    'CON-221': 7,
+    'CON-222': 4,
   }
 
   // One campaign grows through the ladder; only CON-210 creates it, so run this block in order.
@@ -180,7 +184,7 @@ describe('06 tree boundaries', () => {
       currentN = target
     }
 
-    async function cancelNext(boost = false, expectedTakes?: number): Promise<void> {
+    async function cancelNext(expectedTakes?: number): Promise<void> {
       const index = nextLeaf
       nextLeaf += 1
       await spendCampaign(
@@ -193,7 +197,7 @@ describe('06 tree boundaries', () => {
         at(txids, index),
         'cancelPledge(uint64,uint64,byte[],byte[])void',
         campaign.oracle,
-        { budgetBooster: boost, expectedTakes },
+        { expectedTakes },
       )
       refunded += 1
     }
@@ -215,11 +219,11 @@ describe('06 tree boundaries', () => {
         expect(before.n).toEqual(BigInt(boundary.n))
         expect(before.raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
 
-        await cancelNext(boundary.n >= 1_000, LADDER_TAKES[boundary.id])
+        await cancelNext(LADDER_TAKES[boundary.id])
         expect((await campaignState(campaign.appClient)).raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
 
         if (boundary.n === 1_024) {
-          await advanceTime(fixture, 900)
+          await advanceTime(fixture, 86_400)
 
           const refundIndex = nextLeaf
           nextLeaf += 1
@@ -234,7 +238,7 @@ describe('06 tree boundaries', () => {
             at(txids, refundIndex),
             'refund(uint64,uint64,byte[],byte[])void',
             campaign.oracle,
-            { budgetBooster: true, expectedTakes: 4 },
+            { expectedTakes: 4 },
           )
 
           await deleteCampaign(stack, campaign.appId, creator.addr.toString())
@@ -250,7 +254,7 @@ describe('06 tree boundaries', () => {
             1n * ALGO,
             at(txids, vaultIndex),
             campaign.oracle,
-            { budgetBooster: true, expectedTakes: 4 },
+            { expectedTakes: 4 },
           )
 
           const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)

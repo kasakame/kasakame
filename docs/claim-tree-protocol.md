@@ -493,6 +493,8 @@ Derived from the verified reference model (not estimates):
 | 100,000 | 6 | 12 | 21 | 43 |
 | 131,071 (2¹⁷−1) | 17 | 34 | 32 | 65 |
 | 131,072 (2¹⁷) | 1 | 2 | 17 | 35 |
+| 262,143 (2¹⁸−1) | 18 | 36 | 34 | 69 |
+| 524,287 (2¹⁹−1) | 19 | 38 | 36 | 73 |
 | 1,000,000 | 7 | 14 | 25 | 51 |
 
 Worst case for pledge is `N = 2ᵏ−1` (maximal popcount); worst case for refund is a leaf at position 0 of `N = 2ᵏ−1`
@@ -509,39 +511,50 @@ excluded - [Inner Transactions](https://dev.algorand.co/concepts/smart-contracts
 `ensureBudget(requiredOps)` - the Puya OpUp utility, which adds budget with inner app *creates* of ephemeral programs
 (created and deleted in one inner call; the pattern production Puya code uses, e.g. `ensure_budget(20000)` in the
 [voting example](https://github.com/algorandfoundation/puya/blob/main/examples/voting/voting.py)), paid by the caller via
-`GroupCredit` fee pooling. Each OpUp iteration is **one** inner app call, costs 1,000 µA, and adds 700 ops:
+`GroupCredit` fee pooling. Each OpUp iteration is **one** inner app call, costs 1,000 µA, and adds 700 ops; the
+generated top-up loop costs ~25 opcodes per take, so each take nets ~675 ops and the loop exits once
+`required + 10 ≤ OpcodeBudget`.
 
 - **Pledge** (group: 2 app calls; the contract's prelude leaves ~1,000 ops): N=15 → 1 take; N=1,000 → 2; N=131,071 → 5;
   the 2¹⁹−1 cap → 6.
-- **Refund, campaign or vault path**: the method's own prelude (ABI routing, box read, `pathLen`/`popcount`) consumes
-  several hundred opcodes before `ensureBudget` runs, and the headroom shrinks with the path shape. N=4, k=2 → 2 takes;
-  N=100, k=0 → 4; N=131,071, k=0 → 12; the 2¹⁹−1 cap, k=0 → 14 on paper. At deeper paths (r ≈ 9) the prelude alone can
-  exhaust the 700-op base budget, so a single-call group cannot reach `ensureBudget`; the caller needs a second
-  top-level app call (the heavy `06` ladder does this at N=1,000/1,024).
+- **Refund, campaign or vault path**: the method funds the proof *before* running `pathLen`/`popcount`, sizing from
+  the caller-supplied blob length: `ensureBudget(⌊path.length/32⌋·250 + 700)`. The ABI router and guards consume ~100
+  of the 700 base opcodes (measured ~614 remaining at the top-up call, ~600 at the loop entry), so the prelude can no
+  longer exhaust it. Measured actual take counts: N=4, k=2 → 2; N=100, k=0 → 4; N=1,023, k=11 (h=18) → 7; the 2¹⁹−1
+  cap (h=36), k=0 → 14. A single top-level app call is enough at every supported shape; the heavy `06` ladder runs
+  single calls at every boundary.
 
-The SDK derives the take count from the same `(N, k)` shape and pays for it:
-`FEE_CREDIT_EXTRA = 1,000` covers the first-touch factory check; pledge adds one
-minimum fee per take; campaign-path cancel/refund adds two payout inners (the
-vault `payBack` app call and its payment) plus one per take; the vault path adds
-one payment inner. An underfunded transaction fails atomically with no partial
-state. Dynamic sizing was tracked in
-[issue #77](https://github.com/kasakame/kasakame/issues/77).
+The SDK derives the **funded** take count from the same `(N, k)` shape and pays
+for it, sizing from the early path-length bound with zero assumed pre-top-up
+headroom: `ceil((250·h + 700 + 12) / 670)`. That may fund one more take than the
+contract requests but never underfunds. `FEE_CREDIT_EXTRA = 1,000` covers the
+first-touch factory check; pledge adds one minimum fee per take; campaign-path
+cancel/refund adds two payout inners (the vault `payBack` app call and its
+payment) plus one per funded take; the vault path adds one payment inner. An
+underfunded transaction fails atomically with no partial state. Dynamic sizing
+was tracked in [issue #77](https://github.com/kasakame/kasakame/issues/77).
 
 **Supported tree size:** `Campaign.pledge` caps `N` at **524,287** (2¹⁹ − 1).
-At that size, leaf 0 has `r = c = 18`, which needs 14 takes plus the campaign
-path's `payBack` and payment = 16 inner transactions even with a zero-op
-prelude. A larger tree can have `r = 19, c = 18`, whose 9,950-op target can
-request a 15th take. The cap counts every appended position (including
+At that size leaf 0 has `r = c = 18` (36 path elements), whose top-up target is
+9,700 ops. The zero-headroom fee bound funds **15** takes, but the contract
+requests **14** because the router and guards leave ~600 base ops: 14 +
+`payBack` + payment = 16 inner transactions, the per-transaction limit
+(`MaxInnerTransactions = 16` in the
+[ledger parameters](https://specs.algorand.co/ledger/ledger-parameters)). The
+`06` ladder's N=1,023 rung (h=18, 7 takes) proves at least
+`5,212 − 7·675 = 487` ops survive the prelude, above the ~262 the cap needs for
+14 takes. A contract change that eats more than ~127 prelude ops makes that rung
+fail before the cap breaks. The cap counts every appended position (including
 cancelled leaves), and the SDK fails with a clear error above it. The offline
-cap tests pin N=524,286/524,287 and the 14-take/16-inner refund; the heavy `06`
-ladder pins the take count at each boundary.
+cap tests pin N=524,286/524,287 and the funded-15/actual-14 arithmetic; the
+heavy `06` ladder pins the actual take count at every boundary.
 
-Current program footprint (2026-11-06, `npm run build`; see [`limits.md`](limits.md) for the full table):
+Current program footprint (2026-11-16, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,116 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,778 B | 2 (1 extra) | 307,000 µA |
+| Campaign | 2,125 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,769 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,036 B | 1 | 357,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
@@ -554,7 +567,7 @@ Resource ceilings (hard limits, not Big-O):
   worst supported campaign refund uses 14 OpUp takes + the `payBack` inner app call + its payment = 16 inner txns ✓.
 - **Stack:** values ≤ 32 B each during hashing (leaf preimage 73 B once); depth < 20 ✓.
 - **Fees:** each OpUp take is 1,000 µA via `GroupCredit` and adds 700 ops. Pledge totals 4,000-10,000 µA; a campaign-path
-  spend totals 4,000-17,000 µA and a vault-path spend 3,000-16,000 µA, depending on the tree shape.
+  spend totals 5,000-18,000 µA and a vault-path spend 4,000-17,000 µA, depending on the tree shape.
 
 ## 15. Reference implementation
 
@@ -636,7 +649,7 @@ real consensus, including the races of §7.
 | A - Backer-controlled refund | ✓ | Self-service `refund`/`cancelPledge` from wallet alone; works after campaign deletion and after creator disappearance (`settleOpen`); no creator/platform processing exists on any refund path. Satisfied **within the refund window** under Option B. |
 | B - Complete bounded finalization | ✓ with Option B | Protocol resources per campaign = one 32,100 µA box; recovered by `notifyDelete` (claimed) or `finalize` (failed, time-gated) - one transaction, independent of N and of any backer. Without the window (Option A), fails by a constant. |
 | C - No O(N) platform operations | ✓ | No platform operation is per-backer anywhere; frontiers/proofs are computed by backers' own clients and *verified* by the contract. |
-| D - Very high scalability | ✓ | Zero per-backer on-chain structures (no ASA, no boxes-per-backer, no local state, no bitmap). Per-campaign state is constant (10 global slots + one box). Single-call refunds to N ≈ 1,000; `ensureBudget`-pooled refunds to the supported cap N = 2¹⁹ − 1 with ≤ 14 OpUp takes (§14); the argument ceiling N ≤ 2³²−1 is higher. |
+| D - Very high scalability | ✓ | Zero per-backer on-chain structures (no ASA, no boxes-per-backer, no local state, no bitmap). Per-campaign state is constant (10 global slots + one box). Single-call refunds to N ≈ 1,000; `ensureBudget`-pooled refunds to the supported cap N = 2¹⁹ − 1 with ≤ 14 actual OpUp takes (§14); the argument ceiling N ≤ 2³²−1 is higher. |
 | E - Minimal creator capital | ✓ | ≈ 0.59 ALGO now (2-page campaign: app + schema + extra page MBR + registration), fully recovered at `delete()`; the 1-page target is ≈ 0.49 ALGO. See [`limits.md`](limits.md). |
 | F - Zero backer action after success | ✓ | Backers hold nothing on-chain after success: no ASA, no opt-in, no local state, nothing to close, sweep, or destroy. |
 

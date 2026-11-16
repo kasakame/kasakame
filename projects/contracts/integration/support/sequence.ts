@@ -48,10 +48,6 @@ function pickUnspent(random: () => number, leaves: Leaf[]): number | undefined {
   return at(candidates, Math.floor(random() * candidates.length))
 }
 
-function needsBoost(config: ScaleConfig): boolean {
-  return config.maxN > 255
-}
-
 /**
  * Run one reproducible pledge/cancel/refund/finalize sequence against a fresh campaign.
  *
@@ -91,7 +87,6 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
             leaf.txid,
             'cancelPledge(uint64,uint64,byte[],byte[])void',
             oracle,
-            { budgetBooster: needsBoost(config) },
           )
           leaf.spent = true
         }
@@ -102,7 +97,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
       actions.push(`pledge:${i.toString()}:backer=${(i % backers.length).toString()}`)
     }
 
-    await advanceTime(fixture, 900)
+    await advanceTime(fixture, 86_400)
     const campaignRefunds = Math.max(1, Math.floor(config.maxN / CAMPAIGN_REFUND_DIVISOR))
     for (let i = 0; i < campaignRefunds; i++) {
       const index = pickUnspent(random, leaves)
@@ -119,7 +114,6 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
         leaf.txid,
         'refund(uint64,uint64,byte[],byte[])void',
         oracle,
-        { budgetBooster: needsBoost(config) },
       )
       leaf.spent = true
     }
@@ -131,9 +125,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
       if (index === undefined) break
       const leaf = at(leaves, index)
       actions.push(`vault-refund:${index.toString()}`)
-      await spendVault(stack, campaign.appId, leaf.backer.addr.toString(), index, 1n * ALGO, leaf.txid, oracle, {
-        budgetBooster: needsBoost(config),
-      })
+      await spendVault(stack, campaign.appId, leaf.backer.addr.toString(), index, 1n * ALGO, leaf.txid, oracle)
       leaf.spent = true
     }
 

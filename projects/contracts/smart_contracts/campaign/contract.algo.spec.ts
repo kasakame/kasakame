@@ -1,5 +1,5 @@
 import type { Account, Application, bytes } from '@algorandfoundation/algorand-typescript'
-import { Bytes, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
+import { Bytes, OnCompleteAction, Uint64 } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
@@ -20,8 +20,10 @@ import { Campaign } from './contract.algo'
  */
 
 const GOAL = 10_000_000
+const MAX_GOAL = 10_000_000_000_000_000n
 const CREATION_TIME = 1_000
-const DEADLINE = 2_000
+const MIN_DURATION = 24 * 60 * 60
+const DEADLINE = CREATION_TIME + MIN_DURATION
 const MAX_DURATION = 180 * 24 * 60 * 60
 const MIN_PLEDGE = 100_000
 const TITLE = Bytes('My first novel')
@@ -204,18 +206,30 @@ describe('Campaign', () => {
       }).toThrow('title must not be empty')
     })
 
-    test('rejects an overlong title', () => {
+    test('accepts a title at the 123-byte cap', () => {
       const contract = ctx.contract.create(Campaign)
-      expect(() => {
-        contract.create(vaultApp(), Bytes(Buffer.alloc(129)), METADATA_URI, GOAL, DEADLINE)
-      }).toThrow('title too long')
+      contract.create(vaultApp(), Bytes(Buffer.alloc(123)), METADATA_URI, GOAL, DEADLINE)
+      expect(contract.title.value.length).toEqual(123)
     })
 
-    test('rejects an overlong metadata uri', () => {
+    test('rejects a title over 123 bytes', () => {
       const contract = ctx.contract.create(Campaign)
       expect(() => {
-        contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(129)), GOAL, DEADLINE)
-      }).toThrow('metadata uri too long')
+        contract.create(vaultApp(), Bytes(Buffer.alloc(124)), METADATA_URI, GOAL, DEADLINE)
+      }).toThrow('title must be 123 bytes or fewer')
+    })
+
+    test('accepts a metadata uri at the 117-byte cap', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(117)), GOAL, DEADLINE)
+      expect(contract.metadataUri.value.length).toEqual(117)
+    })
+
+    test('rejects a metadata uri over 117 bytes', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, Bytes(Buffer.alloc(118)), GOAL, DEADLINE)
+      }).toThrow('metadata uri must be 117 bytes or fewer')
     })
 
     test('rejects a goal of zero', () => {
@@ -225,11 +239,37 @@ describe('Campaign', () => {
       }).toThrow('goal must be greater than zero')
     })
 
+    test('accepts a goal at the total ALGO supply', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, Uint64(MAX_GOAL), DEADLINE)
+      expect(BigInt(contract.goal.value)).toEqual(MAX_GOAL)
+    })
+
+    test('rejects a goal above the total ALGO supply', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, Uint64(MAX_GOAL + 1n), DEADLINE)
+      }).toThrow('goal too large')
+    })
+
     test('rejects a deadline in the past', () => {
       const contract = ctx.contract.create(Campaign)
       expect(() => {
         contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME)
       }).toThrow('deadline must be in the future')
+    })
+
+    test('rejects a deadline below the one-day minimum', () => {
+      const contract = ctx.contract.create(Campaign)
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MIN_DURATION - 1)
+      }).toThrow('deadline must be at least one day out')
+    })
+
+    test('accepts a deadline exactly at the one-day minimum', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, CREATION_TIME + MIN_DURATION)
+      expect(contract.deadline.value).toEqual(CREATION_TIME + MIN_DURATION)
     })
 
     test('accepts a deadline exactly at the maximum duration', () => {
@@ -757,11 +797,16 @@ describe('Campaign', () => {
       contract.refund(0, amount, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
     })
 
-    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. Assert the
-    // contract's take request from the cap path (r = c = 18): 14 OpUps plus the campaign payBack + vault payment = 16.
+    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. The SDK's
+    // zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487 ops, so the
+    // contract actually requests 14. 14 + the campaign payBack + vault payment = 16.
     const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
+    // The Puya transformer makes `/` integer division in this spec; count the takes with a loop.
+    let funded = 0
+    while (funded * 670 < required + 12) funded += 1
     let takes = 0
-    while (takes * 700 < required + 10) takes += 1
+    while (takes * 675 < required + 12 - 487) takes += 1
+    expect(funded).toEqual(15)
     expect(takes).toEqual(14)
     expect(takes + 2).toBeLessThanOrEqual(16)
     expect(contract.n.value).toEqual(524_287)
