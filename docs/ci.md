@@ -3,7 +3,8 @@
 This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, and Markdown lint,
-and the manual
+the separate scheduled/manual
+[`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-specs`](../.github/workflows/release-specs.yml),
 [`release-sdk`](../.github/workflows/release-sdk.yml), and
 [`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
@@ -137,6 +138,7 @@ flowchart TD
 | `check-cli` | contracts, SDK, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | contracts changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod + indexer) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
@@ -294,7 +296,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
   runs even if contract verification failed, so a lint/test failure still
   reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
-  and runs the compiled TEAL against a live algod.
+  and runs the compiled TEAL against a live algod (files `00`-`04`).
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -308,6 +310,23 @@ because there is no artifact to share after a failure.
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
+
+## Workflow: heavy-tests (separate file)
+
+Implemented at `.github/workflows/heavy-tests.yml`. This workflow is **outside**
+the PR graph: it never runs on `pull_request` or `push`, is not part of the
+`Gate`, and cannot block a merge. It runs:
+
+- on a weekly `schedule` (Monday 03:00 UTC), from the default branch;
+- on `workflow_dispatch`, with an optional `ref` input (branch, tag, or SHA).
+  Empty uses the branch selected in the UI.
+
+The single `heavy` job builds its own contract artifacts (no artifact
+dependency), starts LocalNet, and runs the heavy lane (`npm run
+test:integration:heavy`: files `05`-`07`, the scale, boundary, and randomized
+sequence suites). The 60-minute timeout covers the measured runtime; the
+cap-scale expansion is tracked in #220. The SDK and CLI LocalNet suites stay
+with #158 and #118. The job is not in the PR `Gate`.
 
 ## Workflow: release-specs (separate file)
 
@@ -529,10 +548,10 @@ and caches:
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
 - **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts` and
-  `integration-test` jobs. `~/.local` is cached by AlgoKit version, Python
-  version, and runner OS, so a cache hit skips the install entirely. The install
-  is fast relative to the Docker container startup that dominates the
-  integration job.
+  `integration-test` jobs (and the separate `heavy-tests` workflow). `~/.local`
+  is cached by AlgoKit version, Python version, and runner OS, so a cache hit
+  skips the install entirely. The install is fast relative to the Docker
+  container startup that dominates the integration job.
 
 The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
@@ -554,7 +573,8 @@ download, so nothing is compiled or built twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
   (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input) and
-  `integration-test`.
+  `integration-test`. The separate `heavy-tests` workflow builds its own
+  artifacts.
 - **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
   Consumed by SDK verification, which otherwise regenerates them when
   `build-sdk` was skipped.
