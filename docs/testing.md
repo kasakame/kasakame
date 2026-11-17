@@ -87,9 +87,13 @@ the suites. The shared cross-project harness is #164.
 
 ## Integration test order
 
-The contract integration tests are numbered files. The number is the order;
-tests inside keep their own IDs. Files `00`-`07` are the LocalNet integration lane
-and `99-*` are the cap lane.
+The contract integration tests are numbered files. The custom sequencer in
+`vitest.config.mts` runs test files in path order, so the LocalNet integration
+files execute `00` → `07`; tests inside keep their own IDs. Files `00`-`07` are
+the LocalNet integration lane and `99-*` are the cap lane. The files are
+independent (each deploys its own stack); only the `chain` tests depend on
+earlier tests in the same file, and `--no-file-parallelism` keeps the
+chain-global time travel from overlapping.
 
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
