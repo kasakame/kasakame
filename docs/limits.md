@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-16,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-18,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,121 B | 4 B | 2,125 B | 1 (2 pages) | 4,096 B | 1,971 B |
-| ClaimsVault | 2,765 B | 4 B | 2,769 B | 1 (2 pages) | 4,096 B | 1,327 B |
-| Factory | 1,032 B | 4 B | 1,036 B | 0 (1 page) | 2,048 B | 1,012 B |
+| Campaign | 2,145 B | 4 B | 2,149 B | 1 (2 pages) | 4,096 B | 1,947 B |
+| ClaimsVault | 2,789 B | 4 B | 2,793 B | 1 (2 pages) | 4,096 B | 1,303 B |
+| Factory | 1,044 B | 4 B | 1,048 B | 0 (1 page) | 2,048 B | 1,000 B |
 
-The campaign is **77 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 77 B would return it to
+The campaign is **101 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 101 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in

@@ -21,7 +21,7 @@ Users and wallets never appear as a piece: any Algorand address with a wallet is
 
 A **deployment** is one Factory, one ClaimsVault, and one Campaign
 approval-program version, with its own app IDs and owner. Anyone can deploy the
-contracts and become that deployment's owner. The TestNet app IDs in this repo
+contracts from a top-level transaction and become that deployment's owner. The TestNet app IDs in this repo
 describe one deployment; other deployments use their own IDs.
 
 `Factory.isRegistered(app)` answers whether the app is registered in that
@@ -107,7 +107,7 @@ The vault account therefore holds the full pool of live pledges plus parked box 
 | Pre-deadline exit | Backer calls `cancelPledge()` while the campaign is open | Leaf nulls in place; vault pays the backer |
 | Creator delete | Creator submits `[Factory.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit (no-op if unregistered); the campaign requires that unregister immediately before, then delete settles through the vault, closes the escrow, and deletes the app |
 
-Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a permissionless `finalize()` sweeps the residual to the configured treasury; a fully paid-out box can be finalized immediately. A backer who never acts before deletion refunds straight from the vault with the same proofs.
+Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a top-level, permissionless `finalize()` sweeps the residual to the configured treasury; a fully paid-out box can be finalized immediately. A backer who never acts before deletion refunds straight from the vault with the same proofs.
 
 ## Optional catalog
 

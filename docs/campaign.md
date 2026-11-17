@@ -76,6 +76,8 @@ Transitions:
 
 `create` rejects an empty title, a title over 123 bytes, a metadata URI over 117 bytes, a zero goal, a goal above 10 billion ALGO (the total ALGO supply), a deadline less than 24 hours out, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
 
+Every user-facing method (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`) requires a **top-level caller** (`Global.callerApplicationId == 0`). An app-created inner group could satisfy the position checks but would leave the campaign tree unreadable to the SDK, so it is rejected before a leaf is appended. The campaign's inner calls to the vault are unaffected; see [`claim-tree-protocol.md`](claim-tree-protocol.md#top-level-caller-model).
+
 ## Pledge accounting
 
 `raised` counts live leaves only. Each spend subtracts the spent amount, so the creator's claim is the live total by construction:
@@ -97,7 +99,7 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
-7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,125 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~3,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
+7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,149 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~3,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain [creator updates feed](https://github.com/kasakame/kasakame/issues/58), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples
@@ -115,7 +117,7 @@ Double-spend of one leaf fails: the second proof no longer matches the root. Con
 
 ## Vault interaction
 
-The campaign never holds funds, so every money movement is an inner vault call:
+The campaign never holds funds, so every payout is an inner vault call. User-initiated methods stay top-level; the inner calls are the campaign's own instructions to the vault:
 
 - `pledge` pairs with top-level `Vault.credit(app, amount)`, which verifies the payment from the outer group and adds it to `paidIn`.
   The payment must be immediately before `pledge`, and the matching `credit` must be immediately after it and the group's final

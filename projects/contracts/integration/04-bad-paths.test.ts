@@ -3,7 +3,7 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
 import type { Account } from 'algosdk'
-import { ABIMethod, OnApplicationComplete } from 'algosdk'
+import { ABIMethod, OnApplicationComplete, decodeAddress, getApplicationAddress } from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
   ALGO,
@@ -37,6 +37,49 @@ interface CampaignFixture {
   creator: Account
   oracle: ClaimTreeOracle
 }
+
+/**
+ * A test-only inner caller. App args: campaign app id, amount, vault address. It creates the inner
+ * `[pay, Campaign.pledge]` group, which is rejected by the top-level guard before any leaf is appended.
+ */
+const INNER_CALLER_TEAL = `#pragma version 11
+txn ApplicationID
+bnz main
+int 1
+return
+main:
+txna ApplicationArgs 0
+btoi
+store 0
+txna ApplicationArgs 1
+btoi
+store 1
+txna ApplicationArgs 2
+store 2
+itxn_begin
+int pay
+itxn_field TypeEnum
+load 2
+itxn_field Receiver
+load 1
+itxn_field Amount
+int 0
+itxn_field Fee
+itxn_next
+int appl
+itxn_field TypeEnum
+load 0
+itxn_field ApplicationID
+pushbytes 0xa4030bd2
+itxn_field ApplicationArgs
+pushbytes 0x0000
+itxn_field ApplicationArgs
+int 0
+itxn_field Fee
+itxn_submit
+int 1
+return
+`
 
 interface PaymentOptions {
   amount: bigint
@@ -492,6 +535,38 @@ describe('04 bad paths', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/not the campaign app/)
+  })
+
+  test('CON-129 an app cannot pledge through an inner group', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    const attacker = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
+
+    const { appId: callerAppId } = await stack.algorand.send.appCreate({
+      sender: attacker.addr,
+      approvalProgram: INNER_CALLER_TEAL,
+      clearStateProgram: '#pragma version 11\nint 1',
+      schema: { globalInts: 0, globalByteSlices: 0, localInts: 0, localByteSlices: 0 },
+      suppressLog: true,
+    })
+    await stack.algorand.send.payment({
+      sender: attacker.addr,
+      receiver: getApplicationAddress(callerAppId).toString(),
+      amount: microAlgos(1n * ALGO),
+      suppressLog: true,
+    })
+
+    const amount = 100_000n
+    await expect(
+      stack.algorand.send.appCall({
+        sender: attacker.addr,
+        appId: callerAppId,
+        args: [appIdBytes(campaign.appId), appIdBytes(amount), decodeAddress(stack.vault.address).publicKey],
+        appReferences: [campaign.appId],
+        accountReferences: [stack.vault.address],
+        extraFee: microAlgos(2n * FEE),
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/must be called from the top level/)
   })
 
   test('CON-116 only the Factory owner can set the program hash', { tags: ['bad', 'always'] }, async () => {

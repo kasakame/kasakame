@@ -27,6 +27,9 @@ import {
  * Registration costs a small, refundable deposit (the registration box's minimum balance, ~0.019 ALGO), paid to the Factory account and
  * returned by `unregister()` in the same atomic group as the campaign's `delete()`. The Factory takes no part in pledging, refunding, or
  * cleanup - it is never a bottleneck and never performs per-backer operations.
+ *
+ * `create`, `register`, and `unregister` are top-level only (`Global.callerApplicationId == 0`), so an app cannot register
+ * a campaign or create a Factory. `isRegistered` stays inner-callable: the vault calls it during first-touch `credit`.
  */
 
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
@@ -78,6 +81,7 @@ export class Factory extends Contract {
    */
   @abimethod({ onCreate: 'require' })
   create(): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     this.owner.value = Txn.sender
     this.approvalHash.value = Bytes()
@@ -232,6 +236,7 @@ export class Factory extends Contract {
    */
   @abimethod()
   register(app: Application, payment: gtxn.PaymentTxn): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'register must be the final transaction in the group')
     assert(this.approvalHash.value.length === 32, 'official program hash not configured')
     assert(this.vault.value !== Uint64(0), 'official vault not configured')
@@ -271,6 +276,7 @@ export class Factory extends Contract {
    */
   @abimethod()
   unregister(app: Application): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     // The caller is the campaign creator whether or not the campaign is registered.
     assert(app.creator === Txn.sender, 'only the campaign creator can unregister')
     const registered = this.registered(app.id).exists
