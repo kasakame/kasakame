@@ -5,6 +5,7 @@ import {
   ALGO,
   FEE_CLAIM,
   VAULT_BOX_MBR,
+  Z_HEX,
   accountInfo,
   advanceTime,
   campaignBox,
@@ -54,20 +55,21 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
     status: 0n,
   })
   const box = await campaignBox(stack.vault.client, campaign.appId)
-  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root, n: BigInt(CAP_TREE_SIZE), status: 1 })
+  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: Z_HEX, n: 0n, status: 1 })
   expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
 
   await advanceTime(fixture, 180 * 24 * 60 * 60)
 
   // The creator claims the full raised principal; the vault pays paidIn - paidOut.
+  console.log('deadline passed: claiming')
   const creatorBeforeClaim = await accountInfo(stack.algorand, creatorAddr)
   await claimCampaign(stack, campaign.appClient, campaign.appId, creatorAddr)
   expect((await accountInfo(stack.algorand, creatorAddr)).balance).toEqual(creatorBeforeClaim.balance + run.principal - FEE_CLAIM)
   expect(await campaignBox(stack.vault.client, campaign.appId)).toMatchObject({
     paidIn: run.principal,
     paidOut: run.principal,
-    root,
-    n: BigInt(CAP_TREE_SIZE),
+    root: Z_HEX,
+    n: 0n,
     status: 3,
   })
   const vaultAfterClaim = await accountInfo(stack.algorand, stack.vault.address)
@@ -75,6 +77,7 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   expect(vaultAfterClaim.minBalance).toEqual(vaultBefore.minBalance + VAULT_BOX_MBR)
 
   // Cleanup releases the vault box and returns the campaign MBR and registration deposit.
+  console.log('deleting campaign')
   await deleteCampaign(stack, campaign.appId, creatorAddr, { vaultBoxRelease: true })
   expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
   expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)

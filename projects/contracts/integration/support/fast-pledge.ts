@@ -264,6 +264,7 @@ export async function runPledges(
 ): Promise<CapPledgeRun> {
   const startedAt = Date.now()
   let fees = 0n
+  console.log(`filling ${count.toString()} positions`)
   for (let i = 0; i < count; i++) {
     fees += (await fastPledge(stack, appId, backer, CAP_AMOUNT, tree)).fee
     const done = i + 1
@@ -273,11 +274,11 @@ export async function runPledges(
         throw new Error(`fast tree diverged at n=${done.toString()}: campaign n=${state.n.toString()}`)
       }
     }
-    if (done % 25_000 === 0 || done === count) {
+    if (done % 5_000 === 0 || done === count) {
       const seconds = (Date.now() - startedAt) / 1_000
       const rate = done / seconds
       const etaMinutes = Math.round((count - done) / rate / 60)
-      console.log(`${done.toString()}/${count.toString()} pledges, ${rate.toFixed(2)}/s, eta ${etaMinutes.toString()} min`)
+      console.log(`${done.toString()}/${count.toString()} pledges, ${rate.toFixed(2)} pledges/s, eta ${etaMinutes.toString()} min`)
     }
   }
   return { principal: BigInt(count) * CAP_AMOUNT, fees }

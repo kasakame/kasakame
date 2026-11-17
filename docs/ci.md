@@ -338,7 +338,9 @@ Each job builds the contracts, starts LocalNet, and stops the indexer pipeline
 and the indexer's database would otherwise consume the runner disk over the
 multi-hour run. The measured pledge path is about 35 positions/s, so each job
 needs roughly 5 hours; the timeout is the 360-minute GitHub-hosted maximum. The
-suites log progress and an ETA every 25,000 positions. A job that cannot finish
+suites stream an initial line, a heartbeat with the pledge rate and ETA every
+5,000 positions (~2.5 minutes at the measured rate), and phase lines for the
+deadline, refunds, delete, and claim/finalize. A job that cannot finish
 inside the limit fails without affecting the other outcome. The SDK and CLI
 LocalNet suites stay with #158 and #118.
 
