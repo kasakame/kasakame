@@ -10,7 +10,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 ## Layout
 
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
-  - `integration/` - ordered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...) with shared setup helpers in `integration/support/`
+  - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with shared setup helpers in `integration/support/`
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
     escrow is never funded and holds nothing
@@ -58,8 +58,9 @@ npm run build                    # compile contracts + generate typed clients
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
-npm run test:integration         # LocalNet normal lane (files 00-04)
-npm run test:integration:heavy   # LocalNet heavy lane (files 05-07); separate heavy-tests workflow
+npm run test:integration         # LocalNet integration lane (files 00-07; PR gate)
+npm run test:cap:failed          # cap-scale failed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
+npm run test:cap:claimed         # cap-scale claimed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
 npx vitest list integration -t "CON-042"  # find the file that owns a test ID
 npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
 
@@ -156,7 +157,9 @@ Current footprint (2026-11-16, `npm run build`; app MBR measured on LocalNet):
   least 487 ops, above the ~262 the cap needs; if a contract change breaks that
   guard, re-measure and lower the cap. `Campaign.MAX_TREE_SIZE` and the SDK's
   `MAX_TREE_SIZE` must stay in sync; the cap counts every appended position,
-  including cancelled leaves.
+  including cancelled leaves. The `heavy-tests` workflow runs that worst case end
+  to end (`99-cap-failed` / `99-cap-claimed`); never run it locally as part of a
+  normal change.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
   MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
@@ -291,6 +294,8 @@ Current footprint (2026-11-16, `npm run build`; app MBR measured on LocalNet):
 ## Testing
 
 - Contracts: simulator tests for full behavioral coverage (every method × every branch).
+- Contract cap scale: the `99-cap-*` suites fill the full 2¹⁹−1 tree and run only
+  in the separate `heavy-tests` workflow (weekly + manual); do not run them locally.
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.

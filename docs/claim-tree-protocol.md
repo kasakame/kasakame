@@ -547,7 +547,10 @@ requests **14** because the router and guards leave ~600 base ops: 14 +
 fail before the cap breaks. The cap counts every appended position (including
 cancelled leaves), and the SDK fails with a clear error above it. The offline
 cap tests pin N=524,286/524,287 and the funded-15/actual-14 arithmetic; the
-heavy `06` ladder pins the actual take count at every boundary.
+heavy `06` ladder pins the actual take count at every boundary. The separate
+`heavy-tests` LocalNet lane (`99-cap-failed` / `99-cap-claimed`) runs the full
+2¹⁹−1 tree for both outcomes and pins the 14 takes and the 18,000 µA
+worst-case campaign group fee on a real chain.
 
 Current program footprint (2026-11-16, `npm run build`; see [`limits.md`](limits.md) for the full table):
 

@@ -150,7 +150,9 @@ above the ~262 the cap needs. If a contract change ever pushes the prelude past
 that guard, the rung fails before the cap breaks. The cap counts every position
 ever appended, including cancelled pledges, because positions are never reused.
 Above it the contract rejects the pledge and the SDK fails with a clear
-"maximum size" error.
+"maximum size" error. The separate `heavy-tests` workflow fills the full 2¹⁹ − 1
+tree on LocalNet for both outcomes (failed/refunded and successful/claimed) and
+pins the 14 takes and the 18,000 µA worst-case group fee on a real chain.
 
 ## Current creator cost (create a campaign)
 

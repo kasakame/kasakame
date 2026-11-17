@@ -1,11 +1,33 @@
 import { puyaTsTransformer } from '@algorandfoundation/algorand-typescript-testing/vitest-transformer'
 import typescript from '@rollup/plugin-typescript'
 import { defineConfig } from 'vitest/config'
+import type { TestSpecification } from 'vitest/node'
+import { BaseSequencer } from 'vitest/node'
+
+/**
+ * Run test files in deterministic path order.
+ *
+ * Vitest's default sequencer runs the largest files first, and failed/longer files first when it has a results cache.
+ * The integration suites are numbered `00`-`07`, so path order keeps the CI log readable and reproducible. The files
+ * are still independent: each deploys its own stack, and `--no-file-parallelism` keeps their chain-global time travel
+ * from overlapping.
+ */
+class PathOrderSequencer extends BaseSequencer {
+  /**
+   * @param files The test files to order.
+   * @returns The files sorted by module path.
+   */
+  override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
+    return [...files].sort((left, right) => left.moduleId.localeCompare(right.moduleId))
+  }
+}
 
 export default defineConfig({
   esbuild: {},
   test: {
     setupFiles: 'vitest.setup.ts',
+    // Run test files by path, not by Vitest's default size/duration order.
+    sequence: { sequencer: PathOrderSequencer },
     // LocalNet integration tests deploy apps and fast-forward blocks, which occasionally exceeds the default 5s test timeout.
     testTimeout: 120_000,
     tags: [
