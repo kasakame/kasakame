@@ -163,7 +163,7 @@ function fetchMyLeaves(campaignId: bigint, address: string): Promise<BackerLeaf[
 function clearTreeCache(): void
 ```
 
-`loadTree` replays pledges in chain order, then nulls spent positions. `fetchMyLeaves` returns the viewer's unspent leaves, which drive refund and cancel buttons and the pledge total.
+`loadTree` replays pledges in chain order, then nulls spent positions. `fetchMyLeaves` returns the viewer's unspent leaves, which drive refund and cancel buttons and the pledge total. The replay assumes every pledge and spend is a **top-level** block transaction; the contracts enforce that with `Global.callerApplicationId == 0`, so an app-created inner group is rejected rather than silently producing a tree the SDK cannot rebuild.
 
 ### Campaign reads (`campaigns.ts`)
 

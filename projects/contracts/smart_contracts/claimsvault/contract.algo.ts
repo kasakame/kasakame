@@ -35,10 +35,11 @@ import {
  *
  * Trust model: `payBack`, `payClaim`, `settle`, and `notifyDelete` are reachable only as inner app calls from the
  * campaign's own app account (`Txn.sender == app.address` - unforgeable, and app addresses are distinct per app id).
- * `credit` is a permissionless top-level call, but it must be the final transaction in a group whose previous
- * transaction is the matching `Campaign.pledge`, so every inflow has a backer leaf. `settleOpen`, `refund`, and
- * `finalize` are permissionless top-level calls whose every effect is verified against the vault's own boxes and the
- * caller's group.
+ * `create`, `credit`, `refund`, `settleOpen`, `finalize`, and `releaseClaimed` are top-level-only user actions
+ * (`Global.callerApplicationId == 0`), so every inflow, refund, and cleanup is a block transaction the SDK can replay.
+ * `credit` is permissionless, but it must be the final transaction in a group whose previous transaction is the
+ * matching `Campaign.pledge`, so every inflow has a backer leaf. `settleOpen`, `refund`, and `finalize` verify every
+ * effect against the vault's own boxes and the caller's group.
  */
 
 // Vault box statuses (1 byte in the packed box): 1 = Open, 2 = Failed, 3 = Claimed.
@@ -89,6 +90,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod({ onCreate: 'require' })
   create(factory: Application, target: Account, window: uint64): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     assert(factory.id !== Uint64(0), 'factory required')
     assert(target !== Global.zeroAddress, 'sweep target must not be zero')
@@ -121,6 +123,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod()
   credit(app: Application, amount: uint64): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(amount > Uint64(0), 'pledge must be greater than zero')
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'credit must be the final transaction in the group')
 
@@ -320,6 +323,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod()
   settleOpen(app: Application): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     const box = this.readBox(app.id)
     assert(box.slice(56, 57) === BOX_OPEN, 'campaign is not open')
 
@@ -369,6 +373,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod()
   refund(app: Application, k: uint64, amount: uint64, txid: bytes, path: bytes): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(amount > Uint64(0), 'refund must be greater than zero')
     assert(txid.length === Uint64(32), 'bad txid length')
 
@@ -448,6 +453,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod()
   releaseClaimed(app: Application): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     if (!this.campaignBox(app.id).exists) {
       return
     }
@@ -479,6 +485,7 @@ export class ClaimsVault extends Contract {
    */
   @abimethod()
   finalize(app: Application): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     const box = this.readBox(app.id)
     assert(box.slice(56, 57) === BOX_FAILED, 'campaign is not failed')
     const settledAt: uint64 = op.btoi(box.slice(57, 65))

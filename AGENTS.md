@@ -131,13 +131,13 @@ the product contract. The current numbers and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
 
-Current footprint (2026-11-16, `npm run build`; app MBR measured on LocalNet):
+Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,125 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,769 B | 2 (1 extra) | 307,000 µA |
-| Factory | 1,036 B | 1 | 357,000 µA |
+| Campaign | 2,149 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,793 B | 2 (1 extra) | 307,000 µA |
+| Factory | 1,048 B | 1 | 357,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -246,6 +246,12 @@ Current footprint (2026-11-16, `npm run build`; app MBR measured on LocalNet):
     `Application`→`uint64`, `Account`→`address`) - compute them from the emitted
     ARC-56 and keep them in sync with a test. A readonly bool return arrives as
     the inner call's `lastLog`: the ARC-4 prefix `0x151f7c75` + `0x80`/`0x00`.
+  - **User actions are top-level only.** `Campaign.create/pledge/cancelPledge/refund/claim/delete`,
+    `Vault.create/credit/refund/settleOpen/finalize/releaseClaimed`, and
+    `Factory.create/register/unregister` assert `Global.callerApplicationId == 0`.
+    The campaign-driven vault methods (`payBack`, `payClaim`, `settle`, `notifyDelete`)
+    and `Factory.isRegistered` stay inner-callable; do not add the guard there. The
+    SDK replay depends on top-level pledges and payments (see #199).
   - `app_global_get_ex` **fails on deleted apps** (not exists=false) - never
     make vault logic depend on reading a possibly-deleted campaign's state; use
     vault-local markers written by the campaign (for example, the `root`/`N`/`settledAt`

@@ -37,6 +37,10 @@ import {
  * Because no backer funds ever sit in the campaign escrow, the creator can finalize (and delete) the campaign in O(1)
  * on **both** paths - after a successful claim, or after a failure, even when backers never act - while the vault
  * keeps paying failed-campaign refunds after the campaign is gone.
+ *
+ * User actions are top-level only (`Global.callerApplicationId == 0`). The SDK rebuilds a campaign from top-level
+ * pledge/refund calls and their block payments; an app-created inner group would look valid on-chain but leave the
+ * tree unreadable. The campaign's vault payouts are inner calls in the other direction and stay allowed there.
  */
 
 // Status is stored in global state as a uint64.
@@ -136,6 +140,7 @@ export class Campaign extends Contract {
    */
   @abimethod({ onCreate: 'require' })
   create(vault: Application, title: bytes, metadataUri: bytes, goal: uint64, deadline: uint64): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     assert(vault.id !== Uint64(0), 'vault required')
     assert(title.length > 0, 'title must not be empty')
@@ -176,6 +181,7 @@ export class Campaign extends Contract {
    */
   @abimethod()
   pledge(payment: gtxn.PaymentTxn, frontier: bytes): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Global.latestTimestamp < this.deadline.value, 'pledging is closed')
     assert(this.status.value === STATUS_OPEN, 'campaign is not open')
     assert(payment.receiver === this.vault.value.address, 'payment must be made to the vault')
@@ -243,6 +249,7 @@ export class Campaign extends Contract {
    */
   @abimethod()
   cancelPledge(k: uint64, amount: uint64, txid: bytes, path: bytes): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Global.latestTimestamp < this.deadline.value, 'pledging is closed')
     assert(this.status.value === STATUS_OPEN, 'campaign is not open')
 
@@ -263,6 +270,7 @@ export class Campaign extends Contract {
    */
   @abimethod()
   refund(k: uint64, amount: uint64, txid: bytes, path: bytes): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Global.latestTimestamp >= this.deadline.value, 'deadline has not passed')
     assert(this.raised.value < this.goal.value, 'goal was reached, no refunds')
 
@@ -283,6 +291,7 @@ export class Campaign extends Contract {
    */
   @abimethod()
   claim(): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.sender === this.creator.value, 'only the creator can claim')
     assert(Global.latestTimestamp >= this.deadline.value, 'deadline has not passed')
     assert(this.raised.value >= this.goal.value, 'goal not reached')
@@ -321,6 +330,7 @@ export class Campaign extends Contract {
    */
   @abimethod({ allowActions: 'DeleteApplication' })
   delete(): void {
+    assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.sender === this.creator.value, 'only the creator can delete')
 
     // The vault records the official Factory. If this is a real deployment, the previous transaction must be the

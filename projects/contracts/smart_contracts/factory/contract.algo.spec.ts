@@ -959,4 +959,34 @@ describe('Factory', () => {
       expect(isRegistered(factory, app)).toBe(true)
     })
   })
+
+  describe('top-level only', () => {
+    test('rejects an inner create', () => {
+      const factory = ctx.contract.create(Factory)
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      expect(() => {
+        factory.create()
+      }).toThrow('must be called from the top level')
+    })
+
+    test('rejects an inner register', () => {
+      const factory = createFactory()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.register(ctx.any.application(), ctx.any.txn.payment())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner unregister', () => {
+      const factory = createFactory()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.unregister(ctx.any.application())
+        }).toThrow('must be called from the top level')
+      })
+    })
+  })
 })

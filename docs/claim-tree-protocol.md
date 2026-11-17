@@ -35,7 +35,9 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
   `[Factory.unregister, Campaign.delete]` (the Factory requires the delete immediately after; the campaign requires the
   unregister immediately before when its vault has a Factory binding); cancel/refund carry one leaf proof each; claim is a
   single app call with an inner vault call. Every paired call must be a `NoOp` app call: `ClearState` runs the clear-state
-  program instead of the method, so it can satisfy a selector check without executing the paired logic.
+  program instead of the method, so it can satisfy a selector check without executing the paired logic. User actions are
+  **top-level only** (`Global.callerApplicationId == 0`); the campaign-driven vault methods and `Factory.isRegistered`
+  remain inner-callable (see the top-level caller model in §9).
 - **MBR (current):** creator ≈ 0.59 ALGO (2-page app + schema + 1 extra page + registration, recoverable O(1) via the atomic
   `[unregister, delete]` group; the 1-page target is ≈ 0.49 ALGO - see [`limits.md`](limits.md));
   vault 32,100 µA per live or failed campaign box, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer 0 (no
@@ -266,7 +268,8 @@ A standalone credit is rejected, so every payer is a backer and every inflow
 counts toward the goal. Without these guards one payment could back several pledges or credits and inflate `paidInOf` past the
 vault's actual balance, or a pledge could be left uncredited.
 
-`Campaign.pledge` checks: deadline not passed; `status == OPEN`; `payment.receiver == vault.address`; `payment.sender == Txn.sender`;
+`Campaign.pledge` checks: `Global.callerApplicationId == 0` (top-level caller - see "Top-level caller model" below);
+deadline not passed; `status == OPEN`; `payment.receiver == vault.address`; `payment.sender == Txn.sender`;
 `payment.amount > 0`; `payment.groupIndex == Txn.groupIndex − 1`; `Txn.sender != creator`; `frontier.length == 32·popcount(N)`;
 and the next transaction is `Vault.credit(app, amount)` for this campaign (selector, app id, sender, NoOp, and amount are
 asserted).
@@ -274,8 +277,9 @@ Computes `leaf = H(0x01 ‖ sender ‖ amount ‖ payment.txnId)`; asserts `leaf
 `raised += amount`. No inner calls (a self inner call for budget would be illegal reentrancy - see §14 for the `ensureBudget`
 mechanism instead).
 
-`Vault.credit` (top-level, backer-signed) checks: `Txn.groupIndex == Global.groupSize − 1` (the credit is the group's final
-transaction); the transaction immediately before it is `Campaign.pledge` for this `app` and caller (selector, app id, sender,
+`Vault.credit` (top-level, backer-signed) checks: `Global.callerApplicationId == 0`;
+`Txn.groupIndex == Global.groupSize − 1` (the credit is the group's final transaction); the transaction immediately before it is
+`Campaign.pledge` for this `app` and caller (selector, app id, sender,
 NoOp, and arg count are asserted), so a credit without a pledge is rejected and every inflow has a backer leaf; the vault box for
 `app` is absent or `OPEN` (`FAILED`/`CLAIMED` reject - no pledges after settlement); if the box is absent: inner-call
 `factory.isRegistered(app)` (result must be true; the Factory only registers campaigns whose `vault` global is the owner-bound
@@ -290,9 +294,34 @@ campaign box.
 tree count the amount, and a donation is expressed as a pledge the backer chooses not to refund. The reverse skew is also
 impossible: a `pledge` must be immediately followed by its matching `credit`, so a leaf can never exist without the vault
 recording the same payment. The group-position guards in `pledge` and `credit` are what prevent payment replay; without them a
-single payment could back several leaves or several credits and the accounting invariants in §11 would not hold. `credit` is
-top-level by construction: an inner-called app sees only its own inner group in `gtxn`, so an inner `credit` could never see
-the outer payment, and a transaction argument to an inner call indexes the inner group too, so forwarding is no fix either.
+single payment could back several leaves or several credits and the accounting invariants in §11 would not hold. They do not,
+however, distinguish a top-level group from an inner group of the same shape: an app can submit
+`[inner pay, inner Campaign.pledge, inner Vault.credit]`, and both contracts see the positions they expect. The top-level
+guard closes that path before a leaf is appended.
+
+### Top-level caller model
+
+User actions must be submitted by a top-level transaction. The contracts assert `Global.callerApplicationId == 0` on:
+
+- **Campaign:** `create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`.
+- **ClaimsVault:** `create`, `credit`, `refund`, `settleOpen`, `finalize`, `releaseClaimed`.
+- **Factory:** `create`, `register`, `unregister`.
+
+`Global.callerApplicationId` is `0` for a transaction submitted directly and the caller app's id for an inner call. The
+campaign-driven vault methods (`payBack`, `payClaim`, `settle`, `notifyDelete`) and `Factory.isRegistered` stay
+inner-callable: the campaign and vault call them inside their own flows, and they cannot create user-visible leaves.
+
+The guard exists because the client rebuilds each campaign from **top-level** transactions. Inner transactions are nested
+in the outer app call's metadata and do not appear as block transactions (see the
+[inner transaction specification](https://specs.algorand.co/avm/avm-ops-inner-transactions)); the SDK cannot pair a nested
+payment with its pledge. Without the guard, an app can create a fully valid `[pay, pledge, credit]` inner group whose
+leaf makes the campaign tree unreadable for every backer, even though the funds remain safe. The guard rejects the inner
+pledge before any leaf exists.
+
+The trade-off: an application account (a DAO treasury, a smart-contract wallet, or a launchpad app) cannot create,
+pledge, cancel, refund, claim, delete, or register for campaigns deployed with this program. Regular wallets and
+multisigs are unaffected. Already-deployed campaigns keep their old behavior and remain callable from inner transactions;
+the guard protects deployments from this version onward.
 
 ### Cancel (pre-deadline withdrawal, while OPEN)
 
@@ -552,13 +581,13 @@ heavy `06` ladder pins the actual take count at every boundary. The separate
 2¹⁹−1 tree for both outcomes and pins the 14 takes and the 18,000 µA
 worst-case campaign group fee on a real chain.
 
-Current program footprint (2026-11-16, `npm run build`; see [`limits.md`](limits.md) for the full table):
+Current program footprint (2026-11-18, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,125 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,769 B | 2 (1 extra) | 307,000 µA |
-| Factory | 1,036 B | 1 | 357,000 µA |
+| Campaign | 2,149 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,793 B | 2 (1 extra) | 307,000 µA |
+| Factory | 1,048 B | 1 | 357,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
@@ -644,6 +673,7 @@ real consensus, including the races of §7.
 | 35 | Raw delete leaves the registration behind | `Campaign.delete` requires the Factory's `unregister` immediately before it when the vault has a Factory binding; a standalone delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op so the same cleanup group still works. | app checks + AVM group shape |
 | 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
 | 37 | Custom clear-state program | `Factory.register` hashes `sha256(itob(approval.length) ‖ approval ‖ clear)`. The 8-byte length prefix binds the approval/clear split, so a copy that moves bytes between the two programs is rejected. | SHA + app checks |
+| 38 | Inner-call pollution: an app wraps `[pay, Campaign.pledge, Vault.credit]` in an inner group | `Campaign.pledge` and `Vault.credit` require `Global.callerApplicationId == 0`, so the inner pledge is rejected before a leaf exists. Without the guard the chain state is valid but the SDK cannot pair the nested payment, and the campaign tree becomes unreadable. Old deployments remain callable from inner transactions. | app checks |
 
 ## 18. Six-requirement scorecard
 

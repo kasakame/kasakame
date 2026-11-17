@@ -1020,6 +1020,71 @@ describe('Campaign', () => {
     })
   })
 
+  describe('top-level only', () => {
+    test('rejects an inner create', () => {
+      const contract = ctx.contract.create(Campaign)
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      expect(() => {
+        contract.create(vaultApp(), TITLE, METADATA_URI, GOAL, DEADLINE)
+      }).toThrow('must be called from the top level')
+    })
+
+    test('rejects an inner pledge', () => {
+      const contract = createCampaign()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          contract.pledge(ctx.any.txn.payment(), Bytes())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner cancelPledge', () => {
+      const contract = createCampaign()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          contract.cancelPledge(0, 1, Bytes(Buffer.alloc(32)), Bytes())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner refund', () => {
+      const contract = createCampaign()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          contract.refund(0, 1, Bytes(Buffer.alloc(32)), Bytes())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner claim', () => {
+      const contract = createCampaign()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          contract.claim()
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner delete', () => {
+      const contract = createCampaign()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      const call = ctx.any.txn.applicationCall({
+        appId: contract,
+        sender: ctx.defaultSender,
+        onCompletion: OnCompleteAction.DeleteApplication,
+      })
+      ctx.txn.createScope([call]).execute(() => {
+        expect(() => {
+          contract.delete()
+        }).toThrow('must be called from the top level')
+      })
+    })
+  })
+
   /**
    * Spend a leaf via `cancelPledge`/`refund`, asserting root/n/raised against the oracle at every step.
    *

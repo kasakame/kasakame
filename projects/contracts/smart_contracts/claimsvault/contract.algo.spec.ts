@@ -1234,4 +1234,64 @@ describe('ClaimsVault', () => {
       expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
     })
   })
+
+  describe('top-level only', () => {
+    test('rejects an inner create', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      expect(() => {
+        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, WINDOW)
+      }).toThrow('must be called from the top level')
+    })
+
+    test('rejects an inner credit', () => {
+      const vault = createVault()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          vault.credit(campaignApp(), 1)
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner settleOpen', () => {
+      const vault = createVault()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          vault.settleOpen(campaignApp())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner refund', () => {
+      const vault = createVault()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          vault.refund(campaignApp(), 0, 1, Bytes(Buffer.alloc(32)), Bytes())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner releaseClaimed', () => {
+      const vault = createVault()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          vault.releaseClaimed(campaignApp())
+        }).toThrow('must be called from the top level')
+      })
+    })
+
+    test('rejects an inner finalize', () => {
+      const vault = createVault()
+      ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          vault.finalize(campaignApp())
+        }).toThrow('must be called from the top level')
+      })
+    })
+  })
 })
