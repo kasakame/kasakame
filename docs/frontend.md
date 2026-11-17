@@ -356,9 +356,16 @@ this campaign, and backers can still refund from the vault until the window clos
   app account to hold the registration deposits; the vault's app account holds
   the pooled pledges plus its parked per-campaign MBR (32,100 µA per box). The
   deploy scripts fund both once.
-- **`VITE_FACTORY_APP_ID` / `VITE_VAULT_APP_ID`.** The browse filter and every
-  pledge/refund depend on these env vars matching the deployed apps; an empty
-  Factory id disables the official-campaign filter.
+- **`VITE_FACTORY_APP_ID` / `VITE_VAULT_APP_ID`.** Both ids are required. The
+  vault receives every pledge, and Factory registration is what lets the vault's
+  first `credit` accept it. With an empty Factory id the browse list falls back
+  to the unfiltered app scan, `createCampaign` skips `register`, and the campaign
+  cannot take pledges until it is registered. Deleting it also fails while the
+  Factory id is empty: a campaign bound to the official vault requires
+  `unregister` immediately before `delete`. To recover, set the Factory id and
+  retry the delete (`unregister` is a no-op for an unregistered campaign); a
+  custom client can register the campaign instead. Set both ids before creating
+  new campaigns.
 - **Inner vault calls need box references.** `claim()`, `refund()`,
   `cancelPledge()`, and `delete()` inner-call the vault, whose box read/write
   requires the campaign box (`'c' + appId`) declared on the outer transaction

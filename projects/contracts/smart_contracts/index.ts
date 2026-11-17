@@ -32,7 +32,13 @@ async function importDeployerIfExists(dir: string): Promise<Deployer | null> {
   return null
 }
 
-// get a list of all deployers from the subdirectories
+/**
+ * Deployers that a bare `deploy:*` command runs, in order: the vault's `create` records the Factory id and binds to it.
+ * Example deployers (the demo campaign) only run when named explicitly.
+ */
+const PLATFORM_DEPLOYERS = ['factory', 'claimsvault']
+
+// get a list of all deployers from the subdirectories, platform deployers first
 async function getDeployers(): Promise<Deployer[]> {
   const directories = fs
     .readdirSync(baseDir, { withFileTypes: true })
@@ -40,26 +46,40 @@ async function getDeployers(): Promise<Deployer[]> {
     .map((dirent) => path.resolve(baseDir, dirent.name))
 
   const deployers = await Promise.all(directories.map(importDeployerIfExists))
-  return deployers.filter((deployer): deployer is Deployer => deployer !== null)
+  return deployers
+    .filter((deployer): deployer is Deployer => deployer !== null)
+    .sort((left, right) => {
+      const rank = (name: string) => {
+        const index = PLATFORM_DEPLOYERS.indexOf(name)
+        return index === -1 ? PLATFORM_DEPLOYERS.length : index
+      }
+      return rank(left.name) - rank(right.name)
+    })
 }
 
-// execute all the deployers
+// execute the deployers; the first failure stops the command and sets a non-zero exit code
 void (async () => {
   const contractName = process.argv.length > 2 ? process.argv[2] : undefined
   const contractDeployers = await getDeployers()
 
-  const filteredDeployers = contractName ? contractDeployers.filter((deployer) => deployer.name === contractName) : contractDeployers
+  const filteredDeployers = contractName
+    ? contractDeployers.filter((deployer) => deployer.name === contractName)
+    : contractDeployers.filter((deployer) => PLATFORM_DEPLOYERS.includes(deployer.name))
 
-  if (contractName && filteredDeployers.length === 0) {
-    console.warn(`No deployer found for contract name: ${contractName}`)
-    return
+  if (filteredDeployers.length === 0) {
+    throw new Error(
+      contractName === undefined ? `No platform deployers found in ${baseDir}` : `No deployer found for contract name: ${contractName}`,
+    )
   }
 
   for (const deployer of filteredDeployers) {
-    try {
-      await deployer.deploy()
-    } catch (e) {
-      console.error(`Error deploying ${deployer.name}:`, e)
+    const appId = await deployer.deploy()
+    // A fresh Factory id feeds the vault deployer in the same command; no env edit needed.
+    if (deployer.name === 'factory' && typeof appId === 'bigint') {
+      process.env.FACTORY_APP_ID = appId.toString()
     }
   }
-})()
+})().catch((error: unknown) => {
+  console.error('Deployment failed:', error)
+  process.exitCode = 1
+})

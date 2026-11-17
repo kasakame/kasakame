@@ -37,14 +37,18 @@ algokit localnet start         # start algod + indexer in Docker
 
 cd projects/contracts
 npm run build          # compile contracts + generate typed clients
-npm run deploy:localnet -- factory      # deploy the Factory - save the printed app id in .env.localnet
-npm run deploy:localnet -- claimsvault  # deploy the ClaimsVault - save its app id too
+npm run deploy:localnet                 # deploy Factory then ClaimsVault - save both printed app ids in .env.localnet
 npm run seed:localnet                   # demo data
 
 cd ../frontend
-# put the same two app ids in .env.localnet (see .env.localnet.template)
+# put the same two app ids in .env.localnet (both files start from the committed .env.<network>.template)
 npm run dev:localnet   # frontend on http://localhost:5173
 ```
+
+Both app ids are required. Factory registration is what lets the vault accept a
+campaign's first pledge; with an empty `VITE_FACTORY_APP_ID`, creation skips
+registration, pledges are rejected, and the campaign cannot be deleted until the
+id is set (see [Frontend](docs/frontend.md)).
 
 The backend is an optional user service (wallet-signature auth plus profiles/settings storage; pinning and catalog are planned) and runs as a separate service:
 
