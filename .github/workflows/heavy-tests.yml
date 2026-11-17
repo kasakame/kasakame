@@ -2,8 +2,7 @@ name: heavy-tests
 
 on:
   schedule:
-    # Weekly, Monday 03:00 UTC. The heavy lane takes minutes today; #220 will raise
-    # the coverage and the timeout.
+    # Weekly, Monday 03:00 UTC. The 2^19-1 cap scale lives in cap-tests.yml.
     - cron: '0 3 * * 1'
   workflow_dispatch:
     inputs:
