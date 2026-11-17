@@ -39,16 +39,13 @@ Run with `npm run test` (see `package.json`).
 Commands:
 
 - `npm run test` - offline AVM unit tests only.
-- `npm run test:integration` - LocalNet integration tests, files `00`-`04` (requires
-  `algokit localnet start` + `npm run build`).
-- `npm run test:integration:heavy` - LocalNet heavy lane, files `05`-`07`. CI
-  runs it in the separate `heavy-tests` workflow (weekly + manual); it is not
-  part of the PR gate.
+- `npm run test:integration` - LocalNet integration tests, files `00`-`07` (requires
+  `algokit localnet start` + `npm run build`). The scale, boundary, and randomized
+  sequence suites (`05`-`07`) are part of this lane and run in the PR gate.
 - `npm run test:cap:failed` / `npm run test:cap:claimed` - cap-scale suites in
   `99-*`: two separate campaigns that each fill the full 524,287-position tree
-  (~5 h each). CI runs them in parallel in the separate `cap-tests` workflow
+  (~5 h each). CI runs them in parallel in the separate `heavy-tests` workflow
   (weekly + manual); they are not part of the PR gate.
-- `npm run test:integration:all` - both LocalNet lanes (excludes the cap suites).
 - `npm run test:size` - contract size budget (requires `npm run build`).
 - `npm run test:all` - every contract suite, including LocalNet integration and the
   size budget (requires `algokit localnet start` and `npm run build`).
@@ -77,22 +74,22 @@ Run it with `npm run test:coverage`. The thresholds live in
 | --- | --- | --- | --- | --- |
 | Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet, normal lane | `integration/00`-`04` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
-| Contract LocalNet, heavy lane | `integration/05-*.test.ts`, `integration/06-*.test.ts`, `integration/07-*.test.ts` | `npm run test:integration:heavy` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| Contract LocalNet, cap lane | `integration/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `cap-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
+| Contract LocalNet | `integration/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
+| Contract LocalNet, cap | `integration/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
-The normal lane uses small shapes (4-5 backers, about 10 campaigns) and one
-seeded sequence. The heavy lane raises N, campaigns/backers, and seed count through
-the same config, without changing the test code. Counts, N, and seeds are helper
-parameters, not constants inside the suites. The shared cross-project harness is #164.
+The LocalNet integration lane runs the small-shape suites plus the scale,
+boundary, and randomized-sequence suites. The larger shapes raise N,
+campaigns/backers, and the seed count through the same config, without changing
+the test code; counts, N, and seeds are helper parameters, not constants inside
+the suites. The shared cross-project harness is #164.
 
 ## Integration test order
 
 The contract integration tests are numbered files. The number is the order;
-tests inside keep their own IDs. Files `00`-`04` are the normal lane, `05`-`07` are the
-heavy lane, and `99-*` are the cap lane.
+tests inside keep their own IDs. Files `00`-`07` are the LocalNet integration lane
+and `99-*` are the cap lane.
 
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
@@ -140,7 +137,7 @@ The cap lane proves the worst case end to end on LocalNet: `99-cap-failed`
 fills the 2¹⁹−1 tree and pins leaf 0 at 14 takes (16 inners with `payBack` and
 the payment), then refunds a nulled-sibling leaf and the top-only path through
 the vault; `99-cap-claimed` runs the successful claim at the same N. Each suite
-takes about 5 hours and runs only in the `cap-tests` workflow.
+takes about 5 hours and runs only in the `heavy-tests` workflow.
 
 ```bash
 cd projects/contracts
@@ -160,7 +157,8 @@ npx vitest run integration --tags-filter="bad"
 
 # lanes
 npm run test:integration
-npm run test:integration:heavy
+npm run test:cap:failed
+npm run test:cap:claimed
 ```
 
 Every test title starts with its `CON-<NNN>` ID, so `-t` selects a single test
@@ -195,7 +193,7 @@ oracle/ledger helpers: it keeps the tree in memory and sends the same
 `[pay, campaign.pledge, vault.credit]` group without per-pledge reads, so 524,287
 positions take hours instead of days. The contract still verifies the frontier
 root at every position (the suite checks it every 1,000), and refunds are
-simulated for the take count before sending. The normal and heavy lanes do not
+simulated for the take count before sending. The non-cap LocalNet suites do not
 use it.
 
 `smart_contracts/testing/localnet.spec.ts` pins the fee formulas and the embedded selectors
@@ -278,11 +276,10 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 65 normal-lane tests across 5 files
-plus 17 heavy-lane tests across `05`/`06`/`07`, 82 total; the two cap-scale suites
-in `99-*` run separately in `cap-tests`).
+`npm run test:integration` in `projects/contracts`; 82 tests across `00`-`07`; the
+two cap-scale suites in `99-*` run separately in `heavy-tests`).
 Each file deploys its own fixture chain to a live algod.
-The normal and heavy contract files run **sequentially** (`--no-file-parallelism`):
+The LocalNet integration files run **sequentially** (`--no-file-parallelism`):
 they share one LocalNet sandbox, and `setBlockOffsetTimestamp` time-travel is
 chain-global - parallel files can jump the clock between another file's deploy and
 pledge, flaking with `pledging is closed`. Sequential files keep each suite's
@@ -421,7 +418,7 @@ earlier tests in the same file, which stop on first failure).
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
-| `CON-202` | 25 campaigns by 25 creators with 4 backers each (config-driven) | always | Heavy-lane isolation and pool accounting under load |
+| `CON-202` | 25 campaigns by 25 creators with 4 backers each (config-driven) | always | Scale-lane isolation and pool accounting under load |
 
 #### `integration/06-tree-boundaries.test.ts` (14 tests)
 

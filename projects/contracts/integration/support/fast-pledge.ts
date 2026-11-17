@@ -23,7 +23,7 @@ import {
  * builds the exact `[pay, campaign.pledge, vault.credit]` group without per-pledge ledger reads, and computes the
  * refund paths locally.
  *
- * Not a production client and not part of the normal/heavy lanes.
+ * Not a production client and not part of the `00`-`07` suites.
  */
 
 const Z = new Uint8Array(32)

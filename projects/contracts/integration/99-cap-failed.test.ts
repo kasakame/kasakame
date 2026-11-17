@@ -37,7 +37,7 @@ import {
  * 14 OpUp takes + payBack + payment = 16 inners), two top-fold refunds, the post-delete vault refunds (a nulled
  * sibling and the top-only path), the rejected append at the cap, and the residual sweep after the refund window.
  *
- * Runs in the separate `cap-tests` workflow (~5 h), never in the PR gate.
+ * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
  */
 
 const GOAL = 60_000n * ALGO // above the 52,428.7 ALGO principal

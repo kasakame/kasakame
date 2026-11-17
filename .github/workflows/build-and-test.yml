@@ -526,7 +526,7 @@ jobs:
     needs: [changes, compile-contracts, check-contracts]
     if: always() && !cancelled() && needs.changes.outputs.run_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out repository
         uses: actions/checkout@v7

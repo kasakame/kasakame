@@ -22,7 +22,7 @@ import {
  * The claim path is fixed-size (one vault inner call + one payment), so this suite proves the high-popcount pledge
  * path, the vault's paidIn/paidOut accounting at 52,428.7 ALGO, and the MBR return on cleanup.
  *
- * Runs in the separate `cap-tests` workflow (~5 h), never in the PR gate.
+ * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
  */
 
 const GOAL = 50_000n * ALGO // below the 52,428.7 ALGO principal

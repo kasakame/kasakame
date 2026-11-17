@@ -4,8 +4,7 @@ This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, and Markdown lint,
 the separate scheduled/manual
-[`heavy-tests`](../.github/workflows/heavy-tests.yml) and
-[`cap-tests`](../.github/workflows/cap-tests.yml) workflows, and the manual
+[`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-specs`](../.github/workflows/release-specs.yml),
 [`release-sdk`](../.github/workflows/release-sdk.yml), and
 [`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
@@ -139,8 +138,7 @@ flowchart TD
 | `check-cli` | contracts, SDK, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
 | `integration-test` | contracts changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
-| `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod + indexer) | - (builds its own artifacts) |
-| `cap-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
+| `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
@@ -298,7 +296,8 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
   runs even if contract verification failed, so a lint/test failure still
   reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
-  and runs the compiled TEAL against a live algod (files `00`-`04`).
+  and runs the compiled TEAL against a live algod (files `00`-`07`: the normal,
+  scale, boundary, and randomized-sequence suites).
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -315,32 +314,18 @@ without modifying files.
 
 ## Workflow: heavy-tests (separate file)
 
-Implemented at `.github/workflows/heavy-tests.yml`. This workflow is **outside**
-the PR graph: it never runs on `pull_request` or `push`, is not part of the
-`Gate`, and cannot block a merge. It runs:
+Implemented at `.github/workflows/heavy-tests.yml`. This workflow is the only
+LocalNet lane **outside** the PR graph: it never runs on `pull_request` or
+`push`, is not part of the `Gate`, and cannot block a merge. It runs the
+cap-scale suites (`integration/99-*`). It runs:
 
-- on a weekly `schedule` (Monday 03:00 UTC), from the default branch;
-- on `workflow_dispatch`, with an optional `ref` input (branch, tag, or SHA).
-  Empty uses the branch selected in the UI.
+- on a weekly `schedule` (Monday 03:00 UTC), from the default branch; the
+  schedule runs both cap outcomes;
+- on `workflow_dispatch`, with an optional `ref` input (branch, tag, or SHA) and
+  a `suite` choice (`all`, `failed`, `claimed`; default `all`).
 
-The single `heavy` job builds its own contract artifacts (no artifact
-dependency), starts LocalNet, and runs the heavy lane (`npm run
-test:integration:heavy`: files `05`-`07`, the scale, boundary, and randomized
-sequence suites). The 60-minute timeout covers the measured runtime; the
-2¹⁹−1 cap scale runs in the separate `cap-tests` workflow below. The SDK and
-CLI LocalNet suites stay with #158 and #118. The job is not in the PR `Gate`.
-
-## Workflow: cap-tests (separate file)
-
-Implemented at `.github/workflows/cap-tests.yml`. Like `heavy-tests`, it is
-**outside** the PR graph: it never runs on `pull_request` or `push`, is not part
-of the `Gate`, and cannot block a merge. It runs:
-
-- on a weekly `schedule` (Monday 04:00 UTC), from the default branch;
-- on `workflow_dispatch`, with an optional `ref` input (branch, tag, or SHA).
-
-The workflow has a two-entry matrix, so the two cap outcomes run as **parallel
-jobs** on separate runners, each with its own LocalNet:
+The `failed` and `claimed` jobs run in **parallel** on separate runners, each
+with its own LocalNet:
 
 - `failed` - `npm run test:cap:failed`: fills a 524,287-position tree, then
   exercises the worst-case refund, the post-delete vault refunds, and the
@@ -354,7 +339,12 @@ and the indexer's database would otherwise consume the runner disk over the
 multi-hour run. The measured pledge path is about 35 positions/s, so each job
 needs roughly 5 hours; the timeout is the 360-minute GitHub-hosted maximum. The
 suites log progress and an ETA every 25,000 positions. A job that cannot finish
-inside the limit fails without affecting the other outcome (`fail-fast: false`).
+inside the limit fails without affecting the other outcome. The SDK and CLI
+LocalNet suites stay with #158 and #118.
+
+The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
+workflow: they run in the `integration-test` job in the PR `build-and-test`
+workflow, together with files `00`-`04`.
 
 ## Workflow: release-specs (separate file)
 

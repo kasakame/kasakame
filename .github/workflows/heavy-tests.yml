@@ -2,7 +2,7 @@ name: heavy-tests
 
 on:
   schedule:
-    # Weekly, Monday 03:00 UTC. The 2^19-1 cap scale lives in cap-tests.yml.
+    # Weekly, Monday 03:00 UTC. Runs both cap outcomes in parallel (~5 h each).
     - cron: '0 3 * * 1'
   workflow_dispatch:
     inputs:
@@ -11,6 +11,15 @@ on:
         required: false
         default: ''
         type: string
+      suite:
+        description: Cap suites to run
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - failed
+          - claimed
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -20,10 +29,11 @@ permissions:
   contents: read
 
 jobs:
-  heavy:
-    name: LocalNet heavy integration
+  failed:
+    name: Cap-scale failed campaign
+    if: ${{ github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'failed' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 360
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -65,9 +75,70 @@ jobs:
         run: npm run build
         working-directory: projects/contracts
 
-      - name: Start LocalNet (algod + indexer)
-        run: algokit localnet start
+      - name: Start LocalNet (algod only)
+        run: |
+          algokit localnet start
+          # The cap suites read algod only; stopping the indexer pipeline keeps its
+          # database from consuming the runner disk during the multi-hour run.
+          docker stop algokit_sandbox_indexer algokit_sandbox_conduit algokit_sandbox_postgres
 
-      - name: Run heavy LocalNet integration tests
-        run: npm run test:integration:heavy
+      - name: Run cap-scale failed-campaign suite
+        run: npm run test:cap:failed
+        working-directory: projects/contracts
+
+  claimed:
+    name: Cap-scale claimed campaign
+    if: ${{ github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'claimed' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/contracts/package-lock.json
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
+      - name: Install AlgoKit CLI
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          if ! command -v algokit >/dev/null 2>&1; then
+            pipx install algokit==2.10.2
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        shell: bash
+
+      - name: Install contract dependencies
+        run: npm ci
+        working-directory: projects/contracts
+
+      - name: Compile contracts (TEAL + generated clients)
+        run: npm run build
+        working-directory: projects/contracts
+
+      - name: Start LocalNet (algod only)
+        run: |
+          algokit localnet start
+          # The cap suites read algod only; stopping the indexer pipeline keeps its
+          # database from consuming the runner disk during the multi-hour run.
+          docker stop algokit_sandbox_indexer algokit_sandbox_conduit algokit_sandbox_postgres
+
+      - name: Run cap-scale claimed-campaign suite
+        run: npm run test:cap:claimed
         working-directory: projects/contracts
