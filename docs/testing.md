@@ -105,8 +105,8 @@ chain-global time travel from overlapping.
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
-| `integration/99-cap-failed.test.ts` | `CON-240` | `scale` | full 2¹⁹−1 tree, then the worst-case campaign refund (14 takes, 16 inners), two top-fold refunds, the rejected append at the cap, post-delete vault refunds, and the residual sweep |
-| `integration/99-cap-claimed.test.ts` | `CON-241` | `scale` | full 2¹⁹−1 tree, claim of the 52,428.7 ALGO principal, and delete with the vault box release |
+| `integration/99-cap-failed.test.ts` | `CON-240` | `scale` | full 2¹⁹−1 tree, rejected append at the cap, early `settleOpen` + Factory-backed delete, the worst-case vault refund (36-element path), two top-fold refunds, the nulled-sibling and top-only paths, and the residual sweep |
+| `integration/99-cap-claimed.test.ts` | `CON-241` | `scale` | full 2¹⁹−1 tree, rejected early settlement when the goal was reached, claim of the 52,428.7 ALGO principal, and delete with the vault box release |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
@@ -138,10 +138,13 @@ budget, so those counts are asserted from the path shape and the measured
 prelude; the LocalNet ladder and the cap suites exercise the real takes.
 
 The cap lane proves the worst case end to end on LocalNet: `99-cap-failed`
-fills the 2¹⁹−1 tree and pins leaf 0 at 14 takes (16 inners with `payBack` and
-the payment), then refunds a nulled-sibling leaf and the top-only path through
-the vault; `99-cap-claimed` runs the successful claim at the same N. Each suite
-takes about 5 hours and runs only in the `heavy-tests` workflow.
+fills the 2¹⁹−1 tree, settles and deletes it early through the cap-saturation
+escape, then refunds leaf 0 (the worst-case 36-element vault path), two top
+folds, a nulled sibling, and the top-only path through the vault; the offline
+cap test keeps the 14-take/16-inner campaign-refund arithmetic. `99-cap-claimed`
+runs the successful claim at the same N and asserts the early settlement still
+rejects when the goal was reached. Each suite takes about 5 hours and runs only
+in the `heavy-tests` workflow.
 
 ```bash
 cd projects/contracts
@@ -408,7 +411,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-117` | program hash must be 32 bytes | always | Hash length guard |
 | `CON-118` | an impostor campaign cannot register | always | Program-hash admission rule |
 | `CON-119` | vault refund rejects an open box, a claimed box, a closed window, and an unknown position | always | Four refund guards; state and box unchanged |
-| `CON-120` | `settleOpen` rejects before the deadline, after the goal, on a claimed box, and on a failed box | always | Four settlement guards |
+| `CON-120` | `settleOpen` rejects before the deadline below the cap, after the goal, on a claimed box, and on a failed box | always | Four settlement guards; cap-saturation cases are covered offline and in the heavy lane |
 | `CON-121` | `releaseClaimed` rejects a non-claimed box | always | Claimed-only guard |
 | `CON-122` | pledge payment cannot close or rekey | always | Closing/rekeying payments rejected (fee-payer group) |
 | `CON-123` | credit guards reject ClearState, wrong amount/app/selector, non-final, and repeated credits | always | Six credit shape guards, including one payment backing two credits |
@@ -443,13 +446,13 @@ earlier tests in the same file, which stop on first failure).
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
-| `CON-240` | 524,287-position failed campaign | scale | Rejected append at the cap; worst-case leaf 0 refund (14 takes, 16 inners, 18,000 µA); two top-fold refunds; post-delete vault refunds (nulled sibling and top-only path); residual sweep; µA-exact ledger |
+| `CON-240` | 524,287-position failed campaign | scale | Rejected append at the cap; early `settleOpen` + Factory-backed delete before the deadline; worst-case leaf 0 vault refund (36-element path); two top-fold refunds; nulled-sibling and top-only vault refunds; residual sweep; µA-exact ledger |
 
 #### `integration/99-cap-claimed.test.ts` (1 test)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
-| `CON-241` | 524,287-position successful campaign | scale | High-popcount pledge path, full-principal claim, `paidIn == paidOut`, vault box release, MBR return |
+| `CON-241` | 524,287-position successful campaign | scale | High-popcount pledge path, rejected early settlement when the goal was reached, full-principal claim, `paidIn == paidOut`, vault box release, MBR return |
 
 ### Legacy migration map
 
@@ -598,13 +601,13 @@ the pinned release predates all three.
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
-| `delete` | failed-in-fact materialization + vault settle / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
+| `delete` | failed-in-fact materialization + vault settle / cap-saturated failure before the deadline / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
 | `ClaimsVault.create` | success / zero window / window above the 10-year cap / zero factory / zero sweep target / vault itself as sweep target | ✅ |
 | `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
 | `payClaim` | success (derived amount) / non-campaign caller / unknown / closed box / empty payout | ✅ |
 | `settle` | success / already failed (no-op) / missing box (no-op) / claimed / non-campaign caller / bad root | ✅ |
-| `settleOpen` | success from live globals / unknown / closed box / claimed campaign / early deadline / reached goal / malformed root / campaign bound to another vault | ✅ |
+| `settleOpen` | success from live globals / cap-saturated success before the deadline / unknown / closed box / claimed campaign / early deadline below the cap / reached goal / malformed root / campaign bound to another vault | ✅ |
 | `vault.refund` | success differentially (LocalNet) / unknown / not failed / window closed / unknown position / bad txid+path / proof mismatch / insufficient | ✅ |
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
@@ -614,8 +617,8 @@ the pinned release predates all three.
 | `Factory.setVault` | success / non-owner / already set / vault bound to another Factory / no factory binding / vault hash not configured / lookalike vault program | ✅ |
 | `Factory.transferOwnership` / `renounceOwnership` | transfer / new owner can configure / old owner rejected / non-owner / zero address / renounce locks configuration / non-owner renounce | ✅ |
 | `Factory.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / low deposit / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
-| `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
-| Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / inner-call pollution (`CON-129`) / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
+| `Factory.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact / cap-saturated before the deadline) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
+| Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / inner-call pollution (`CON-129`) / cap-saturation early failure (`CON-240`/`CON-241`) / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
 ## Browser E2E / acceptance tests
 

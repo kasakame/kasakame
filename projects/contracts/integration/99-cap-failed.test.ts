@@ -1,17 +1,7 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { expect, test } from 'vitest'
-import {
-  CAP_AMOUNT,
-  CAP_TREE_SIZE,
-  FastTree,
-  fastPledge,
-  fastSpend,
-  fastVaultSpend,
-  hex,
-  pathShape,
-  runPledges,
-} from './support/fast-pledge'
+import { CAP_AMOUNT, CAP_TREE_SIZE, FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './support/fast-pledge'
 import {
   ALGO,
   FEE,
@@ -31,12 +21,12 @@ import {
 } from './support/localnet'
 
 /**
- * 99 - cap-scale failed campaign (#220): the full 2^19 - 1 tree, then the refund path.
+ * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.
  *
  * Pledges use the fast in-memory helper; the contract still checks every frontier root, so the tree math is verified
- * on-chain at every position. The suite covers the worst-case campaign refund (leaf 0: r = c = 18, 36 path elements,
- * 14 OpUp takes + payBack + payment = 16 inners), two top-fold refunds, the post-delete vault refunds (a nulled
- * sibling and the top-only path), the rejected append at the cap, and the residual sweep after the refund window.
+ * on-chain at every position. The suite covers the rejected append at the cap, the early `settleOpen` + Factory-backed
+ * delete before the deadline, the worst-case vault refund (leaf 0: r = c = 18, 36 path elements), two top-fold
+ * refunds, the nulled-sibling and top-only vault refunds, and the residual sweep after the refund window.
  *
  * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
  */
@@ -47,7 +37,7 @@ const TOP_LEAF = 2 ** 18 // first leaf with a higher-peak fold
 const MID_LEAF = 3 * 2 ** 17 // mid-range path with a multi-peak top fold
 const LAST_LEAF = CAP_TREE_SIZE - 1 // top-only path
 
-test('CON-240 cap-scale failed campaign refunds the worst-case path', { tags: ['scale'], timeout: 20_000_000 }, async () => {
+test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], timeout: 20_000_000 }, async () => {
   // The boundary shapes this suite exists to exercise; checked before spending 5 h on pledges.
   expect(pathShape(CAP_TREE_SIZE, 0)).toEqual({ r: 18, c: 18, hasTop: false })
   expect(pathShape(CAP_TREE_SIZE, TOP_LEAF)).toEqual({ r: 17, c: 17, hasTop: true })
@@ -92,51 +82,49 @@ test('CON-240 cap-scale failed campaign refunds the worst-case path', { tags: ['
   await expect(fastPledge(stack, campaign.appId, backerAddr, CAP_AMOUNT, tree)).rejects.toThrow(/campaign reached maximum size/)
   expect((await campaignState(campaign.appClient)).raised).toEqual(run.principal)
 
-  await advanceTime(fixture, 180 * 24 * 60 * 60)
-
-  // Worst case: r = c = 18 -> 14 OpUp takes plus payBack and payment = 16 inner transactions.
-  let spendFees = 0n
-  console.log('deadline passed: starting campaign refunds')
-  console.log('refunding leaf 0 (worst case, h=36)')
-  const worst = await fastSpend(stack, campaign.appId, backerAddr, 'refund(uint64,uint64,byte[],byte[])void', tree, 0, CAP_AMOUNT)
-  expect(worst.takes).toEqual(14)
-  expect(worst.fee).toEqual(18_000n)
-  console.log(`leaf 0 refunded: ${worst.takes.toString()} takes, ${worst.fee.toString()} uA fee`)
-  spendFees += worst.fee
-  expect(await campaignState(campaign.appClient)).toEqual({
-    n: BigInt(CAP_TREE_SIZE),
-    root: hex(tree.root()),
-    raised: run.principal - CAP_AMOUNT,
-    status: 1n,
+  // A full tree that has not reached its goal can never succeed. Settle it early, before the deadline, then delete
+  // through the Factory: the cap-saturated campaign is failed-in-fact on both sides.
+  console.log('cap reached: settling early')
+  await stack.vault.client.send.call({
+    method: 'settleOpen(uint64)void',
+    args: [campaign.appId],
+    sender: creatorAddr,
+    appReferences: [campaign.appId],
+    suppressLog: true,
   })
-  expect((await campaignBox(stack.vault.client, campaign.appId)).paidOut).toEqual(CAP_AMOUNT)
-
-  // Top fold: 17 siblings + top + 17 lower peaks.
-  console.log(`refunding leaf ${TOP_LEAF.toString()} (top fold)`)
-  const top = await fastSpend(stack, campaign.appId, backerAddr, 'refund(uint64,uint64,byte[],byte[])void', tree, TOP_LEAF, CAP_AMOUNT)
-  expect(top.takes).toBeGreaterThan(0)
-  spendFees += top.fee
-
-  // Mid-range shape: the top fold now includes the nulled leaf 0 and TOP_LEAF blocks.
-  console.log(`refunding leaf ${MID_LEAF.toString()} (top fold)`)
-  const mid = await fastSpend(stack, campaign.appId, backerAddr, 'refund(uint64,uint64,byte[],byte[])void', tree, MID_LEAF, CAP_AMOUNT)
-  expect(mid.takes).toBeGreaterThan(0)
-  spendFees += mid.fee
-
-  // Deletion settles the root and keeps the box for post-delete vault refunds.
-  console.log('deleting campaign: settling the root')
-  await deleteCampaign(stack, campaign.appId, creatorAddr)
-  const settled = await campaignBox(stack.vault.client, campaign.appId)
-  expect(settled).toMatchObject({
+  const earlyBox = await campaignBox(stack.vault.client, campaign.appId)
+  expect(earlyBox).toMatchObject({
     paidIn: run.principal,
-    paidOut: 3n * CAP_AMOUNT,
+    paidOut: 0n,
     root: hex(tree.root()),
     n: BigInt(CAP_TREE_SIZE),
     status: 2,
   })
-  expect(settled.settledAt).toBeGreaterThan(0n)
+  expect(earlyBox.settledAt).toBeGreaterThan(0n)
 
-  // Vault refunds after deletion: a nulled sibling (leaf 0 is zero) and the top-only path.
+  console.log('deleting campaign early through [unregister, delete]')
+  await deleteCampaign(stack, campaign.appId, creatorAddr)
+  expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(true)
+
+  // Vault refunds after the early settlement. Leaf 0 is the worst case (r = c = 18, 36 path elements); the others
+  // cover the top fold, the nulled sibling, and the top-only path.
+  let spendFees = 0n
+  console.log('refunding leaf 0 (worst case, h=36) through the vault')
+  const worst = await fastVaultSpend(stack, campaign.appId, backerAddr, tree, 0, CAP_AMOUNT)
+  expect(worst.takes).toBeGreaterThan(0)
+  console.log(`leaf 0 refunded: ${worst.takes.toString()} takes, ${worst.fee.toString()} uA fee`)
+  spendFees += worst.fee
+
+  console.log(`refunding leaf ${TOP_LEAF.toString()} (top fold)`)
+  const top = await fastVaultSpend(stack, campaign.appId, backerAddr, tree, TOP_LEAF, CAP_AMOUNT)
+  expect(top.takes).toBeGreaterThan(0)
+  spendFees += top.fee
+
+  console.log(`refunding leaf ${MID_LEAF.toString()} (top fold)`)
+  const mid = await fastVaultSpend(stack, campaign.appId, backerAddr, tree, MID_LEAF, CAP_AMOUNT)
+  expect(mid.takes).toBeGreaterThan(0)
+  spendFees += mid.fee
+
   console.log('vault refund: leaf 1 (nulled sibling)')
   const neighbour = await fastVaultSpend(stack, campaign.appId, backerAddr, tree, 1, CAP_AMOUNT)
   expect(neighbour.takes).toBeGreaterThan(0)

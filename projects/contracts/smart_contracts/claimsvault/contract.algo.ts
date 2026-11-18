@@ -65,6 +65,10 @@ const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 // uint64 overflow even if the vault is created directly instead of through the deploy script.
 const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 
+// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A campaign at this cap that has not reached
+// its goal can never succeed, so `settleOpen` fails it early instead of waiting for the deadline.
+const MAX_TREE_SIZE = Uint64(524_287)
+
 export class ClaimsVault extends Contract {
   /** The Factory registry app; its `registered` boxes are the canonical campaign records. */
   factory = GlobalState<Application>()
@@ -345,7 +349,7 @@ export class ClaimsVault extends Contract {
     assert(vaultState[0] === Global.currentApplicationId.id, 'campaign vault mismatch')
     assert(rootState[0].length === Uint64(32), 'bad root length')
     assert(statusState[0] !== Uint64(2), 'campaign already claimed')
-    assert(Global.latestTimestamp >= deadlineState[0], 'deadline has not passed')
+    assert(Global.latestTimestamp >= deadlineState[0] || nState[0] >= MAX_TREE_SIZE, 'deadline has not passed')
     assert(raisedState[0] < goalState[0], 'goal was reached')
 
     this.campaignBox(app.id).value = this.packBox(

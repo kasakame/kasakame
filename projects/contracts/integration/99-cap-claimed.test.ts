@@ -58,6 +58,17 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: Z_HEX, n: 0n, status: 1 })
   expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
 
+  // The cap is full but the goal was reached, so the early escape must not settle a campaign that can still succeed.
+  await expect(
+    stack.vault.client.send.call({
+      method: 'settleOpen(uint64)void',
+      args: [campaign.appId],
+      sender: creatorAddr,
+      appReferences: [campaign.appId],
+      suppressLog: true,
+    }),
+  ).rejects.toThrow(/goal was reached/)
+
   await advanceTime(fixture, 180 * 24 * 60 * 60)
 
   // The creator claims the full raised principal; the vault pays paidIn - paidOut.
