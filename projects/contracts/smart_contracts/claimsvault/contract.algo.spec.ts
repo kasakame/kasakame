@@ -793,6 +793,31 @@ describe('ClaimsVault', () => {
       }).toThrow('deadline has not passed')
     })
 
+    test('settles a cap-saturated campaign before the deadline', () => {
+      const vault = createVault()
+      const root = '22'.repeat(32)
+      const { app, id } = foreignCampaign(vault, { status: 0, raised: 800, goal: 1000, deadline: 5_000, root, n: 524_287 })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      vault.settleOpen(app)
+
+      const box = readBox(vault, id)
+      expect(box.root).toEqual(root)
+      expect(box.n).toEqual(524_287n)
+      expect(box.status).toEqual(FAILED)
+      expect(box.settledAt).toEqual(500n)
+    })
+
+    test('rejects a cap-saturated campaign that reached its goal', () => {
+      const vault = createVault()
+      const { app, id } = foreignCampaign(vault, { status: 0, raised: 1000, goal: 1000, deadline: 5_000, root: Z_HEX, n: 524_287 })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      expect(() => {
+        vault.settleOpen(app)
+      }).toThrow('goal was reached')
+    })
+
     test('rejects a campaign that reached its goal', () => {
       const vault = createVault()
       const { app, id } = foreignCampaign(vault, { status: 0, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })

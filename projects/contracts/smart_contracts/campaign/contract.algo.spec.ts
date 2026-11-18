@@ -970,6 +970,41 @@ describe('Campaign', () => {
       })
     })
 
+    test('deletes a cap-saturated campaign before the deadline', () => {
+      const contract = createCampaign()
+      contract.n.value = 524_287
+      contract.raised.value = MIN_PLEDGE
+      deleteScope(contract, ctx.defaultSender).execute(() => {
+        contract.delete()
+      })
+
+      expect(contract.status.value).toEqual(1)
+      expect(firstInnerSelector()).toEqual('09200848')
+    })
+
+    test('deletes a cap-saturated campaign with a Factory binding before the deadline', () => {
+      const { contract, factoryApp } = createCampaignWithFactory()
+      contract.n.value = 524_287
+      contract.raised.value = MIN_PLEDGE
+      ctx.txn.createScope(deleteGroup(contract, factoryApp), 1).execute(() => {
+        contract.delete()
+      })
+
+      expect(contract.status.value).toEqual(1)
+      expect(firstInnerSelector()).toEqual('09200848')
+    })
+
+    test('rejects deleting a cap-saturated campaign that reached its goal', () => {
+      const contract = createCampaign()
+      contract.n.value = 524_287
+      contract.raised.value = GOAL
+      deleteScope(contract, ctx.defaultSender).execute(() => {
+        expect(() => {
+          contract.delete()
+        }).toThrow('cannot delete a campaign with live pledges')
+      })
+    })
+
     test('deletes a pristine campaign, settling (a no-op with no box)', () => {
       const contract = createCampaign()
       deleteScope(contract, ctx.defaultSender).execute(() => {

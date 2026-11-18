@@ -135,9 +135,9 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,149 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,793 B | 2 (1 extra) | 307,000 µA |
-| Factory | 1,048 B | 1 | 357,000 µA |
+| Campaign | 2,160 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
+| Factory | 1,072 B | 1 | 357,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -155,11 +155,13 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
   The SDK's zero-headroom fee bound funds 15, so groups never underpay. The
   `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves at
   least 487 ops, above the ~262 the cap needs; if a contract change breaks that
-  guard, re-measure and lower the cap. `Campaign.MAX_TREE_SIZE` and the SDK's
-  `MAX_TREE_SIZE` must stay in sync; the cap counts every appended position,
-  including cancelled leaves. The `heavy-tests` workflow runs that worst case end
-  to end (`99-cap-failed` / `99-cap-claimed`); never run it locally as part of a
-  normal change.
+  guard, re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
+  ClaimsVault, Factory, and the SDK and must stay in sync; the cap counts every
+  appended position, including cancelled leaves. The `heavy-tests` workflow runs
+  the full tree end to end (`99-cap-failed` / `99-cap-claimed`); `99-cap-failed`
+  now exercises the early cap-saturation settlement and the worst-case vault
+  refund, while the offline cap test keeps the campaign-refund-at-cap arithmetic.
+  Never run the heavy lane locally as part of a normal change.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
   MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
@@ -252,6 +254,10 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
     The campaign-driven vault methods (`payBack`, `payClaim`, `settle`, `notifyDelete`)
     and `Factory.isRegistered` stay inner-callable; do not add the guard there. The
     SDK replay depends on top-level pledges and payments (see #199).
+  - **Cap-saturated campaigns fail early.** At `n == MAX_TREE_SIZE` with `raised < goal`,
+    `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
+    `Factory.unregister` treat the campaign as failed-in-fact (see #229). The cap is
+    duplicated in Campaign, ClaimsVault, Factory, and the SDK - keep it in sync.
   - `app_global_get_ex` **fails on deleted apps** (not exists=false) - never
     make vault logic depend on reading a possibly-deleted campaign's state; use
     vault-local markers written by the campaign (for example, the `root`/`N`/`settledAt`

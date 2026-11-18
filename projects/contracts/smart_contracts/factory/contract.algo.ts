@@ -35,6 +35,10 @@ import {
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
 const REGISTER_MBR = 18_900
 
+// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A registered campaign at the cap that has not
+// reached its goal can never succeed, so `unregister` must allow the early `[unregister, delete]` cleanup group.
+const MAX_TREE_SIZE = Uint64(524_287)
+
 /**
  * Timelock for a changed official Campaign program hash: ~7 days at 2.8s per round.
  *
@@ -287,11 +291,13 @@ export class Factory extends Contract {
       const deadline = op.AppGlobal.getExUint64(app, Bytes('deadline'))
       const raised = op.AppGlobal.getExUint64(app, Bytes('raised'))
       const goal = op.AppGlobal.getExUint64(app, Bytes('goal'))
-      assert(status[1] && deadline[1] && raised[1] && goal[1], 'campaign state missing')
+      const n = op.AppGlobal.getExUint64(app, Bytes('n'))
+      assert(status[1] && deadline[1] && raised[1] && goal[1] && n[1], 'campaign state missing')
 
       const settled = status[0] === CAMPAIGN_FAILED || status[0] === CAMPAIGN_CLAIMED
       const pristine = status[0] === CAMPAIGN_OPEN && raised[0] === Uint64(0)
-      const failedInFact = status[0] === CAMPAIGN_OPEN && Global.latestTimestamp >= deadline[0] && raised[0] < goal[0]
+      const failedInFact =
+        status[0] === CAMPAIGN_OPEN && (Global.latestTimestamp >= deadline[0] || n[0] >= MAX_TREE_SIZE) && raised[0] < goal[0]
       assert(settled || pristine || failedInFact, 'campaign is still live')
     }
 

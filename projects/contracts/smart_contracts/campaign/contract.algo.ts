@@ -349,8 +349,12 @@ export class Campaign extends Contract {
       assert(unregisterCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'unregister app mismatch')
     }
 
+    // A full tree that has not reached its goal can never succeed: no further leaf can be appended. Treat it as failed
+    // in fact so the creator does not have to wait for the deadline to recover the app MBR.
     const failedInFact =
-      this.status.value === STATUS_OPEN && Global.latestTimestamp >= this.deadline.value && this.raised.value < this.goal.value
+      this.status.value === STATUS_OPEN &&
+      (Global.latestTimestamp >= this.deadline.value || this.n.value >= MAX_TREE_SIZE) &&
+      this.raised.value < this.goal.value
     assert(
       this.status.value !== STATUS_OPEN || this.raised.value === Uint64(0) || failedInFact,
       'cannot delete a campaign with live pledges',

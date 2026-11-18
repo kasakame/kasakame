@@ -578,16 +578,25 @@ cancelled leaves), and the SDK fails with a clear error above it. The offline
 cap tests pin N=524,286/524,287 and the funded-15/actual-14 arithmetic; the
 heavy `06` ladder pins the actual take count at every boundary. The separate
 `heavy-tests` LocalNet lane (`99-cap-failed` / `99-cap-claimed`) runs the full
-2¹⁹−1 tree for both outcomes and pins the 14 takes and the 18,000 µA
-worst-case campaign group fee on a real chain.
+2¹⁹−1 tree for both outcomes: the failed lane exercises the early cap-saturation
+settlement/deletion and the worst-case vault refund; the claimed lane pins the
+claim path and the rejected early settlement.
+
+**Cap saturation:** once `N` reaches the cap, no further leaf can be appended. If
+`raised < goal`, the campaign can never succeed. `Vault.settleOpen` therefore
+settles it before the deadline, and `Campaign.delete` plus `Factory.unregister`
+treat `n == MAX_TREE_SIZE && raised < goal` as failed-in-fact, so the creator
+recovers the app MBR and backers can refund from the vault immediately. This is
+the harm-reduction escape from #229; the attacker's cost, detection, and any
+cancel cooldown remain the #208 decision.
 
 Current program footprint (2026-11-18, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,149 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,793 B | 2 (1 extra) | 307,000 µA |
-| Factory | 1,048 B | 1 | 357,000 µA |
+| Campaign | 2,160 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
+| Factory | 1,072 B | 1 | 357,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
@@ -674,6 +683,7 @@ real consensus, including the races of §7.
 | 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
 | 37 | Custom clear-state program | `Factory.register` hashes `sha256(itob(approval.length) ‖ approval ‖ clear)`. The 8-byte length prefix binds the approval/clear split, so a copy that moves bytes between the two programs is rejected. | SHA + app checks |
 | 38 | Inner-call pollution: an app wraps `[pay, Campaign.pledge, Vault.credit]` in an inner group | `Campaign.pledge` and `Vault.credit` require `Global.callerApplicationId == 0`, so the inner pledge is rejected before a leaf exists. Without the guard the chain state is valid but the SDK cannot pair the nested payment, and the campaign tree becomes unreadable. Old deployments remain callable from inner transactions. | app checks |
+| 39 | Tree-cap saturation: an attacker fills the 524,287 lifetime positions with pledge/cancel cycles | Funds stay safe; the risk is a campaign that can never succeed. `Vault.settleOpen` settles it early, and `Campaign.delete`/`Factory.unregister` treat `n == MAX_TREE_SIZE && raised < goal` as failed-in-fact, so the creator recovers the MBR and backers refund immediately. The attack cost and detection remain the #208 decision. | app checks + AVM |
 
 ## 18. Six-requirement scorecard
 

@@ -50,12 +50,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,145 B | 4 B | 2,149 B | 1 (2 pages) | 4,096 B | 1,947 B |
-| ClaimsVault | 2,789 B | 4 B | 2,793 B | 1 (2 pages) | 4,096 B | 1,303 B |
-| Factory | 1,044 B | 4 B | 1,048 B | 0 (1 page) | 2,048 B | 1,000 B |
+| Campaign | 2,156 B | 4 B | 2,160 B | 1 (2 pages) | 4,096 B | 1,936 B |
+| ClaimsVault | 2,807 B | 4 B | 2,811 B | 1 (2 pages) | 4,096 B | 1,285 B |
+| Factory | 1,068 B | 4 B | 1,072 B | 0 (1 page) | 2,048 B | 976 B |
 
-The campaign is **101 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 101 B would return it to
+The campaign is **112 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 112 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -151,8 +151,18 @@ that guard, the rung fails before the cap breaks. The cap counts every position
 ever appended, including cancelled pledges, because positions are never reused.
 Above it the contract rejects the pledge and the SDK fails with a clear
 "maximum size" error. The separate `heavy-tests` workflow fills the full 2¹⁹ − 1
-tree on LocalNet for both outcomes (failed/refunded and successful/claimed) and
-pins the 14 takes and the 18,000 µA worst-case group fee on a real chain.
+tree on LocalNet for both outcomes: `99-cap-failed` settles and deletes early
+through the cap-saturation escape and pins the worst-case vault refund;
+`99-cap-claimed` pins the claim path and the rejected early settlement. The
+offline cap test pins the 14 takes and the 18,000 µA worst-case campaign group
+fee.
+
+**Cap saturation:** once the tree is full, a campaign with `raised < goal` can
+never succeed. `Vault.settleOpen` settles it before the deadline, and
+`Campaign.delete` plus `Factory.unregister` treat `n == MAX_TREE_SIZE &&
+raised < goal` as failed-in-fact, so the creator recovers the app MBR and
+backers refund immediately. This is the #229 harm-reduction escape; it does not
+change the attacker's cost or prevent the fill.
 
 ## Current creator cost (create a campaign)
 

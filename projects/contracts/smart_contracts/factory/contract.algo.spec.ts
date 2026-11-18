@@ -831,6 +831,27 @@ describe('Factory', () => {
       expect(factory.registered(app.id).exists).toBe(false)
     })
 
+    test('allows a cap-saturated campaign before the deadline', () => {
+      ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 100, goal: 1000, deadline: 5_000, n: 524_287 })
+
+      unregisterWithDelete(factory, app)
+      expect(factory.registered(app.id).exists).toBe(false)
+    })
+
+    test('rejects a cap-saturated campaign that reached its goal', () => {
+      ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
+      const factory = createFactory()
+      const app = registeredCampaign(factory, { status: 0, raised: 1000, goal: 1000, deadline: 5_000, n: 524_287 })
+
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: factory, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          factory.unregister(app)
+        }).toThrow('campaign is still live')
+      })
+    })
+
     test('allows a failed campaign', () => {
       const factory = createFactory()
       const app = registeredCampaign(factory, { status: 1, raised: 100, goal: 1000, deadline: 2_000 })
