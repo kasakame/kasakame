@@ -101,7 +101,7 @@ chain-global time travel from overlapping.
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-129` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards, create byte caps |
+| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-132` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Factory register deposit/group guards, create byte caps |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
@@ -400,6 +400,9 @@ earlier tests in the same file, which stop on first failure).
 | `CON-106` | pledge without the matching credit is rejected | always | The credit must immediately follow the pledge |
 | `CON-107` | unregistered campaign cannot be credited | always | First touch requires Factory registration; no box created |
 | `CON-108` | cancel after the deadline is rejected | always | `cancelPledge` before the deadline |
+| `CON-130` | final-day cancel that would drop the goal is rejected | always | Goal-protection guard at the final-day boundary |
+| `CON-131` | final-day cancel that keeps the goal is allowed | always | Cancel leaving `raised >= goal` is unaffected |
+| `CON-132` | goal-dropping cancel before the final day is allowed | always | The guard only applies inside the final 24 hours |
 | `CON-109` | refund before the deadline is rejected | always | Campaign refund after the deadline |
 | `CON-110` | refund after the goal was reached is rejected | always | Failed-only refund guard |
 | `CON-111` | only the creator can claim | always | Claim authorization |
@@ -600,7 +603,7 @@ the pinned release predates all three.
 | `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
-| `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) | ✅ |
+| `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) / final-day goal-dropping reject / final-day keeps-goal allow / final-day below-goal allow / before-final-day allow | ✅ |
 | `delete` | failed-in-fact materialization + vault settle / cap-saturated failure before the deadline / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / factory-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
 | `ClaimsVault.create` | success / zero window / window above the 10-year cap / zero factory / zero sweep target / vault itself as sweep target | ✅ |
 | `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |

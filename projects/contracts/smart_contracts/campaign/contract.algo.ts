@@ -61,6 +61,10 @@ const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
 // Give backers a real review and pledge window; reject flash campaigns.
 const MIN_DURATION_SECONDS = Uint64(24 * 60 * 60)
 
+// Kickstarter-style goal protection: in the final 24 hours, a cancellation cannot drop a successful campaign below
+// its goal. A 1-day campaign is entirely inside this window; once its goal is reached, no cancel can drop it.
+const FINAL_DAY_SECONDS = Uint64(24 * 60 * 60)
+
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
@@ -252,6 +256,15 @@ export class Campaign extends Contract {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Global.latestTimestamp < this.deadline.value, 'pledging is closed')
     assert(this.status.value === STATUS_OPEN, 'campaign is not open')
+
+    // In the final day, a cancel cannot flip a successful campaign below its goal. A campaign that is already below
+    // its goal is unaffected, as is a cancel that leaves it at or above the goal.
+    if (this.raised.value >= this.goal.value) {
+      assert(
+        Global.latestTimestamp + FINAL_DAY_SECONDS < this.deadline.value || amount <= this.raised.value - this.goal.value,
+        'cancel would drop below goal in the final day',
+      )
+    }
 
     this.spendLeaf(k, amount, txid, path)
   }

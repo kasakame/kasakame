@@ -594,7 +594,7 @@ Current program footprint (2026-11-18, `npm run build`; see [`limits.md`](limits
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,160 B | 2 (1 extra) | 571,000 µA |
+| Campaign | 2,219 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,072 B | 1 | 357,000 µA |
 
@@ -683,7 +683,8 @@ real consensus, including the races of §7.
 | 36 | `ClearState` paired-call bypass | every paired call must be a `NoOp` app call; `ClearState` runs the clear-state program and cannot satisfy the pledge/credit or unregister/delete checks | app checks + AVM |
 | 37 | Custom clear-state program | `Factory.register` hashes `sha256(itob(approval.length) ‖ approval ‖ clear)`. The 8-byte length prefix binds the approval/clear split, so a copy that moves bytes between the two programs is rejected. | SHA + app checks |
 | 38 | Inner-call pollution: an app wraps `[pay, Campaign.pledge, Vault.credit]` in an inner group | `Campaign.pledge` and `Vault.credit` require `Global.callerApplicationId == 0`, so the inner pledge is rejected before a leaf exists. Without the guard the chain state is valid but the SDK cannot pair the nested payment, and the campaign tree becomes unreadable. Old deployments remain callable from inner transactions. | app checks |
-| 39 | Tree-cap saturation: an attacker fills the 524,287 lifetime positions with pledge/cancel cycles | Funds stay safe; the risk is a campaign that can never succeed. `Vault.settleOpen` settles it early, and `Campaign.delete`/`Factory.unregister` treat `n == MAX_TREE_SIZE && raised < goal` as failed-in-fact, so the creator recovers the MBR and backers refund immediately. The attack cost and detection remain the #208 decision. | app checks + AVM |
+| 39 | Tree-cap saturation: an attacker fills the 524,287 lifetime positions with pledge/cancel cycles | Funds stay safe; the risk is a campaign that can never succeed. `Vault.settleOpen` settles it early, and `Campaign.delete`/`Factory.unregister` treat `n == MAX_TREE_SIZE && raised < goal` as failed-in-fact, so the creator recovers the MBR and backers refund immediately. #208 accepts the residual risk: no fee, cooldown, per-backer cap, or lower max N; monitoring and creator capacity are follow-ups. | app checks + AVM |
+| 40 | Last-minute goal flip: a backer cancels in the final 24 hours and drops a successful campaign below its goal | `Campaign.cancelPledge` rejects a cancel that would drop a campaign currently at or above its goal below the goal. Cancels that keep the goal, and cancels in an already-below-goal campaign, are allowed. A one-day campaign is entirely inside the window; this is accepted and disclosed. | app checks |
 
 ## 18. Six-requirement scorecard
 

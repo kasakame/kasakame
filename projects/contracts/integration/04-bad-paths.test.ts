@@ -111,7 +111,7 @@ interface CreditOptions {
 async function createCampaign(
   fixture: AlgorandFixture,
   stack: ContractStack,
-  options: { goal?: bigint; register?: boolean; vaultId?: bigint } = {},
+  options: { goal?: bigint; deadlineOffset?: number; register?: boolean; vaultId?: bigint } = {},
 ): Promise<CampaignFixture> {
   const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
   const campaign = await deployCampaign(stack, creator.addr.toString(), options)
@@ -336,6 +336,73 @@ describe('04 bad paths', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/pledging is closed/)
+  })
+
+  test('CON-130 final-day cancel that would drop the goal is rejected', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack, { goal: 2n * ALGO, deadlineOffset: 2 * 86_400 })
+    const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
+    await advanceTime(fixture, 86_400 + 60)
+
+    const path = campaign.oracle.path(0)
+    const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
+    await expect(
+      campaign.appClient.send.call({
+        method: 'cancelPledge(uint64,uint64,byte[],byte[])void',
+        args: [0n, 1n * ALGO, Buffer.from(txidA, 'hex'), blob],
+        sender: backerA.addr,
+        appReferences: [stack.vault.appId],
+        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+        extraFee: microAlgos(spendExtraFee(path, 2)),
+        suppressLog: true,
+      }),
+    ).rejects.toThrow(/cancel would drop below goal in the final day/)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(2n * ALGO)
+  })
+
+  test('CON-131 final-day cancel that keeps the goal is allowed', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack, { goal: 1n * ALGO, deadlineOffset: 2 * 86_400 })
+    const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
+    await advanceTime(fixture, 86_400 + 60)
+
+    await spendCampaign(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      0,
+      1n * ALGO,
+      txidA,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      campaign.oracle,
+    )
+    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * ALGO)
+  })
+
+  test('CON-132 a goal-dropping cancel before the final day is allowed', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack, { goal: 2n * ALGO, deadlineOffset: 2 * 86_400 })
+    const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
+
+    await spendCampaign(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      0,
+      1n * ALGO,
+      txidA,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      campaign.oracle,
+    )
+    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * ALGO)
   })
 
   test('CON-109 refund before the deadline is rejected', { tags: ['bad', 'always'] }, async () => {
