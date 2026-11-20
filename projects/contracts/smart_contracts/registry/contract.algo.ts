@@ -39,6 +39,9 @@ const REGISTER_MBR = 18_900
 // reached its goal can never succeed, so `unregister` must allow the early `[unregister, delete]` cleanup group.
 const MAX_TREE_SIZE = Uint64(524_287)
 
+// Keep in sync with ClaimsVault.MIN_REFUND_WINDOW_SECONDS; bind the vault window to the same range.
+const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
+
 // Deployment sanity cap: 10 years, matching claimsvault/deploy-config.ts. Bind the vault window to the same bound.
 const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 
@@ -87,7 +90,7 @@ export class Registry extends Contract {
     assert(campaignProgramHash.length === Uint64(32), 'campaign program hash must be 32 bytes')
     assert(vaultProgramHash.length === Uint64(32), 'vault program hash must be 32 bytes')
     assert(expectedSweepTarget !== Global.zeroAddress, 'sweep target must not be zero')
-    assert(expectedRefundWindow > Uint64(0), 'refund window must be positive')
+    assert(expectedRefundWindow >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
     assert(expectedRefundWindow <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 
     this.campaignProgramHash.value = campaignProgramHash
@@ -154,7 +157,7 @@ export class Registry extends Contract {
     assert(app.creator === Txn.sender, 'only the campaign creator can register')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the registry')
-    assert(payment.amount >= REGISTER_MBR, 'registration deposit too small')
+    assert(payment.amount === REGISTER_MBR, 'registration deposit must be exact')
     assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(!this.registered(app.id).exists, 'campaign already registered')
@@ -202,6 +205,7 @@ export class Registry extends Contract {
       const goal = op.AppGlobal.getExUint64(app, Bytes('goal'))
       const n = op.AppGlobal.getExUint64(app, Bytes('n'))
       assert(status[1] && deadline[1] && raised[1] && goal[1] && n[1], 'campaign state missing')
+      assert(status[0] <= CAMPAIGN_CLAIMED, 'invalid campaign status')
 
       const settled = status[0] === CAMPAIGN_FAILED || status[0] === CAMPAIGN_CLAIMED
       const pristine = status[0] === CAMPAIGN_OPEN && raised[0] === Uint64(0)

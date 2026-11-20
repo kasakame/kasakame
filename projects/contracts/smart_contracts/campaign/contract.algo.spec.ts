@@ -20,7 +20,10 @@ import { Campaign } from './contract.algo'
  */
 
 const GOAL = 10_000_000
+const MIN_GOAL = 100_000
 const MAX_GOAL = 10_000_000_000_000_000n
+const MAX_PLEDGE = MAX_GOAL
+const MAX_UINT64 = 18_446_744_073_709_551_615n
 const CREATION_TIME = 1_000
 const MIN_DURATION = 24 * 60 * 60
 const DEADLINE = CREATION_TIME + MIN_DURATION
@@ -232,11 +235,17 @@ describe('Campaign', () => {
       }).toThrow('metadata uri must be 117 bytes or fewer')
     })
 
-    test('rejects a goal of zero', () => {
+    test('rejects a goal below the minimum pledge', () => {
       const contract = ctx.contract.create(Campaign)
       expect(() => {
-        contract.create(vaultApp(), TITLE, METADATA_URI, 0, DEADLINE)
-      }).toThrow('goal must be greater than zero')
+        contract.create(vaultApp(), TITLE, METADATA_URI, MIN_GOAL - 1, DEADLINE)
+      }).toThrow('goal below minimum')
+    })
+
+    test('accepts a goal exactly at the minimum pledge', () => {
+      const contract = ctx.contract.create(Campaign)
+      contract.create(vaultApp(), TITLE, METADATA_URI, MIN_GOAL, DEADLINE)
+      expect(BigInt(contract.goal.value)).toEqual(BigInt(MIN_GOAL))
     })
 
     test('accepts a goal at the total ALGO supply', () => {
@@ -555,18 +564,19 @@ describe('Campaign', () => {
         })
     })
 
-    test('rejects a 1 µA pledge', () => {
+    test('rejects a pledge one µA below the minimum', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
-      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: 1 })
+      const amount = MIN_PLEDGE - 1
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount })
       const group = [
         pay,
         ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
         ctx.any.txn.applicationCall({
           appId: contract.vault.value,
           sender: backer,
-          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(1)],
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(amount)],
         }),
       ]
       ctx.txn.createScope(group, 1).execute(() => {
@@ -582,6 +592,72 @@ describe('Campaign', () => {
       pledgeAs(contract, backer, MIN_PLEDGE)
       expect(contract.n.value).toEqual(1)
       expect(contract.raised.value).toEqual(MIN_PLEDGE)
+    })
+
+    test('accepts a pledge exactly at the total ALGO supply', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const amount = Uint64(MAX_PLEDGE)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(MAX_PLEDGE)],
+        }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        contract.pledge(ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount }), Bytes(new Uint8Array()))
+      })
+      expect(BigInt(contract.raised.value)).toEqual(MAX_PLEDGE)
+    })
+
+    test('rejects a pledge above the total ALGO supply', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      const amount = Uint64(MAX_PLEDGE + 1n)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(amount)],
+        }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        expect(() => {
+          contract.pledge(pay, Bytes(new Uint8Array()))
+        }).toThrow('pledge too large')
+      })
+    })
+
+    test('rejects a pledge that would overflow raised', () => {
+      const contract = createCampaign()
+      const backer = ctx.any.account()
+      const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
+      contract.raised.value = Uint64(MAX_UINT64 - BigInt(MIN_PLEDGE) + 1n)
+      const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
+      const group = [
+        pay,
+        ctx.any.txn.applicationCall({ appId: contract, sender: backer }),
+        ctx.any.txn.applicationCall({
+          appId: contract.vault.value,
+          sender: backer,
+          appArgs: [VAULT_CREDIT_SELECTOR, toU64(campaignId), toU64(MIN_PLEDGE)],
+        }),
+      ]
+      ctx.txn.createScope(group, 1).execute(() => {
+        expect(() => {
+          contract.pledge(pay, Bytes(new Uint8Array()))
+        }).toThrow('raised overflow')
+      })
+      expect(BigInt(contract.raised.value)).toEqual(MAX_UINT64 - BigInt(MIN_PLEDGE) + 1n)
     })
 
     test('rejects a creator self-pledge', () => {
@@ -821,8 +897,8 @@ describe('Campaign', () => {
     })
 
     test('rejects a refund when the goal was reached', () => {
-      const contract = createCampaign(100, DEADLINE)
-      contract.raised.value = 100
+      const contract = createCampaign(MIN_GOAL, DEADLINE)
+      contract.raised.value = MIN_GOAL
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       expect(() => {
         contract.refund(0, 100, Bytes(Buffer.alloc(32)), Bytes(new Uint8Array()))
@@ -923,8 +999,8 @@ describe('Campaign', () => {
     })
 
     test('rejects a second claim', () => {
-      const contract = createCampaign(100, DEADLINE)
-      contract.raised.value = 100
+      const contract = createCampaign(MIN_GOAL, DEADLINE)
+      contract.raised.value = MIN_GOAL
       contract.status.value = 2
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       expect(() => {
@@ -1101,8 +1177,8 @@ describe('Campaign', () => {
     })
 
     test('notifies the vault on a claimed campaign', () => {
-      const contract = createCampaign(100, DEADLINE)
-      contract.raised.value = 100
+      const contract = createCampaign(MIN_GOAL, DEADLINE)
+      contract.raised.value = MIN_GOAL
       contract.status.value = 2
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       deleteScope(contract, ctx.defaultSender).execute(() => {

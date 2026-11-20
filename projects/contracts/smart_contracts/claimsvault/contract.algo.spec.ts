@@ -21,7 +21,11 @@ import { ClaimsVault } from './contract.algo'
 
 const CAMPAIGN_APP_ID = 42
 const REGISTRY_APP_ID = 7
-const WINDOW = 1_000_000
+const MIN_WINDOW = 30 * 24 * 60 * 60
+const MAX_WINDOW = 10 * 365 * 24 * 60 * 60
+const WINDOW = MIN_WINDOW
+const MAX_TREE_SIZE = 524_287
+const MAX_UINT64 = 18_446_744_073_709_551_615n
 const Z_HEX = '00'.repeat(32)
 const ORACLE = path.resolve(__dirname, '../oracle.py')
 
@@ -76,7 +80,7 @@ describe('ClaimsVault', () => {
     return ctx.ledger.getAccount(address)
   }
 
-  function toU64(value: number): Buffer {
+  function toU64(value: number | bigint): Buffer {
     const buf = Buffer.alloc(8)
     buf.writeBigUInt64BE(BigInt(value))
     return buf
@@ -98,7 +102,7 @@ describe('ClaimsVault', () => {
   function writeBox(
     vault: ClaimsVault,
     appId: number,
-    fields: { paidIn: number; paidOut: number; root: string; n: number; status: number; settledAt: number },
+    fields: { paidIn: number | bigint; paidOut: number; root: string; n: number; status: number; settledAt: number },
   ): void {
     vault.campaignBox(appId).value = Bytes(
       Buffer.concat([
@@ -171,17 +175,27 @@ describe('ClaimsVault', () => {
       expect(toExternalValue(vault.refundWindow.value)).toEqual(WINDOW)
     })
 
-    test('rejects a zero window', () => {
+    test('rejects a window below the 30-day minimum', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, 0)
-      }).toThrow('refund window must be positive')
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, MIN_WINDOW - 1)
+      }).toThrow('refund window too short')
+    })
+
+    test('accepts a window exactly at the 30-day minimum', () => {
+      const vault = createVault(ctx.defaultSender, MIN_WINDOW)
+      expect(toExternalValue(vault.refundWindow.value)).toEqual(MIN_WINDOW)
+    })
+
+    test('accepts a window exactly at the 10-year maximum', () => {
+      const vault = createVault(ctx.defaultSender, MAX_WINDOW)
+      expect(toExternalValue(vault.refundWindow.value)).toEqual(MAX_WINDOW)
     })
 
     test('rejects a window above the cap', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, 10 * 365 * 24 * 60 * 60 + 1)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, MAX_WINDOW + 1)
       }).toThrow('refund window too long')
     })
 
@@ -555,6 +569,30 @@ describe('ClaimsVault', () => {
       expect(box.paidOut).toEqual(200n)
       expect(box.status).toEqual(OPEN)
     })
+
+    test('rejects an inflow that would overflow paidIn', () => {
+      const vault = createVault()
+      const paidIn = MAX_UINT64 - 500n
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      const caller = ctx.any.account()
+      const app = campaignApp()
+      ctx.txn
+        .createScope(
+          [
+            ctx.any.txn.payment({ sender: caller, receiver: vaultAccount(vault), amount: 1000 }),
+            pledgeCall(app, caller),
+            ctx.any.txn.applicationCall({ appId: vault, sender: caller }),
+          ],
+          2,
+        )
+        .execute(() => {
+          expect(() => {
+            vault.credit(app, 1000)
+          }).toThrow('paidIn overflow')
+        })
+
+      expect(readBox(vault, CAMPAIGN_APP_ID).paidIn).toEqual(paidIn)
+    })
   })
 
   describe('payBack', () => {
@@ -716,17 +754,27 @@ describe('ClaimsVault', () => {
       })
     })
 
+    test('rejects an n above the tree cap', () => {
+      const vault = createVault()
+      writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
+        expect(() => {
+          vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), MAX_TREE_SIZE + 1)
+        }).toThrow('n above maximum')
+      })
+    })
+
     test('writes root, n, and settledAt while flipping an open box to failed', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 5_000 })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
-        vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), 3)
+        vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), MAX_TREE_SIZE)
       })
 
       const box = readBox(vault, CAMPAIGN_APP_ID)
       expect(box.root).toEqual(ROOT)
-      expect(box.n).toEqual(3n)
+      expect(box.n).toEqual(BigInt(MAX_TREE_SIZE))
       expect(box.status).toEqual(FAILED)
       expect(box.settledAt).toEqual(5_000n)
       expect(box.paidIn).toEqual(1000n)
@@ -781,6 +829,33 @@ describe('ClaimsVault', () => {
       expect(() => {
         vault.settleOpen(app)
       }).toThrow('campaign already claimed')
+    })
+
+    test('rejects an invalid campaign status', () => {
+      const vault = createVault()
+      const { app, id } = foreignCampaign(vault, { status: 3, raised: 1000, goal: 1000, deadline: 100, root: Z_HEX, n: 1 })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 1, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      expect(() => {
+        vault.settleOpen(app)
+      }).toThrow('invalid campaign status')
+    })
+
+    test('rejects a campaign n above the tree cap', () => {
+      const vault = createVault()
+      const { app, id } = foreignCampaign(vault, {
+        status: 0,
+        raised: 800,
+        goal: 1000,
+        deadline: 5_000,
+        root: Z_HEX,
+        n: MAX_TREE_SIZE + 1,
+      })
+      writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
+      expect(() => {
+        vault.settleOpen(app)
+      }).toThrow('n above maximum')
     })
 
     test('rejects a campaign before its deadline', () => {

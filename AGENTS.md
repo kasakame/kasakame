@@ -107,6 +107,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
   it on merge, so no `Closes`/`Fixes` keyword is needed. Never push to `main`. Do
   not create worktrees or merge a PR without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
+- **Preserve the six protocol requirements.** Any change must keep the A–F scorecard in
+  [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) §18 satisfied; update the scorecard in the
+  same change set if a change deliberately trades one off.
 - **Keep the UI normal.** Never surface chain or storage internals (CIDs, hashes, hand-authored JSON,
   transaction mechanics) in the interface, and never send users to external tools to shuttle data
   back in. Approvals follow user intent: one click, only the approvals the protocol structurally requires.
@@ -131,13 +134,13 @@ the product contract. The current numbers and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
 
-Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
+Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,219 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
-| Registry | 947 B | 1 | 307,000 µA |
+| Campaign | 2,249 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,860 B | 2 (1 extra) | 307,000 µA |
+| Registry | 958 B | 1 | 307,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -148,14 +151,19 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
   pages, global schema, and app MBR in
   `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
+- **The product input bounds are pinned.** Goal `>= 0.1 ALGO` and `<= 10¹⁶ µA`,
+  pledge `<= 10¹⁶ µA`, refund window 30 days to 10 years, and the exact 18,900 µA
+  registration deposit. `raised` and `paidIn` have explicit uint64 overflow
+  guards; there is no product cumulative-flow cap. Update
+  [`docs/limits.md`](docs/limits.md) and the SDK/frontend constants with any change.
 - **The claim-tree size is capped at 2¹⁹ − 1 (524,287 positions).** At the
   worst-case refund path (`r = c = 18`, 36 elements) the contract needs 14
-  actual OpUp takes. The ABI router and guards consume ~100 of the 700 base
-  opcodes, leaving ~600, so 14 + `payBack` + payment = 16 inner transactions.
+  actual OpUp takes. The ABI router and guards consume the first part of the
+  700 base opcodes, so 14 + `payBack` + payment = 16 inner transactions.
   The SDK's zero-headroom fee bound funds 15, so groups never underpay. The
-  `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves at
-  least 487 ops, above the ~262 the cap needs; if a contract change breaks that
-  guard, re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
+  `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves enough
+  ops for the ~262 the cap needs; if a contract change breaks that guard,
+  re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
   ClaimsVault, Registry, and the SDK and must stay in sync; the cap counts every
   appended position, including cancelled leaves. The `heavy-tests` workflow runs
   the full tree end to end (`99-cap-failed` / `99-cap-claimed`); `99-cap-failed`

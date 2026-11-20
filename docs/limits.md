@@ -4,7 +4,7 @@ Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
 
-The current numbers are the compiled bytecode from `npm run build` on 2026-11-18,
+The current numbers are the compiled bytecode from `npm run build` on 2026-11-20,
 not the `.teal` source size. Re-measure after any contract change.
 
 ## Hard AVM / Algorand limits
@@ -22,7 +22,7 @@ not the `.teal` source size. Re-measure after any contract change.
 | Box IO | 2,048 B per box reference | `BytesPerBoxReference` (older docs say 1,024; the current parameter is 2,048) |
 | Foreign references | 8 total per app call | accounts + assets + apps + boxes (`MaxAppTotalTxnReferences`); 8 per type (`MaxAppTxnAccounts`, `MaxAppTxnForeignAssets`, `MaxAppTxnForeignApps`) |
 | Access list | 16 entries | `MaxAppAccess`; newer `txn.Access`; not used by these contracts |
-| Inner transactions | 16 per app call, 256 per group | `MaxInnerTransactions` × group size; the protocol uses at most 5 inner txns per operation |
+| Inner transactions | 16 per app call, 256 per group | `MaxInnerTransactions` × group size; the worst-case refund uses 16 |
 | Group size | 16 top-level txns | `MaxTxGroupSize` |
 | Stack | 1,000 entries; byte array ≤ 4,096 B | `MaxStackDepth`, `MaxStackSize` |
 | Logs | 32 calls, 1,024 B each | not used by these contracts |
@@ -43,6 +43,32 @@ Sources: [protocol parameters](https://dev.algorand.co/concepts/protocol/protoco
 > 7-extra-page limit unless the target network's consensus supports it and the
 > fee surcharge is acceptable.
 
+## Product input bounds
+
+The contracts enforce these product bounds at the method boundary. They were
+decided in [#207](https://github.com/kasakame/kasakame/issues/207) and are
+enforced in [#235](https://github.com/kasakame/kasakame/issues/235). The AVM
+protocol limits above stay separate: oversized args, boxes, groups, and opcode
+budgets fail at the protocol layer.
+
+| Input | Bound | Enforced by |
+| --- | --- | --- |
+| Title | 1 to 123 bytes | `Campaign.create` |
+| Metadata URI | 0 to 117 bytes | `Campaign.create` |
+| Goal | 100,000 µA (0.1 ALGO) to 10¹⁶ µA (total supply) | `Campaign.create` |
+| Deadline | 1 day to 180 days after creation | `Campaign.create` |
+| Pledge | 100,000 µA to 10¹⁶ µA | `Campaign.pledge` |
+| `raised` | Explicit uint64 overflow guard; no product cumulative cap | `Campaign.pledge` |
+| `paidIn` | Explicit uint64 overflow guard; no product cumulative cap | `Vault.credit` |
+| Refund window | 30 days to 10 years | `Vault.create`, `Registry.create` |
+| Registration deposit | Exactly 18,900 µA | `Registry.register` |
+| Campaign status | `0/1/2` only where the Registry or vault reads it | `Registry.unregister`, `Vault.settleOpen` |
+| Vault `n` | At most 524,287 in `settle` and `settleOpen` | `Vault.settle`, `Vault.settleOpen` |
+
+A product cumulative-flow cap is deliberately not added: a lifetime cap would
+be cheaper for a funded attacker to reach than the uint64 guard. The residual
+griefing class is the one accepted in #208.
+
 ## Current compiled footprint
 
 Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
@@ -50,12 +76,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,215 B | 4 B | 2,219 B | 1 (2 pages) | 4,096 B | 1,877 B |
-| ClaimsVault | 2,807 B | 4 B | 2,811 B | 1 (2 pages) | 4,096 B | 1,285 B |
-| Registry | 943 B | 4 B | 947 B | 0 (1 page) | 2,048 B | 1,101 B |
+| Campaign | 2,245 B | 4 B | 2,249 B | 1 (2 pages) | 4,096 B | 1,847 B |
+| ClaimsVault | 2,856 B | 4 B | 2,860 B | 1 (2 pages) | 4,096 B | 1,236 B |
+| Registry | 954 B | 4 B | 958 B | 0 (1 page) | 2,048 B | 1,090 B |
 
-The campaign is **171 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 171 B would return it to
+The campaign is **201 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 201 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -115,13 +141,14 @@ campaign duration plus the 730-day refund window (~2.5 years), instead of being
 pinnable indefinitely by a 1 µA pledge. It is a backstop, not a product limit:
 Kickstarter and Indiegogo cap at 60 days, and 180 leaves room for extended raises.
 
-## Goal cap
+## Goal bounds
 
-`Campaign.create` rejects a goal above **10,000,000,000 ALGO** (10¹⁶ µA), the
-total ALGO supply. A larger goal can never be reached. The cap is a UX guard,
-not a resource guard: a huge goal does not consume platform resources, it only
-makes the campaign fail. The goal is stored in a uint64, and the total supply
-stays far below the uint64 maximum.
+`Campaign.create` rejects a goal below **0.1 ALGO** (100,000 µA) or above
+**10,000,000,000 ALGO** (10¹⁶ µA), the total ALGO supply. A goal below the
+minimum pledge can only be met by overfunding with the smallest pledge, and a
+goal above the total supply can never be reached. Both are UX guards, not
+resource guards: the goal is stored in a uint64, and the total supply stays far
+below the uint64 maximum.
 
 ## Title and metadata URI caps
 
@@ -130,24 +157,26 @@ The AVM caps a global-state entry at 128 bytes including the key. `title` is a
 so its value is capped at 117 bytes. `Campaign.create` rejects longer values
 before the state write.
 
-## Minimum pledge
+## Pledge bounds
 
 `Campaign.pledge` rejects payments below 0.1 ALGO (100,000 µA), about 3× the
 vault box MBR and 100× the minimum transaction fee. The floor removes 1 µA dust
-while keeping micro-pledges possible; the principal stays refundable.
+while keeping micro-pledges possible; the principal stays refundable. It also
+rejects a single pledge above 10¹⁶ µA (the total ALGO supply), and asserts that
+`raised` and the vault's `paidIn` cannot overflow uint64. There is no product
+cumulative-flow cap; the overflow guard is the safety bound.
 
 ## Supported tree size
 
 `Campaign.pledge` rejects a campaign that already has **524,287** positions
 (2¹⁹ − 1). At that size leaf 0 has `r = c = 18` (36 path elements), whose hashing
-needs 14 OpUp takes. The ABI router and guards consume ~100 of the 700 base
-opcodes (measured ~614 remain at the top-up call), so 14 takes + the campaign
-path's `payBack` + payment = 16 inner transactions, the per-transaction limit.
-The SDK's zero-headroom fee bound funds **15** takes, so a group is never
-underpaid; the contract simply never requests the 15th. The `06` ladder's
-N=1,023 rung (h=18, 7 takes) proves at least 487 base ops survive the prelude,
-above the ~262 the cap needs. If a contract change ever pushes the prelude past
-that guard, the rung fails before the cap breaks. The cap counts every position
+needs 14 OpUp takes. The ABI router and guards consume the first part of the 700
+base opcodes, so 14 takes + the campaign path's `payBack` + payment = 16 inner
+transactions, the per-transaction limit. The SDK's zero-headroom fee bound funds
+**15** takes, so a group is never underpaid; the contract simply never requests
+the 15th. The `06` ladder's N=1,023 rung (h=18, 7 takes) proves the prelude
+leaves enough base ops for the cap's ~262. If a contract change ever pushes the
+prelude past that guard, the rung fails before the cap breaks. The cap counts every position
 ever appended, including cancelled pledges, because positions are never reused.
 Above it the contract rejects the pledge and the SDK fails with a clear
 "maximum size" error. The separate `heavy-tests` workflow fills the full 2¹⁹ − 1
@@ -163,6 +192,16 @@ never succeed. `Vault.settleOpen` settles it before the deadline, and
 raised < goal` as failed-in-fact, so the creator recovers the app MBR and
 backers refund immediately. This is the #229 harm-reduction escape; it does not
 change the attacker's cost or prevent the fill.
+
+### AVM shapes the contracts depend on
+
+| Shape | Maximum | Where |
+| --- | ---: | --- |
+| Frontier peaks | 19 peaks / 608 B | `Campaign.pledge` app arg at `N` with all 19 bits set |
+| Proof path | 36 elements / 1,152 B | `cancelPledge`/`refund` at `r = c = 18` (32-byte siblings) |
+| App args per call | 2,048 B total | protocol `MaxAppTotalArgLen`; the largest contract arg is 1,154 B (a 1,152-byte path plus its ABI length prefix) |
+| Inner transactions | 16 per app call | worst-case campaign refund: 14 OpUp takes + `payBack` + payment |
+| Opcode budget | 700 per app call | `MaxAppProgramCost`; the group buys extra 700-op blocks through OpUp |
 
 ## Current creator cost (create a campaign)
 

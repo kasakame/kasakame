@@ -20,7 +20,9 @@ const TITLE = Bytes('Test campaign')
 const METADATA_URI = Bytes('ipfs://test')
 const GOAL = 1_000_000
 const DEADLINE = 1_000_000
-const WINDOW = 1
+const MIN_WINDOW = 30 * 24 * 60 * 60
+const MAX_WINDOW = 10 * 365 * 24 * 60 * 60
+const WINDOW = MIN_WINDOW
 const MAX_TREE_SIZE = 524_287
 const DELETE_SELECTOR = Bytes.fromHex('24378d3c')
 
@@ -186,17 +188,27 @@ describe('Registry', () => {
       }).toThrow('sweep target must not be zero')
     })
 
-    test('rejects a zero refund window', () => {
+    test('rejects a refund window below the 30-day minimum', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, 0)
-      }).toThrow('refund window must be positive')
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_WINDOW - 1)
+      }).toThrow('refund window too short')
+    })
+
+    test('accepts a refund window exactly at the 30-day minimum', () => {
+      const registry = createRegistry({ window: MIN_WINDOW })
+      expect(registry.expectedRefundWindow.value).toEqual(MIN_WINDOW)
+    })
+
+    test('accepts a refund window exactly at the 10-year maximum', () => {
+      const registry = createRegistry({ window: MAX_WINDOW })
+      expect(registry.expectedRefundWindow.value).toEqual(MAX_WINDOW)
     })
 
     test('rejects a refund window above the cap', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, 10 * 365 * 24 * 60 * 60 + 1)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MAX_WINDOW + 1)
       }).toThrow('refund window too long')
     })
 
@@ -245,8 +257,8 @@ describe('Registry', () => {
     })
 
     test('rejects a wrong refund window', () => {
-      const registry = createRegistry({ vaultHash: vaultProgramHash(), window: 1 })
-      const vault = createVault(registry, ctx.defaultSender, 2)
+      const registry = createRegistry({ vaultHash: vaultProgramHash(), window: WINDOW + 1 })
+      const vault = createVault(registry, ctx.defaultSender, WINDOW + 2)
       expect(() => {
         bind(registry, vault)
       }).toThrow('vault refund window mismatch')
@@ -399,7 +411,20 @@ describe('Registry', () => {
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
           registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: REGISTER_MBR - 1 }))
-        }).toThrow('registration deposit too small')
+        }).toThrow('registration deposit must be exact')
+      })
+    })
+
+    test('rejects a deposit above the registration minimum balance', () => {
+      const registry = createRegistry({ vaultHash: vaultProgramHash() })
+      const vault = createVault(registry)
+      bind(registry, vault)
+      const address = ctx.ledger.getApplicationForContract(registry).address
+      const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
+        expect(() => {
+          registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: REGISTER_MBR + 1 }))
+        }).toThrow('registration deposit must be exact')
       })
     })
 
@@ -560,6 +585,14 @@ describe('Registry', () => {
       expect(() => {
         unregisterWithDelete(registry, app)
       }).toThrow('campaign is still live')
+    })
+
+    test('rejects an invalid campaign status', () => {
+      const registry = createRegistry()
+      const app = registeredCampaign(registry, { status: 3, raised: 100, goal: 1000, deadline: 2_000 })
+      expect(() => {
+        unregisterWithDelete(registry, app)
+      }).toThrow('invalid campaign status')
     })
 
     test('rejects a non-creator', () => {
