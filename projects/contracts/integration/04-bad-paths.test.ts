@@ -158,6 +158,9 @@ async function buildPledgeGroup(
   if (options.with !== false) {
     for (let i = 0; i < count; i++) {
       const target = options.appId ?? stack.vault.appId
+      // Repeated credits must differ, or algod rejects the group as a duplicate transaction before the vault's
+      // final-transaction guard can run. The first credit still exercises that guard.
+      const creditAmount = (options.amount ?? payment.amount) + (i === 0 ? 0n : 1n)
       const creditParams = {
         appId: target,
         sender: callerAddr,
@@ -169,13 +172,13 @@ async function buildPledgeGroup(
         composer.addAppCall({
           ...creditParams,
           ...(options.onComplete === undefined ? {} : { onComplete: options.onComplete }),
-          args: [options.rawSelector, appIdBytes(campaign.appId), appIdBytes(options.amount ?? payment.amount)],
+          args: [options.rawSelector, appIdBytes(campaign.appId), appIdBytes(creditAmount)],
         })
       } else {
         composer.addAppCallMethodCall({
           ...creditParams,
           method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
-          args: [campaign.appId, options.amount ?? payment.amount],
+          args: [campaign.appId, creditAmount],
         })
       }
     }
