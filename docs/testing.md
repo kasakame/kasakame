@@ -101,7 +101,7 @@ chain-global time travel from overlapping.
 | `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
 | `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
 | `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-132` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards, create byte caps |
+| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-132`, `CON-250`..`CON-253` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), app upgrade and raw on-completion guards, stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards, create byte caps |
 | `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
@@ -283,7 +283,7 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 84 tests across `00`-`07`; the
+`npm run test:integration` in `projects/contracts`; 88 tests across `00`-`07`; the
 two cap-scale suites in `99-*` run separately in `heavy-tests`).
 Each file deploys its own fixture chain to a live algod.
 The LocalNet integration files run **sequentially** (`--no-file-parallelism`):
@@ -387,7 +387,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-061` | refunding one campaign leaves the other untouched | always | Per-campaign accounting isolation |
 | `CON-062` | seeded pledge/cancel/refund/finalize sequence | always | One normal-lane seed through the shared sequence engine (N ≤ 100) |
 
-#### `integration/04-bad-paths.test.ts` (31 tests)
+#### `integration/04-bad-paths.test.ts` (35 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -422,6 +422,10 @@ earlier tests in the same file, which stop on first failure).
 | `CON-127` | Registry register deposit and group guards | always | Deposit amount, receiver/sender, final position, rekey, unconfigured hash; no ledger or state change |
 | `CON-128` | create accepts 123/117 byte metadata and rejects 124/118 | always | Campaign create boundary at the state-entry caps; rejected creates make no app |
 | `CON-129` | an app cannot pledge through an inner group | always | A test-only inner caller builds `[pay, Campaign.pledge]`; the top-level guard rejects it before a leaf |
+| `CON-250` | UpdateApplication is rejected on Campaign, ClaimsVault, and Registry | always | The router rejects an update with new approval/clear programs; programs, global state, and update counter unchanged |
+| `CON-251` | raw DeleteApplication is rejected on Campaign, ClaimsVault, and Registry | always | No-selector and wrong-selector deletes cannot remove the apps |
+| `CON-252` | OptIn and CloseOut are rejected on Campaign, ClaimsVault, and Registry | always | The apps accept no local state; both calls fail and the apps stay unchanged |
+| `CON-253` | ClearState cannot delete or alter the apps | always | No account can opt in, so ClearState fails; the apps stay unchanged |
 
 #### `integration/05-scale.test.ts` (1 test)
 
@@ -429,7 +433,7 @@ earlier tests in the same file, which stop on first failure).
 | --- | --- | --- | --- |
 | `CON-202` | 25 campaigns by 25 creators with 4 backers each (config-driven) | always | Scale-lane isolation and pool accounting under load |
 
-#### `integration/06-tree-boundaries.test.ts` (14 tests)
+#### `integration/06-tree-boundaries.test.ts` (15 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |

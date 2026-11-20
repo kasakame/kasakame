@@ -238,6 +238,56 @@ async function settleOpen(stack: ContractStack, appId: bigint, sender: string): 
   })
 }
 
+interface AppSnapshot {
+  approval: string
+  clear: string
+  version: string
+  global: { key: string; bytes: string; uint: string }[]
+}
+
+/**
+ * Snapshot the programs and global state of an app, including the update counter.
+ *
+ * @param stack The deployed stack.
+ * @param appId The app to snapshot.
+ * @returns The comparable program/state snapshot.
+ */
+async function appSnapshot(stack: ContractStack, appId: bigint): Promise<AppSnapshot> {
+  const { params } = await stack.algorand.client.algod.getApplicationByID(appId).do()
+  if (params === undefined) throw new Error(`app ${appId.toString()} has no params`)
+  return {
+    approval: Buffer.from(params.approvalProgram).toString('base64'),
+    clear: Buffer.from(params.clearStateProgram).toString('base64'),
+    version: (params.version ?? 0).toString(),
+    global: (params.globalState ?? [])
+      .map(({ key, value }) => ({
+        key: Buffer.from(key).toString('base64'),
+        bytes: Buffer.from(value.bytes).toString('base64'),
+        uint: value.uint.toString(),
+      }))
+      .sort((left, right) => left.key.localeCompare(right.key)),
+  }
+}
+
+/**
+ * Send a composed group and assert it is rejected without changing the app.
+ *
+ * @param stack The deployed stack.
+ * @param appId The app under test.
+ * @param build Adds the call to a fresh composer.
+ */
+async function expectRejected(
+  stack: ContractStack,
+  appId: bigint,
+  build: (composer: ReturnType<ContractStack['algorand']['send']['newGroup']>) => void,
+): Promise<void> {
+  const before = await appSnapshot(stack, appId)
+  const composer = stack.algorand.send.newGroup()
+  build(composer)
+  await expect(composer.send({ suppressLog: true })).rejects.toThrow()
+  expect(await appSnapshot(stack, appId)).toEqual(before)
+}
+
 describe('04 bad paths', () => {
   const fixture = algorandFixture()
   let stack: ContractStack
@@ -245,6 +295,18 @@ describe('04 bad paths', () => {
   beforeAll(async () => {
     stack = await deployStack(fixture)
   })
+
+  /**
+   * The three official apps, with a sender allowed to attempt the call.
+   *
+   * @param campaign The campaign under test.
+   * @returns The app/sender pairs.
+   */
+  const guardedApps = (campaign: CampaignFixture): { appId: bigint; sender: string }[] => [
+    { appId: campaign.appId, sender: campaign.creator.addr.toString() },
+    { appId: stack.vault.appId, sender: stack.ownerAddress },
+    { appId: stack.registry.appId, sender: stack.ownerAddress },
+  ]
 
   test('CON-100 creator cannot pledge to their own campaign', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
@@ -1036,5 +1098,53 @@ describe('04 bad paths', () => {
 
     await expect(deployCampaign(stack, creator, { title: 't'.repeat(124) })).rejects.toThrow(/title must be 123 bytes or fewer/)
     await expect(deployCampaign(stack, creator, { uri: 'u'.repeat(118) })).rejects.toThrow(/metadata uri must be 117 bytes or fewer/)
+  })
+
+  test('CON-250 UpdateApplication is rejected on Campaign, ClaimsVault, and Registry', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    for (const { appId, sender } of guardedApps(campaign)) {
+      const { params } = await stack.algorand.client.algod.getApplicationByID(appId).do()
+      if (params === undefined) throw new Error(`app ${appId.toString()} has no params`)
+      await expectRejected(stack, appId, (composer) => {
+        composer.addAppUpdate({
+          sender,
+          appId,
+          approvalProgram: params.clearStateProgram,
+          clearStateProgram: params.clearStateProgram,
+        })
+      })
+    }
+  })
+
+  test('CON-251 raw DeleteApplication is rejected on Campaign, ClaimsVault, and Registry', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    for (const { appId, sender } of guardedApps(campaign)) {
+      await expectRejected(stack, appId, (composer) => {
+        composer.addAppDelete({ sender, appId })
+      })
+      await expectRejected(stack, appId, (composer) => {
+        composer.addAppDelete({ sender, appId, args: [new Uint8Array(4)] })
+      })
+    }
+  })
+
+  test('CON-252 OptIn and CloseOut are rejected on Campaign, ClaimsVault, and Registry', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    for (const { appId, sender } of guardedApps(campaign)) {
+      for (const onComplete of [OnApplicationComplete.OptInOC, OnApplicationComplete.CloseOutOC] as const) {
+        await expectRejected(stack, appId, (composer) => {
+          composer.addAppCall({ sender, appId, onComplete })
+        })
+      }
+    }
+  })
+
+  test('CON-253 ClearState cannot delete or alter the apps', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    for (const { appId, sender } of guardedApps(campaign)) {
+      await expectRejected(stack, appId, (composer) => {
+        composer.addAppCall({ sender, appId, onComplete: OnApplicationComplete.ClearStateOC })
+      })
+    }
   })
 })
