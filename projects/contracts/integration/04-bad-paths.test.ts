@@ -10,6 +10,7 @@ import {
   ClaimTreeOracle,
   FEE,
   REGISTER_MBR,
+  TEST_VAULT_WINDOW,
   accountInfo,
   advanceTime,
   appIdBytes,
@@ -691,7 +692,7 @@ describe('04 bad paths', () => {
       const window = await failedCampaign(fixture, stack)
       await deleteCampaign(stack, window.campaign.appId, window.campaign.creator.addr.toString())
       const windowBox = await campaignBox(stack.vault.client, window.campaign.appId)
-      await advanceTime(fixture, 4_000)
+      await advanceTime(fixture, Number(TEST_VAULT_WINDOW) + 4_000)
       await expect(
         refundFromVault(stack, window.campaign, window.backer, 0, 1n * ALGO, window.txid, window.campaign.oracle.path(0)),
       ).rejects.toThrow(/refund window closed/)
@@ -1011,7 +1012,7 @@ describe('04 bad paths', () => {
       return composer.send({ suppressLog: true })
     }
 
-    await expect(attempt({ amount: REGISTER_MBR - 1n })).rejects.toThrow(/registration deposit too small/)
+    await expect(attempt({ amount: REGISTER_MBR - 1n })).rejects.toThrow(/registration deposit must be exact/)
     await expect(attempt({ receiver: creator })).rejects.toThrow(/payment must be made to the registry/)
     await expect(attempt({ paySender: stranger.addr.toString() })).rejects.toThrow(/payment must come from the caller/)
     await expect(attempt({ trailing: true })).rejects.toThrow(/register must be the final transaction in the group/)

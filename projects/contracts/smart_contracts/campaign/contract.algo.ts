@@ -68,8 +68,17 @@ const FINAL_DAY_SECONDS = Uint64(24 * 60 * 60)
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
 const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
 
+// A goal below the minimum pledge can only be met by overfunding with the smallest pledge.
+const MIN_GOAL_MICROALGOS = MIN_PLEDGE_MICROALGOS
+
 // 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
 const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
+
+// A single pledge cannot exceed the total ALGO supply either.
+const MAX_PLEDGE_MICROALGOS = MAX_GOAL_MICROALGOS
+
+// uint64 maximum, for the explicit cumulative-flow overflow guard.
+const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
 
 // 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18, 36 path elements)
 // fits the 16-inner limit with the measured ~600-op prelude budget: 14 OpUp takes +
@@ -150,7 +159,7 @@ export class Campaign extends Contract {
     assert(title.length > 0, 'title must not be empty')
     assert(title.length <= MAX_TITLE_BYTES, 'title must be 123 bytes or fewer')
     assert(metadataUri.length <= MAX_METADATA_URI_BYTES, 'metadata uri must be 117 bytes or fewer')
-    assert(goal > 0, 'goal must be greater than zero')
+    assert(goal >= MIN_GOAL_MICROALGOS, 'goal below minimum')
     assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
     assert(deadline >= Global.latestTimestamp + MIN_DURATION_SECONDS, 'deadline must be at least one day out')
@@ -196,6 +205,8 @@ export class Campaign extends Contract {
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
     assert(payment.amount >= MIN_PLEDGE_MICROALGOS, 'pledge below minimum')
+    assert(payment.amount <= MAX_PLEDGE_MICROALGOS, 'pledge too large')
+    assert(this.raised.value <= MAX_UINT64 - payment.amount, 'raised overflow')
 
     const n = this.n.value
     assert(n < MAX_TREE_SIZE, 'campaign reached maximum size')

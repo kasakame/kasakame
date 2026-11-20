@@ -595,25 +595,25 @@ the pinned release predates all three.
 
 | Method | Branch | Covered? |
 | --- | --- | --- |
-| `create` | success / zero vault / empty title / title 123/124 / URI 117/118 / `goal == 0` / goal above the total supply / deadline below and at the one-day minimum / past deadline | ✅ |
-| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
+| `create` | success / zero vault / empty title / title 123/124 / URI 117/118 / goal 99,999/100,000 / goal at and above the total supply / deadline below and at the one-day minimum / past deadline | ✅ |
+| `pledge` | success incl. re-pledge / closed / not open / wrong receiver / wrong sender / zero / below and at the minimum / at and above the total supply / `raised` overflow guard / close-remainder and rekey payments rejected / creator self-pledge / bad frontier length / forged + stale frontier / mismatched credit (unit) / missing credit (LocalNet) / ClearState credit rejected | ✅ |
 | `claim` | success with inner `payClaim` (LocalNet) / non-creator / before deadline / `raised < goal` / double claim | ✅ |
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) / final-day goal-dropping reject / final-day keeps-goal allow / final-day below-goal allow / before-final-day allow | ✅ |
 | `delete` | failed-in-fact materialization + vault settle / cap-saturated failure before the deadline / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / Registry-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
-| `ClaimsVault.create` | success / zero window / window above the 10-year cap / zero Registry id (factory key) / zero sweep target / vault itself as sweep target | ✅ |
-| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |
+| `ClaimsVault.create` | success / window 30 days − 1, 30 days, 10 years, above the cap / zero Registry id (factory key) / zero sweep target / vault itself as sweep target | ✅ |
+| `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / `paidIn` overflow guard / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
 | `payClaim` | success (derived amount) / non-campaign caller / unknown / closed box / empty payout | ✅ |
-| `settle` | success / already failed (no-op) / missing box (no-op) / claimed / non-campaign caller / bad root | ✅ |
-| `settleOpen` | success from live globals / cap-saturated success before the deadline / unknown / closed box / claimed campaign / early deadline below the cap / reached goal / malformed root / campaign bound to another vault | ✅ |
+| `settle` | success with `n` at the cap / already failed (no-op) / missing box (no-op) / claimed / non-campaign caller / bad root / `n` above the cap | ✅ |
+| `settleOpen` | success from live globals / cap-saturated success before the deadline / unknown / closed box / claimed campaign / invalid status / `n` above the cap / early deadline below the cap / reached goal / malformed root / campaign bound to another vault | ✅ |
 | `vault.refund` | success differentially (LocalNet) / unknown / not failed / window closed / unknown position / bad txid+path / proof mismatch / insufficient | ✅ |
 | `notifyDelete` | success / missing box (no-op) / non-campaign caller / not claimed / unbalanced | ✅ |
 | `finalize` | residual sweep + box delete / zero-residual delete before or after the window / unknown / not failed / window open with residual (all LocalNet) | ✅ |
-| `Registry.create` | success / wrong Campaign hash length / wrong Vault hash length / zero sweep target / zero or too-long window / inner create | ✅ |
+| `Registry.create` | success / wrong Campaign hash length / wrong Vault hash length / zero sweep target / window below 30 days, at 30 days, at 10 years, or too long / inner create | ✅ |
 | `Registry.bindVault` | success / second bind / zero vault id / foreign Registry / wrong vault program / wrong sweep target / wrong refund window / empty vault hash / inner bind | ✅ |
-| `Registry.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / low deposit / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
-| `Registry.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact / cap-saturated before the deadline) / unregistered no-op / live rejection / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
+| `Registry.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / deposit below and above the exact amount / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
+| `Registry.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact / cap-saturated before the deadline) / unregistered no-op / live rejection / invalid status / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
 | Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / inner-call pollution (`CON-129`) / cap-saturation early failure (`CON-240`/`CON-241`) / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
 ## Browser E2E / acceptance tests

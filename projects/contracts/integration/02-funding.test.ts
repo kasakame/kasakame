@@ -8,6 +8,7 @@ import {
   ClaimTreeOracle,
   FEE,
   FEE_CLAIM,
+  TEST_VAULT_WINDOW,
   VAULT_BOX_MBR,
   advanceTime,
   balanceOf,
@@ -132,7 +133,7 @@ describe('02 funding outcomes', () => {
 
       const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
       const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
-      await advanceTime(fixture, 4_000)
+      await advanceTime(fixture, Number(TEST_VAULT_WINDOW) + 4_000)
       await stack.vault.client.send.call({
         method: 'finalize(uint64)void',
         args: [campaign.appId],

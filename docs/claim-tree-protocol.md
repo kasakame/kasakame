@@ -498,9 +498,10 @@ window, never exercised a right they were offered at pledge time; the alternativ
 If the platform wants zero self-enrichment optics, `sweepTarget` can be a documented community fund - a governance decision, not a protocol change.
 
 **Deployed choice:** `sweepTarget` is the platform treasury.
-The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault contract
-and deploy script both cap the window at 10 years, so a misconfiguration cannot overflow `settledAt + refundWindow`; the contract
-also rejects a zero/self `sweepTarget` and a zero Registry id (stored in the `factory` key) at creation. The deploy script requires an explicit `SWEEP_TARGET` on
+The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault contract,
+the Registry, and the deploy script require a window of at least **30 days** and cap it at **10 years**, so a 1-second window is
+rejected and a misconfiguration cannot overflow `settledAt + refundWindow`. The contracts also reject a zero/self `sweepTarget`
+and a zero Registry id (stored in the `factory` key) at creation. The deploy script requires an explicit `SWEEP_TARGET` on
 TestNet/MainNet; LocalNet still defaults to the deployer for convenience.
 Rationale:
 residuals will be dust; a future vault can point at a community fund instead - the address is a vault-creation parameter,
@@ -590,13 +591,13 @@ recovers the app MBR and backers can refund from the vault immediately. This is
 the harm-reduction escape from #229; the attacker's cost, detection, and any
 cancel cooldown remain the #208 decision.
 
-Current program footprint (2026-11-18, `npm run build`; see [`limits.md`](limits.md) for the full table):
+Current program footprint (2026-11-20, `npm run build`; see [`limits.md`](limits.md) for the full table):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,219 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
-| Registry | 947 B | 1 | 307,000 µA |
+| Campaign | 2,249 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,860 B | 2 (1 extra) | 307,000 µA |
+| Registry | 958 B | 1 | 307,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
 

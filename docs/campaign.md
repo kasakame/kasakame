@@ -29,9 +29,9 @@ The contract owns the root; the frontend owns reconstruction. A stale or forged 
 | --- | --- | --- | --- |
 | `creator` | Account | `create` | Receives `claim()`; authorizes `delete()` |
 | `vault` | Application | `create` | ClaimsVault app; receives pledge payments |
-| `title` | bytes | `create` | Short on-chain title, max 128 bytes |
-| `metadataUri` | bytes | `create` | Off-chain metadata pointer (ARC-3-style JSON), max 128 bytes |
-| `goal` | uint64 | `create` | Raise target in microAlgos, must be > 0 |
+| `title` | bytes | `create` | Short on-chain title, max 123 bytes |
+| `metadataUri` | bytes | `create` | Off-chain metadata pointer (ARC-3-style JSON), max 117 bytes |
+| `goal` | uint64 | `create` | Raise target in microAlgos, 0.1 ALGO to the total supply (10¹⁶ µA) |
 | `deadline` | uint64 | `create` | UNIX seconds; must be in the future and at most 180 days after creation |
 | `raised` | uint64 | pledges/spends | Live pledged total; rises on `pledge`, falls on `cancelPledge`/`refund` |
 | `status` | uint64 | settlement | `0 = Open`, `1 = Failed`, `2 = Claimed` |
@@ -74,7 +74,7 @@ Transitions:
 | `claim()` | creator | after deadline, goal met | Vault pays the creator `paidIn - paidOut`; writes `Claimed` |
 | `delete()` | creator | settled, open with no live pledges, or cap-saturated with goal missed | Settles through the vault, pays leftover balance to the creator, closes the app |
 
-`create` rejects an empty title, a title over 123 bytes, a metadata URI over 117 bytes, a zero goal, a goal above 10 billion ALGO (the total ALGO supply), a deadline less than 24 hours out, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO, from the creator, and with a frontier whose length or fold does not match. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
+`create` rejects an empty title, a title over 123 bytes, a metadata URI over 117 bytes, a goal below 0.1 ALGO or above 10 billion ALGO (the total ALGO supply), a deadline less than 24 hours out, and a deadline more than 180 days out. `pledge` rejects pledges after the deadline, when not `Open`, with a wrong payment receiver or sender, below 0.1 ALGO or above 10 billion ALGO, from the creator, with a frontier whose length or fold does not match, and when the addition would overflow `raised`. `refund` and `cancelPledge` reject unknown positions, bad TxIDs, wrong path lengths, and proofs that do not match the root. Amounts are never reduced by fees.
 
 In the final 24 hours, `cancelPledge` also rejects a cancel that would drop a campaign currently at or above its goal below the goal (`raised >= goal && amount > raised - goal`). A campaign that is already below its goal is unaffected, and a cancel that leaves the campaign at or above the goal is allowed. This follows Kickstarter's last-24-hour goal protection. A one-day campaign is entirely inside the window, so once it reaches its goal, a goal-dropping cancel is blocked for the rest of the campaign; the UI discloses this. `refund` after the deadline is not gated.
 
@@ -101,7 +101,7 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 4. **Vault-local settlement markers.** `app_global_get_ex` fails on deleted apps, so vault logic never reads a possibly-deleted campaign's state. The campaign pushes `root`/`N`/`settledAt` into its vault box; `settleOpen` covers vanished-creator campaigns from live globals.
 5. **Delete-before-fund is a creator no-op.** `delete()` materializes failed-in-fact campaigns (deadline passed, goal missed, or tree full at the cap with goal missed) through `settle` before closing, so a failed campaign with no live pledges deletes without stranding anything.
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
-7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,219 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~3,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
+7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,249 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~3,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain [creator updates feed](https://github.com/kasakame/kasakame/issues/58), and mutability can return later via the off-chain JSON.
 
 ## Multi-backer examples

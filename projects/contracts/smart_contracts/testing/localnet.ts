@@ -30,8 +30,8 @@ export const ALGO = 1_000_000n
 export const FEE = 1_000n
 /** Default campaign goal for lifecycle tests. */
 export const DEFAULT_GOAL = 10n * ALGO
-/** Refund window used by the test vault (seconds). */
-export const TEST_VAULT_WINDOW = 3_600n
+/** Refund window used by the test vault (seconds): the 30-day contract minimum. */
+export const TEST_VAULT_WINDOW = 30n * 24n * 60n * 60n
 /** Registration deposit: the minimum balance of the Registry's 32-byte registration box. */
 export const REGISTER_MBR = 18_900n
 /** Minimum balance parked by one 65-byte vault campaign box. */

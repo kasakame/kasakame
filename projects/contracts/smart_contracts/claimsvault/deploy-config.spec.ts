@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_REFUND_WINDOW_SECONDS, MAX_REFUND_WINDOW_SECONDS, parseRefundWindow, resolveSweepTarget } from './deploy-config'
+import {
+  DEFAULT_REFUND_WINDOW_SECONDS,
+  MAX_REFUND_WINDOW_SECONDS,
+  MIN_REFUND_WINDOW_SECONDS,
+  parseRefundWindow,
+  resolveSweepTarget,
+} from './deploy-config'
 
 describe('parseRefundWindow', () => {
   it('defaults to 730 days when unset', () => {
@@ -7,18 +13,19 @@ describe('parseRefundWindow', () => {
     expect(parseRefundWindow('')).toBe(DEFAULT_REFUND_WINDOW_SECONDS)
   })
 
-  it('accepts a positive value within the cap', () => {
-    expect(parseRefundWindow('3600')).toBe(3600n)
+  it('accepts a value at the 30-day minimum and at the cap', () => {
+    expect(parseRefundWindow(MIN_REFUND_WINDOW_SECONDS.toString())).toBe(MIN_REFUND_WINDOW_SECONDS)
     expect(parseRefundWindow(MAX_REFUND_WINDOW_SECONDS.toString())).toBe(MAX_REFUND_WINDOW_SECONDS)
   })
 
-  it('rejects zero and negative values', () => {
-    expect(() => parseRefundWindow('0')).toThrow('between 1 and')
-    expect(() => parseRefundWindow('-1')).toThrow('between 1 and')
+  it('rejects values below the 30-day minimum', () => {
+    expect(() => parseRefundWindow((MIN_REFUND_WINDOW_SECONDS - 1n).toString())).toThrow('between 2592000')
+    expect(() => parseRefundWindow('0')).toThrow('between 2592000')
+    expect(() => parseRefundWindow('-1')).toThrow('between 2592000')
   })
 
   it('rejects values above the cap', () => {
-    expect(() => parseRefundWindow((MAX_REFUND_WINDOW_SECONDS + 1n).toString())).toThrow('between 1 and')
+    expect(() => parseRefundWindow((MAX_REFUND_WINDOW_SECONDS + 1n).toString())).toThrow('between 2592000')
   })
 
   it('rejects non-integer values', () => {

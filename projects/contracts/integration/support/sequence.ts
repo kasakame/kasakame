@@ -6,6 +6,7 @@ import {
   ALGO,
   ClaimTreeOracle,
   FEE,
+  TEST_VAULT_WINDOW,
   VAULT_BOX_MBR,
   advanceTime,
   balanceOf,
@@ -25,7 +26,7 @@ const SEQUENCE_BACKERS = 5
 const CANCEL_CHANCE = 0.25
 const CAMPAIGN_REFUND_DIVISOR = 10
 const VAULT_REFUND_DIVISOR = 20
-const VAULT_WINDOW_ADVANCE = 4_000
+const VAULT_WINDOW_ADVANCE = Number(TEST_VAULT_WINDOW) + 4_000
 
 interface Leaf {
   backer: Account

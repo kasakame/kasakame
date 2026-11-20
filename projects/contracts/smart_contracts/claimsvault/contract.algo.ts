@@ -61,9 +61,15 @@ const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 // vault inflow is tied to a backer leaf (kept in sync by the integration tests).
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
+// A 1-second window is not credible backer protection; the deploy default stays 730 days.
+const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
+
 // Deployment sanity cap: 10 years, matching claimsvault/deploy-config.ts. Keeps `settledAt + refundWindow` far from
 // uint64 overflow even if the vault is created directly instead of through the deploy script.
 const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
+
+// uint64 maximum, for the explicit paidIn overflow guard.
+const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
 
 // Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A campaign at this cap that has not reached
 // its goal can never succeed, so `settleOpen` fails it early instead of waiting for the deadline.
@@ -102,7 +108,7 @@ export class ClaimsVault extends Contract {
     assert(factory.id !== Uint64(0), 'factory required')
     assert(target !== Global.zeroAddress, 'sweep target must not be zero')
     assert(target !== Global.currentApplicationAddress, 'sweep target must not be the vault')
-    assert(window > Uint64(0), 'refund window must be positive')
+    assert(window >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
     assert(window <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 
     this.factory.value = factory
@@ -169,6 +175,7 @@ export class ClaimsVault extends Contract {
       this.createBox(app.id, amount)
     } else {
       const paidIn: uint64 = op.btoi(existing.slice(0, 8))
+      assert(paidIn <= MAX_UINT64 - amount, 'paidIn overflow')
       this.campaignBox(app.id).value = this.packBox(
         paidIn + amount,
         op.btoi(existing.slice(8, 16)),
@@ -308,6 +315,7 @@ export class ClaimsVault extends Contract {
     const box = this.readBox(app.id)
     const status = box.slice(56, 57)
     if (status === BOX_OPEN) {
+      assert(n <= MAX_TREE_SIZE, 'n above maximum')
       this.campaignBox(app.id).value = this.packBox(
         op.btoi(box.slice(0, 8)),
         op.btoi(box.slice(8, 16)),
@@ -351,7 +359,9 @@ export class ClaimsVault extends Contract {
     /* v8 ignore stop */
     assert(vaultState[0] === Global.currentApplicationId.id, 'campaign vault mismatch')
     assert(rootState[0].length === Uint64(32), 'bad root length')
+    assert(statusState[0] <= Uint64(2), 'invalid campaign status')
     assert(statusState[0] !== Uint64(2), 'campaign already claimed')
+    assert(nState[0] <= MAX_TREE_SIZE, 'n above maximum')
     assert(Global.latestTimestamp >= deadlineState[0] || nState[0] >= MAX_TREE_SIZE, 'deadline has not passed')
     assert(raisedState[0] < goalState[0], 'goal was reached')
 
