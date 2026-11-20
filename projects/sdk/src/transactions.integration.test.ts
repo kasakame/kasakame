@@ -33,7 +33,7 @@ import {
  */
 
 const ALGO = 1_000_000n
-const WINDOW = 3_600n
+const WINDOW = 30n * 24n * 60n * 60n
 const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch registry check)
 const FEE_SPEND = 5_000n // outer + 2 payout inners + 2 OpUp takes (zero-headroom sizing)
 const FEE_VAULT_REFUND = 4_000n // outer + 1 payout inner + 2 OpUp takes
@@ -68,7 +68,7 @@ describe('SDK send path (localnet)', () => {
     await algorand.send.payment({ sender: ownerAddress, receiver: registryClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
 
     const { appClient: vaultClient } = await vaultFactory.send.create.create({
-      args: { factory: registryClient.appId, target: ownerAddress, window: WINDOW },
+      args: { registry: registryClient.appId, target: ownerAddress, window: WINDOW },
       sender: ownerAddress,
       appReferences: [registryClient.appId],
       suppressLog: true,
