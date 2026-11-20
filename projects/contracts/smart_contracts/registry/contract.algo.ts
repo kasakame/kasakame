@@ -90,6 +90,7 @@ export class Registry extends Contract {
     assert(campaignProgramHash.length === Uint64(32), 'campaign program hash must be 32 bytes')
     assert(vaultProgramHash.length === Uint64(32), 'vault program hash must be 32 bytes')
     assert(expectedSweepTarget !== Global.zeroAddress, 'sweep target must not be zero')
+    assert(expectedSweepTarget !== Global.currentApplicationAddress, 'sweep target must not be the registry')
     assert(expectedRefundWindow >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
     assert(expectedRefundWindow <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 

@@ -220,6 +220,14 @@ describe('ClaimsVault', () => {
         vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), vaultApp.address, WINDOW)
       }).toThrow('sweep target must not be the vault')
     })
+
+    test('rejects the Registry as sweep target', () => {
+      const vault = ctx.contract.create(ClaimsVault)
+      const registry = ctx.any.application({ applicationId: REGISTRY_APP_ID })
+      expect(() => {
+        vault.create(registry, registry.address, WINDOW)
+      }).toThrow('sweep target must not be the registry')
+    })
   })
 
   describe('credit', () => {

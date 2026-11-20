@@ -77,11 +77,11 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Campaign | 2,246 B | 4 B | 2,250 B | 1 (2 pages) | 4,096 B | 1,846 B |
-| ClaimsVault | 2,857 B | 4 B | 2,861 B | 1 (2 pages) | 4,096 B | 1,235 B |
-| Registry | 955 B | 4 B | 959 B | 0 (1 page) | 2,048 B | 1,089 B |
+| ClaimsVault | 2,866 B | 4 B | 2,870 B | 1 (2 pages) | 4,096 B | 1,226 B |
+| Registry | 961 B | 4 B | 965 B | 0 (1 page) | 2,048 B | 1,083 B |
 
 The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 201 B would return it to
+2-page app; the next page boundary is 4,096 B. Trimming 202 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
@@ -271,6 +271,16 @@ requests but never underfunds. See
 The vault's 1 ALGO funding is a platform liability: each live/failed campaign
 box parks 32,100 µA until `notifyDelete` / `releaseClaimed` / `finalize`. Monitor
 it and top it up as the number of live/failed campaigns grows.
+
+## Sweep target
+
+`Vault.finalize` pays a failed campaign's residual to the vault's `sweepTarget`,
+fixed at `Vault.create`. `Vault.create` rejects a zero target, the vault's own
+address, and the Registry's address; `Registry.create` rejects its own address
+as the configured target. The deploy script passes the same target to both. A
+residual sent to the ownerless Registry would be stranded because the Registry
+has no method that pays out its balance (it only returns registration deposits
+through `unregister`).
 
 ## Rules for contract changes
 
