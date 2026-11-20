@@ -17,9 +17,9 @@ export const SIZE_BUDGET = {
   },
   claimsvault: {
     contract: 'ClaimsVault',
-    approval: 2_856,
+    approval: 2_865,
     clear: 4,
-    total: 2_860,
+    total: 2_869,
     extraPages: 1,
     pageCapacity: 4_096,
     globalBytes: 1,
@@ -28,9 +28,9 @@ export const SIZE_BUDGET = {
   },
   registry: {
     contract: 'Registry',
-    approval: 954,
+    approval: 960,
     clear: 4,
-    total: 958,
+    total: 964,
     extraPages: 0,
     pageCapacity: 2_048,
     globalBytes: 3,

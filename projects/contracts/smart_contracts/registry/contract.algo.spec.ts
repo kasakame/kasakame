@@ -188,6 +188,14 @@ describe('Registry', () => {
       }).toThrow('sweep target must not be zero')
     })
 
+    test('rejects the Registry itself as sweep target', () => {
+      const registry = ctx.contract.create(Registry)
+      const registryApp = ctx.ledger.getApplicationForContract(registry)
+      expect(() => {
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), registryApp.address, WINDOW)
+      }).toThrow('sweep target must not be the registry')
+    })
+
     test('rejects a refund window below the 30-day minimum', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {

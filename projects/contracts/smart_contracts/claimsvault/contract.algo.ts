@@ -108,6 +108,7 @@ export class ClaimsVault extends Contract {
     assert(factory.id !== Uint64(0), 'factory required')
     assert(target !== Global.zeroAddress, 'sweep target must not be zero')
     assert(target !== Global.currentApplicationAddress, 'sweep target must not be the vault')
+    assert(target !== factory.address, 'sweep target must not be the registry')
     assert(window >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
     assert(window <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 
