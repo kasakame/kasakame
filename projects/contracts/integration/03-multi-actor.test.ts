@@ -81,7 +81,7 @@ describe('03 multiple actors and campaigns', () => {
 
         expect((await campaignState(campaign.appClient)).n).toEqual(0n)
         expect((await campaignState(campaign.appClient)).raised).toEqual(0n)
-        expect(await isRegistered(stack.factory.client, campaign.appId, stack.ownerAddress)).toEqual(true)
+        expect(await isRegistered(stack.registry.client, campaign.appId, stack.ownerAddress)).toEqual(true)
 
         campaigns.push(campaign)
         oracles.push(oracle)

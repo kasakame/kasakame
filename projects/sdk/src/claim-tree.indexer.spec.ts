@@ -111,7 +111,7 @@ function blockMock(blocks: Map<bigint, unknown[]>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  configureSdk({ algorand: fakeAlgorand(), factoryAppId: CAMPAIGN, vaultAppId: VAULT_ID })
+  configureSdk({ algorand: fakeAlgorand(), registryAppId: CAMPAIGN, vaultAppId: VAULT_ID })
   clearTreeCache()
 })
 

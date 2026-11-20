@@ -26,15 +26,15 @@ export const SIZE_BUDGET = {
     globalInts: 2,
     appMbr: 307_000,
   },
-  factory: {
-    contract: 'Factory',
-    approval: 1_068,
+  registry: {
+    contract: 'Registry',
+    approval: 943,
     clear: 4,
-    total: 1_072,
+    total: 947,
     extraPages: 0,
     pageCapacity: 2_048,
-    globalBytes: 4,
+    globalBytes: 3,
     globalInts: 2,
-    appMbr: 357_000,
+    appMbr: 307_000,
   },
 } as const

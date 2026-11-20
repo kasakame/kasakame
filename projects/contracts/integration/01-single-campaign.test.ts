@@ -61,7 +61,7 @@ describe('01 single campaign', () => {
       expect((await campaignState(campaign.appClient)).n).toEqual(0n)
       expect((await campaignState(campaign.appClient)).raised).toEqual(0n)
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-      expect(await isRegistered(stack.factory.client, campaign.appId, stack.ownerAddress)).toEqual(true)
+      expect(await isRegistered(stack.registry.client, campaign.appId, stack.ownerAddress)).toEqual(true)
     })
 
     test('CON-011 pledge to campaign A', async () => {
@@ -95,7 +95,7 @@ describe('01 single campaign', () => {
 
       await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(true)
-      expect(await isRegistered(stack.factory.client, campaign.appId, stack.ownerAddress)).toEqual(false)
+      expect(await isRegistered(stack.registry.client, campaign.appId, stack.ownerAddress)).toEqual(false)
     })
   })
 

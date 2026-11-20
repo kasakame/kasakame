@@ -25,7 +25,7 @@ export function configureCliChain(options: CliOptions): void {
 
   configureSdk({
     algorand,
-    factoryAppId: options.factoryAppId ?? 0n,
+    registryAppId: options.registryAppId ?? 0n,
     vaultAppId: options.vaultAppId ?? 0n,
   })
 }

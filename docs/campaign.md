@@ -60,7 +60,7 @@ Transitions:
 
 - `claim()` writes `Claimed`, sends the vault total `paidIn - paidOut` to the creator. Only the creator, only after the deadline, only when `raised >= goal`. Double claims fail (`status != Open`).
 - The first `refund()` flips the campaign status to `Failed`. The vault box stays `Open` until settlement: `root`/`N`/`settledAt` are recorded when `delete()` settles or when `settleOpen` runs. Any later refund, or vault-direct refund, nulls one leaf and pays the backer. `cancelPledge` works only while `Open`.
-- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed, or tree full at the cap with goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes. When the campaign's vault has a Factory binding, `delete()` requires the Factory's `unregister` (a NoOp app call) to be the immediately preceding transaction; the Factory requires the delete immediately after, so delisting and deletion are one atomic operation and a raw delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op, so the same group cleans up a registration that never landed. The Factory also treats a cap-saturated campaign with the goal missed as failed-in-fact, so the same `[unregister, delete]` group works before the deadline.
+- `delete()` settles through the vault, pays the app's leftover balance to the creator, and closes the escrow. Only the creator. `delete()` on a live campaign with live pledges fails, except failed-in-fact (deadline passed, goal missed, or tree full at the cap with goal missed), which settles then closes; on a `Claimed` campaign it notifies the vault so the box deletes. When the campaign's vault has a Registry binding, `delete()` requires the Registry's `unregister` (a NoOp app call) to be the immediately preceding transaction; the Registry requires the delete immediately after, so delisting and deletion are one atomic operation and a raw delete of an official campaign is rejected. An unregistered campaign's `unregister` is a no-op, so the same group cleans up a registration that never landed. The Registry also treats a cap-saturated campaign with the goal missed as failed-in-fact, so the same `[unregister, delete]` group works before the deadline.
 - Settling never depends on reading a possibly-deleted app: the campaign pushes `root`/`N`/`settledAt` into the vault box at settle time.
 
 ## Methods
@@ -126,7 +126,7 @@ The campaign never holds funds, so every payout is an inner vault call. User-ini
   transaction; both the pledge and credit must be `NoOp` app calls (`ClearState` runs the clear program and is rejected). The vault
   also requires that preceding `pledge`, so a credit without a pledge is rejected and every payer is a
   backer. `pledge` asserts the credit's app id and amount, so a pledge can never be left uncredited. First-touch `credit` also
-  checks Factory registration, so an unregistered campaign cannot open a vault box.
+  checks Registry registration, so an unregistered campaign cannot open a vault box.
 - `cancelPledge`/`refund` inner-call `payBack`; `claim` inner-calls `payClaim` with the derived amount `paidIn - paidOut`.
 - `delete` inner-calls `settle` (or `notifyDelete` when `Claimed`). A claimed box can also be released permissionlessly with
   `Vault.releaseClaimed(app)`; `notifyDelete` is then a no-op, so the campaign still deletes cleanly.
@@ -135,7 +135,7 @@ Inner calls authenticate the caller as the campaign app address; top-level calls
 
 ## Testing
 
-The full behavioral matrix lives in `contract.algo.spec.ts` (48 tests, 100% lines/branches/functions) plus the LocalNet integration suite (9 tests, µA-exact ledger accounting, oracle-differential roots). Vault and Factory suites live next to their contracts. See [`testing.md`](testing.md).
+The full behavioral matrix lives in `contract.algo.spec.ts` (100% lines/branches/functions) plus the LocalNet integration suite (µA-exact ledger accounting, oracle-differential roots). Vault and Registry suites live next to their contracts. See [`testing.md`](testing.md).
 
 ## Fees
 
@@ -150,7 +150,7 @@ Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 
 | `claim` | 3,000 µA | app call + inner `payClaim` + inner payment |
 | `[unregister, delete]` | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
 | `delete` component (inside `[unregister, delete]`) | 3,000 µA | settle/notify + escrow close; official campaigns always require the unregister pair |
-| `Factory.unregister` alone | 2,000 µA | unregister + inner deposit |
+| `Registry.unregister` alone | 2,000 µA | unregister + inner deposit |
 | `settleOpen` (no inners) | 1,000 µA | permissionless; not exposed in the SDK/CLI yet |
 | `finalize` | 2,000 µA with residual, 1,000 µA without | permissionless; not exposed yet |
 | `releaseClaimed` | 1,000 µA | permissionless; not exposed yet |
@@ -165,5 +165,5 @@ the supported tree size, capped at 524,287 positions. See
 1. **OpUp sizing.** Each `ensureBudget` iteration submits one inner app call (the Puya create-and-delete program), costing 1,000 µA and adding ~700 ops. `pledge` sizes for `240 × popcount(N) + 400`; `spendLeaf`/`vault.refund` size for `250 × (r + c) + 100 × top + 700`. The SDK mirrors these formulas; `claim` and `delete` are fixed (inner call + payment, settle/notify + close).
 2. **Two encoding rules for raw inner appArgs** (see the vault interaction above). ABI-encode dynamic types: the settle `root` (`byte[]`) carries its uint16 length prefix. Static `uint64`/`address` args go raw.
 3. **Delete path.** `delete()` uses the dedicated `send.delete` path (or a manual composer group with `DeleteApplicationOC`). `send.call` with an `onComplete` override mis-encodes the call.
-4. **No `updatable`/`deletable` flags.** Do not pass them to `factory.send.create`; the contract TEAL has no deploy-time templates for them.
-5. **Factory program hash.** Registration compares `sha256(itob(approval.length) ‖ approval ‖ clear)` over the approval **and clear-state** programs. The 8-byte length prefix binds the approval/clear split, so moving bytes between the two programs changes the hash. The deploy script hashes the ARC-56 bytecode, exactly what the SDK/AppFactory deploys. A new Factory sets the first hash immediately; an existing Factory must `proposeApprovalHash`, wait `APPROVAL_HASH_DELAY` (~7 days), then `applyApprovalHash`. Old registrations stay valid; the new hash only gates future registrations. See [`limits.md`](limits.md) and [`architecture.md`](architecture.md#factory-governance-and-revocation).
+4. **No `updatable`/`deletable` flags.** Do not pass them to the campaign app factory's `send.create`; the contract TEAL has no deploy-time templates for them.
+5. **Registry program hash.** Registration compares `sha256(itob(approval.length) ‖ approval ‖ clear)` over the approval **and clear-state** programs. The 8-byte length prefix binds the approval/clear split, so moving bytes between the two programs changes the hash. The deploy script hashes the ARC-56 bytecode, exactly what the SDK/AppFactory deploys. The Campaign hash is fixed when the Registry is created; changing the Campaign program requires a new Registry and Vault bundle. See [`limits.md`](limits.md) and [`architecture.md`](architecture.md#registry-binding-and-upgrades).

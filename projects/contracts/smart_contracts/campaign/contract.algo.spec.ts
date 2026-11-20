@@ -29,9 +29,9 @@ const MIN_PLEDGE = 100_000
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
-const FACTORY_APP_ID = 7
+const REGISTRY_APP_ID = 7
 const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb')
-const FACTORY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277')
+const REGISTRY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277')
 const ORACLE = path.resolve(__dirname, '../oracle.py')
 
 describe('Campaign', () => {
@@ -78,12 +78,12 @@ describe('Campaign', () => {
   }
 
   /**
-   * A campaign bound to a real ClaimsVault with a Factory binding, for the delete group-shape check.
+   * A campaign bound to a real ClaimsVault with a Registry binding, for the delete group-shape check.
    *
-   * @param factoryAppId The Factory app id the vault points at.
-   * @returns The campaign, its Factory app, and the campaign app id.
+   * @param factoryAppId The Registry app id the vault points at.
+   * @returns The campaign, its Registry app, and the campaign app id.
    */
-  function createCampaignWithFactory(factoryAppId = FACTORY_APP_ID) {
+  function createCampaignWithRegistry(factoryAppId = REGISTRY_APP_ID) {
     const vault = ctx.contract.create(ClaimsVault)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
     ;(vault.factory as unknown as { value: unknown }).value = factoryAppId
@@ -953,23 +953,23 @@ describe('Campaign', () => {
     }
 
     /**
-     * The required `[Factory.unregister, Campaign.delete]` group for a Factory-bound vault.
+     * The required `[Registry.unregister, Campaign.delete]` group for a Registry-bound vault.
      *
      * @param contract The campaign.
-     * @param factoryApp The Factory app the vault points at.
+     * @param factoryApp The Registry app the vault points at.
      * @param sender The creator.
      * @returns The two group transactions.
      */
     function deleteGroup(contract: Campaign, factoryApp: ReturnType<typeof ctx.any.application>, sender = ctx.defaultSender) {
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
       return [
-        ctx.any.txn.applicationCall({ appId: factoryApp, sender, appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)] }),
+        ctx.any.txn.applicationCall({ appId: factoryApp, sender, appArgs: [REGISTRY_UNREGISTER_SELECTOR, toU64(campaignId)] }),
         ctx.any.txn.applicationCall({ appId: contract, sender, onCompletion: OnCompleteAction.DeleteApplication }),
       ]
     }
 
-    test('requires the Factory unregister immediately before delete', () => {
-      const { contract, factoryApp } = createCampaignWithFactory()
+    test('requires the Registry unregister immediately before delete', () => {
+      const { contract, factoryApp } = createCampaignWithRegistry()
       ctx.txn.createScope(deleteGroup(contract, factoryApp), 1).execute(() => {
         contract.delete()
       })
@@ -977,8 +977,8 @@ describe('Campaign', () => {
       expect(firstInnerSelector()).toEqual('09200848')
     })
 
-    test('rejects a raw delete when the vault has a Factory binding', () => {
-      const { contract } = createCampaignWithFactory()
+    test('rejects a raw delete when the vault has a Registry binding', () => {
+      const { contract } = createCampaignWithRegistry()
       deleteScope(contract, ctx.defaultSender).execute(() => {
         expect(() => {
           contract.delete()
@@ -987,11 +987,11 @@ describe('Campaign', () => {
     })
 
     test('rejects an unregister for another campaign', () => {
-      const { contract, factoryApp } = createCampaignWithFactory()
+      const { contract, factoryApp } = createCampaignWithRegistry()
       const wrong = ctx.any.txn.applicationCall({
         appId: factoryApp,
         sender: ctx.defaultSender,
-        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(999_999)],
+        appArgs: [REGISTRY_UNREGISTER_SELECTOR, toU64(999_999)],
       })
       ctx.txn
         .createScope(
@@ -1009,13 +1009,13 @@ describe('Campaign', () => {
     })
 
     test('rejects a ClearState unregister before delete', () => {
-      const { contract, factoryApp } = createCampaignWithFactory()
+      const { contract, factoryApp } = createCampaignWithRegistry()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
       const wrong = ctx.any.txn.applicationCall({
         appId: factoryApp,
         sender: ctx.defaultSender,
         onCompletion: OnCompleteAction.ClearState,
-        appArgs: [FACTORY_UNREGISTER_SELECTOR, toU64(campaignId)],
+        appArgs: [REGISTRY_UNREGISTER_SELECTOR, toU64(campaignId)],
       })
       ctx.txn
         .createScope(
@@ -1065,8 +1065,8 @@ describe('Campaign', () => {
       expect(firstInnerSelector()).toEqual('09200848')
     })
 
-    test('deletes a cap-saturated campaign with a Factory binding before the deadline', () => {
-      const { contract, factoryApp } = createCampaignWithFactory()
+    test('deletes a cap-saturated campaign with a Registry binding before the deadline', () => {
+      const { contract, factoryApp } = createCampaignWithRegistry()
       contract.n.value = 524_287
       contract.raised.value = MIN_PLEDGE
       ctx.txn.createScope(deleteGroup(contract, factoryApp), 1).execute(() => {

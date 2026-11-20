@@ -45,7 +45,7 @@ const {
   clearTreeCacheMock,
   frontierMock,
   pathBlobMock,
-  factoryAppIdMock,
+  registryAppIdMock,
 } = vi.hoisted(() => ({
   sendCreateMock: vi.fn(),
   sendRegisterMock: vi.fn(),
@@ -72,7 +72,7 @@ const {
   clearTreeCacheMock: vi.fn(),
   frontierMock: vi.fn(),
   pathBlobMock: vi.fn(),
-  factoryAppIdMock: vi.fn(),
+  registryAppIdMock: vi.fn(),
 }))
 
 vi.mock('./generated/CampaignClient.js', () => ({
@@ -113,8 +113,8 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
   },
 }))
 
-vi.mock('./generated/FactoryClient.js', () => ({
-  FactoryClient: class {
+vi.mock('./generated/RegistryClient.js', () => ({
+  RegistryClient: class {
     appAddress = 'FACTORYADDRESS'
     params = {
       unregister: (...args: unknown[]) => paramsUnregisterMock(...args),
@@ -139,7 +139,7 @@ vi.mock('./chain.js', () => ({
       },
       account: { setSigner: (...args: unknown[]) => setSignerMock(...args) },
     },
-    factoryAppId: factoryAppIdMock(),
+    registryAppId: registryAppIdMock(),
     vaultAppId: 2002n,
   }),
   waitForIndexerRound: (...args: unknown[]) => waitForIndexerRoundMock(...args),
@@ -173,7 +173,7 @@ describe('transaction helpers', () => {
     loadTreeMock.mockResolvedValue({ leaves: Array.from({ length: 4 }, () => new Uint8Array(32)), raised: 0n })
     frontierMock.mockReturnValue(new Uint8Array())
     pathBlobMock.mockReturnValue(new Uint8Array())
-    factoryAppIdMock.mockReturnValue(1001n)
+    registryAppIdMock.mockReturnValue(1001n)
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
     paramsCreditMock.mockResolvedValue({ credit: 'params' })
     paramsCampaignRefundMock.mockResolvedValue({ refund: 'params' })
@@ -200,16 +200,16 @@ describe('transaction helpers', () => {
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
-  it('creates without registering when no factory is configured', async () => {
-    factoryAppIdMock.mockReturnValue(0n)
+  it('creates without registering when no registry is configured', async () => {
+    registryAppIdMock.mockReturnValue(0n)
     await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
 
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).not.toHaveBeenCalled()
   })
 
-  it('deletes without unregistering when no factory is configured', async () => {
-    factoryAppIdMock.mockReturnValue(0n)
+  it('deletes without unregistering when no registry is configured', async () => {
+    registryAppIdMock.mockReturnValue(0n)
     await deleteCampaign(9n, session)
 
     expect(composerAddMock).toHaveBeenCalledTimes(1)

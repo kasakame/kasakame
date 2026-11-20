@@ -58,10 +58,10 @@ indexer, then a table, and never open a signing prompt. With `--address` they
 show state only; the action columns are left out because every write needs the
 pledge owner's or the creator's wallet.
 
-Discovery combines the campaigns registered in the configured Factory with the
+Discovery combines the campaigns registered in the configured Registry with the
 campaigns that have a box in the configured ClaimsVault. On TestNet the CLI
 knows both app IDs. On LocalNet and custom networks, pass `--vault` and
-`--factory` so discovery finds the deployment.
+`--registry` so discovery finds the deployment.
 
 ### Refund
 
@@ -122,14 +122,14 @@ kasakame delete <appId> --dry-run
 ```
 
 `delete` removes a campaign and returns its schema minimum balance and any
-Factory registration deposit to the creator. It rejects open campaigns that
+Registry registration deposit to the creator. It rejects open campaigns that
 still hold live pledges, and funded campaigns that are not claimed yet; claim
 the funds before deleting.
 
 Deleting a failed campaign is safe. Backers keep refunding from the ClaimsVault
 after the campaign app is gone, until the 730-day refund window closes. When
-the campaign is registered in a Factory, the same approval sends the atomic
-`[unregister, delete]` group (the Factory requires the delete immediately after
+the campaign is registered in a Registry, the same approval sends the atomic
+`[unregister, delete]` group (the Registry requires the delete immediately after
 unregister; the campaign requires the unregister immediately before). An
 unregistered campaign's unregister is a no-op, so the same command cleans it up.
 
@@ -143,7 +143,7 @@ specific commands.
 | `--network <testnet\|localnet\|custom>` | all | Network, default `testnet` |
 | `--signer <wallet\|mnemonic>` | all | Signer, default `wallet` on TestNet and `mnemonic` otherwise |
 | `--vault <appId>` | reads, writes | ClaimsVault app ID; required off TestNet |
-| `--factory <appId>` | reads, writes | Factory app ID; optional off TestNet |
+| `--registry <appId>` | reads, writes | Registry app ID; optional off TestNet |
 | `--mnemonic-file <path>` | mnemonic signer | Phrase file; otherwise `KASAKAME_MNEMONIC` |
 | `--address <address>` | reads, mnemonic signer | Inspect this address, or pick the account a 24-word phrase signs for |
 | `--pledge <position>` | refund, withdraw | Act on one live pledge (0-based) |
@@ -157,14 +157,15 @@ app IDs before it connects to anything.
 
 ## Networks
 
-TestNet is the default. The CLI embeds the deployment this repo publishes:
-Factory `774437557` and ClaimsVault `774437570`.
+TestNet is the default. The CLI embeds the pre-0.2.0 deployment this repo publishes:
+Registry `774437557` and ClaimsVault `774437570`. The v0.2.0 ownerless Registry bundle
+replaces these ids; old campaigns stay on the embedded deployment.
 
 | Network | algod and indexer | Deployment IDs |
 | --- | --- | --- |
-| `testnet` | AlgoKit TestNet defaults (AlgoNode) | Built in; override with `--factory` and `--vault` |
-| `localnet` | AlgoKit LocalNet defaults (`http://localhost:4001`, indexer 8980) | `--vault` required, `--factory` optional |
-| `custom` | `ALGOD_*` and `INDEXER_*` environment variables | `--vault` required, `--factory` optional |
+| `testnet` | AlgoKit TestNet defaults (AlgoNode) | Built in; override with `--registry` and `--vault` |
+| `localnet` | AlgoKit LocalNet defaults (`http://localhost:4001`, indexer 8980) | `--vault` required, `--registry` optional |
+| `custom` | `ALGOD_*` and `INDEXER_*` environment variables | `--vault` required, `--registry` optional |
 
 MainNet is not supported yet; the CLI rejects `--network mainnet`.
 
@@ -242,16 +243,16 @@ export ALGOD_TOKEN=<token>
 export INDEXER_SERVER=https://indexer.example.com
 export INDEXER_TOKEN=<token>
 
-kasakame pledges --network custom --vault <vaultAppId> --factory <factoryAppId>
+kasakame pledges --network custom --vault <vaultAppId> --registry <registryAppId>
 ```
 
 `ALGOD_PORT` and `INDEXER_PORT` are optional; so are the tokens. `--network
 custom` requires `ALGOD_SERVER` and `INDEXER_SERVER`.
 
-Pass the Factory and ClaimsVault app IDs of the deployment your campaigns use
-(see [Deployments](architecture.md#deployments)). Without `--factory`, discovery
+Pass the Registry and ClaimsVault app IDs of the deployment your campaigns use
+(see [Deployments](architecture.md#deployments)). Without `--registry`, discovery
 lists only campaigns that already have a ClaimsVault box, and `delete` skips
-Factory unregistration. On LocalNet and custom networks, the CLI refuses every
+Registry unregistration. On LocalNet and custom networks, the CLI refuses every
 chain command without `--vault`.
 
 For a local run, start AlgoKit LocalNet, deploy the contracts, and copy the
@@ -261,13 +262,13 @@ printed IDs:
 algokit localnet start
 cd projects/contracts
 npm run build
-npm run deploy:localnet -- factory
+npm run deploy:localnet -- registry
 npm run deploy:localnet -- claimsvault
 
 cd ../cli
 npm run build
 node dist/index.js pledges --network localnet --signer mnemonic \
-  --mnemonic-file ./phrase.txt --vault <vaultAppId> --factory <factoryAppId>
+  --mnemonic-file ./phrase.txt --vault <vaultAppId> --registry <registryAppId>
 ```
 
 ## Limitations

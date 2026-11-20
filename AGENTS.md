@@ -17,10 +17,10 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   - `smart_contracts/claimsvault/contract.algo.ts` - the `ClaimsVault`: pooled
     refund escrow (`create`, `credit`, `payBack`, `payClaim`, `settle`,
     `settleOpen`, `refund`, `notifyDelete`, `releaseClaimed`, `finalize`)
-  - `smart_contracts/factory/contract.algo.ts` - the on-chain `Factory`
-    registry (owner-configured campaign hash with a ~7-day `propose`/`apply`
-    timelock, pinned vault program hash, `setVault`, `register`/`unregister`,
-    ownership transfer/renounce, readonly `isRegistered`)
+  - `smart_contracts/registry/contract.algo.ts` - the ownerless on-chain `Registry`
+    (Campaign and Vault program hashes, sweep target, and refund window fixed at
+    `create`; permissionless one-time `bindVault`; `register`/`unregister`, readonly
+    `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
@@ -137,7 +137,7 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
 | --- | ---: | ---: | ---: |
 | Campaign | 2,219 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
-| Factory | 1,072 B | 1 | 357,000 µA |
+| Registry | 947 B | 1 | 307,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -156,7 +156,7 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
   `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves at
   least 487 ops, above the ~262 the cap needs; if a contract change breaks that
   guard, re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
-  ClaimsVault, Factory, and the SDK and must stay in sync; the cap counts every
+  ClaimsVault, Registry, and the SDK and must stay in sync; the cap counts every
   appended position, including cancelled leaves. The `heavy-tests` workflow runs
   the full tree end to end (`99-cap-failed` / `99-cap-claimed`); `99-cap-failed`
   now exercises the early cap-saturation settlement and the worst-case vault
@@ -169,22 +169,21 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
   adds a global/local slot (a byte slice is +50,000 µA, a uint +28,500 µA), adds a
   box, adds an inner txn to create/register, or changes a group shape or fee, stop
   and call it out in the commit/PR; get explicit approval before proceeding.
-- **Any campaign program change changes the Factory `approvalHash`.** Update the
-  deploy script, tests, docs, specs/SDK release, and the deployed Factory hash
-  (or redeploy Factory + vault). The current hash is
+- **Any campaign program change changes the Registry `campaignProgramHash`.**
+  Update the deploy script, tests, docs, specs/SDK release, and deploy a new
+  Registry + Vault bundle. The current hash is
   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
-  binds the approval/clear split. A new Factory sets its first hash immediately;
-  an existing Factory must `proposeApprovalHash`, wait `APPROVAL_HASH_DELAY`
-  (~7 days), then `applyApprovalHash`. The vault is bound once and its program
-  hash is verified in `setVault`.
+  binds the approval/clear split. The Campaign hash, Vault hash, sweep target,
+  and refund window are fixed at Registry `create`; there is no in-place update
+  or timelock. The vault is bound once and checked in `bindVault`.
 - **Locked is not spent.** App/box MBR and the registration deposit are locked
   and recoverable; transaction fees are spent. The vault box (32,100 µA) is
-  platform-funded; the Factory registration box (18,900 µA) is covered by the
+  platform-funded; the Registry registration box (18,900 µA) is covered by the
   creator deposit.
 - **Respect the no-surcharge page limit.** The current limit is 3 extra pages
   (8,192 B total). Do not rely on the 7-extra-page surcharge path unless the
   target network supports it and the cost is accepted.
-- **Keep the vault and Factory funded.** New boxes increase their accounts'
+- **Keep the vault and Registry funded.** New boxes increase their accounts'
   minimum balances. Check the group/resource limits (8 references, 16 inner
   txns per app call, 2,048 B app args, 700 opcode budget per app call) when
   adding a call, box, or reference.
@@ -250,14 +249,14 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
     the inner call's `lastLog`: the ARC-4 prefix `0x151f7c75` + `0x80`/`0x00`.
   - **User actions are top-level only.** `Campaign.create/pledge/cancelPledge/refund/claim/delete`,
     `Vault.create/credit/refund/settleOpen/finalize/releaseClaimed`, and
-    `Factory.create/register/unregister` assert `Global.callerApplicationId == 0`.
+    `Registry.create/register/unregister` assert `Global.callerApplicationId == 0`.
     The campaign-driven vault methods (`payBack`, `payClaim`, `settle`, `notifyDelete`)
-    and `Factory.isRegistered` stay inner-callable; do not add the guard there. The
+    and `Registry.isRegistered` stay inner-callable; do not add the guard there. The
     SDK replay depends on top-level pledges and payments (see #199).
   - **Cap-saturated campaigns fail early.** At `n == MAX_TREE_SIZE` with `raised < goal`,
     `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
-    `Factory.unregister` treat the campaign as failed-in-fact (see #229). The cap is
-    duplicated in Campaign, ClaimsVault, Factory, and the SDK - keep it in sync.
+    `Registry.unregister` treat the campaign as failed-in-fact (see #229). The cap is
+    duplicated in Campaign, ClaimsVault, Registry, and the SDK - keep it in sync.
   - **Final-day goal protection.** `Campaign.cancelPledge` rejects a cancel in the final
     24 hours that would drop a campaign at or above its goal below the goal. Cancels
     that keep the goal, and cancels in an already-below-goal campaign, are allowed;
@@ -267,7 +266,7 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
     vault-local markers written by the campaign (for example, the `root`/`N`/`settledAt`
     fields `settle` writes into the campaign box) instead.
   - Box MBR: a box written by an app is charged to that app's account - the
-    Factory app account must be platform-funded before `register()` can write
+    Registry app account must be platform-funded before `register()` can write
     its registration box.
   - A zero-amount asset transfer only opts a receiver in when sender == receiver
     (self-opt-in); one app cannot opt another account in on its behalf.
@@ -278,17 +277,17 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
   - **Payment-consuming group order is load-bearing.** The payment must be the
     transaction immediately before `Campaign.pledge`; the matching `Vault.credit`
     must be immediately after the pledge and the group's final transaction, and
-    the vault requires that pledge immediately before it. `Factory.register` must
-    also be final. `Factory.unregister` must be immediately followed by the
+    the vault requires that pledge immediately before it. `Registry.register` must
+    also be final. `Registry.unregister` must be immediately followed by the
     campaign's `delete()`, and the campaign's `delete()` requires that
-    `unregister` immediately before it (when the campaign's vault has a Factory
+    `unregister` immediately before it (when the campaign's vault has a Registry
     binding). The paired calls must be `NoOp`: a `ClearState` call runs the
     clear-state program instead of the method, so it can satisfy an app-id/selector
     check without executing the paired logic. The contracts reject other shapes; the
     positions stop one payment from backing several pledges, credits, or
     registrations, stop a pledge from being left uncredited, stop a credit without a
     pledge (donations), and make delisting and deletion one operation.
-  - `Factory.unregister` requires the campaign creator. A registered campaign
+  - `Registry.unregister` requires the campaign creator. A registered campaign
     must exist and be settled (`Claimed`/`Failed`), pristine (`Open`,
     `raised == 0`), or failed-in-fact; an unregistered campaign is a no-op, so the
     same cleanup group also handles a registration that never landed. The

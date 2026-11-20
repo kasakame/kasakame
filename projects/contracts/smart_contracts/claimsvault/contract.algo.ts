@@ -30,7 +30,7 @@ import {
  *
  * The vault holds all campaigns' funds in one pooled account. Cross-campaign isolation is enforced by per-campaign
  * balance guards: every method that pays out asserts `amount ≤ paidIn − paidOut` for that campaign's box, so a bug (or
- * a malicious campaign program, which cannot exist - campaigns are hash-verified at Factory registration and
+ * a malicious campaign program, which cannot exist - campaigns are hash-verified at Registry registration and
  * non-updatable) in one campaign can never drain another's funds.
  *
  * Trust model: `payBack`, `payClaim`, `settle`, and `notifyDelete` are reachable only as inner app calls from the
@@ -49,13 +49,13 @@ const BOX_CLAIMED = Bytes.fromHex('03')
 
 // Packed vault box layout (65 bytes): paidIn[0:8] ‖ paidOut[8:16] ‖ root[16:48] ‖ n[48:56] ‖ status[56:57] ‖ settledAt[57:65].
 
-// ARC-4 method selector for the Factory's `isRegistered(uint64)bool` readonly method (the Factory is unchanged by the
+// ARC-4 method selector for the Registry's `isRegistered(uint64)bool` readonly method (the Registry is unchanged by the
 // claim-tree rewrite, so this selector is unchanged - verified on-chain via an inner call before a campaign's first box
 // is created, so an unregistered campaign can never park the vault's minimum balance).
-const FACTORY_IS_REGISTERED_SELECTOR = Bytes.fromHex('716a3d0e')
+const REGISTRY_IS_REGISTERED_SELECTOR = Bytes.fromHex('716a3d0e')
 
-// The ARC-4 bool return of the Factory's `isRegistered`: the return-value prefix (0x151f7c75) followed by 0x80 (true).
-const FACTORY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
+// The ARC-4 bool return of the Registry's `isRegistered`: the return-value prefix (0x151f7c75) followed by 0x80 (true).
+const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 
 // ARC-4 selector for Campaign.pledge(pay,byte[])void. The credit must be the transaction immediately after it, so every
 // vault inflow is tied to a backer leaf (kept in sync by the integration tests).
@@ -70,7 +70,10 @@ const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 const MAX_TREE_SIZE = Uint64(524_287)
 
 export class ClaimsVault extends Contract {
-  /** The Factory registry app; its `registered` boxes are the canonical campaign records. */
+  /**
+   * The Registry app id, stored in the `factory` key for compatibility; its `registered` boxes are the canonical campaign
+   * records.
+   */
   factory = GlobalState<Application>()
 
   /** Where `finalize()` sweeps a failed campaign's residual after the refund window; fixed at creation. */
@@ -88,7 +91,7 @@ export class ClaimsVault extends Contract {
    * The platform funds the vault's application account after creation (the account base plus headroom: each campaign's
    * first `credit` parks a 32,100 µA box on the vault, recovered by `notifyDelete`/`finalize`).
    *
-   * @param factory The Factory registry app.
+   * @param factory The Registry app (stored in the `factory` key).
    * @param target Where `finalize()` sweeps failed campaigns' residuals after the refund window.
    * @param window Refund window in seconds after settlement.
    */
@@ -116,7 +119,7 @@ export class ClaimsVault extends Contract {
    * itself, so a credit without a pledge is rejected: every inflow belongs to a backer leaf and counts toward the
    * campaign's goal. The payment is **independently verified**: it is the transaction immediately before the pledge
    * (`groupIndex - 2`), from the caller to the vault for `amount`, with no close/rekey. On first touch the campaign must
-   * be Factory-registered, so an unregistered campaign can never open a box.
+   * be Registry-registered, so an unregistered campaign can never open a box.
    *
    * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
    * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
@@ -178,7 +181,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Verify a first-touch campaign against the Factory registry via an inner call (its log carries the readonly
+   * Verify a first-touch campaign against the Registry via an inner call (its log carries the readonly
    * answer), so an unregistered campaign can never park the vault's minimum balance.
    *
    * @param app The campaign application.
@@ -189,11 +192,11 @@ export class ClaimsVault extends Contract {
     const registrationCheck = itxn
       .applicationCall({
         appId: this.factory.value,
-        appArgs: [FACTORY_IS_REGISTERED_SELECTOR, op.itob(app.id)],
+        appArgs: [REGISTRY_IS_REGISTERED_SELECTOR, op.itob(app.id)],
         fee: Uint64(0),
       })
       .submit()
-    assert(registrationCheck.lastLog === FACTORY_REGISTERED_TRUE, 'campaign not registered')
+    assert(registrationCheck.lastLog === REGISTRY_REGISTERED_TRUE, 'campaign not registered')
   }
 
   /**

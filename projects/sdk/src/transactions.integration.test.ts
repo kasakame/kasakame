@@ -1,11 +1,12 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { createHash } from 'node:crypto'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { CampaignFactory } from './generated/CampaignClient.js'
 import { ClaimsVaultFactory } from './generated/ClaimsVaultClient.js'
-import { FactoryFactory } from './generated/FactoryClient.js'
+import { RegistryFactory } from './generated/RegistryClient.js'
 import type { CampaignHeader, WalletSession } from './index.js'
 import {
   cancelPledge,
@@ -23,7 +24,7 @@ import {
 } from './index.js'
 
 /**
- * LocalNet integration tests for the SDK send path: deploy the Factory + ClaimsVault from the ARC-56 bytecode embedded in the
+ * LocalNet integration tests for the SDK send path: deploy the Registry + ClaimsVault from the ARC-56 bytecode embedded in the
  * generated clients, configure the SDK against them, and drive every write helper end to end. The contract suites prove the
  * compiled TEAL; this suite proves the SDK's group assembly, fee headroom, signer wiring, and indexer waits on a live chain.
  *
@@ -33,7 +34,7 @@ import {
 
 const ALGO = 1_000_000n
 const WINDOW = 3_600n
-const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch factory check)
+const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch registry check)
 const FEE_SPEND = 5_000n // outer + 2 payout inners + 2 OpUp takes (zero-headroom sizing)
 const FEE_VAULT_REFUND = 4_000n // outer + 1 payout inner + 2 OpUp takes
 const FEE_CLAIM = 3_000n // inner payClaim + inner payment
@@ -41,8 +42,6 @@ const FEE_CLAIM = 3_000n // inner payClaim + inner payment
 describe('SDK send path (localnet)', () => {
   const fixture = algorandFixture()
   let algorand: AlgorandClient
-  // The pinned specs release predates the early budget top-up, so the multi-take proofs only run against local artifacts.
-  let legacyClients = false
 
   beforeAll(async () => {
     await fixture.newScope()
@@ -51,59 +50,41 @@ describe('SDK send path (localnet)', () => {
     const owner = await fixture.context.generateAccount({ initialFunds: microAlgos(50n * ALGO), suppressLog: true })
     const ownerAddress = owner.addr.toString()
 
-    const factory = new FactoryFactory({ algorand, defaultSender: ownerAddress })
-    const { appClient: factoryClient } = await factory.send.create.create({ args: [], sender: ownerAddress, suppressLog: true })
-    // The Factory account holds the registration deposits and pays them back, so it needs the account base on top of the MBR.
-    await algorand.send.payment({ sender: ownerAddress, receiver: factoryClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
-
+    const campaignFactory = new CampaignFactory({ algorand, defaultSender: ownerAddress })
     const vaultFactory = new ClaimsVaultFactory({ algorand, defaultSender: ownerAddress })
-    const { appClient: vaultClient } = await vaultFactory.send.create.create({
-      args: { factory: factoryClient.appId, target: ownerAddress, window: WINDOW },
+    const registry = new RegistryFactory({ algorand, defaultSender: ownerAddress })
+
+    const { appClient: registryClient } = await registry.send.create.create({
+      args: {
+        campaignProgramHash: approvalClearHash(campaignFactory.appSpec),
+        vaultProgramHash: approvalClearHash(vaultFactory.appSpec),
+        expectedSweepTarget: ownerAddress,
+        expectedRefundWindow: WINDOW,
+      },
       sender: ownerAddress,
-      appReferences: [factoryClient.appId],
+      suppressLog: true,
+    })
+    // The Registry account holds the registration deposits and pays them back, so it needs the account base on top of the MBR.
+    await algorand.send.payment({ sender: ownerAddress, receiver: registryClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
+
+    const { appClient: vaultClient } = await vaultFactory.send.create.create({
+      args: { factory: registryClient.appId, target: ownerAddress, window: WINDOW },
+      sender: ownerAddress,
+      appReferences: [registryClient.appId],
       suppressLog: true,
     })
     // The vault's pooled box MBR is charged to its own account.
     await algorand.send.payment({ sender: ownerAddress, receiver: vaultClient.appAddress, amount: microAlgos(ALGO), suppressLog: true })
 
-    // 2026-11 Factory specs bind the vault and hash approval ‖ clear with a length prefix; the pinned release predates both.
-    const legacyFactory = !factory.appSpec.methods.some((method) => method.name === 'setVault')
-    legacyClients = legacyFactory
-    if (!legacyFactory) {
-      if (factory.appSpec.methods.some((method) => method.name === 'setVaultApprovalHash')) {
-        const vaultSpec = vaultFactory.appSpec
-        const approval = vaultSpec.byteCode?.approval
-        const clear = vaultSpec.byteCode?.clear
-        if (approval === undefined || clear === undefined) {
-          throw new Error('ClaimsVault ARC-56 spec has no bytecode; regenerate the clients with codegen')
-        }
-        const approvalBytes = Buffer.from(approval, 'base64')
-        const clearBytes = Buffer.from(clear, 'base64')
-        const length = Buffer.alloc(8)
-        length.writeBigUInt64BE(BigInt(approvalBytes.length))
-        const vaultHash = createHash('sha256').update(length).update(approvalBytes).update(clearBytes).digest()
-        await factoryClient.appClient.send.call({
-          method: 'setVaultApprovalHash(byte[])void',
-          args: [vaultHash],
-          sender: ownerAddress,
-          suppressLog: true,
-        })
-      }
-      await factoryClient.appClient.send.call({
-        method: 'setVault(uint64)void',
-        args: [vaultClient.appId],
-        sender: ownerAddress,
-        appReferences: [vaultClient.appId],
-        suppressLog: true,
-      })
-    }
-    await factoryClient.send.setApprovalHash({
-      args: { hash: officialCampaignHash(algorand, legacyFactory) },
+    // Bind the vault after both apps exist; the Registry checks the back-pointer, program hash, target, and window.
+    await registryClient.send.bindVault({
+      args: { vault: vaultClient.appId },
       sender: ownerAddress,
+      appReferences: [vaultClient.appId],
       suppressLog: true,
     })
 
-    configureSdk({ algorand, factoryAppId: factoryClient.appId, vaultAppId: vaultClient.appId })
+    configureSdk({ algorand, registryAppId: registryClient.appId, vaultAppId: vaultClient.appId })
   })
 
   async function session(initialAlgos: bigint): Promise<WalletSession> {
@@ -228,8 +209,7 @@ describe('SDK send path (localnet)', () => {
     expect(box?.paidOut).toEqual(5n * ALGO)
   })
 
-  test('mid-size tree → cancel and refund on both paths', async (ctx) => {
-    if (legacyClients) return ctx.skip()
+  test('mid-size tree → cancel and refund on both paths', async () => {
     const creator = await session(50n)
     const backer = await session(100n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
@@ -263,8 +243,7 @@ describe('SDK send path (localnet)', () => {
     expect(box?.paidOut).toEqual(3n * ALGO)
   })
 
-  test('large tree → cancel and refund with a deep path', { timeout: 300_000 }, async (ctx) => {
-    if (legacyClients) return ctx.skip()
+  test('large tree → cancel and refund with a deep path', { timeout: 300_000 }, async () => {
     const creator = await session(50n)
     const backer = await session(300n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
@@ -297,30 +276,20 @@ describe('SDK send path (localnet)', () => {
 })
 
 /**
- * The Factory's official Campaign program hash, taken from the Campaign ARC-56 bytecode under test.
+ * The official program hash: `sha256(itob(approval.length) ‖ approval ‖ clear)`, from the ARC-56 bytecode under test.
  *
- * @param algorand The configured Algorand client.
- * @param legacyFactory Whether the generated Factory specs predate the 2026-11 approval/clear hash.
+ * @param spec The compiled ARC-56 spec.
  * @returns The 32-byte program hash.
  */
-function officialCampaignHash(algorand: AlgorandClient, legacyFactory: boolean): Uint8Array {
-  const spec = new CampaignFactory({ algorand }).appSpec
+function approvalClearHash(spec: Arc56Contract): Uint8Array {
   const approval = spec.byteCode?.approval
   const clear = spec.byteCode?.clear
   if (approval === undefined || clear === undefined) {
-    throw new Error('Campaign ARC-56 spec has no bytecode; regenerate the clients with codegen')
+    throw new Error(`${spec.name} ARC-56 spec has no bytecode; regenerate the clients with codegen`)
   }
   const approvalBytes = Buffer.from(approval, 'base64')
   const clearBytes = Buffer.from(clear, 'base64')
-  const digest = createHash('sha256')
-  if (legacyFactory) {
-    // The pinned release Factory hashes the approval program alone.
-    digest.update(approvalBytes)
-  } else {
-    // The current Factory binds the approval/clear split with an 8-byte length prefix.
-    const length = Buffer.alloc(8)
-    length.writeBigUInt64BE(BigInt(approvalBytes.length))
-    digest.update(length).update(approvalBytes).update(clearBytes)
-  }
-  return new Uint8Array(digest.digest())
+  const length = Buffer.alloc(8)
+  length.writeBigUInt64BE(BigInt(approvalBytes.length))
+  return new Uint8Array(createHash('sha256').update(length).update(approvalBytes).update(clearBytes).digest())
 }

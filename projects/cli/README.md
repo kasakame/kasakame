@@ -48,7 +48,7 @@ state only.
 Both commands are read-only. They print a search line while they scan the
 indexer, then a table. They use the connected wallet session, the mnemonic
 signer, or `--address`, and never open a signing prompt. On LocalNet and custom
-networks, pass `--vault` and `--factory` so discovery can find the campaigns.
+networks, pass `--vault` and `--registry` so discovery can find the campaigns.
 
 ## Who can do what
 
@@ -112,7 +112,7 @@ kasakame delete <appId>
 kasakame delete <appId> --dry-run
 ```
 
-`delete` removes a campaign and returns its schema MBR and any Factory
+`delete` removes a campaign and returns its schema MBR and any Registry
 registration deposit to the creator. It rejects open campaigns that still hold
 live pledges, and funded campaigns that are not claimed yet; claim the funds
 before deleting. Deleting a failed campaign is safe: backers keep refunding from
@@ -135,8 +135,8 @@ bridge as fallback. No WalletConnect Cloud project or account is needed.
 
 ## Networks and signers
 
-Transaction commands default to TestNet with the embedded Factory and
-ClaimsVault app ids. `--vault`/`--factory` override them.
+Transaction commands default to TestNet with the embedded Registry and
+ClaimsVault app ids. `--vault`/`--registry` override them.
 
 LocalNet and custom networks use `--signer mnemonic` (or default to it) and read
 `ALGOD_*` / `INDEXER_*`; custom networks require `ALGOD_SERVER` and

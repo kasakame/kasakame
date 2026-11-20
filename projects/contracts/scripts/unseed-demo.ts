@@ -13,7 +13,7 @@ import path from 'node:path'
  *
  * Same environment rules as the seed script: `npm run unseed:localnet` loads `.env.localnet`, `npm run unseed:testnet` loads `.env.testnet`.
  *
- * Usage: `npm run unseed:localnet` (the Factory and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
+ * Usage: `npm run unseed:localnet` (the Registry and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
  */
 
 const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
@@ -26,7 +26,9 @@ interface SeedEntry {
 }
 
 interface SeedState {
-  factoryId: string
+  registryId?: string
+  /** Legacy state written before the Registry rename. */
+  factoryId?: string
   vaultId: string
   campaigns: SeedEntry[]
 }
@@ -48,7 +50,7 @@ void (async () => {
   const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) as SeedState
   const algorand = isLocalNet ? AlgorandClient.defaultLocalNet() : AlgorandClient.fromEnvironment()
 
-  const factoryId = BigInt(state.factoryId)
+  const registryId = BigInt(state.registryId ?? state.factoryId ?? '0')
   const vaultId = BigInt(state.vaultId)
   const remaining: SeedEntry[] = []
   for (const entry of state.campaigns) {
@@ -58,7 +60,7 @@ void (async () => {
       // One atomic group: unregister first (it reads the campaign's state), then delete.
       const composer = algorand.send.newGroup()
       composer.addAppCallMethodCall({
-        appId: factoryId,
+        appId: registryId,
         method: ABIMethod.fromSignature('unregister(uint64)void'),
         args: [appId],
         sender: creator.addr,

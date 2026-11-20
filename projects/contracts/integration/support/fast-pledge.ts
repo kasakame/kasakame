@@ -218,8 +218,8 @@ export async function fastPledge(
     method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
     args: [appId, amount],
     sender: backer,
-    appReferences: [stack.factory.appId],
-    boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.factory.appId, appId)],
+    appReferences: [stack.registry.appId],
+    boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.registry.appId, appId)],
     extraFee: microAlgos(FEE),
   })
   const result = await composer.send({ suppressLog: true, populateAppCallResources: false })

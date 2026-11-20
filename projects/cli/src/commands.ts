@@ -147,7 +147,7 @@ export async function runDelete(options: CliOptions): Promise<number> {
     if (status === 'failed' && header.raisedMicroAlgos > 0n) {
       console.log('Backers keep refunding from the vault until the refund window closes.')
     }
-    console.log("The campaign's schema MBR and any Factory registration deposit are back in your account.")
+    console.log("The campaign's schema MBR and any Registry registration deposit are back in your account.")
     return 0
   } finally {
     await session.close()

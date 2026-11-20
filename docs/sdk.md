@@ -21,7 +21,7 @@ Dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and generate
 
 ### Configure once at startup
 
-Call `configureSdk` once with an `AlgorandClient` and the Factory and ClaimsVault app ids:
+Call `configureSdk` once with an `AlgorandClient` and the Registry and ClaimsVault app ids:
 
 ```ts
 import { configureSdk } from '@kasakame/sdk'
@@ -34,7 +34,7 @@ const algorand = AlgorandClient.fromConfig({
 
 configureSdk({
   algorand,
-  factoryAppId: 774437557n,
+  registryAppId: 774437557n,
   vaultAppId: 774437570n,
 })
 ```
@@ -85,7 +85,7 @@ It records the ARC-56 specs release the generated clients were built against.
 ```ts
 interface SdkConfig {
   algorand: AlgorandClient
-  factoryAppId: bigint
+  registryAppId: bigint
   vaultAppId: bigint
 }
 
@@ -214,7 +214,7 @@ function toCampaignViewModel(
   myPledgeMicroAlgos?: bigint,
 ): CampaignViewModel
 function fetchMyPledge(appId: bigint, address: string): Promise<bigint | undefined>
-function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set<bigint>>
+function fetchRegisteredCampaignIds(registryId: bigint): Promise<Set<bigint>>
 function isRegistered(appId: bigint): Promise<boolean>
 function enumerateCampaigns(): Promise<Set<bigint>>
 function getCachedCampaigns(): { campaigns: CampaignViewModel[]; nowSeconds: bigint } | undefined
@@ -225,7 +225,7 @@ function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddress?: string):
 function fetchCampaignHeader(appId: bigint): Promise<CampaignHeader | undefined>
 ```
 
-`enumerateCampaigns` unions Factory-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. `claimed` keeps the raw Claimed fact, so actions can tell a funded campaign awaiting claim from one already claimed (the display word is `successful` for both). For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box; `getCampaign` recovers the same fields through it. `campaignFromHeader` maps either header to the view model (deriving the display status), so the detail view and the deleted section of the browse list agree on a deleted campaign.
+`enumerateCampaigns` unions Registry-registered ids with vault-box ids, so deleted-but-unfinalized campaigns still surface. `getCampaignStatus` derives the display word: `successful` when claimed or goal-reached, `failed` when past the deadline and unfunded, `open` otherwise. `claimed` keeps the raw Claimed fact, so actions can tell a funded campaign awaiting claim from one already claimed (the display word is `successful` for both). For deleted campaigns, `fetchCampaignHeader` decodes the creation transaction's ARC-56 tuple and recovers the live total from the vault box; `getCampaign` recovers the same fields through it. `campaignFromHeader` maps either header to the view model (deriving the display status), so the detail view and the deleted section of the browse list agree on a deleted campaign.
 
 ### Writes (`transactions.ts`)
 
@@ -267,7 +267,7 @@ function claim(appId: bigint, session: WalletSession): Promise<void>
 function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
 ```
 
-Creation chains `create` to Factory `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. The order is load-bearing: the payment must immediately precede `pledge`, the matching `credit` must immediately follow it and be last, and the vault requires that pledge immediately before the credit (both NoOp; no standalone credits/donations). Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete groups `[unregister, delete]` atomically: the Factory requires the delete immediately after unregister, and the campaign requires the unregister immediately before it (both NoOp). An unregistered campaign's unregister no-ops, so the same group cleans up a registration that never landed. Delete settles in O(1) on every path.
+Creation chains `create` to Registry `register`. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. The order is load-bearing: the payment must immediately precede `pledge`, the matching `credit` must immediately follow it and be last, and the vault requires that pledge immediately before the credit (both NoOp; no standalone credits/donations). Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete groups `[unregister, delete]` atomically: the Registry requires the delete immediately after unregister, and the campaign requires the unregister immediately before it (both NoOp). An unregistered campaign's unregister no-ops, so the same group cleans up a registration that never landed. Delete settles in O(1) on every path.
 
 `pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 
@@ -286,7 +286,7 @@ Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio,
 
 LocalNet integration lives in `src/transactions.integration.test.ts` and is
 excluded from `npm test` and coverage. `npm run test:integration` deploys its own
-Factory + ClaimsVault from the generated clients' ARC-56 bytecode and runs the
+Registry + ClaimsVault from the generated clients' ARC-56 bytecode and runs the
 create/cancel, claim/delete, and failed-refund flows. The clients decide which
 contracts are under test: the pinned specs release by default, or the local
 artifacts after `SDK_SPECS=local npm run codegen` (see

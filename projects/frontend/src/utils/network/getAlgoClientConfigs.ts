@@ -18,7 +18,7 @@ function appEnv(): Record<string, string | undefined> {
 /**
  * Read an app id from the Vite environment.
  *
- * @param key Environment key (e.g. `VITE_FACTORY_APP_ID`).
+ * @param key Environment key (e.g. `VITE_REGISTRY_APP_ID`).
  * @returns The app id, or 0 when absent or not positive.
  */
 export function appIdFromEnv(key: string): bigint {

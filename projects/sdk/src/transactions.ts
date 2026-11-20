@@ -15,16 +15,16 @@ import {
 } from './claim-tree.js'
 import { CampaignClient, CampaignFactory } from './generated/CampaignClient.js'
 import { ClaimsVaultClient } from './generated/ClaimsVaultClient.js'
-import { FactoryClient } from './generated/FactoryClient.js'
+import { RegistryClient } from './generated/RegistryClient.js'
 
 /**
  * Write path: assembles + signs transactions through the generated `CampaignClient`, `ClaimsVaultClient`, and
- * `FactoryClient`, plus a manual composer for the two-app pledge group. Each helper takes the wallet's signer/address
+ * `RegistryClient`, plus a manual composer for the two-app pledge group. Each helper takes the wallet's signer/address
  * so the wallet - never the app - holds the keys.
  *
  * The claim-tree design (see docs/campaign.md):
  *
- * - **Creation** chains create → factory.register. Nothing is funded: the escrow never holds funds.
+ * - **Creation** chains create → registry.register. Nothing is funded: the escrow never holds funds.
  * - **Pledges** are one atomic group `[pay, campaign.pledge, vault.credit]` (the payment immediately before the pledge,
  *   the matching credit immediately after it and last - the contracts reject other shapes, and the vault rejects a
  *   credit whose preceding transaction is not that pledge); the caller supplies the frontier (rebuilt
@@ -66,13 +66,13 @@ export function isStaleProofError(error: unknown): boolean {
 
 type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
 
-// The Factory registration deposit: the registration box's minimum balance, returned by `unregister()`.
+// The Registry registration deposit: the registration box's minimum balance, returned by `unregister()`.
 const REGISTER_DEPOSIT_MICRO_ALGOS = 18_900n
 
 // Fee headroom per call (measured on LocalNet - see docs/campaign.md "Minimum balances"): the outer call always covers
 // its inners via fee pooling, so every extra inner transaction costs one more minimum fee on the outer call.
 const FEE_MICRO_ALGOS = 1_000n
-const FEE_CREDIT_EXTRA = 1_000n // possible first-touch factory check
+const FEE_CREDIT_EXTRA = 1_000n // possible first-touch registry check
 const FEE_CLAIM_EXTRA = 2_000n // inner payClaim + inner payment
 const FEE_DELETE_EXTRA = 2_000n // inner settle/notify + escrow close
 const FEE_UNREGISTER_EXTRA = 1_000n // inner deposit-back
@@ -111,11 +111,11 @@ function vaultClientFor(session: WalletSession): ClaimsVaultClient {
   })
 }
 
-function factoryClientFor(session: WalletSession): FactoryClient {
-  const { algorand, factoryAppId } = getSdkConfig()
-  return new FactoryClient({
+function registryClientFor(session: WalletSession): RegistryClient {
+  const { algorand, registryAppId } = getSdkConfig()
+  return new RegistryClient({
     algorand,
-    appId: factoryAppId,
+    appId: registryAppId,
     defaultSender: session.address,
     defaultSigner: session.signer,
   })
@@ -139,20 +139,20 @@ function vaultBoxRef(appId: bigint): { appId: bigint; name: Uint8Array }[] {
 }
 
 /**
- * The Factory's registration box for a campaign (prefix 'r' + 8-byte big-endian app id) - the inner `isRegistered`
+ * The Registry's registration box for a campaign (prefix 'r' + 8-byte big-endian app id) - the inner `isRegistered`
  * check needs it.
  *
  * @param appId The campaign application id.
- * @returns Box references for the Factory app.
+ * @returns Box references for the Registry app.
  */
-function factoryRegistrationBox(appId: bigint): { appId: bigint; name: Uint8Array }[] {
+function registrationBox(appId: bigint): { appId: bigint; name: Uint8Array }[] {
   let remaining = appId
   const appIdBytes = new Uint8Array(8)
   for (let i = 7; i >= 0; i--) {
     appIdBytes[i] = Number(remaining & 0xffn)
     remaining >>= 8n
   }
-  return [{ appId: getSdkConfig().factoryAppId, name: new Uint8Array([0x72, ...appIdBytes]) }]
+  return [{ appId: getSdkConfig().registryAppId, name: new Uint8Array([0x72, ...appIdBytes]) }]
 }
 
 /**
@@ -237,7 +237,7 @@ async function submitWithFreshProof(run: () => Promise<bigint | undefined>): Pro
 }
 
 /**
- * Deploy a new campaign: create → register with the Factory. Nothing is funded - the v2 escrow never holds funds.
+ * Deploy a new campaign: create → register with the Registry. Nothing is funded - the v2 escrow never holds funds.
  *
  * @param session Wallet session holding the signer and address.
  * @param title Short campaign title (stored on-chain).
@@ -253,14 +253,14 @@ export async function createCampaign(
   goalMicroAlgos: bigint,
   deadlineSeconds: bigint,
 ): Promise<{ appId: bigint; appAddress: string }> {
-  const { algorand, factoryAppId, vaultAppId } = getSdkConfig()
-  const factory = new CampaignFactory({
+  const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  const campaignFactory = new CampaignFactory({
     algorand,
     defaultSender: session.address,
     defaultSigner: session.signer,
   })
 
-  const sendResult = await factory.send.create.create({
+  const sendResult = await campaignFactory.send.create.create({
     args: {
       vault: vaultAppId,
       title: new TextEncoder().encode(title),
@@ -273,16 +273,16 @@ export async function createCampaign(
 
   const appId = sendResult.result.appId
 
-  // Register with the Factory (when configured) so the browse page treats the campaign as official. First-touch
+  // Register with the Registry (when configured) so the browse page treats the campaign as official. First-touch
   // credit verifies registration on-chain, so an unregistered campaign can never take pledges.
-  if (factoryAppId > 0n) {
-    const factoryClient = factoryClientFor(session)
-    await factoryClient.send.register({
+  if (registryAppId > 0n) {
+    const registryClient = registryClientFor(session)
+    await registryClient.send.register({
       args: {
         app: appId,
         payment: await algorand.createTransaction.payment({
           sender: session.address,
-          receiver: factoryClient.appAddress,
+          receiver: registryClient.appAddress,
           amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
         }),
       },
@@ -307,7 +307,7 @@ export async function createCampaign(
  * @returns The composer holding the group, ready to build or send.
  */
 async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
-  const { algorand, factoryAppId, vaultAppId } = getSdkConfig()
+  const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
   await waitForIndexerCatchUp()
@@ -338,8 +338,8 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
       args: { app: appId, amount: amountMicroAlgos },
       sender: session.address,
       // The first-touch registration check runs inside the vault; the campaign app is the pledge txn before this call.
-      appReferences: [factoryAppId],
-      boxReferences: [...vaultBoxRef(appId), ...factoryRegistrationBox(appId)],
+      appReferences: [registryAppId],
+      boxReferences: [...vaultBoxRef(appId), ...registrationBox(appId)],
       extraFee: microAlgos(FEE_CREDIT_EXTRA),
     }),
   )
@@ -528,23 +528,23 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
 
 /**
  * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow to the creator,
- * and unregisters from the Factory (returning the registration deposit). One atomic group (one wallet approval):
- * unregister runs first so every app reference resolves while the campaign app still exists, and the Factory requires
+ * and unregisters from the Registry (returning the registration deposit). One atomic group (one wallet approval):
+ * unregister runs first so every app reference resolves while the campaign app still exists, and the Registry requires
  * its `delete()` to be the immediately following transaction. Atomicity makes the order irrelevant to the outcome.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  */
 export async function deleteCampaign(appId: bigint, session: WalletSession): Promise<void> {
-  const { algorand, factoryAppId, vaultAppId } = getSdkConfig()
+  const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   const client = campaignClientFor(appId, session)
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
   const composer = algorand.send.newGroup()
-  if (factoryAppId > 0n) {
-    const factoryClient = factoryClientFor(session)
+  if (registryAppId > 0n) {
+    const registryClient = registryClientFor(session)
     composer.addAppCallMethodCall(
-      await factoryClient.params.unregister({
+      await registryClient.params.unregister({
         args: { app: appId },
         sender: session.address,
         appReferences: [appId],

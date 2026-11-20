@@ -60,9 +60,9 @@ navigation (selected campaign id) is enough.
 
 | View | Content | Reads | Writes |
 | --- | --- | --- | --- |
-| **Browse** | Grid of campaign cards (Factory-registered) plus a Deleted campaigns section for vault-box campaigns still holding refunds | indexer list + Factory box search + vault boxes | - |
+| **Browse** | Grid of campaign cards (Registry-registered) plus a Deleted campaigns section for vault-box campaigns still holding refunds | indexer list + Registry box search + vault boxes | - |
 | **Detail** | Full campaign state, progress bar, per-pledge actions | indexer detail + live leaves + vault box | pledge / claim / refund / cancelPledge / delete |
-| **Create** | Title + metadata URI + goal (ALGO) + end date/time picker | - | `create()` + `factory.register()` |
+| **Create** | Title + metadata URI + goal (ALGO) + end date/time picker | - | `create()` + `registry.register()` |
 | **Pledge** | Amount input on the detail page | tree replay (frontier) | payment + `pledge()` + `credit()` (one atomic group) |
 | **My pledges** | Grid of the connected wallet's campaigns with live pledge leaves, deleted ones included (their vault refunds stay open) | campaign enumerate + headers + `fetchMyLeaves` replay per campaign | - |
 
@@ -135,11 +135,11 @@ the pledge-time content stays frozen and always viewable.
 
 All reads use `algosdk.Indexer` configured from the same env as algod:
 
-- **List campaigns** - with a Factory configured, read its registration boxes
-  (`indexer.searchForApplicationBoxes(factoryId)`; one box search, decoded
+- **List campaigns** - with a Registry configured, read its registration boxes
+  (`indexer.searchForApplicationBoxes(registryId)`; one box search, decoded
   `'r' + appId` names) and look each id up directly. The unfiltered
   `searchForApplications` scan (key-presence discriminator) only runs when
-  `VITE_FACTORY_APP_ID` is unset (dev mode): it never finishes on
+  `VITE_REGISTRY_APP_ID` is unset (dev mode): it never finishes on
   TestNet-scale chains, where every response carries thousands of unrelated
   apps with full approval programs.
 - **One campaign** - `indexer.lookupApplications(appId).do()` for the global
@@ -177,7 +177,7 @@ All reads use `algosdk.Indexer` configured from the same env as algod:
 ## Writes (SDK clients)
 
 All writes go through `@kasakame/sdk`'s `CampaignClient` / `ClaimsVaultClient` /
-`FactoryClient` (generated from the pinned ARC-56 specs by the SDK build;
+`RegistryClient` (generated from the pinned ARC-56 specs by the SDK build;
 `SDK_SPECS=local` regenerates them for contracts changes; never edited by hand).
 Pledges pay the **vault** (its app address, derived from `VITE_VAULT_APP_ID` via
 `algosdk.getApplicationAddress`), never the campaign escrow.
@@ -190,8 +190,8 @@ const { result } = await new CampaignFactory({ algorand, defaultSender, defaultS
   appReferences: [vaultAppId()],
 })
 
-// factory.register(): official-campaign proof; ~0.019 ALGO refundable deposit.
-await factoryClient.send.register({ args: { app: appId, payment }, appReferences: [appId] })
+// registry.register(): official-campaign proof; ~0.019 ALGO refundable deposit.
+await registryClient.send.register({ args: { app: appId, payment }, appReferences: [appId] })
 ```
 
 Creation takes two wallet prompts: registration references the new app id, which exists
@@ -212,9 +212,9 @@ composer.addAppCallMethodCall(await campaignClient.params.pledge({
 composer.addAppCallMethodCall(await vaultClient.params.credit({
   args: { app: appId, amount },
   sender,
-  appReferences: [factoryAppId()],                       // inner isRegistered target
-  boxReferences: [vaultCampaignBox, factoryRegistrationBox],
-  extraFee: microAlgos(1000),                            // first-touch factory check
+  appReferences: [registryAppId()],                       // inner isRegistered target
+  boxReferences: [vaultCampaignBox, registrationBox],
+  extraFee: microAlgos(1000),                            // first-touch Registry check
 }))
 await composer.send()
 ```
@@ -265,7 +265,7 @@ concurrent spend moved the root).
 
 Delete sends unregister and delete in a single atomic group, so you approve
 once. Unregister runs first: every app reference resolves while the campaign
-app still exists, and the Factory requires its `delete()` to be the immediately
+app still exists, and the Registry requires its `delete()` to be the immediately
 following transaction. The campaign requires the unregister immediately before
 its delete, so a raw delete is rejected; an unregistered campaign's unregister
 no-ops, and the same group still cleans it up.
@@ -273,7 +273,7 @@ no-ops, and the same group still cleans it up.
 ```ts
 const composer = algorand.send.newGroup()
 composer.addAppCallMethodCall(
-  await factoryClient.params.unregister({
+  await registryClient.params.unregister({
     args: { app: appId },
     sender: session.address,
     appReferences: [appId],
@@ -352,17 +352,17 @@ this campaign, and backers can still refund from the vault until the window clos
   second failure surfaces, with a retry hint.
 - **Close-out needs the exact `closeRemainderTo` parameter** (the escrow close
   is a payment with `closeRemainderTo`, set by the contract, not the UI).
-- **The Factory and the vault must be funded.** `register()` needs the Factory's
+- **The Registry and the vault must be funded.** `register()` needs the Registry's
   app account to hold the registration deposits; the vault's app account holds
   the pooled pledges plus its parked per-campaign MBR (32,100 µA per box). The
   deploy scripts fund both once.
-- **`VITE_FACTORY_APP_ID` / `VITE_VAULT_APP_ID`.** Both ids are required. The
-  vault receives every pledge, and Factory registration is what lets the vault's
-  first `credit` accept it. With an empty Factory id the browse list falls back
+- **`VITE_REGISTRY_APP_ID` / `VITE_VAULT_APP_ID`.** Both ids are required. The
+  vault receives every pledge, and Registry registration is what lets the vault's
+  first `credit` accept it. With an empty Registry id the browse list falls back
   to the unfiltered app scan, `createCampaign` skips `register`, and the campaign
   cannot take pledges until it is registered. Deleting it also fails while the
-  Factory id is empty: a campaign bound to the official vault requires
-  `unregister` immediately before `delete`. To recover, set the Factory id and
+  Registry id is empty: a campaign bound to the official vault requires
+  `unregister` immediately before `delete`. To recover, set the Registry id and
   retry the delete (`unregister` is a no-op for an unregistered campaign); a
   custom client can register the campaign instead. Set both ids before creating
   new campaigns.
@@ -370,7 +370,7 @@ this campaign, and backers can still refund from the vault until the window clos
   `cancelPledge()`, and `delete()` inner-call the vault, whose box read/write
   requires the campaign box (`'c' + appId`) declared on the outer transaction
   - the AVM rejects undeclared box access. First-touch `credit` additionally
-  declares the Factory app and its registration box.
+  declares the Registry app and its registration box.
 - **The vault address is the pledge receiver.** `pledge()` rejects payments
   sent anywhere else, so the helper derives the address from
   `algosdk.getApplicationAddress(VITE_VAULT_APP_ID)`.
@@ -437,4 +437,4 @@ indexer/client services via `vi.mock`.
 - CLI workflows - refund, withdraw, claim, and delete by app ID ship in the
   separate `@kasakame/cli` package (see [`cli.md`](cli.md)).
 - Frontend hosting - tracked in the [TestNet go-live epic](https://github.com/kasakame/kasakame/issues/61).
-- Backend / database - optional catalog only; the indexer + Factory are the read model.
+- Backend / database - optional catalog only; the indexer + Registry are the read model.

@@ -22,13 +22,13 @@ vi.mock('./chain.js', () => ({
         },
       },
     },
-    factoryAppId: factoryAppIdMock(),
+    registryAppId: registryAppIdMock(),
     vaultAppId: 2002n,
   }),
 }))
 
-const { factoryAppIdMock, searchForApplicationBoxesMock, lookupApplicationsMock, lookupBlockMock } = vi.hoisted(() => ({
-  factoryAppIdMock: vi.fn(() => 1001n),
+const { registryAppIdMock, searchForApplicationBoxesMock, lookupApplicationsMock, lookupBlockMock } = vi.hoisted(() => ({
+  registryAppIdMock: vi.fn(() => 1001n),
   searchForApplicationBoxesMock: vi.fn(),
   lookupApplicationsMock: vi.fn(),
   lookupBlockMock: vi.fn(),
@@ -43,13 +43,13 @@ const { fetchVaultBoxMock } = vi.hoisted(() => ({
 }))
 
 // Indexer `searchForApplicationBoxes` returns a limit/nextToken/do chain, mocked per app id:
-// 1001n => factory registration boxes, 2002n => vault per-campaign boxes.
-let factoryBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
+// 1001n => registry registration boxes, 2002n => vault per-campaign boxes.
+let registryBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
 let vaultBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
-const factoryLimitMock = vi.fn(() => factoryChain)
-const factoryNextTokenMock = vi.fn(() => factoryChain)
-const factoryDoMock = vi.fn(() => Promise.resolve(factoryBoxesValue))
-const factoryChain = { limit: factoryLimitMock, nextToken: factoryNextTokenMock, do: factoryDoMock }
+const registryLimitMock = vi.fn(() => registryChain)
+const registryNextTokenMock = vi.fn(() => registryChain)
+const registryDoMock = vi.fn(() => Promise.resolve(registryBoxesValue))
+const registryChain = { limit: registryLimitMock, nextToken: registryNextTokenMock, do: registryDoMock }
 const vaultLimitMock = vi.fn(() => vaultChain)
 const vaultNextTokenMock = vi.fn(() => vaultChain)
 const vaultDoMock = vi.fn(() => Promise.resolve(vaultBoxesValue))
@@ -60,7 +60,7 @@ const emptyChain = {
   do: () => Promise.resolve({ boxes: [], nextToken: undefined }),
 }
 searchForApplicationBoxesMock.mockImplementation((appId: bigint) => {
-  if (appId === 1001n) return factoryChain
+  if (appId === 1001n) return registryChain
   if (appId === 2002n) return vaultChain
   return emptyChain
 })
@@ -327,17 +327,17 @@ describe('toCampaignViewModel', () => {
 describe('enumerateCampaigns', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    factoryAppIdMock.mockReturnValue(1001n)
-    factoryBoxesValue = { boxes: [], nextToken: undefined }
+    registryAppIdMock.mockReturnValue(1001n)
+    registryBoxesValue = { boxes: [], nextToken: undefined }
     vaultBoxesValue = { boxes: [], nextToken: undefined }
     searchForApplicationBoxesMock.mockImplementation((appId: bigint) => {
-      if (appId === 1001n) return factoryChain
+      if (appId === 1001n) return registryChain
       if (appId === 2002n) return vaultChain
       return emptyChain
     })
-    factoryLimitMock.mockImplementation(() => factoryChain)
-    factoryNextTokenMock.mockImplementation(() => factoryChain)
-    factoryDoMock.mockImplementation(() => Promise.resolve(factoryBoxesValue))
+    registryLimitMock.mockImplementation(() => registryChain)
+    registryNextTokenMock.mockImplementation(() => registryChain)
+    registryDoMock.mockImplementation(() => Promise.resolve(registryBoxesValue))
     vaultLimitMock.mockImplementation(() => vaultChain)
     vaultNextTokenMock.mockImplementation(() => vaultChain)
     vaultDoMock.mockImplementation(() => Promise.resolve(vaultBoxesValue))
@@ -350,8 +350,8 @@ describe('enumerateCampaigns', () => {
     const lookupBlockChain = { do: lookupBlockDoMock }
   })
 
-  it('lists factory-registered campaign ids', async () => {
-    factoryBoxesValue = {
+  it('lists registry-registered campaign ids', async () => {
+    registryBoxesValue = {
       boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }, { name: boxName(42n, REGISTRATION_BOX_PREFIX) }],
       nextToken: undefined,
     }
@@ -359,18 +359,18 @@ describe('enumerateCampaigns', () => {
     expect(ids).toEqual(new Set([7n, 42n]))
     expect(searchForApplicationBoxesMock).toHaveBeenCalledWith(1001n)
     expect(searchForApplicationBoxesMock).toHaveBeenCalledWith(2002n)
-    expect(factoryLimitMock).toHaveBeenCalledWith(1000)
+    expect(registryLimitMock).toHaveBeenCalledWith(1000)
   })
 
-  it('includes vault-boxed campaigns not registered with the factory', async () => {
-    factoryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
+  it('includes vault-boxed campaigns not registered with the registry', async () => {
+    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
     vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n, 9n]))
   })
 
-  it('dedupes campaigns present in both the factory and the vault', async () => {
-    factoryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
+  it('dedupes campaigns present in both the registry and the vault', async () => {
+    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
     vaultBoxesValue = { boxes: [{ name: boxName(7n, VAULT_BOX_PREFIX) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n]))
@@ -382,7 +382,7 @@ describe('enumerateCampaigns', () => {
   })
 
   it('skips malformed box names from either source', async () => {
-    factoryBoxesValue = {
+    registryBoxesValue = {
       boxes: [
         { name: boxName(7n, REGISTRATION_BOX_PREFIX) },
         { name: new Uint8Array([0x72, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
@@ -401,8 +401,8 @@ describe('enumerateCampaigns', () => {
     expect(ids).toEqual(new Set([7n, 9n]))
   })
 
-  it('skips the factory when no factory is configured', async () => {
-    factoryAppIdMock.mockReturnValue(0n)
+  it('skips the registry when no registry is configured', async () => {
+    registryAppIdMock.mockReturnValue(0n)
     vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([9n]))
@@ -411,7 +411,7 @@ describe('enumerateCampaigns', () => {
   })
 
   it('paginates both box searches across multiple pages', async () => {
-    factoryDoMock
+    registryDoMock
       .mockResolvedValueOnce({ boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: 't' })
       .mockResolvedValueOnce({ boxes: [{ name: boxName(42n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined })
     vaultDoMock
@@ -419,7 +419,7 @@ describe('enumerateCampaigns', () => {
       .mockResolvedValueOnce({ boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined })
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n, 42n, 9n]))
-    expect(factoryNextTokenMock).toHaveBeenCalledWith('t')
+    expect(registryNextTokenMock).toHaveBeenCalledWith('t')
     expect(vaultNextTokenMock).toHaveBeenCalledWith('vt')
   })
 })

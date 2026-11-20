@@ -33,10 +33,10 @@ async function importDeployerIfExists(dir: string): Promise<Deployer | null> {
 }
 
 /**
- * Deployers that a bare `deploy:*` command runs, in order: the vault's `create` records the Factory id and binds to it.
+ * Deployers that a bare `deploy:*` command runs, in order: the vault's `create` records the Registry id and binds to it.
  * Example deployers (the demo campaign) only run when named explicitly.
  */
-const PLATFORM_DEPLOYERS = ['factory', 'claimsvault']
+const PLATFORM_DEPLOYERS = ['registry', 'claimsvault']
 
 // get a list of all deployers from the subdirectories, platform deployers first
 async function getDeployers(): Promise<Deployer[]> {
@@ -74,9 +74,9 @@ void (async () => {
 
   for (const deployer of filteredDeployers) {
     const appId = await deployer.deploy()
-    // A fresh Factory id feeds the vault deployer in the same command; no env edit needed.
-    if (deployer.name === 'factory' && typeof appId === 'bigint') {
-      process.env.FACTORY_APP_ID = appId.toString()
+    // A fresh Registry id feeds the vault deployer in the same command; no env edit needed.
+    if (deployer.name === 'registry' && typeof appId === 'bigint') {
+      process.env.REGISTRY_APP_ID = appId.toString()
     }
   }
 })().catch((error: unknown) => {

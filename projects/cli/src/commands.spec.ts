@@ -380,7 +380,7 @@ describe('runDelete', () => {
 
     expect(sdkMocks.deleteCampaign).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Deleted campaign 1.')
-    expect(console.log).toHaveBeenCalledWith("The campaign's schema MBR and any Factory registration deposit are back in your account.")
+    expect(console.log).toHaveBeenCalledWith("The campaign's schema MBR and any Registry registration deposit are back in your account.")
     expect(console.error).toHaveBeenCalledWith('Submitting: delete campaign 1…')
     expect(console.log).not.toHaveBeenCalledWith('Backers keep refunding from the vault until the refund window closes.')
     expect(closeMock).toHaveBeenCalled()

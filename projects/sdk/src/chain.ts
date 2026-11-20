@@ -4,8 +4,8 @@ import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 export interface SdkConfig {
   /** The algod/indexer client every SDK read and write goes through. */
   algorand: AlgorandClient
-  /** Canonical Factory app id (the campaign registry). */
-  factoryAppId: bigint
+  /** Registry app id (the campaign registry). */
+  registryAppId: bigint
   /** ClaimsVault app id (pledge pool + refunds). */
   vaultAppId: bigint
 }
