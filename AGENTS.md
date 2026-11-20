@@ -138,9 +138,9 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,249 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,860 B | 2 (1 extra) | 307,000 µA |
-| Registry | 958 B | 1 | 307,000 µA |
+| Campaign | 2,250 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,861 B | 2 (1 extra) | 307,000 µA |
+| Registry | 959 B | 1 | 307,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the

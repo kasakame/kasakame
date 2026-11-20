@@ -76,11 +76,11 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,245 B | 4 B | 2,249 B | 1 (2 pages) | 4,096 B | 1,847 B |
-| ClaimsVault | 2,856 B | 4 B | 2,860 B | 1 (2 pages) | 4,096 B | 1,236 B |
-| Registry | 954 B | 4 B | 958 B | 0 (1 page) | 2,048 B | 1,090 B |
+| Campaign | 2,246 B | 4 B | 2,250 B | 1 (2 pages) | 4,096 B | 1,846 B |
+| ClaimsVault | 2,857 B | 4 B | 2,861 B | 1 (2 pages) | 4,096 B | 1,235 B |
+| Registry | 955 B | 4 B | 959 B | 0 (1 page) | 2,048 B | 1,089 B |
 
-The campaign is **201 bytes over** the 1-page (2,048 B) limit. It is already a
+The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 201 B would return it to
 one page and save 100,000 µA of creator MBR.
 

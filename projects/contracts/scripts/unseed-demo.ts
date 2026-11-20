@@ -27,8 +27,6 @@ interface SeedEntry {
 
 interface SeedState {
   registryId?: string
-  /** Legacy state written before the Registry rename. */
-  factoryId?: string
   vaultId: string
   campaigns: SeedEntry[]
 }
@@ -50,7 +48,7 @@ void (async () => {
   const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) as SeedState
   const algorand = isLocalNet ? AlgorandClient.defaultLocalNet() : AlgorandClient.fromEnvironment()
 
-  const registryId = BigInt(state.registryId ?? state.factoryId ?? '0')
+  const registryId = BigInt(state.registryId ?? '0')
   const vaultId = BigInt(state.vaultId)
   const remaining: SeedEntry[] = []
   for (const entry of state.campaigns) {

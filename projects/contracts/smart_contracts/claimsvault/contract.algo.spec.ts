@@ -49,9 +49,9 @@ describe('ClaimsVault', () => {
     return JSON.parse(out) as unknown
   }
 
-  function createVault(sweep = ctx.defaultSender, window = WINDOW, factoryId = REGISTRY_APP_ID): ClaimsVault {
+  function createVault(sweep = ctx.defaultSender, window = WINDOW, registryId = REGISTRY_APP_ID): ClaimsVault {
     const vault = ctx.contract.create(ClaimsVault)
-    vault.create(ctx.any.application({ applicationId: factoryId }), sweep, window)
+    vault.create(ctx.any.application({ applicationId: registryId }), sweep, window)
     return vault
   }
 
@@ -169,9 +169,9 @@ describe('ClaimsVault', () => {
   }
 
   describe('create', () => {
-    test('stores the factory, sweep target, and window', () => {
+    test('stores the registry, sweep target, and window', () => {
       const vault = createVault()
-      expect(toExternalValue(vault.factory.value.id)).toEqual(REGISTRY_APP_ID)
+      expect(toExternalValue(vault.registry.value.id)).toEqual(REGISTRY_APP_ID)
       expect(toExternalValue(vault.refundWindow.value)).toEqual(WINDOW)
     })
 
@@ -199,11 +199,11 @@ describe('ClaimsVault', () => {
       }).toThrow('refund window too long')
     })
 
-    test('rejects a zero factory', () => {
+    test('rejects a zero registry', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
         vault.create(ctx.any.application({ applicationId: 0 }), ctx.defaultSender, WINDOW)
-      }).toThrow('factory required')
+      }).toThrow('registry required')
     })
 
     test('rejects a zero sweep target', () => {

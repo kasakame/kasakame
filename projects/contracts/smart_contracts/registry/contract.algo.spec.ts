@@ -76,7 +76,7 @@ describe('Registry', () => {
     const vault = ctx.contract.create(ClaimsVault)
     vault.create(ctx.ledger.getApplicationForContract(registry), sweep, window)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
-    ;(vault.factory as unknown as { value: unknown }).value = ctx.ledger.getApplicationForContract(registry).id
+    ;(vault.registry as unknown as { value: unknown }).value = ctx.ledger.getApplicationForContract(registry).id
     return ctx.ledger.getApplicationForContract(vault)
   }
 
@@ -281,7 +281,7 @@ describe('Registry', () => {
       }).toThrow('vault program hash not configured')
     })
 
-    test('rejects a vault with no factory global', () => {
+    test('rejects a vault with no registry global', () => {
       const registry = createRegistry({ vaultHash: vaultProgramHash() })
       expect(() => {
         bind(registry, ctx.any.application({ applicationId: 777 }))

@@ -243,7 +243,7 @@ Two contracts: **Campaign** and **ClaimsVault**, plus the **Registry** registry.
 
 ### Vault global state and boxes
 
-Global: `factory (Application)`, `refundWindow (uint64)`, `sweepTarget (Account)`. The `factory` key holds the Registry id; the
+Global: `registry (Application)`, `refundWindow (uint64)`, `sweepTarget (Account)`. The `registry` key holds the Registry id; the
 key name is kept for Campaign/ABI compatibility, not because the Registry has an owner.
 Per campaign, one box, key = `c` ‖ appId (9 bytes), value (65 bytes):
 
@@ -501,7 +501,7 @@ If the platform wants zero self-enrichment optics, `sweepTarget` can be a docume
 The 730-day window and the sweep destination are disclosed in the UI at pledge time (refund-window banner). The vault contract,
 the Registry, and the deploy script require a window of at least **30 days** and cap it at **10 years**, so a 1-second window is
 rejected and a misconfiguration cannot overflow `settledAt + refundWindow`. The contracts also reject a zero/self `sweepTarget`
-and a zero Registry id (stored in the `factory` key) at creation. The deploy script requires an explicit `SWEEP_TARGET` on
+and a zero Registry id (stored in the `registry` key) at creation. The deploy script requires an explicit `SWEEP_TARGET` on
 TestNet/MainNet; LocalNet still defaults to the deployer for convenience.
 Rationale:
 residuals will be dust; a future vault can point at a community fund instead - the address is a vault-creation parameter,
@@ -595,9 +595,9 @@ Current program footprint (2026-11-20, `npm run build`; see [`limits.md`](limits
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,249 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,860 B | 2 (1 extra) | 307,000 µA |
-| Registry | 958 B | 1 | 307,000 µA |
+| Campaign | 2,250 B | 2 (1 extra) | 571,000 µA |
+| ClaimsVault | 2,861 B | 2 (1 extra) | 307,000 µA |
+| Registry | 959 B | 1 | 307,000 µA |
 
 Resource ceilings (hard limits, not Big-O):
 
