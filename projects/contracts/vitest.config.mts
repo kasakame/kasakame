@@ -23,7 +23,6 @@ class PathOrderSequencer extends BaseSequencer {
 }
 
 export default defineConfig({
-  esbuild: {},
   test: {
     setupFiles: 'vitest.setup.ts',
     // Run test files by path, not by Vitest's default size/duration order.
