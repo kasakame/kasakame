@@ -32,7 +32,7 @@ export const FEE = 1_000n
 export const DEFAULT_GOAL = 10n * ALGO
 /** Refund window used by the test vault (seconds). */
 export const TEST_VAULT_WINDOW = 3_600n
-/** Registration deposit: the minimum balance of the Factory's 32-byte registration box. */
+/** Registration deposit: the minimum balance of the Registry's 32-byte registration box. */
 export const REGISTER_MBR = 18_900n
 /** Minimum balance parked by one 65-byte vault campaign box. */
 export const VAULT_BOX_MBR = 32_100n
@@ -44,15 +44,15 @@ export const DEPLOY_FUNDING = 1_000_000n
 export const CAMPAIGN_MBR = BigInt(SIZE_BUDGET.campaign.appMbr)
 /** ClaimsVault app MBR from the pinned size budget. */
 export const VAULT_MBR = BigInt(SIZE_BUDGET.claimsvault.appMbr)
-/** Factory app MBR from the pinned size budget. */
-export const FACTORY_MBR = BigInt(SIZE_BUDGET.factory.appMbr)
+/** Registry app MBR from the pinned size budget. */
+export const REGISTRY_MBR = BigInt(SIZE_BUDGET.registry.appMbr)
 /** A zero root before settlement. */
 export const Z_HEX = '00'.repeat(32)
 /** Fee for the campaign create call. */
 export const CREATE_FEE = FEE
 /** Fees for the register group: the register call plus its payment. */
 export const REGISTER_FEES = 2n * FEE
-/** Credit call fee plus the extra fee that covers the first-touch factory-check inner call. */
+/** Credit call fee plus the extra fee that covers the first-touch registry-check inner call. */
 export const FEE_CREDIT = 2n * FEE
 /** Pledge group fee excluding the tree-shape OpUp takes: pay + pledge + credit. */
 export const PLEDGE_FEES = FEE + FEE + FEE_CREDIT
@@ -320,12 +320,12 @@ export function vaultBoxRef(vaultId: bigint, appId: bigint): { appId: bigint; na
 }
 
 /**
- * @param factoryId The Factory app id.
+ * @param registryId The Registry app id.
  * @param appId The campaign app id.
  * @returns The registration-box reference.
  */
-export function registrationBoxRef(factoryId: bigint, appId: bigint): { appId: bigint; name: Uint8Array } {
-  return { appId: factoryId, name: new Uint8Array(Buffer.concat([Buffer.from('r'), appIdBytes(appId)])) }
+export function registrationBoxRef(registryId: bigint, appId: bigint): { appId: bigint; name: Uint8Array } {
+  return { appId: registryId, name: new Uint8Array(Buffer.concat([Buffer.from('r'), appIdBytes(appId)])) }
 }
 
 /** The vault's per-campaign box. */
@@ -397,7 +397,7 @@ export async function campaignState(appClient: AppClient): Promise<CampaignState
 /** The three ARC-56 specs the integration suites deploy. */
 export interface ContractSpecs {
   campaign: Arc56Contract
-  factory: Arc56Contract
+  registry: Arc56Contract
   vault: Arc56Contract
 }
 
@@ -411,13 +411,13 @@ function readSpec(relativePath: string): Arc56Contract {
 export function loadContractSpecs(): ContractSpecs {
   return {
     campaign: readSpec('campaign/Campaign.arc56.json'),
-    factory: readSpec('factory/Factory.arc56.json'),
+    registry: readSpec('registry/Registry.arc56.json'),
     vault: readSpec('claimsvault/ClaimsVault.arc56.json'),
   }
 }
 
 /**
- * Hash a compiled program's approval + clear-state bytecode the way the Factory binds it.
+ * Hash a compiled program's approval + clear-state bytecode the way the Registry binds it.
  *
  * @param spec The ARC-56 spec with compiled bytecode.
  * @param name Spec name, used in the missing-bytecode error.
@@ -435,7 +435,7 @@ export interface DeployedApp {
   address: string
 }
 
-/** A deployed Factory + bound ClaimsVault, plus the platform accounts. */
+/** A deployed Registry + bound ClaimsVault, plus the platform accounts. */
 export interface ContractStack {
   algorand: AlgorandClient
   specs: ContractSpecs
@@ -443,27 +443,43 @@ export interface ContractStack {
   sweeper: Account
   ownerAddress: string
   sweeperAddress: string
-  factory: DeployedApp
+  registry: DeployedApp
   vault: DeployedApp
 }
 
 /** Options for {@link deployStack}. */
 export interface DeployStackOptions {
-  /** ALGO funded to the platform owner. Defaults to 50. */
+  /** ALGO funded to the platform deployer. Defaults to 50. */
   ownerAlgo?: number
   /** Refund window for the test vault. Defaults to {@link TEST_VAULT_WINDOW}. */
   vaultWindowSeconds?: bigint
   /** ALGO funded to the vault app account. Defaults to {@link DEPLOY_FUNDING}; use 0 to assert a bare vault. */
   fundVault?: bigint
-  /** Configure the official campaign hash. Defaults to true; Factory tests set it per deployed program. */
-  configureCampaignHash?: boolean
-  /** Bind the vault to the Factory. Defaults to true; Factory setVault tests start unbound. */
+  /** Bind the vault to the Registry. Defaults to true; bind-guard tests start unbound. */
   bindVault?: boolean
+  /** Override the campaign hash committed at Registry create (test-only). */
+  campaignProgramHash?: Uint8Array
+  /** Override the vault hash committed at Registry create (test-only). */
+  vaultProgramHash?: Uint8Array
+  /** Override the sweep target committed at Registry create (test-only; defaults to the sweeper). */
+  registrySweepTarget?: string
+  /** Override the refund window committed at Registry create (test-only; defaults to the vault window). */
+  registryWindowSeconds?: bigint
 }
 
-async function deployFactory(algorand: AlgorandClient, spec: Arc56Contract, ownerAddr: string): Promise<DeployedApp> {
-  const factory = new AppFactory({ appSpec: spec, algorand, defaultSender: ownerAddr })
-  const { appClient } = await factory.send.create({ method: 'create()void', args: [], sender: ownerAddr, suppressLog: true })
+async function deployRegistry(
+  algorand: AlgorandClient,
+  spec: Arc56Contract,
+  ownerAddr: string,
+  options: { campaignHash: Uint8Array; vaultHash: Uint8Array; sweepTarget: string; windowSeconds: bigint },
+): Promise<DeployedApp> {
+  const registry = new AppFactory({ appSpec: spec, algorand, defaultSender: ownerAddr })
+  const { appClient } = await registry.send.create({
+    method: 'create(byte[],byte[],address,uint64)void',
+    args: [options.campaignHash, options.vaultHash, options.sweepTarget, options.windowSeconds],
+    sender: ownerAddr,
+    suppressLog: true,
+  })
   await algorand.send.payment({ sender: ownerAddr, receiver: appClient.appAddress, amount: microAlgos(DEPLOY_FUNDING), suppressLog: true })
   return { client: appClient, appId: appClient.appId, address: appClient.appAddress.toString() }
 }
@@ -471,14 +487,14 @@ async function deployFactory(algorand: AlgorandClient, spec: Arc56Contract, owne
 async function deployVault(
   algorand: AlgorandClient,
   spec: Arc56Contract,
-  options: { factoryId: bigint; ownerAddr: string; sweeperAddr: string; windowSeconds: bigint; funding: bigint },
+  options: { registryId: bigint; ownerAddr: string; sweeperAddr: string; windowSeconds: bigint; funding: bigint },
 ): Promise<DeployedApp> {
-  const factory = new AppFactory({ appSpec: spec, algorand, defaultSender: options.ownerAddr })
-  const { appClient } = await factory.send.create({
+  const registry = new AppFactory({ appSpec: spec, algorand, defaultSender: options.ownerAddr })
+  const { appClient } = await registry.send.create({
     method: 'create(uint64,address,uint64)void',
-    args: [options.factoryId, options.sweeperAddr, options.windowSeconds],
+    args: [options.registryId, options.sweeperAddr, options.windowSeconds],
     sender: options.ownerAddr,
-    appReferences: [options.factoryId],
+    appReferences: [options.registryId],
     suppressLog: true,
   })
   if (options.funding > 0n) {
@@ -492,15 +508,9 @@ async function deployVault(
   return { client: appClient, appId: appClient.appId, address: appClient.appAddress.toString() }
 }
 
-async function bindVault(factoryClient: AppClient, vaultSpec: Arc56Contract, vaultId: bigint, ownerAddr: string): Promise<void> {
-  await factoryClient.send.call({
-    method: 'setVaultApprovalHash(byte[])void',
-    args: [specProgramHash(vaultSpec, 'ClaimsVault.arc56.json')],
-    sender: ownerAddr,
-    suppressLog: true,
-  })
-  await factoryClient.send.call({
-    method: 'setVault(uint64)void',
+async function bindVault(registryClient: AppClient, vaultId: bigint, ownerAddr: string): Promise<void> {
+  await registryClient.send.call({
+    method: 'bindVault(uint64)void',
     args: [vaultId],
     sender: ownerAddr,
     appReferences: [vaultId],
@@ -509,7 +519,7 @@ async function bindVault(factoryClient: AppClient, vaultSpec: Arc56Contract, vau
 }
 
 /**
- * Deploy a Factory, fund it, deploy + bind the official vault, and optionally configure the campaign hash.
+ * Deploy a Registry, fund it, deploy + bind the official vault, and optionally configure the campaign hash.
  *
  * Starts a fresh fixture scope, so each call is isolated from earlier tests.
  *
@@ -526,38 +536,35 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   const ownerAddress = owner.addr.toString()
   const sweeperAddress = sweeper.addr.toString()
   const fundVault = options.fundVault ?? DEPLOY_FUNDING
-  const configureCampaignHash = options.configureCampaignHash ?? true
-  const bindVaultToFactory = options.bindVault ?? true
+  const bindVaultToRegistry = options.bindVault ?? true
+  const windowSeconds = options.vaultWindowSeconds ?? TEST_VAULT_WINDOW
 
   const ownerBefore = await accountInfo(algorand, ownerAddress)
-  const factory = await deployFactory(algorand, specs.factory, ownerAddress)
+  const registry = await deployRegistry(algorand, specs.registry, ownerAddress, {
+    campaignHash: options.campaignProgramHash ?? specProgramHash(specs.campaign, 'Campaign.arc56.json'),
+    vaultHash: options.vaultProgramHash ?? specProgramHash(specs.vault, 'ClaimsVault.arc56.json'),
+    sweepTarget: options.registrySweepTarget ?? sweeperAddress,
+    windowSeconds: options.registryWindowSeconds ?? windowSeconds,
+  })
   const vault = await deployVault(algorand, specs.vault, {
-    factoryId: factory.appId,
+    registryId: registry.appId,
     ownerAddr: ownerAddress,
     sweeperAddr: sweeperAddress,
-    windowSeconds: options.vaultWindowSeconds ?? TEST_VAULT_WINDOW,
+    windowSeconds,
     funding: fundVault,
   })
-  if (bindVaultToFactory) {
-    await bindVault(factory.client, specs.vault, vault.appId, ownerAddress)
-  }
-  if (configureCampaignHash) {
-    await factory.client.send.call({
-      method: 'setApprovalHash(byte[])void',
-      args: [specProgramHash(specs.campaign, 'Campaign.arc56.json')],
-      sender: ownerAddress,
-      suppressLog: true,
-    })
+  if (bindVaultToRegistry) {
+    await bindVault(registry.client, vault.appId, ownerAddress)
   }
 
   const ownerAfter = await accountInfo(algorand, ownerAddress)
-  const operations = 3 + (fundVault > 0n ? 1 : 0) + (bindVaultToFactory ? 2 : 0) + (configureCampaignHash ? 1 : 0)
-  expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(FACTORY_MBR + VAULT_MBR)
+  const operations = 3 + (fundVault > 0n ? 1 : 0) + (bindVaultToRegistry ? 1 : 0)
+  expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(REGISTRY_MBR + VAULT_MBR)
   expect(ownerBefore.balance - ownerAfter.balance - DEPLOY_FUNDING - fundVault).toEqual(BigInt(operations) * FEE)
-  expect(await accountInfo(algorand, factory.address)).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })
+  expect(await accountInfo(algorand, registry.address)).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })
   expect(await accountInfo(algorand, vault.address)).toEqual({ balance: fundVault, minBalance: APP_BASE })
 
-  return { algorand, specs, owner, sweeper, ownerAddress, sweeperAddress, factory, vault }
+  return { algorand, specs, owner, sweeper, ownerAddress, sweeperAddress, registry, vault }
 }
 
 /**
@@ -568,21 +575,21 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
  * @param creatorAddr The campaign creator (the payer).
  */
 export async function registerCampaign(stack: ContractStack, appId: bigint, creatorAddr: string): Promise<void> {
-  const factoryClient = new AppFactory({
-    appSpec: stack.specs.factory,
+  const registryClient = new AppFactory({
+    appSpec: stack.specs.registry,
     algorand: stack.algorand,
     defaultSender: creatorAddr,
   }).getAppClientById({
-    appId: stack.factory.appId,
+    appId: stack.registry.appId,
   })
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
-  const factoryBefore = await accountInfo(stack.algorand, stack.factory.address)
+  const registryBefore = await accountInfo(stack.algorand, stack.registry.address)
   const registerPayment = await stack.algorand.createTransaction.payment({
     sender: creatorAddr,
-    receiver: factoryClient.appAddress,
+    receiver: registryClient.appAddress,
     amount: microAlgos(REGISTER_MBR),
   })
-  await factoryClient.send.call({
+  await registryClient.send.call({
     method: 'register(uint64,pay)void',
     args: [appId, registerPayment],
     sender: creatorAddr,
@@ -590,11 +597,11 @@ export async function registerCampaign(stack: ContractStack, appId: bigint, crea
     suppressLog: true,
   })
   const creatorAfter = await accountInfo(stack.algorand, creatorAddr)
-  const factoryAfter = await accountInfo(stack.algorand, stack.factory.address)
+  const registryAfter = await accountInfo(stack.algorand, stack.registry.address)
   expect(creatorBefore.balance - creatorAfter.balance - REGISTER_MBR).toEqual(REGISTER_FEES)
   expect(creatorAfter.minBalance).toEqual(creatorBefore.minBalance)
-  expect(factoryAfter.minBalance - factoryBefore.minBalance).toEqual(REGISTER_MBR)
-  expect(factoryAfter.balance - factoryBefore.balance).toEqual(REGISTER_MBR)
+  expect(registryAfter.minBalance - registryBefore.minBalance).toEqual(REGISTER_MBR)
+  expect(registryAfter.balance - registryBefore.balance).toEqual(REGISTER_MBR)
 }
 
 /** Options for {@link deployCampaign}. */
@@ -631,8 +638,8 @@ export async function deployCampaign(
   const block = await stack.algorand.client.algod.block(status.lastRound).do()
   const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 24 * 60 * 60)
   const vaultId = options.vaultId ?? stack.vault.appId
-  const factory = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
-  const { appClient } = await factory.send.create({
+  const registry = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
+  const { appClient } = await registry.send.create({
     method: 'create(uint64,byte[],byte[],uint64,uint64)void',
     args: [
       vaultId,
@@ -698,8 +705,8 @@ export async function pledge(
     method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
     args: [appId, amount],
     sender: backerAddr,
-    appReferences: [stack.factory.appId],
-    boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.factory.appId, appId)],
+    appReferences: [stack.registry.appId],
+    boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.registry.appId, appId)],
     extraFee: microAlgos(FEE),
   })
   const result = await composer.send({ suppressLog: true })
@@ -910,11 +917,11 @@ export async function deleteCampaign(
   const registered = options.registered ?? true
   const vaultBoxRelease = options.vaultBoxRelease ?? false
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
-  const factoryBefore = await accountInfo(stack.algorand, stack.factory.address)
+  const registryBefore = await accountInfo(stack.algorand, stack.registry.address)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
   const composer = stack.algorand.send.newGroup()
   composer.addAppCallMethodCall({
-    appId: stack.factory.appId,
+    appId: stack.registry.appId,
     method: ABIMethod.fromSignature('unregister(uint64)void'),
     args: [appId],
     sender: creatorAddr,
@@ -933,17 +940,17 @@ export async function deleteCampaign(
   })
   await composer.send({ suppressLog: true })
   const creatorAfter = await accountInfo(stack.algorand, creatorAddr)
-  const factoryAfter = await accountInfo(stack.algorand, stack.factory.address)
+  const registryAfter = await accountInfo(stack.algorand, stack.registry.address)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
   expect(creatorBefore.minBalance - creatorAfter.minBalance).toEqual(CAMPAIGN_MBR)
   expect(creatorAfter.balance - creatorBefore.balance).toEqual((registered ? REGISTER_MBR : 0n) - CLEANUP_FEES)
-  expect(factoryBefore.minBalance - factoryAfter.minBalance).toEqual(registered ? REGISTER_MBR : 0n)
-  expect(factoryBefore.balance - factoryAfter.balance).toEqual(registered ? REGISTER_MBR : 0n)
+  expect(registryBefore.minBalance - registryAfter.minBalance).toEqual(registered ? REGISTER_MBR : 0n)
+  expect(registryBefore.balance - registryAfter.balance).toEqual(registered ? REGISTER_MBR : 0n)
   expect(vaultBefore.minBalance - vaultAfter.minBalance).toEqual(vaultBoxRelease ? VAULT_BOX_MBR : 0n)
 }
 
 /**
- * The program hash of a deployed campaign, exactly what the Factory verifies.
+ * The program hash of a deployed campaign, exactly what the Registry verifies.
  *
  * @param algorand The LocalNet client.
  * @param appId The deployed campaign app id.
@@ -955,15 +962,15 @@ export async function campaignApprovalHash(algorand: AlgorandClient, appId: bigi
 }
 
 /**
- * Call the Factory's readonly `isRegistered`.
+ * Call the Registry's readonly `isRegistered`.
  *
- * @param factoryClient The deployed Factory client.
+ * @param registryClient The deployed Registry client.
  * @param appId The campaign app id.
  * @param callerAddr The address paying for the readonly call.
  * @returns The boolean return value.
  */
-export async function isRegistered(factoryClient: AppClient, appId: bigint, callerAddr: string): Promise<boolean> {
-  const result = await factoryClient.send.call({
+export async function isRegistered(registryClient: AppClient, appId: bigint, callerAddr: string): Promise<boolean> {
+  const result = await registryClient.send.call({
     method: 'isRegistered(uint64)bool',
     args: [appId],
     sender: callerAddr,

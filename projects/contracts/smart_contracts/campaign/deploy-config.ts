@@ -9,10 +9,10 @@ import { resolveDeployerAccount } from '../deployer'
  * Deploys a single `Campaign` application instance and registers it (create → register).
  *
  * There is nothing to fund: the v2 escrow never holds funds (pledges go straight to the vault). Registration with the
- * Factory is required before the first pledge (the vault's first-touch `credit` verifies it on-chain).
+ * Registry is required before the first pledge (the vault's first-touch `credit` verifies it on-chain).
  *
  * This is an example deployer: a real dApp creates campaigns from the frontend, so this script is primarily a LocalNet sanity check that
- * the compiled TEAL deploys and runs. Requires the Factory (`FACTORY_APP_ID`) and the ClaimsVault (`VAULT_APP_ID`) to be deployed first.
+ * the compiled TEAL deploys and runs. Requires the Registry (`REGISTRY_APP_ID`) and the ClaimsVault (`VAULT_APP_ID`) to be deployed first.
  *
  * @returns The deployed campaign's app id.
  */
@@ -31,36 +31,36 @@ export async function deploy() {
   const specPath = path.resolve(__dirname, '../artifacts/campaign/Campaign.arc56.json')
   const appSpec = JSON.parse(fs.readFileSync(specPath, 'utf8')) as Arc56Contract
 
-  const factory = new AppFactory({ appSpec, algorand, defaultSender: deployer.addr })
+  const campaignFactory = new AppFactory({ appSpec, algorand, defaultSender: deployer.addr })
 
   const goal = 5n * 1_000_000n // 5 ALGO
   // A demo deadline 30 days in the future.
   const deadline = BigInt(Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60)
 
-  const { result } = await factory.send.create({
+  const { result } = await campaignFactory.send.create({
     method: 'create(uint64,byte[],byte[],uint64,uint64)void',
     args: [BigInt(vaultId), new TextEncoder().encode('Demo campaign'), new TextEncoder().encode('ipfs://demo'), goal, deadline],
     sender: deployer.addr,
     appReferences: [BigInt(vaultId)],
   })
 
-  // Register with the Factory so the browse page lists the campaign (first-touch credit requires it on-chain).
-  const factoryId = process.env.FACTORY_APP_ID
-  if (factoryId === undefined || factoryId === '') {
-    throw new Error('FACTORY_APP_ID is not set - register() needs it.')
+  // Register with the Registry so the browse page lists the campaign (first-touch credit requires it on-chain).
+  const registryId = process.env.REGISTRY_APP_ID
+  if (registryId === undefined || registryId === '') {
+    throw new Error('REGISTRY_APP_ID is not set - register() needs it.')
   }
-  const factorySpec = JSON.parse(
-    fs.readFileSync(path.resolve(__dirname, '../artifacts/factory/Factory.arc56.json'), 'utf8'),
+  const registrySpec = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '../artifacts/registry/Registry.arc56.json'), 'utf8'),
   ) as Arc56Contract
-  const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
-    appId: BigInt(factoryId),
+  const registryClient = new AppFactory({ appSpec: registrySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
+    appId: BigInt(registryId),
   })
   const registerPayment = await algorand.createTransaction.payment({
     sender: deployer.addr,
-    receiver: factoryClient.appAddress,
+    receiver: registryClient.appAddress,
     amount: microAlgos(18_900n),
   })
-  await factoryClient.send.call({
+  await registryClient.send.call({
     method: 'register(uint64,pay)void',
     args: [result.appId, registerPayment],
     sender: deployer.addr,

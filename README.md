@@ -12,7 +12,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | Proof-based refunds | Each pledge is a Merkle leaf; each refund is a proof; no per-backer storage |
 | O(1) settlement | Success and failure paths finalize in constant time and cost |
 | Post-delete refunds | Backers refund from the vault after the campaign app is deleted |
-| Factory registry | Only hash-verified campaigns bound to the official vault accept pledges |
+| Registry | Only hash-verified campaigns bound to the official vault accept pledges |
 | Refund window | Failed pledges stay reclaimable for 730 days, then residual goes to a sweep target |
 
 ## How it works
@@ -21,7 +21,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | --- | --- |
 | Campaign app (one per campaign) | Enforces rules; appends and nulls Merkle leaves; holds no funds |
 | ClaimsVault (one, platform-owned) | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory (one, platform-owned) | Registers campaigns against the owner-configured program hash |
+| Registry (one, ownerless) | Registers campaigns against the Campaign hash fixed at creation |
 | Frontend | Reads state from the indexer; builds transaction groups for the wallet |
 | CLI (escape hatch) | Refunds, withdrawals, claims, and deletes by app ID; wallet or mnemonic signer |
 
@@ -37,7 +37,7 @@ algokit localnet start         # start algod + indexer in Docker
 
 cd projects/contracts
 npm run build          # compile contracts + generate typed clients
-npm run deploy:localnet                 # deploy Factory then ClaimsVault - save both printed app ids in .env.localnet
+npm run deploy:localnet                 # deploy Registry then ClaimsVault - save both printed app ids in .env.localnet
 npm run seed:localnet                   # demo data
 
 cd ../frontend
@@ -45,8 +45,8 @@ cd ../frontend
 npm run dev:localnet   # frontend on http://localhost:5173
 ```
 
-Both app ids are required. Factory registration is what lets the vault accept a
-campaign's first pledge; with an empty `VITE_FACTORY_APP_ID`, creation skips
+Both app ids are required. Registry registration is what lets the vault accept a
+campaign's first pledge; with an empty `VITE_REGISTRY_APP_ID`, creation skips
 registration, pledges are rejected, and the campaign cannot be deleted until the
 id is set (see [Frontend](docs/frontend.md)).
 
@@ -82,7 +82,7 @@ Agent guidance (commands, gotchas, definition of done) is in [`AGENTS.md`](AGENT
 
 ## Status
 
-Live on TestNet. Factory [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the `v0.2.0` release (contracts, specs, SDK, CLI) is pending. Current work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
+Live on TestNet. Registry [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the `v0.2.0` release (contracts, specs, SDK, CLI) is pending. Current work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
 ## License
 

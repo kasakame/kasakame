@@ -52,7 +52,7 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Campaign | 2,215 B | 4 B | 2,219 B | 1 (2 pages) | 4,096 B | 1,877 B |
 | ClaimsVault | 2,807 B | 4 B | 2,811 B | 1 (2 pages) | 4,096 B | 1,285 B |
-| Factory | 1,068 B | 4 B | 1,072 B | 0 (1 page) | 2,048 B | 976 B |
+| Registry | 943 B | 4 B | 947 B | 0 (1 page) | 2,048 B | 1,101 B |
 
 The campaign is **171 bytes over** the 1-page (2,048 B) limit. It is already a
 2-page app; the next page boundary is 4,096 B. Trimming 171 B would return it to
@@ -69,15 +69,15 @@ and this table together.
 | --- | --- | ---: | ---: | --- | --- |
 | Campaign | 4 byte-slices + 6 uints | 1 | **571,000 µA** | creator's account | none |
 | ClaimsVault | 1 byte-slice + 2 uints | 1 | **307,000 µA** | platform/deployer | none |
-| Factory | 4 byte-slices + 2 uints | 0 | **357,000 µA** | platform/deployer | none |
+| Registry | 3 byte-slices + 2 uints | 0 | **307,000 µA** | platform/deployer | none |
 
 - Campaign app MBR = 100,000 + 4 × 50,000 + 6 × 28,500 + 100,000 × 1 = 571,000.
 - Vault app MBR = 100,000 + 1 × 50,000 + 2 × 28,500 + 100,000 × 1 = 307,000.
-- Factory app MBR = 100,000 + 4 × 50,000 + 2 × 28,500 = 357,000.
+- Registry app MBR = 100,000 + 3 × 50,000 + 2 × 28,500 = 307,000.
 - Campaign app account: **0** (no boxes/assets; never funded).
 - Vault app account: 100,000 base + 32,100 per live/failed campaign box. The
   deploy script funds it with 1 ALGO; after the 100,000 base that is ~28 boxes.
-- Factory app account: 100,000 base + 18,900 per registration box. The deploy
+- Registry app account: 100,000 base + 18,900 per registration box. The deploy
   script funds it with 1 ALGO; each creator's 18,900 deposit covers that
   campaign's registration box.
 
@@ -91,12 +91,12 @@ MBR; the values above were measured on LocalNet against the real schemas.
 | Item | Key | Value | MBR | Owner |
 | --- | --- | --- | ---: | --- |
 | Vault campaign box | `'c' + appId` (9 B) | `paidIn(8) ‖ paidOut(8) ‖ root(32) ‖ N(8) ‖ status(1) ‖ settledAt(8)` (65 B) | 32,100 µA | vault app account |
-| Factory registration box | `'r' + appId` (9 B) | creator address (32 B) | 18,900 µA | Factory app account |
+| Registry registration box | `'r' + appId` (9 B) | creator address (32 B) | 18,900 µA | Registry app account |
 
 The vault box is opened by the first `credit` (first pledge) and released by
-`notifyDelete` / `releaseClaimed` / `finalize`. The Factory box is opened by
+`notifyDelete` / `releaseClaimed` / `finalize`. The Registry box is opened by
 `register` and released by `unregister`. The creator's registration deposit
-covers the Factory box; the vault box is platform-funded and is not charged to
+covers the Registry box; the vault box is platform-funded and is not charged to
 the creator or backer.
 
 ## Campaign duration bounds
@@ -159,7 +159,7 @@ fee.
 
 **Cap saturation:** once the tree is full, a campaign with `raised < goal` can
 never succeed. `Vault.settleOpen` settles it before the deadline, and
-`Campaign.delete` plus `Factory.unregister` treat `n == MAX_TREE_SIZE &&
+`Campaign.delete` plus `Registry.unregister` treat `n == MAX_TREE_SIZE &&
 raised < goal` as failed-in-fact, so the creator recovers the app MBR and
 backers refund immediately. This is the #229 harm-reduction escape; it does not
 change the attacker's cost or prevent the fill.
@@ -171,7 +171,7 @@ The create flow is `[create app call]` then `[deposit payment, register app call
 | Item | Amount | Spent or locked? |
 | --- | ---: | --- |
 | Campaign app MBR | 571,000 µA | locked on the creator's account; released on `delete` |
-| Registration deposit | 18,900 µA | paid to the Factory; returned by `unregister` |
+| Registration deposit | 18,900 µA | paid to the Registry; returned by `unregister` |
 | Create app-call fee | 1,000 µA | spent |
 | Deposit payment fee | 1,000 µA | spent |
 | Register app-call fee | 1,000 µA | spent |
@@ -196,7 +196,7 @@ use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-prot
 | Action | Transactions | SDK total | Notes |
 | --- | --- | ---: | --- |
 | Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
-| Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch factory check headroom); +1,000 per OpUp take |
+| Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch Registry check headroom); +1,000 per OpUp take |
 | Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 actual OpUp takes (15 funded) | 5,000-18,000 µA | +1,000 per funded take; 5,000 at N=4, 8,000 at N=100 |
 | Refund, vault path | vault + inner payment + 0..14 actual OpUp takes (15 funded) | 4,000-17,000 µA | one payout inner; +1,000 per funded take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
@@ -204,8 +204,8 @@ use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-prot
 | `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
 | `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; not exposed yet |
 | `releaseClaimed` | vault only | 1,000 µA | not exposed yet |
-| `Factory.register` | deposit + register | 2,000 µA | inside the create flow |
-| `Factory.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
+| `Registry.register` | deposit + register | 2,000 µA | inside the create flow |
+| `Registry.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
 
 OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
 (the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700
@@ -223,11 +223,11 @@ requests but never underfunds. See
 
 | Item | Amount | Notes |
 | --- | ---: | --- |
-| Factory app MBR | 357,000 µA | locked on the deployer's account |
-| Factory app-account funding | 1,000,000 µA | base + registration headroom |
+| Registry app MBR | 307,000 µA | locked on the deployer's account |
+| Registry app-account funding | 1,000,000 µA | base + registration headroom |
 | Vault app MBR | 307,000 µA | locked on the deployer's account |
 | Vault app-account funding | 1,000,000 µA | base + ~28 campaign boxes |
-| Deploy fees | ~9,000 µA | Factory create/fund/hash + vault create/fund/vault-hash/bind |
+| Deploy fees | ~5,000 µA | Registry create/fund + vault create/fund/bind |
 
 The vault's 1 ALGO funding is a platform liability: each live/failed campaign
 box parks 32,100 µA until `notifyDelete` / `releaseClaimed` / `finalize`. Monitor
@@ -246,18 +246,18 @@ it and top it up as the number of live/failed campaigns grows.
    and explicitly approved. The current cost is ~0.59 ALGO; the 1-page target is
    ~0.49 ALGO. The frontend must disclose the current locked amount at create and
    next to Delete (see [`frontend.md`](frontend.md)).
-3. **Any campaign program change changes the Factory `approvalHash`.** Update
-   the deploy script, tests, docs, specs/SDK release, and the deployed Factory
-   hash (or redeploy Factory + vault). The current formula is
+3. **Any campaign program change changes the Registry `campaignProgramHash`.**
+   Update the deploy script, tests, docs, specs/SDK release, and deploy a new
+   Registry + Vault bundle. The current formula is
    `sha256(itob(approval.length) ‖ approval ‖ clear)`; the length prefix binds the
-   approval/clear split. A new Factory sets its first hash immediately; an
-   existing Factory must propose, wait `APPROVAL_HASH_DELAY` (~7 days), then
-   apply. The vault program hash is verified once at `setVault`.
+   approval/clear split. The Campaign hash, Vault hash, sweep target, and refund
+   window are all fixed at Registry `create`; there is no in-place update or
+   timelock. Old campaigns stay on the old bundle.
 4. **Distinguish locked from spent.** App/box MBR and the registration deposit
    are locked and recoverable; transaction fees are spent. Do not describe the
    total locked amount as a fee.
-5. **Keep the vault and Factory funded.** New boxes increase their accounts'
-   minimum balances. The vault box is platform-funded; the Factory box is
+5. **Keep the vault and Registry funded.** New boxes increase their accounts'
+   minimum balances. The vault box is platform-funded; the Registry box is
    covered by the creator deposit.
 6. **Respect the no-surcharge page limit.** The current limit is 3 extra pages
    (8,192 B total). Do not rely on the 7-extra-page surcharge path unless the
@@ -273,7 +273,7 @@ cd projects/contracts
 npm run build
 node -e "
 const fs = require('fs');
-for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'factory/Factory']) {
+for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'registry/Registry']) {
   const s = JSON.parse(fs.readFileSync('smart_contracts/artifacts/' + n + '.arc56.json', 'utf8'));
   const a = Buffer.from(s.byteCode.approval, 'base64').length;
   const c = Buffer.from(s.byteCode.clear, 'base64').length;
@@ -289,7 +289,7 @@ length. Confirm it against a real LocalNet account when changing a schema:
 ```bash
 node -e "
 const fs = require('fs');
-for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'factory/Factory']) {
+for (const n of ['campaign/Campaign', 'claimsvault/ClaimsVault', 'registry/Registry']) {
   const s = JSON.parse(fs.readFileSync('smart_contracts/artifacts/' + n + '.arc56.json', 'utf8'));
   const { ints, bytes } = s.state.schema.global;
   const total = Buffer.from(s.byteCode.approval, 'base64').length + Buffer.from(s.byteCode.clear, 'base64').length;

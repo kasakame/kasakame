@@ -13,13 +13,13 @@ export interface CliOptions {
   network: NetworkName
   signer: SignerName
   vaultAppId?: bigint
-  factoryAppId?: bigint
+  registryAppId?: bigint
   mnemonicFile?: string
   dryRun: boolean
 }
 
 const TESTNET_VAULT_APP_ID = 774437570n
-const TESTNET_FACTORY_APP_ID = 774437557n
+const TESTNET_REGISTRY_APP_ID = 774437557n
 
 /**
  * Parse and validate the CLI arguments.
@@ -35,7 +35,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
     options: {
       network: { type: 'string' },
       vault: { type: 'string' },
-      factory: { type: 'string' },
+      registry: { type: 'string' },
       signer: { type: 'string' },
       'mnemonic-file': { type: 'string' },
       address: { type: 'string' },
@@ -106,17 +106,17 @@ export function parseCliOptions(argv: string[]): CliOptions {
     throw new Error(`--vault is required on ${network}`)
   }
 
-  const factoryAppId =
-    values.factory === undefined
+  const registryAppId =
+    values.registry === undefined
       ? needsChain && network === 'testnet'
-        ? TESTNET_FACTORY_APP_ID
+        ? TESTNET_REGISTRY_APP_ID
         : undefined
-      : parseFactoryAppId(values.factory)
+      : parseRegistryAppId(values.registry)
 
   const options: CliOptions = { command, network, signer, dryRun }
   if (appId !== undefined) options.appId = appId
   if (vaultAppId !== undefined) options.vaultAppId = vaultAppId
-  if (factoryAppId !== undefined) options.factoryAppId = factoryAppId
+  if (registryAppId !== undefined) options.registryAppId = registryAppId
   if (mnemonicFile !== undefined) options.mnemonicFile = mnemonicFile
   if (values.address !== undefined) options.address = values.address
   if (values.pledge !== undefined) options.pledge = parsePledge(values.pledge)
@@ -182,9 +182,9 @@ function parsePositiveAppId(value: string, name: string): bigint {
   return appId
 }
 
-function parseFactoryAppId(value: string): bigint {
+function parseRegistryAppId(value: string): bigint {
   if (!/^\d+$/.test(value)) {
-    throw new Error('--factory must be a non-negative integer')
+    throw new Error('--registry must be a non-negative integer')
   }
   return BigInt(value)
 }

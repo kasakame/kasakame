@@ -164,8 +164,8 @@ async function buildPledgeGroup(
       const creditParams = {
         appId: target,
         sender: callerAddr,
-        appReferences: target === stack.vault.appId ? [stack.factory.appId] : [stack.factory.appId, stack.vault.appId],
-        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.factory.appId, campaign.appId)],
+        appReferences: target === stack.vault.appId ? [stack.registry.appId] : [stack.registry.appId, stack.vault.appId],
+        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.registry.appId, campaign.appId)],
         ...(defaultFee ? { extraFee: microAlgos(FEE) } : { staticFee: microAlgos(0n) }),
       }
       if (options.rawSelector !== undefined) {
@@ -494,7 +494,7 @@ describe('04 bad paths', () => {
 
     const composer = stack.algorand.send.newGroup()
     composer.addAppCallMethodCall({
-      appId: stack.factory.appId,
+      appId: stack.registry.appId,
       method: ABIMethod.fromSignature('unregister(uint64)void'),
       args: [campaign.appId],
       sender: campaign.creator.addr,
@@ -517,7 +517,7 @@ describe('04 bad paths', () => {
     const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const strangerGroup = stack.algorand.send.newGroup()
     strangerGroup.addAppCallMethodCall({
-      appId: stack.factory.appId,
+      appId: stack.registry.appId,
       method: ABIMethod.fromSignature('unregister(uint64)void'),
       args: [pristine.appId],
       sender: stranger.addr,
@@ -534,7 +534,7 @@ describe('04 bad paths', () => {
       extraFee: microAlgos(2n * FEE),
     })
     await expect(strangerGroup.send({ suppressLog: true })).rejects.toThrow(/only the campaign creator can unregister/)
-    expect(await isRegistered(stack.factory.client, pristine.appId, stack.ownerAddress)).toEqual(true)
+    expect(await isRegistered(stack.registry.client, pristine.appId, stack.ownerAddress)).toEqual(true)
   })
 
   test('CON-114 credit without a preceding pledge is rejected', { tags: ['bad', 'always'] }, async () => {
@@ -552,8 +552,8 @@ describe('04 bad paths', () => {
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
       args: [campaign.appId, 1n * ALGO],
       sender: backer.addr,
-      appReferences: [stack.factory.appId],
-      boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.factory.appId, campaign.appId)],
+      appReferences: [stack.registry.appId],
+      boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.registry.appId, campaign.appId)],
       extraFee: microAlgos(FEE),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
@@ -639,41 +639,18 @@ describe('04 bad paths', () => {
     ).rejects.toThrow(/must be called from the top level/)
   })
 
-  test('CON-116 only the Factory owner can set the program hash', { tags: ['bad', 'always'] }, async () => {
-    const stranger = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
-    await expect(
-      stack.factory.client.send.call({
-        method: 'setApprovalHash(byte[])void',
-        args: [new Uint8Array(32)],
-        sender: stranger.addr,
-        suppressLog: true,
-      }),
-    ).rejects.toThrow(/only the owner can set the program hash/)
-  })
-
-  test('CON-117 program hash must be 32 bytes', { tags: ['bad', 'always'] }, async () => {
-    await expect(
-      stack.factory.client.send.call({
-        method: 'setApprovalHash(byte[])void',
-        args: [new Uint8Array(31)],
-        sender: stack.owner.addr,
-        suppressLog: true,
-      }),
-    ).rejects.toThrow(/program hash must be 32 bytes/)
-  })
-
   test('CON-118 an impostor campaign cannot register', { tags: ['bad', 'always'] }, async () => {
     const payment = await stack.algorand.createTransaction.payment({
       sender: stack.owner.addr,
-      receiver: stack.factory.address,
+      receiver: stack.registry.address,
       amount: microAlgos(REGISTER_MBR),
     })
     await expect(
-      stack.factory.client.send.call({
+      stack.registry.client.send.call({
         method: 'register(uint64,pay)void',
-        args: [stack.factory.appId, payment],
+        args: [stack.registry.appId, payment],
         sender: stack.owner.addr,
-        appReferences: [stack.factory.appId],
+        appReferences: [stack.registry.appId],
         suppressLog: true,
       }),
     ).rejects.toThrow(/not an official kasakame campaign/)
@@ -829,7 +806,7 @@ describe('04 bad paths', () => {
           message: /credit must be a NoOp call/,
         },
         { credit: { amount: 2n * ALGO }, message: /credit amount mismatch/ },
-        { credit: { appId: stack.factory.appId }, message: /credit must call the vault/ },
+        { credit: { appId: stack.registry.appId }, message: /credit must call the vault/ },
         { credit: { rawSelector: new Uint8Array(4) }, message: /credit selector mismatch/ },
         { credit: { trailingTxn: true }, message: /final transaction in the group/ },
         { credit: { count: 2 }, message: /final transaction in the group/ },
@@ -945,18 +922,18 @@ describe('04 bad paths', () => {
   })
 
   test(
-    'CON-126 Factory register rejects non-creators, different vaults, and double registration',
+    'CON-126 Registry register rejects non-creators, different vaults, and double registration',
     { tags: ['bad', 'always'] },
     async () => {
       const nonCreatorCampaign = await createCampaign(fixture, stack, { register: false })
       const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       const strangerPay = await stack.algorand.createTransaction.payment({
         sender: stranger.addr,
-        receiver: stack.factory.address,
+        receiver: stack.registry.address,
         amount: microAlgos(REGISTER_MBR),
       })
       await expect(
-        stack.factory.client.send.call({
+        stack.registry.client.send.call({
           method: 'register(uint64,pay)void',
           args: [nonCreatorCampaign.appId, strangerPay],
           sender: stranger.addr,
@@ -965,14 +942,14 @@ describe('04 bad paths', () => {
         }),
       ).rejects.toThrow(/only the campaign creator can register/)
 
-      const differentVault = await createCampaign(fixture, stack, { register: false, vaultId: stack.factory.appId })
+      const differentVault = await createCampaign(fixture, stack, { register: false, vaultId: stack.registry.appId })
       const differentPay = await stack.algorand.createTransaction.payment({
         sender: differentVault.creator.addr,
-        receiver: stack.factory.address,
+        receiver: stack.registry.address,
         amount: microAlgos(REGISTER_MBR),
       })
       await expect(
-        stack.factory.client.send.call({
+        stack.registry.client.send.call({
           method: 'register(uint64,pay)void',
           args: [differentVault.appId, differentPay],
           sender: differentVault.creator.addr,
@@ -984,11 +961,11 @@ describe('04 bad paths', () => {
       const double = await createCampaign(fixture, stack)
       const doublePay = await stack.algorand.createTransaction.payment({
         sender: double.creator.addr,
-        receiver: stack.factory.address,
+        receiver: stack.registry.address,
         amount: microAlgos(REGISTER_MBR),
       })
       await expect(
-        stack.factory.client.send.call({
+        stack.registry.client.send.call({
           method: 'register(uint64,pay)void',
           args: [double.appId, doublePay],
           sender: double.creator.addr,
@@ -999,12 +976,12 @@ describe('04 bad paths', () => {
     },
   )
 
-  test('CON-127 Factory register deposit and group guards', { tags: ['bad', 'always'] }, async () => {
+  test('CON-127 Registry register deposit and group guards', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack, { register: false })
     const creator = campaign.creator.addr.toString()
     const stranger = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
     const creatorBefore = await accountInfo(stack.algorand, creator)
-    const factoryBefore = await accountInfo(stack.algorand, stack.factory.address)
+    const registryBefore = await accountInfo(stack.algorand, stack.registry.address)
 
     interface Attempt {
       amount?: bigint
@@ -1016,13 +993,13 @@ describe('04 bad paths', () => {
     const attempt = async (options: Attempt): Promise<unknown> => {
       const pay = await stack.algorand.createTransaction.payment({
         sender: options.paySender ?? creator,
-        receiver: options.receiver ?? stack.factory.address,
+        receiver: options.receiver ?? stack.registry.address,
         amount: microAlgos(options.amount ?? REGISTER_MBR),
         ...(options.rekeyTo === undefined ? {} : { rekeyTo: options.rekeyTo }),
       })
       const composer = stack.algorand.send.newGroup()
       composer.addAppCallMethodCall({
-        appId: stack.factory.appId,
+        appId: stack.registry.appId,
         method: ABIMethod.fromSignature('register(uint64,pay)void'),
         args: [campaign.appId, pay],
         sender: creator,
@@ -1035,32 +1012,14 @@ describe('04 bad paths', () => {
     }
 
     await expect(attempt({ amount: REGISTER_MBR - 1n })).rejects.toThrow(/registration deposit too small/)
-    await expect(attempt({ receiver: creator })).rejects.toThrow(/payment must be made to the factory/)
+    await expect(attempt({ receiver: creator })).rejects.toThrow(/payment must be made to the registry/)
     await expect(attempt({ paySender: stranger.addr.toString() })).rejects.toThrow(/payment must come from the caller/)
     await expect(attempt({ trailing: true })).rejects.toThrow(/register must be the final transaction in the group/)
     await expect(attempt({ rekeyTo: creator })).rejects.toThrow(/payment must not rekey/)
     expect(await accountInfo(stack.algorand, creator)).toEqual(creatorBefore)
-    expect(await accountInfo(stack.algorand, stack.factory.address)).toEqual(factoryBefore)
+    expect(await accountInfo(stack.algorand, stack.registry.address)).toEqual(registryBefore)
     expect((await campaignState(campaign.appClient)).n).toEqual(0n)
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-
-    const unconfigured = await deployStack(fixture, { configureCampaignHash: false })
-    const otherCreator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const other = await deployCampaign(unconfigured, otherCreator.addr.toString(), { register: false })
-    const pay = await unconfigured.algorand.createTransaction.payment({
-      sender: otherCreator.addr,
-      receiver: unconfigured.factory.address,
-      amount: microAlgos(REGISTER_MBR),
-    })
-    await expect(
-      unconfigured.factory.client.send.call({
-        method: 'register(uint64,pay)void',
-        args: [other.appId, pay],
-        sender: otherCreator.addr,
-        appReferences: [other.appId],
-        suppressLog: true,
-      }),
-    ).rejects.toThrow(/official program hash not configured/)
   })
 
   test('CON-128 create accepts 123/117 byte metadata and rejects 124/118', { tags: ['bad', 'always'] }, async () => {

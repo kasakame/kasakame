@@ -13,14 +13,14 @@ import { ClaimsVault } from './contract.algo'
 /**
  * Behavioral tests for the ClaimsVault (claim-tree design), run against the offline AVM emulation.
  *
- * The Factory registration inner call inside first-touch `credit` can't be emulated offline (no inner-call logs) - it
+ * The Registry registration inner call inside first-touch `credit` can't be emulated offline (no inner-call logs) - it
  * is covered on LocalNet in `integration/04-bad-paths.test.ts` (CON-107). Everything else runs here, including full
  * differential pledge/refund flows: expected roots come from the Python reference oracle (`../oracle.py`), driven with
  * the mock payments' real `txnId`s.
  */
 
 const CAMPAIGN_APP_ID = 42
-const FACTORY_APP_ID = 7
+const REGISTRY_APP_ID = 7
 const WINDOW = 1_000_000
 const Z_HEX = '00'.repeat(32)
 const ORACLE = path.resolve(__dirname, '../oracle.py')
@@ -45,7 +45,7 @@ describe('ClaimsVault', () => {
     return JSON.parse(out) as unknown
   }
 
-  function createVault(sweep = ctx.defaultSender, window = WINDOW, factoryId = FACTORY_APP_ID): ClaimsVault {
+  function createVault(sweep = ctx.defaultSender, window = WINDOW, factoryId = REGISTRY_APP_ID): ClaimsVault {
     const vault = ctx.contract.create(ClaimsVault)
     vault.create(ctx.any.application({ applicationId: factoryId }), sweep, window)
     return vault
@@ -167,21 +167,21 @@ describe('ClaimsVault', () => {
   describe('create', () => {
     test('stores the factory, sweep target, and window', () => {
       const vault = createVault()
-      expect(toExternalValue(vault.factory.value.id)).toEqual(FACTORY_APP_ID)
+      expect(toExternalValue(vault.factory.value.id)).toEqual(REGISTRY_APP_ID)
       expect(toExternalValue(vault.refundWindow.value)).toEqual(WINDOW)
     })
 
     test('rejects a zero window', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, 0)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, 0)
       }).toThrow('refund window must be positive')
     })
 
     test('rejects a window above the cap', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, 10 * 365 * 24 * 60 * 60 + 1)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, 10 * 365 * 24 * 60 * 60 + 1)
       }).toThrow('refund window too long')
     })
 
@@ -195,7 +195,7 @@ describe('ClaimsVault', () => {
     test('rejects a zero sweep target', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), Global.zeroAddress, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), Global.zeroAddress, WINDOW)
       }).toThrow('sweep target must not be zero')
     })
 
@@ -203,7 +203,7 @@ describe('ClaimsVault', () => {
       const vault = ctx.contract.create(ClaimsVault)
       const vaultApp = ctx.ledger.getApplicationForContract(vault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), vaultApp.address, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), vaultApp.address, WINDOW)
       }).toThrow('sweep target must not be the vault')
     })
   })
@@ -234,7 +234,7 @@ describe('ClaimsVault', () => {
     })
 
     test('rejects a first touch the offline ledger cannot register (covered on LocalNet)', () => {
-      // A valid pledge precedes this call; the Factory inner call's log cannot be emulated offline, so the registration
+      // A valid pledge precedes this call; the Registry inner call's log cannot be emulated offline, so the registration
       // gate fails here. The real gate runs on LocalNet.
       const vault = createVault()
       const caller = ctx.defaultSender
@@ -830,7 +830,7 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign bound to another vault', () => {
       const vault = createVault()
-      const otherVault = createVault(ctx.defaultSender, WINDOW, FACTORY_APP_ID + 1)
+      const otherVault = createVault(ctx.defaultSender, WINDOW, REGISTRY_APP_ID + 1)
       const { app, id } = foreignCampaign(otherVault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: Z_HEX, n: 4 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: Z_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
@@ -1265,7 +1265,7 @@ describe('ClaimsVault', () => {
       const vault = ctx.contract.create(ClaimsVault)
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: FACTORY_APP_ID }), ctx.defaultSender, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, WINDOW)
       }).toThrow('must be called from the top level')
     })
 

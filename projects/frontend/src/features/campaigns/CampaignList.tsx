@@ -29,7 +29,7 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
     setLoading(true)
     setError(null)
 
-    // Deleted campaigns no longer appear in the Factory registry; the registry + vault-box enumeration finds them.
+    // Deleted campaigns no longer appear in the Registry; the registry + vault-box enumeration finds them.
     // Only the ones still holding backer refunds are worth rendering.
     const loadDeleted = async (liveCampaigns: CampaignViewModel[], now: bigint) => {
       try {

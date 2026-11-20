@@ -10,7 +10,7 @@ kasakame is a non-custodial crowdfunding dApp on Algorand. Creators open campaig
 | --- | --- | --- |
 | Campaign app | One stateful app per campaign | Enforces rules; tracks the Merkle root; holds no funds |
 | ClaimsVault | One app per deployment | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
-| Factory | One registry app per deployment | Registers campaigns against the deployment's owner-configured program hash and official vault |
+| Registry | One registry app per deployment | Registers campaigns against the deployment's fixed Campaign hash and official vault |
 | Frontend | React + Vite + TypeScript | Browse, create, pledge, claim, refund; wallet via Pera / Defly / Exodus (KMD on LocalNet) |
 | CLI | Node.js + TypeScript | Escape hatch: refund, withdraw, claim, and delete by app ID; wallet over WalletConnect v1 or a local mnemonic (see [`cli.md`](cli.md)) |
 | Catalog (optional, in progress) | Fastify + Postgres | Auth, profiles/settings, and IPFS pinning implemented; catalog, search, and history UX planned |
@@ -19,69 +19,73 @@ Users and wallets never appear as a piece: any Algorand address with a wallet is
 
 ## Deployments
 
-A **deployment** is one Factory, one ClaimsVault, and one Campaign
-approval-program version, with its own app IDs and owner. Anyone can deploy the
-contracts from a top-level transaction and become that deployment's owner. The TestNet app IDs in this repo
+A **deployment** is one Registry, one ClaimsVault, and one Campaign
+approval-program version, with its own app IDs. Anyone can deploy the contracts from
+top-level transactions; there is no owner role. The TestNet app IDs in this repo
 describe one deployment; other deployments use their own IDs.
 
-`Factory.isRegistered(app)` answers whether the app is registered in that
-specific Factory. Clients choose which deployments they trust by pinning the
-Factory and vault app IDs; the SDK takes `factoryAppId` and `vaultAppId` as
-config. Each Factory's owner decides which campaign program that deployment
-admits, and binds the deployment's official ClaimsVault with `setVault` (owner-only,
-one-time) after the vault is deployed; the vault must point back at the same Factory
-and its approval + clear-state programs must match the owner-configured
-`vaultApprovalHash`, so a wrong, foreign, or lookalike vault cannot be bound. The
-planned standard defines the interface and behavior and leaves the choice of
-deployment to clients.
+`Registry.isRegistered(app)` answers whether the app is registered in that specific
+Registry. Clients choose which deployments they trust by pinning the Registry and vault
+app IDs; the SDK takes `registryAppId` and `vaultAppId` as config. The Registry fixes
+the official Campaign and ClaimsVault program hashes, the expected sweep target, and
+the expected refund window in `create`; it has no post-deployment configuration.
 
-Deployment setup order: deploy the Factory, deploy the ClaimsVault with the Factory
-id, set the vault program hash with `Factory.setVaultApprovalHash`, then call
-`Factory.setVault(vault)` as the Factory owner. A new vault therefore requires a new
-Factory. On TestNet/MainNet, set `SWEEP_TARGET` explicitly; LocalNet defaults the
-residual sweep to the deployer.
+Deployment setup order:
 
-### Factory governance and revocation
+1. Deploy the Registry with the Campaign hash, the ClaimsVault hash, the expected
+   sweep target, and the expected refund window.
+2. Deploy the ClaimsVault with the Registry id, the same sweep target, and the same
+   refund window.
+3. Call `Registry.bindVault(vault)` permissionlessly. It checks the vault's
+   back-pointer, program hash, sweep target, and refund window, then stores the vault
+   id.
+4. Publish the manifest: Registry id, vault id, Campaign hash, Vault hash, network,
+   version, sweep target, and refund window.
 
-- **Changing the campaign program.** The first `approvalHash` is set immediately at
-  deploy. Later changes use `proposeApprovalHash` + `applyApprovalHash`, with
-  `APPROVAL_HASH_DELAY` (~7 days at 2.8s per round) between them; a direct second
-  `setApprovalHash` is rejected so the timelock cannot be bypassed. `cancelApprovalHash`
-  clears a pending change.
-- **Old registrations stay.** Changing the hash only affects future `register` calls.
-  Every existing `registered[appId]` entry stays, so old campaigns remain official,
-  refundable, and deletable. There is no owner action that pauses, deletes, seizes, or
-  unregisters a campaign; only the campaign creator can run `[unregister, delete]`.
-- **Renouncing.** `renounceOwnership` sets the owner to the zero address. The Factory
-  keeps registering campaigns against the last hash and vault, but no account can
-  change either again. `transferOwnership` is immediate; use a multisig or treasury for
-  production ownership.
-- **Revoking a vault.** The vault binding is one-time and its program hash is checked,
-  so a new vault requires a new Factory. Old campaigns stay bound to the old vault and
-  keep working.
-- **Compromised owner.** A compromised owner can admit a malicious campaign program for
-  *future* registrations after the timelock, and can transfer ownership. Old campaigns
-  are unaffected. Clients should pin the Factory and watch `approvalHash` /
-  `pendingApprovalHash`; the timelock is the reaction window.
+A new vault therefore requires a new Registry. On TestNet/MainNet, set
+`SWEEP_TARGET` explicitly; LocalNet defaults the residual sweep to the deployer.
+
+### Registry binding and upgrades
+
+- **No owner, no timelock.** The Registry has no `owner`, `transferOwnership`,
+  `renounceOwnership`, `setApprovalHash`, `proposeApprovalHash`,
+  `applyApprovalHash`, `cancelApprovalHash`, `setVaultApprovalHash`, or `setVault`.
+  The Campaign hash, Vault hash, sweep target, and refund window are fixed at
+  `create`.
+- **One-time vault binding.** `bindVault` is permissionless and one-time. The vault
+  must point back at this Registry, run the committed ClaimsVault program, and carry
+  the committed sweep target and refund window. A clone with the same program and
+  configuration behaves identically and cannot steal funds; the deployer should bind
+  its intended vault immediately and publish the id.
+- **Upgrades are new deployments.** Changing the Campaign or Vault program, the sweep
+  target, or the refund window requires a new Registry and Vault. Old campaigns stay on
+  the old Registry and Vault and keep working; new campaigns use the new bundle.
+- **Compromised deployer.** The deployer chooses the create arguments; the manifest
+  and published hashes make the result verifiable. The deployer cannot change the
+  bundle after deployment. Clients should pin the Registry and Vault ids and check the
+  manifest.
+- **Campaign cleanup.** There is no Registry action that pauses, deletes, seizes, or
+  unregisters a campaign; only the campaign creator can run
+  `[Registry.unregister, Campaign.delete]`.
 
 ## Creation flow
 
 To open a campaign, complete these steps in order:
 
 1. Deploy a Campaign app with the **official vault**, title, metadata URI, goal, and deadline.
-2. Pay the 18,900 µA registration deposit to the Factory.
-3. Register the app in the deployment's Factory so clients that trust that
+2. Pay the 18,900 µA registration deposit to the Registry.
+3. Register the app in the deployment's Registry so clients that trust that
    deployment list it.
-4. Share the app ID so backers find it through the deployment's Factory listing.
+4. Share the app ID so backers find it through the deployment's Registry listing.
 
-The registration group is `[deposit payment, Factory.register]` with `register` as the final transaction. The contract rejects
+The registration group is `[deposit payment, Registry.register]` with `register` as the final transaction. The contract rejects
 other shapes, so one deposit cannot register more than one campaign. `register` also reads the campaign's `vault` global and
-rejects a campaign bound to any vault other than the Factory's official one.
+rejects a campaign bound to any vault other than the Registry's official one.
 
-`Factory.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
+`Registry.unregister` only accepts a campaign that is settled (`Claimed`/`Failed`), pristine (`Open` with `raised == 0`), or
 failed-in-fact (`Open`, deadline passed, `raised < goal`), and it requires the campaign's `delete()` to be the immediately
 following transaction in the same atomic group. The campaign's side requires that `unregister` (a NoOp call) immediately before
-`delete` when its vault has a Factory binding, so a raw delete of an official campaign is rejected. Delisting and deletion are
+`delete` when its vault has a Registry binding, so a raw delete of an official campaign is rejected. Delisting and deletion are
 therefore one operation: a delisted campaign can never remain live, and zero-pledge or all-cancelled campaigns clean up
 immediately. Unregister runs first because the campaign state must be read before the app is deleted. An unregistered
 campaign's `unregister` is a no-op (still shaped with the delete next), so the same group cleans up a registration that never
@@ -105,13 +109,13 @@ The vault account therefore holds the full pool of live pledges plus parked box 
 | Success | Creator calls `claim()` after the deadline with the goal met | Vault pays the creator the full live total; the box closes as `Claimed` |
 | Failure | First `refund()` after the deadline with the goal missed | Box settles as `Failed`; each backer refunds their own leaves from the vault |
 | Pre-deadline exit | Backer calls `cancelPledge()` while the campaign is open | Leaf nulls in place; vault pays the backer |
-| Creator delete | Creator submits `[Factory.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit (no-op if unregistered); the campaign requires that unregister immediately before, then delete settles through the vault, closes the escrow, and deletes the app |
+| Creator delete | Creator submits `[Registry.unregister, Campaign.delete]` | Unregister checks settled/pristine/failed-in-fact and returns the deposit (no-op if unregistered); the campaign requires that unregister immediately before, then delete settles through the vault, closes the escrow, and deletes the app |
 
 Both settlement paths finalize in O(1) time and cost. Refunds stay available for 730 days after settlement then a top-level, permissionless `finalize()` sweeps the residual to the configured treasury; a fully paid-out box can be finalized immediately. A backer who never acts before deletion refunds straight from the vault with the same proofs.
 
 ## Optional catalog
 
-The Factory plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Registry plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 
@@ -128,6 +132,6 @@ The Factory plus the indexer already cover discovery (which campaigns exist) and
 
 ## Constraints
 
-- Discovery needs no backend. For a given deployment, the Factory registry plus the indexer answer "which campaigns exist" today.
+- Discovery needs no backend. For a given deployment, the Registry plus the indexer answer "which campaigns exist" today.
 - The contract is the source of truth. The frontend computes display status from the same public state, and the contract assertions decide.
 - Pledge-time content stays frozen. `title` and `metadataUri` are immutable, so a pledge can never be re-described under the backer. Corrections ship through the creator updates feed (see [`design.md`](design.md)).

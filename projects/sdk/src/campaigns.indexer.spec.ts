@@ -32,8 +32,8 @@ vi.mock('./transactions.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 
-vi.mock('./generated/FactoryClient.js', () => ({
-  FactoryClient: class {
+vi.mock('./generated/RegistryClient.js', () => ({
+  RegistryClient: class {
     state = { box: { registered: { value: (...args: unknown[]) => registeredValueMock(...args) } } }
   },
 }))
@@ -112,7 +112,7 @@ function boxSearchBuilder(getBoxes: () => { name: Uint8Array }[]): unknown {
 }
 
 /**
- * A Factory registration box name: 'r' + the 8-byte big-endian app id.
+ * A Registry registration box name: 'r' + the 8-byte big-endian app id.
  *
  * @param appId The campaign app id to encode.
  * @returns The 9-byte box name.
@@ -132,7 +132,7 @@ beforeEach(() => {
   clearCachedCampaigns()
   fetchVaultBoxMock.mockResolvedValue(undefined)
   registeredValueMock.mockResolvedValue(undefined)
-  configureSdk({ algorand: fakeAlgorand(), factoryAppId: 1001n, vaultAppId: 2002n })
+  configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
 })
 
 describe('cached base list', () => {
@@ -198,7 +198,7 @@ describe('fetchRegisteredCampaignIds', () => {
 })
 
 describe('isRegistered', () => {
-  it('reads the Factory registration box', async () => {
+  it('reads the Registry registration box', async () => {
     registeredValueMock.mockResolvedValue(ZERO_ADDRESS)
     await expect(isRegistered(42n)).resolves.toBe(true)
     expect(registeredValueMock).toHaveBeenCalledWith(42n)
@@ -218,8 +218,8 @@ describe('isRegistered', () => {
     await expect(isRegistered(42n)).rejects.toThrow('algod unavailable')
   })
 
-  it('returns false without a configured Factory', async () => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
+  it('returns false without a configured Registry', async () => {
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 0n, vaultAppId: 2002n })
     await expect(isRegistered(42n)).resolves.toBe(false)
     expect(registeredValueMock).not.toHaveBeenCalled()
   })
@@ -250,8 +250,8 @@ describe('listCampaigns', () => {
     expect((await listCampaigns()).campaigns).toEqual([])
   })
 
-  it('falls back to the full scan without a factory', async () => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
+  it('falls back to the full scan without a registry', async () => {
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 0n, vaultAppId: 2002n })
     const official = campaignApp({ id: 42n })
     const unrelated = new algosdk.indexerModels.Application({
       id: 44n,
@@ -268,8 +268,8 @@ describe('listCampaigns', () => {
     expect(indexerMock.searchForApplicationBoxes).not.toHaveBeenCalled()
   })
 
-  it('follows application scan pages without a factory', async () => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
+  it('follows application scan pages without a registry', async () => {
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 0n, vaultAppId: 2002n })
     const pages = [{ applications: [campaignApp({ id: 42n })], nextToken: 't' }, { applications: [campaignApp({ id: 43n })] }]
     indexerMock.searchForApplications.mockImplementation(() => ({
       limit: () => ({
@@ -289,8 +289,8 @@ describe('listCampaigns', () => {
     expect(await getCampaign(44n, 3_000n)).toBeUndefined()
   })
 
-  it('includes viewer pledges in the full scan without a factory', async () => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 0n, vaultAppId: 2002n })
+  it('includes viewer pledges in the full scan without a registry', async () => {
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 0n, vaultAppId: 2002n })
     indexerMock.searchForApplications.mockImplementation(() => searchBuilder(() => [campaignApp({ id: 42n })]))
     fetchMyLeavesMock.mockResolvedValue([{ position: 0, amount: 250_000n, txidHex: 'aa' }])
 

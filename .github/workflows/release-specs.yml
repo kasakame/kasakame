@@ -84,7 +84,7 @@ jobs:
         working-directory: projects/contracts
 
       # One tarball per artifact kind, each keeping the per-app directories
-      # (campaign/, claimsvault/, factory/) - consumers download only the kind
+      # (campaign/, claimsvault/, registry/) - consumers download only the kind
       # they need, and arc56.tar.gz is the interface the SDK regenerates from.
       - name: Bundle the artifacts (one tarball per kind)
         run: |

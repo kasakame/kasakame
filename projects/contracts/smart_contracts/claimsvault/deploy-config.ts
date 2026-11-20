@@ -4,7 +4,6 @@ import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from '../deployer'
-import { programHash } from '../program-hash'
 
 /** Default refund window: 730 days, per the spec recommendation. */
 export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * 24 * 60 * 60)
@@ -59,13 +58,13 @@ export function resolveSweepTarget(value: string | undefined, deployer: string, 
 /**
  * Deploys the platform's `ClaimsVault` application - the permanent, pooled refund escrow.
  *
- * The vault must be deployed **after** the Factory (its `create` records the Factory id for the first-touch
- * registration check). The deployer must be the Factory owner: this binds the new vault to the Factory, and the binding
- * is one-time, so a new vault requires a new Factory. The vault's application account is funded with 1 ALGO: the account
- * base plus headroom for the parked per-campaign boxes (32,100 µA each, recovered by
+ * The vault must be deployed **after** the Registry (its `create` records the Registry id for the first-touch
+ * registration check). The Registry is immutable, so the deployer creates the vault with the agreed sweep target and
+ * refund window, then binds it permissionlessly with `Registry.bindVault`. The vault's application account is funded with
+ * 1 ALGO: the account base plus headroom for the parked per-campaign boxes (32,100 µA each, recovered by
  * `notifyDelete`/`releaseClaimed`/`finalize`) - about 28 campaigns per ALGO.
  *
- * Environment: `FACTORY_APP_ID` (required), `SWEEP_TARGET` (required on TestNet/MainNet, defaults to the deployer on
+ * Environment: `REGISTRY_APP_ID` (required), `SWEEP_TARGET` (required on TestNet/MainNet, defaults to the deployer on
  * LocalNet - the governance decision in docs/claim-tree-protocol.md → Refund window decision),
  * `REFUND_WINDOW_SECONDS` (optional, defaults to 730 days per the spec recommendation, capped at 10 years).
  *
@@ -76,9 +75,9 @@ export async function deploy() {
 
   const deployer = await resolveDeployerAccount(algorand)
 
-  const factoryId = process.env.FACTORY_APP_ID
-  if (factoryId === undefined || factoryId === '') {
-    throw new Error('FACTORY_APP_ID is not set - deploy the Factory first and pass its app id.')
+  const registryId = process.env.REGISTRY_APP_ID
+  if (registryId === undefined || registryId === '') {
+    throw new Error('REGISTRY_APP_ID is not set - deploy the Registry first and pass its app id.')
   }
   const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
   const sweepTarget = resolveSweepTarget(process.env.SWEEP_TARGET, deployer.addr.toString(), isLocalNet)
@@ -88,16 +87,16 @@ export async function deploy() {
   // are gitignored, so this deployer must be run after a build.
   const specPath = path.resolve(__dirname, '../artifacts/claimsvault/ClaimsVault.arc56.json')
   const appSpec = JSON.parse(fs.readFileSync(specPath, 'utf8')) as Arc56Contract
-  const factorySpecPath = path.resolve(__dirname, '../artifacts/factory/Factory.arc56.json')
-  const factorySpec = JSON.parse(fs.readFileSync(factorySpecPath, 'utf8')) as Arc56Contract
+  const registrySpecPath = path.resolve(__dirname, '../artifacts/registry/Registry.arc56.json')
+  const registrySpec = JSON.parse(fs.readFileSync(registrySpecPath, 'utf8')) as Arc56Contract
 
-  const factory = new AppFactory({ appSpec, algorand, defaultSender: deployer.addr })
+  const vaultFactory = new AppFactory({ appSpec, algorand, defaultSender: deployer.addr })
 
-  const { appClient } = await factory.send.create({
+  const { appClient } = await vaultFactory.send.create({
     method: 'create(uint64,address,uint64)void',
-    args: [BigInt(factoryId), sweepTarget, refundWindow],
+    args: [BigInt(registryId), sweepTarget, refundWindow],
     sender: deployer.addr,
-    appReferences: [BigInt(factoryId)],
+    appReferences: [BigInt(registryId)],
   })
 
   // Platform storage reserve: the vault account base (0.1 ALGO) plus headroom for the parked per-campaign boxes.
@@ -107,25 +106,13 @@ export async function deploy() {
     amount: microAlgos(PLATFORM_STORAGE_RESERVE),
   })
 
-  // Bind the vault to the Factory (owner-only, one-time). The Factory is deployed first, so the binding happens here.
-  // The vault must be a foreign app: `setVault` reads its `factory` global, requires it to point back at this Factory,
-  // and verifies its approval + clear-state programs against the owner-configured vault hash.
-  if (appSpec.byteCode === undefined) {
-    throw new Error('ClaimsVault.arc56.json has no byteCode; run `npm run build` first.')
-  }
-  const vaultApproval = Buffer.from(appSpec.byteCode.approval, 'base64')
-  const vaultClear = Buffer.from(appSpec.byteCode.clear, 'base64')
-  const factoryClient = new AppFactory({ appSpec: factorySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
-    appId: BigInt(factoryId),
+  // Bind the vault permissionlessly. The Registry checks the back-pointer, the vault program hash, the sweep target,
+  // and the refund window fixed at Registry create, so a wrong or lookalike vault cannot be bound permanently.
+  const registryClient = new AppFactory({ appSpec: registrySpec, algorand, defaultSender: deployer.addr }).getAppClientById({
+    appId: BigInt(registryId),
   })
-  await factoryClient.send.call({
-    method: 'setVaultApprovalHash(byte[])void',
-    args: [programHash(vaultApproval, vaultClear)],
-    sender: deployer.addr,
-    suppressLog: true,
-  })
-  await factoryClient.send.call({
-    method: 'setVault(uint64)void',
+  await registryClient.send.call({
+    method: 'bindVault(uint64)void',
     args: [appClient.appId],
     sender: deployer.addr,
     appReferences: [appClient.appId],
@@ -133,8 +120,8 @@ export async function deploy() {
   })
 
   console.log(
-    `Deployed ClaimsVault app ${appClient.appId.toString()} at ${appClient.appAddress.toString()} and bound it to Factory ` +
-      `${factoryId}. Set VITE_VAULT_APP_ID=${appClient.appId.toString()} in the frontend's .env.localnet (or .env.testnet for TestNet).`,
+    `Deployed ClaimsVault app ${appClient.appId.toString()} at ${appClient.appAddress.toString()} and bound it to Registry ` +
+      `${registryId}. Set VITE_VAULT_APP_ID=${appClient.appId.toString()} in the frontend's .env.localnet (or .env.testnet for TestNet).`,
   )
   return appClient.appId
 }

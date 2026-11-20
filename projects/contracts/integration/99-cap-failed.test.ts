@@ -24,7 +24,7 @@ import {
  * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.
  *
  * Pledges use the fast in-memory helper; the contract still checks every frontier root, so the tree math is verified
- * on-chain at every position. The suite covers the rejected append at the cap, the early `settleOpen` + Factory-backed
+ * on-chain at every position. The suite covers the rejected append at the cap, the early `settleOpen` + Registry-backed
  * delete before the deadline, the worst-case vault refund (leaf 0: r = c = 18, 36 path elements), two top-fold
  * refunds, the nulled-sibling and top-only vault refunds, and the residual sweep after the refund window.
  *
@@ -83,7 +83,7 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
   expect((await campaignState(campaign.appClient)).raised).toEqual(run.principal)
 
   // A full tree that has not reached its goal can never succeed. Settle it early, before the deadline, then delete
-  // through the Factory: the cap-saturated campaign is failed-in-fact on both sides.
+  // through the Registry: the cap-saturated campaign is failed-in-fact on both sides.
   console.log('cap reached: settling early')
   await stack.vault.client.send.call({
     method: 'settleOpen(uint64)void',

@@ -9,7 +9,7 @@ describe('parseCliOptions', () => {
       network: 'testnet',
       signer: 'wallet',
       vaultAppId: 774437570n,
-      factoryAppId: 774437557n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -23,7 +23,7 @@ describe('parseCliOptions', () => {
         'localnet',
         '--vault',
         '7',
-        '--factory',
+        '--registry',
         '9',
         '--signer',
         'mnemonic',
@@ -39,7 +39,7 @@ describe('parseCliOptions', () => {
       network: 'localnet',
       signer: 'mnemonic',
       vaultAppId: 7n,
-      factoryAppId: 9n,
+      registryAppId: 9n,
       mnemonicFile: '/tmp/mnemonic',
       pledge: 2,
       dryRun: true,
@@ -53,7 +53,7 @@ describe('parseCliOptions', () => {
       network: 'testnet',
       signer: 'wallet',
       vaultAppId: 774437570n,
-      factoryAppId: 774437557n,
+      registryAppId: 774437557n,
       all: true,
       dryRun: false,
     })
@@ -122,7 +122,7 @@ describe('parseCliOptions', () => {
       network: 'testnet',
       signer: 'wallet',
       vaultAppId: 774437570n,
-      factoryAppId: 774437557n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -134,7 +134,7 @@ describe('parseCliOptions', () => {
       network: 'testnet',
       signer: 'wallet',
       vaultAppId: 774437570n,
-      factoryAppId: 774437557n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -157,8 +157,8 @@ describe('parseCliOptions', () => {
     expect(() => parseCliOptions(['pledges', '--network', 'localnet'])).toThrow('--vault is required on localnet')
   })
 
-  it('accepts a zero factory id', () => {
-    expect(parseCliOptions(['refund', '1', '--factory', '0']).factoryAppId).toBe(0n)
+  it('accepts a zero registry id', () => {
+    expect(parseCliOptions(['refund', '1', '--registry', '0']).registryAppId).toBe(0n)
   })
 
   it('rejects an unknown command', () => {
@@ -205,7 +205,7 @@ describe('parseCliOptions', () => {
       network: 'testnet',
       signer: 'wallet',
       vaultAppId: 774437570n,
-      factoryAppId: 774437557n,
+      registryAppId: 774437557n,
       dryRun: true,
     })
   })
@@ -233,9 +233,9 @@ describe('parseCliOptions', () => {
     expect(() => parseCliOptions(['refund', '1', '--network', 'custom'])).toThrow('--vault is required on custom')
   })
 
-  it('rejects invalid vault and factory ids', () => {
+  it('rejects invalid vault and registry ids', () => {
     expect(() => parseCliOptions(['refund', '1', '--vault', '0'])).toThrow('--vault must be a positive integer')
-    expect(() => parseCliOptions(['refund', '1', '--factory', 'abc'])).toThrow('--factory must be a non-negative integer')
+    expect(() => parseCliOptions(['refund', '1', '--registry', 'abc'])).toThrow('--registry must be a non-negative integer')
   })
 
   it('rejects unknown options', () => {

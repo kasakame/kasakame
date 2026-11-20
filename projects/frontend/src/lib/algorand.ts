@@ -41,7 +41,7 @@ export const algorand = AlgorandClient.fromConfig({
 // and the campaign reads consume the same session as they migrate (see docs/sdk.md).
 configureSdk({
   algorand,
-  factoryAppId: appIdFromEnv('VITE_FACTORY_APP_ID'),
+  registryAppId: appIdFromEnv('VITE_REGISTRY_APP_ID'),
   vaultAppId: appIdFromEnv('VITE_VAULT_APP_ID'),
 })
 

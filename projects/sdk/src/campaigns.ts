@@ -2,7 +2,7 @@ import type algosdk from 'algosdk'
 import { encodeAddress } from 'algosdk'
 import { fetchChainTimestamp, getSdkConfig } from './chain.js'
 import { fetchMyLeaves, u64beDecode } from './claim-tree.js'
-import { FactoryClient } from './generated/FactoryClient.js'
+import { RegistryClient } from './generated/RegistryClient.js'
 import { fetchVaultBox } from './transactions.js'
 
 /**
@@ -10,8 +10,8 @@ import { fetchVaultBox } from './transactions.js'
  * of truth - everything here is derived from the same public state the contract reads and writes.
  *
  * A backer's pledge is reconstructed from history, not read as a balance: their live leaves in the campaign's
- * frontier-Merkle tree (see `claim-tree.ts`), summed. Which campaigns are official is decided by the Factory
- * registry - the list view only shows campaigns registered with the configured Factory app (see `chain.ts`).
+ * frontier-Merkle tree (see `claim-tree.ts`), summed. Which campaigns are official is decided by the Registry -
+ * the list view only shows campaigns registered with the configured Registry app (see `chain.ts`).
  *
  * See docs/campaign.md and docs/frontend.md for the on-chain model:
  *
@@ -70,7 +70,7 @@ export interface CampaignHeader {
 }
 
 // Box name prefixes: a single byte plus an 8-byte big-endian campaign app id.
-// Factory registration box: 'r' + app id. Vault per-campaign box: 'c' + app id.
+// Registry registration box: 'r' + app id. Vault per-campaign box: 'c' + app id.
 const REGISTRATION_BOX_PREFIX = 0x72
 const VAULT_BOX_PREFIX = 0x63
 
@@ -265,17 +265,17 @@ export async function fetchMyPledge(appId: bigint, address: string): Promise<big
 }
 
 /**
- * Fetch every app id registered with the Factory (paginated box search), decoded from the registration box names.
+ * Fetch every app id registered with the Registry (paginated box search), decoded from the registration box names.
  *
- * @param factoryId The Factory application id.
+ * @param registryId The Registry application id.
  * @returns The set of registered campaign app ids.
  */
-export async function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set<bigint>> {
+export async function fetchRegisteredCampaignIds(registryId: bigint): Promise<Set<bigint>> {
   const indexer = getSdkConfig().algorand.client.indexer
   const registered = new Set<bigint>()
   let nextToken: string | undefined
   do {
-    let query = indexer.searchForApplicationBoxes(factoryId).limit(1000)
+    let query = indexer.searchForApplicationBoxes(registryId).limit(1000)
     if (nextToken !== undefined) query = query.nextToken(nextToken)
     const response = await query.do()
     for (const box of response.boxes) {
@@ -289,19 +289,19 @@ export async function fetchRegisteredCampaignIds(factoryId: bigint): Promise<Set
 }
 
 /**
- * Whether a campaign is registered with the configured Factory - the check `ClaimsVault.credit` runs on a campaign's
+ * Whether a campaign is registered with the configured Registry - the check `ClaimsVault.credit` runs on a campaign's
  * first pledge. Gate pledge actions on it so an unregistered app never produces a doomed transaction.
  *
  * @param appId Campaign application id.
- * @returns True when the Factory's registration box exists for the app; false when it does not, or when no Factory is
+ * @returns True when the Registry's registration box exists for the app; false when it does not, or when no Registry is
  *   configured (nothing can be registered then).
  */
 export async function isRegistered(appId: bigint): Promise<boolean> {
-  const { algorand, factoryAppId } = getSdkConfig()
-  if (factoryAppId <= 0n) return false
-  const factoryClient = new FactoryClient({ algorand, appId: factoryAppId })
+  const { algorand, registryAppId } = getSdkConfig()
+  if (registryAppId <= 0n) return false
+  const registryClient = new RegistryClient({ algorand, appId: registryAppId })
   try {
-    return (await factoryClient.state.box.registered.value(appId)) !== undefined
+    return (await registryClient.state.box.registered.value(appId)) !== undefined
   } catch (error) {
     // A deleted campaign has no registration box; algod reports that as 404 rather than an empty value.
     if (error instanceof Error && /box not found/i.test(error.message)) return false
@@ -335,15 +335,15 @@ async function fetchVaultCampaignIds(vaultId: bigint): Promise<Set<bigint>> {
 }
 
 /**
- * Enumerate every campaign app id worth browsing: every campaign registered with the Factory plus every campaign
+ * Enumerate every campaign app id worth browsing: every campaign registered with the Registry plus every campaign
  * that has a vault box (campaigns that received at least one pledge, including deleted-but-unfinalized ones whose
  * vault box hasn't been released yet). The union dedupes - a registered campaign with pledges appears once.
  *
  * @returns The campaign app ids.
  */
 export async function enumerateCampaigns(): Promise<Set<bigint>> {
-  const { factoryAppId, vaultAppId } = getSdkConfig()
-  const registered = factoryAppId > 0n ? await fetchRegisteredCampaignIds(factoryAppId) : new Set<bigint>()
+  const { registryAppId, vaultAppId } = getSdkConfig()
+  const registered = registryAppId > 0n ? await fetchRegisteredCampaignIds(registryAppId) : new Set<bigint>()
   const vaulted = await fetchVaultCampaignIds(vaultAppId)
   for (const id of vaulted) registered.add(id)
   return registered
@@ -380,7 +380,7 @@ export function clearCachedCampaigns(): void {
 }
 
 /**
- * List all campaigns. With a Factory configured, look each registered id up directly - the unfiltered application
+ * List all campaigns. With a Registry configured, look each registered id up directly - the unfiltered application
  * scan below works on sandbox-sized chains but never finishes on TestNet-scale chains (tens of thousands of apps,
  * each response carrying full approval programs).
  *
@@ -388,9 +388,9 @@ export function clearCachedCampaigns(): void {
  * @returns The campaigns with the chain timestamp used to derive them.
  */
 export async function listCampaigns(viewerAddress?: string): Promise<{ campaigns: CampaignViewModel[]; nowSeconds: bigint }> {
-  const factoryId = getSdkConfig().factoryAppId
-  if (factoryId <= 0n) {
-    // No factory: fall back to scanning indexed applications for our global-state keys. There is no app-name filter
+  const registryId = getSdkConfig().registryAppId
+  if (registryId <= 0n) {
+    // No registry: fall back to scanning indexed applications for our global-state keys. There is no app-name filter
     // on the indexer, so presence of the known keys is the discriminator (docs/frontend.md). Only viable on small
     // chains.
     const indexer = getSdkConfig().algorand.client.indexer
@@ -420,7 +420,7 @@ export async function listCampaigns(viewerAddress?: string): Promise<{ campaigns
   }
 
   // Timestamp and registry are independent: fetch together so first paint waits on one round-trip, not two.
-  const [now, registered] = await Promise.all([fetchChainTimestamp(), fetchRegisteredCampaignIds(factoryId)])
+  const [now, registered] = await Promise.all([fetchChainTimestamp(), fetchRegisteredCampaignIds(registryId)])
   const settled = await Promise.all([...registered].map((id) => getCampaign(id, now, viewerAddress)))
   const campaigns = settled.filter((campaign): campaign is CampaignViewModel => campaign !== undefined && campaign.deleted !== true)
   const result = { campaigns, nowSeconds: now }

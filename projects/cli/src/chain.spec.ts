@@ -57,23 +57,23 @@ describe('configureCliChain', () => {
   })
 
   it('configures TestNet with explicit app ids', () => {
-    configureCliChain(options({ vaultAppId: 2n, factoryAppId: 3n }))
+    configureCliChain(options({ vaultAppId: 2n, registryAppId: 3n }))
 
     expect(algorandMocks.testNet).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
       algorand: algorandMocks.testnet,
-      factoryAppId: 3n,
+      registryAppId: 3n,
       vaultAppId: 2n,
     })
   })
 
-  it('configures LocalNet and defaults the factory to zero', () => {
+  it('configures LocalNet and defaults the registry to zero', () => {
     configureCliChain(options({ network: 'localnet', signer: 'mnemonic', vaultAppId: 7n }))
 
     expect(algorandMocks.defaultLocalNet).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
       algorand: algorandMocks.localnet,
-      factoryAppId: 0n,
+      registryAppId: 0n,
       vaultAppId: 7n,
     })
   })
@@ -82,12 +82,12 @@ describe('configureCliChain', () => {
     vi.stubEnv('ALGOD_SERVER', 'http://algod')
     vi.stubEnv('INDEXER_SERVER', 'http://indexer')
 
-    configureCliChain(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n, factoryAppId: 0n }))
+    configureCliChain(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n, registryAppId: 0n }))
 
     expect(algorandMocks.fromEnvironment).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
       algorand: algorandMocks.custom,
-      factoryAppId: 0n,
+      registryAppId: 0n,
       vaultAppId: 7n,
     })
   })
@@ -117,7 +117,7 @@ describe('configureCliChain', () => {
 
     expect(configureSdkMock).toHaveBeenCalledWith({
       algorand: algorandMocks.testnet,
-      factoryAppId: 0n,
+      registryAppId: 0n,
       vaultAppId: 0n,
     })
   })

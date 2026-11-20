@@ -27,16 +27,16 @@ describe('configureSdk', () => {
 
   it('stores the session for later calls', () => {
     const algorand = fakeAlgorand()
-    configureSdk({ algorand, factoryAppId: 1001n, vaultAppId: 2002n })
+    configureSdk({ algorand, registryAppId: 1001n, vaultAppId: 2002n })
     expect(getSdkConfig().algorand).toBe(algorand)
-    expect(getSdkConfig().factoryAppId).toEqual(1001n)
+    expect(getSdkConfig().registryAppId).toEqual(1001n)
     expect(getSdkConfig().vaultAppId).toEqual(2002n)
   })
 })
 
 describe('chain plumbing', () => {
   beforeEach(() => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 1001n, vaultAppId: 2002n })
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
     algodStatus.mockReset()
     algodBlock.mockReset()
     healthCheck.mockReset()
@@ -63,7 +63,7 @@ describe('chain plumbing', () => {
 
 describe('waitForIndexerRound', () => {
   beforeEach(() => {
-    configureSdk({ algorand: fakeAlgorand(), factoryAppId: 1001n, vaultAppId: 2002n })
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
     healthCheck.mockReset()
     vi.useFakeTimers()
   })
