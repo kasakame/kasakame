@@ -699,6 +699,89 @@ describe('Campaign', () => {
       expect(contract.raised.value).toEqual(2_000_000)
     })
 
+    test('rejects a final-day cancel that would drop a successful campaign below its goal', () => {
+      const contract = createCampaign(2_000_000, DEADLINE)
+      const backerA = ctx.any.account()
+      const backerB = ctx.any.account()
+      const txidA = pledgeAs(contract, backerA, 1_000_000)
+      pledgeAs(contract, backerB, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE - 1 })
+
+      const blob = pathBlob(0)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: backerA })]).execute(() => {
+        expect(() => {
+          contract.cancelPledge(0, 1_000_000, Bytes(Buffer.from(txidA, 'hex')), Bytes(blob))
+        }).toThrow('cancel would drop below goal in the final day')
+      })
+      expect(contract.raised.value).toEqual(2_000_000)
+    })
+
+    test('protects a one-day campaign from launch once its goal is reached', () => {
+      const contract = createCampaign(1_000_000, DEADLINE)
+      const backer = ctx.any.account()
+      const txid = pledgeAs(contract, backer, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: CREATION_TIME })
+
+      const blob = pathBlob(0)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: backer })]).execute(() => {
+        expect(() => {
+          contract.cancelPledge(0, 1_000_000, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
+        }).toThrow('cancel would drop below goal in the final day')
+      })
+      expect(contract.raised.value).toEqual(1_000_000)
+    })
+
+    test('allows a final-day cancel that keeps the campaign at or above its goal', () => {
+      const contract = createCampaign(1_000_000, DEADLINE)
+      const backerA = ctx.any.account()
+      const backerB = ctx.any.account()
+      const txidA = pledgeAs(contract, backerA, 1_000_000)
+      pledgeAs(contract, backerB, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE - 1 })
+
+      spendAs(contract, backerA, 0, 1_000_000, txidA, 'cancelPledge')
+      expect(contract.raised.value).toEqual(1_000_000)
+    })
+
+    test('allows a final-day cancel when the campaign is already below its goal', () => {
+      const contract = createCampaign(2_000_000, DEADLINE)
+      const backer = ctx.any.account()
+      const txid = pledgeAs(contract, backer, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE - 1 })
+
+      spendAs(contract, backer, 0, 1_000_000, txid, 'cancelPledge')
+      expect(contract.raised.value).toEqual(0)
+    })
+
+    test('allows a goal-dropping cancel before the final day', () => {
+      const contract = createCampaign(2_000_000, CREATION_TIME + 2 * MIN_DURATION)
+      const backerA = ctx.any.account()
+      const backerB = ctx.any.account()
+      const txidA = pledgeAs(contract, backerA, 1_000_000)
+      pledgeAs(contract, backerB, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: CREATION_TIME + MIN_DURATION - 1 })
+
+      spendAs(contract, backerA, 0, 1_000_000, txidA, 'cancelPledge')
+      expect(contract.raised.value).toEqual(1_000_000)
+    })
+
+    test('rejects a goal-dropping cancel at the exact final-day boundary', () => {
+      const contract = createCampaign(2_000_000, CREATION_TIME + 2 * MIN_DURATION)
+      const backerA = ctx.any.account()
+      const backerB = ctx.any.account()
+      const txidA = pledgeAs(contract, backerA, 1_000_000)
+      pledgeAs(contract, backerB, 1_000_000)
+      ctx.ledger.patchGlobalData({ latestTimestamp: CREATION_TIME + MIN_DURATION })
+
+      const blob = pathBlob(0)
+      ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: contract, sender: backerA })]).execute(() => {
+        expect(() => {
+          contract.cancelPledge(0, 1_000_000, Bytes(Buffer.from(txidA, 'hex')), Bytes(blob))
+        }).toThrow('cancel would drop below goal in the final day')
+      })
+      expect(contract.raised.value).toEqual(2_000_000)
+    })
+
     test('rejects spends with malformed inputs', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()

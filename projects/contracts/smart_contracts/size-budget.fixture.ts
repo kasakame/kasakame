@@ -6,9 +6,9 @@
 export const SIZE_BUDGET = {
   campaign: {
     contract: 'Campaign',
-    approval: 2_156,
+    approval: 2_215,
     clear: 4,
-    total: 2_160,
+    total: 2_219,
     extraPages: 1,
     pageCapacity: 4_096,
     globalBytes: 4,

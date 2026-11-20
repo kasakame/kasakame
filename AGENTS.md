@@ -135,7 +135,7 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
 
 | Contract | Approval + clear | Pages | App MBR |
 | --- | ---: | ---: | ---: |
-| Campaign | 2,160 B | 2 (1 extra) | 571,000 µA |
+| Campaign | 2,219 B | 2 (1 extra) | 571,000 µA |
 | ClaimsVault | 2,811 B | 2 (1 extra) | 307,000 µA |
 | Factory | 1,072 B | 1 | 357,000 µA |
 
@@ -258,6 +258,10 @@ Current footprint (2026-11-18, `npm run build`; app MBR measured on LocalNet):
     `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
     `Factory.unregister` treat the campaign as failed-in-fact (see #229). The cap is
     duplicated in Campaign, ClaimsVault, Factory, and the SDK - keep it in sync.
+  - **Final-day goal protection.** `Campaign.cancelPledge` rejects a cancel in the final
+    24 hours that would drop a campaign at or above its goal below the goal. Cancels
+    that keep the goal, and cancels in an already-below-goal campaign, are allowed;
+    `refund` is unaffected. A one-day campaign is entirely inside the window (see #232).
   - `app_global_get_ex` **fails on deleted apps** (not exists=false) - never
     make vault logic depend on reading a possibly-deleted campaign's state; use
     vault-local markers written by the campaign (for example, the `root`/`N`/`settledAt`

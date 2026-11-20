@@ -118,6 +118,12 @@ Deployed AVM apps are immutable, so every contract change is a **new app version
 If a long-lived singleton ever appears (registry, fee collector, profile attestation
 ledger), consider a **proxy contract** pattern to enable upgrades. Not needed now.
 
+## Final-day goal protection
+
+In the final 24 hours, a backer cannot cancel a pledge if the cancellation would drop a campaign that is at or above its goal below the goal. The rule follows Kickstarter's last-24-hour protection and is enforced by `Campaign.cancelPledge`; `refund` after the deadline is unaffected. A campaign that is already below its goal, and a cancel that leaves the campaign at or above the goal, are not blocked.
+
+A campaign can be as short as one day, so a one-day campaign is entirely inside the window: once it reaches its goal, no goal-dropping cancel is possible for the rest of the campaign. This is accepted for 0.2.0; the UI discloses it. A proportional window (for example `min(24h, duration / 4)`, which would give a one-day campaign six hours) was considered and rejected because it requires storing the duration or the window and raises the creator cost for every campaign.
+
 ## Campaign outcomes and creator inactivity
 
 A successful campaign pays the creator; only the creator can call `claim()` after the
