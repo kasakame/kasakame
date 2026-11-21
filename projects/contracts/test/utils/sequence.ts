@@ -1,26 +1,14 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
+import { ALGO, FEE, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { expect } from 'vitest'
-import {
-  ALGO,
-  ClaimTreeOracle,
-  FEE,
-  TEST_VAULT_WINDOW,
-  VAULT_BOX_MBR,
-  advanceTime,
-  balanceOf,
-  campaignBoxExists,
-  deleteCampaign,
-  deployCampaign,
-  minBalanceOf,
-  pledge,
-  spendCampaign,
-  spendVault,
-  type ContractStack,
-} from './localnet'
+import { TEST_VAULT_WINDOW, VAULT_BOX_MBR, pledge, spendCampaign, spendVault } from './campaign'
+import { ClaimTreeOracle } from './oracle'
+import { deleteCampaign, deployCampaign, type ContractStack } from './platform'
 import { seededRandom } from './random'
 import { describeScale, type ScaleConfig } from './scale'
+import { campaignBoxExists } from './state'
 
 const SEQUENCE_BACKERS = 5
 const CANCEL_CHANCE = 0.25

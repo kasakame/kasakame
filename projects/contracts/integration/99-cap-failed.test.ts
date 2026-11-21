@@ -1,7 +1,6 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { expect, test } from 'vitest'
-import { CAP_AMOUNT, CAP_TREE_SIZE, FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './support/fast-pledge'
 import {
   ALGO,
   FEE,
@@ -18,7 +17,8 @@ import {
   deployCampaign,
   deployStack,
   minBalanceOf,
-} from './support/localnet'
+} from '../test/utils'
+import { CAP_AMOUNT, CAP_TREE_SIZE, FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from '../test/utils/fast-pledge'
 
 /**
  * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.

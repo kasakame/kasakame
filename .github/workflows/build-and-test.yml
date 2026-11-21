@@ -27,20 +27,22 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       cli: ${{ steps.filter.outputs.cli }}
       backend: ${{ steps.filter.outputs.backend }}
+      utils: ${{ steps.filter.outputs.utils }}
       ci: ${{ steps.filter.outputs.ci }}
       oracle: ${{ steps.filter.outputs.oracle }}
       markdown: ${{ steps.filter.outputs.markdown }}
       shell: ${{ steps.filter.outputs.shell }}
       workspace: ${{ steps.filter.outputs.workspace }}
       run_repo_lint: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
-      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' }}
-      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' }}
+      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
-      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' }}
+      run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' }}
+      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -80,6 +82,10 @@ jobs:
               - 'projects/backend/**'
               - '!**/*.md'
               - '!**/LICENSE'
+            utils:
+              - 'projects/utils/**'
+              - '!**/*.md'
+              - '!**/LICENSE'
             ci:
               - '.github/**'
               - '!**/*.md'
@@ -99,6 +105,7 @@ jobs:
               - '!projects/frontend/**'
               - '!projects/cli/**'
               - '!projects/backend/**'
+              - '!projects/utils/**'
               - '!.github/**'
               - '!docs/claim-tree-protocol-reference.py'
               - '!docs/**/*.{png,jpg,jpeg,gif,svg,webp,pdf}'
@@ -503,6 +510,40 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/backend
 
+  # Shared-helper package verification. Private and never published; the
+  # consumers install it from the checkout with a `file:` dependency.
+  check-utils:
+    name: Check utils
+    needs: changes
+    if: needs.changes.outputs.run_check_utils == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/utils/package-lock.json
+      - name: Install dependencies
+        id: install
+        run: npm ci
+        working-directory: projects/utils
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run format
+        working-directory: projects/utils
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+        working-directory: projects/utils
+      - name: Type-check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run check-types
+        working-directory: projects/utils
+
   # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
   # same-run contract artifacts; it runs after contract verification even if
   # that verification failed, so one run still reports the integration result.
@@ -570,6 +611,7 @@ jobs:
       - check-frontend
       - check-cli
       - check-backend
+      - check-utils
       - integration-test
     runs-on: ubuntu-latest
     timeout-minutes: 5
