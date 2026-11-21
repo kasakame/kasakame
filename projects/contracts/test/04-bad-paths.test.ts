@@ -29,6 +29,7 @@ import {
   spendExtraFee,
   vaultBoxRef,
   type ContractStack,
+  type OraclePath,
 } from './utils'
 
 interface CampaignFixture {
@@ -116,6 +117,41 @@ async function createCampaign(
   const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
   const campaign = await deployCampaign(stack, creator.addr.toString(), options)
   return { ...campaign, creator, oracle: new ClaimTreeOracle('bad-path-') }
+}
+
+/**
+ * Submit a campaign spend without asserting state or ledger, so a rejected proof can be followed by a retry.
+ *
+ * @param stack The deployed stack.
+ * @param campaign The campaign fixture.
+ * @param sender The account submitting the call.
+ * @param k Leaf position.
+ * @param amount Amount committed by the leaf.
+ * @param txidHex Pledge payment TxID (hex).
+ * @param path The path being submitted.
+ * @param method The spend method.
+ * @returns The send promise.
+ */
+async function attemptCampaignSpend(
+  stack: ContractStack,
+  campaign: CampaignFixture,
+  sender: Account,
+  k: number,
+  amount: bigint,
+  txidHex: string,
+  path: OraclePath,
+  method: 'cancelPledge(uint64,uint64,byte[],byte[])void' | 'refund(uint64,uint64,byte[],byte[])void',
+): Promise<unknown> {
+  const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
+  return campaign.appClient.send.call({
+    method,
+    args: [BigInt(k), amount, Buffer.from(txidHex, 'hex'), blob],
+    sender: sender.addr,
+    appReferences: [stack.vault.appId],
+    boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+    extraFee: microAlgos(spendExtraFee(path, 2)),
+    suppressLog: true,
+  })
 }
 
 async function buildPledgeGroup(
@@ -1027,6 +1063,167 @@ describe('04 bad paths', () => {
     )
   })
 
+  test('CON-133 a stranger cannot spend a victim’s proof', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    const victim = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, victim.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
+    const path = campaign.oracle.path(0)
+
+    const state = await campaignState(campaign.appClient)
+    const box = await campaignBox(stack.vault.client, campaign.appId)
+    const victimBefore = await accountInfo(stack.algorand, victim.addr.toString())
+    const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
+
+    await expect(
+      attemptCampaignSpend(
+        stack,
+        campaign,
+        stranger,
+        0,
+        1n * MICRO_ALGOS_PER_ALGO,
+        txid,
+        path,
+        'cancelPledge(uint64,uint64,byte[],byte[])void',
+      ),
+    ).rejects.toThrow(/proof does not match root/)
+
+    expect(await campaignState(campaign.appClient)).toEqual(state)
+    expect(await campaignBox(stack.vault.client, campaign.appId)).toEqual(box)
+    expect(await accountInfo(stack.algorand, victim.addr.toString())).toEqual(victimBefore)
+    expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)
+
+    await spendCampaign(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      victim.addr.toString(),
+      0,
+      1n * MICRO_ALGOS_PER_ALGO,
+      txid,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      campaign.oracle,
+    )
+  })
+
+  test('CON-134 a proof from one campaign cannot be replayed on another', { tags: ['bad', 'always'] }, async () => {
+    const campaignA = await createCampaign(fixture, stack)
+    const campaignB = await createCampaign(fixture, stack)
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txidA = await pledge(
+      stack,
+      campaignA.appClient,
+      campaignA.appId,
+      backer.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaignA.oracle,
+    )
+    const txidB = await pledge(
+      stack,
+      campaignB.appClient,
+      campaignB.appId,
+      backer.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaignB.oracle,
+    )
+    const pathA = campaignA.oracle.path(0)
+
+    const stateB = await campaignState(campaignB.appClient)
+    const boxB = await campaignBox(stack.vault.client, campaignB.appId)
+    const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
+
+    await expect(
+      attemptCampaignSpend(
+        stack,
+        campaignB,
+        backer,
+        0,
+        1n * MICRO_ALGOS_PER_ALGO,
+        txidA,
+        pathA,
+        'cancelPledge(uint64,uint64,byte[],byte[])void',
+      ),
+    ).rejects.toThrow(/proof does not match root/)
+
+    expect(await campaignState(campaignB.appClient)).toEqual(stateB)
+    expect(await campaignBox(stack.vault.client, campaignB.appId)).toEqual(boxB)
+    expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)
+
+    await spendCampaign(
+      stack,
+      campaignB.appClient,
+      campaignB.appId,
+      backer.addr.toString(),
+      0,
+      1n * MICRO_ALGOS_PER_ALGO,
+      txidB,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      campaignB.oracle,
+    )
+  })
+
+  test('CON-135 a valid proof with a changed amount or position is rejected', { tags: ['bad', 'always'] }, async () => {
+    const campaign = await createCampaign(fixture, stack)
+    const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const txidA = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
+    const pathA = campaign.oracle.path(0)
+
+    const state = await campaignState(campaign.appClient)
+    const box = await campaignBox(stack.vault.client, campaign.appId)
+    const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
+
+    await expect(
+      attemptCampaignSpend(
+        stack,
+        campaign,
+        backerA,
+        0,
+        1n * MICRO_ALGOS_PER_ALGO + 1n,
+        txidA,
+        pathA,
+        'cancelPledge(uint64,uint64,byte[],byte[])void',
+      ),
+    ).rejects.toThrow(/proof does not match root/)
+
+    await expect(
+      attemptCampaignSpend(
+        stack,
+        campaign,
+        backerA,
+        1,
+        1n * MICRO_ALGOS_PER_ALGO,
+        txidA,
+        pathA,
+        'cancelPledge(uint64,uint64,byte[],byte[])void',
+      ),
+    ).rejects.toThrow(/proof does not match root/)
+
+    expect(await campaignState(campaign.appClient)).toEqual(state)
+    expect(await campaignBox(stack.vault.client, campaign.appId)).toEqual(box)
+    expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)
+
+    await spendCampaign(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      0,
+      1n * MICRO_ALGOS_PER_ALGO,
+      txidA,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      campaign.oracle,
+    )
+  })
+
   test(
     'CON-126 Registry register rejects non-creators, different vaults, and double registration',
     { tags: ['bad', 'always'] },
@@ -1118,6 +1315,7 @@ describe('04 bad paths', () => {
     }
 
     await expect(attempt({ amount: REGISTER_DEPOSIT_MICRO_ALGOS - 1n })).rejects.toThrow(/registration deposit must be exact/)
+    await expect(attempt({ amount: REGISTER_DEPOSIT_MICRO_ALGOS + 1n })).rejects.toThrow(/registration deposit must be exact/)
     await expect(attempt({ receiver: creator })).rejects.toThrow(/payment must be made to the registry/)
     await expect(attempt({ paySender: stranger.addr.toString() })).rejects.toThrow(/payment must come from the caller/)
     await expect(attempt({ trailing: true })).rejects.toThrow(/register must be the final transaction in the group/)
