@@ -18,6 +18,13 @@ import {
   op,
   urange,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  MAX_REFUND_WINDOW_SECONDS as MAX_REFUND_WINDOW_SECONDS_VALUE,
+  MAX_TREE_SIZE as MAX_TREE_SIZE_VALUE,
+  MIN_REFUND_WINDOW_SECONDS as MIN_REFUND_WINDOW_SECONDS_VALUE,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+} from '@kasakame/constants/source'
 
 /**
  * ClaimsVault - the permanent, pooled refund escrow for kasakame campaigns (claim-tree design, see
@@ -62,18 +69,18 @@ const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
 // A 1-second window is not credible backer protection; the deploy default stays 730 days.
-const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
+const MIN_REFUND_WINDOW_SECONDS = Uint64(MIN_REFUND_WINDOW_SECONDS_VALUE)
 
 // Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Keeps `settledAt + refundWindow` far from
 // uint64 overflow even if the vault is created directly instead of through the deploy script.
-const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
+const MAX_REFUND_WINDOW_SECONDS = Uint64(MAX_REFUND_WINDOW_SECONDS_VALUE)
 
 // uint64 maximum, for the explicit paidIn overflow guard.
 const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
 
-// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A campaign at this cap that has not reached
-// its goal can never succeed, so `settleOpen` fails it early instead of waiting for the deadline.
-const MAX_TREE_SIZE = Uint64(524_287)
+// 2^19 - 1: a campaign at this cap that has not reached its goal can never succeed, so `settleOpen` fails it early
+// instead of waiting for the deadline.
+const MAX_TREE_SIZE = Uint64(MAX_TREE_SIZE_VALUE)
 
 export class ClaimsVault extends Contract {
   /**
@@ -405,7 +412,7 @@ export class ClaimsVault extends Contract {
 
     // Reserve the whole refund from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
     // base budget. The blob length is validated below, and an underfunded group fails atomically.
-    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)

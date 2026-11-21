@@ -1,11 +1,12 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type * as XhdWalletApi from '@algorandfoundation/xhd-wallet-api'
+import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
 import type { Address } from 'algosdk'
 import { addressWithSignersFromRawEd25519Signer, encodeAddress } from 'algosdk'
 import { mnemonicToSeedSync } from 'bip39'
 
 /** Platform storage reserve funded to each app account at deploy: 1 ALGO. */
-export const PLATFORM_STORAGE_RESERVE = 1_000_000n
+export const PLATFORM_STORAGE_RESERVE = PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
 
 type XhdWalletModule = typeof XhdWalletApi
 

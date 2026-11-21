@@ -1,11 +1,12 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
+import { FEE_MICRO_ALGOS, MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
 
 /** MicroAlgos in one ALGO. */
-export const ALGO = 1_000_000n
+export const ALGO = MICRO_ALGOS_PER_ALGO
 /** The minimum transaction fee. */
-export const FEE = 1_000n
+export const FEE = FEE_MICRO_ALGOS
 
 /** An account's spendable balance and its minimum balance. */
 export interface AccountAmounts {

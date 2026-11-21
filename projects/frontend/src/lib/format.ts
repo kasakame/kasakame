@@ -1,11 +1,11 @@
+import { MICRO_ALGOS_PER_ALGO, SECONDS_PER_DAY } from '@kasakame/constants'
+
 /**
  * Formatting helpers for amounts and deadlines.
  *
  * On-chain values are always microAlgos (`bigint`) and deadlines are UNIX seconds (`bigint`). These helpers keep that conversion in one
  * place.
  */
-
-const MICRO_ALGOS_PER_ALGO = 1_000_000n
 
 /**
  * Convert a microAlgo amount (bigint or number) to a display-ready ALGO string, e.g. `"12.5"`.
@@ -75,8 +75,8 @@ export function formatCountdown(deadlineSeconds: bigint, nowSeconds: bigint): st
   const diff = Number(deadlineSeconds - nowSeconds)
   if (diff <= 0) return 'closed'
 
-  const days = Math.floor(diff / 86_400)
-  const hours = Math.floor((diff % 86_400) / 3_600)
+  const days = Math.floor(diff / SECONDS_PER_DAY)
+  const hours = Math.floor((diff % SECONDS_PER_DAY) / 3_600)
   const minutes = Math.floor((diff % 3_600) / 60)
 
   if (days > 0) return `${String(days)}d ${String(hours)}h`

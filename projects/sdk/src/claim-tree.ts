@@ -1,3 +1,15 @@
+import {
+  MAX_TREE_SIZE as MAX_TREE_SIZE_VALUE,
+  OPUP_AVAILABLE_BUDGET,
+  OPUP_BUDGET_PER_ITERATION,
+  OPUP_ITERATION_SLACK,
+  OPUP_SPEND_NET_BUDGET,
+  PLEDGE_BASE_COST,
+  PLEDGE_PEAK_COST,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+  SPEND_TOP_UP_OVERHEAD,
+} from '@kasakame/constants'
 import { sha512_256 } from '@noble/hashes/sha2.js'
 import type algosdk from 'algosdk'
 import { bytesToHex, decodeAddress, getApplicationAddress, hexToBytes } from 'algosdk'
@@ -257,15 +269,7 @@ export function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop:
  * makes the contract request 14, so 14 + two payout inners = 16 inner transactions. The extra funded take is never
  * requested.
  */
-export const MAX_TREE_SIZE = 524_287n
-
-// Contract budget estimates (docs/claim-tree-protocol.md §14), measured on LocalNet.
-const OPUP_BUDGET_PER_ITERATION = 700
-const PLEDGE_AVAILABLE_BUDGET = 1_000
-// A spend top-up adds 700 ops but its loop costs ~25, so each take nets ~671-675. The contract funds the prelude
-// before it runs, so size from zero headroom: this may overpay one take, never underfund.
-const OPUP_SPEND_NET_BUDGET = 670
-const SPEND_TOP_UP_OVERHEAD = 12
+export const MAX_TREE_SIZE = BigInt(MAX_TREE_SIZE_VALUE)
 
 /**
  * OpUp iterations the campaign will request for a pledge at the current tree size.
@@ -274,8 +278,8 @@ const SPEND_TOP_UP_OVERHEAD = 12
  * @returns The number of 700-op budget top-ups.
  */
 export function pledgeOpUpIterations(n: bigint): number {
-  const required = popcount(n) * 240 + 400
-  return opUpIterations(required, PLEDGE_AVAILABLE_BUDGET)
+  const required = popcount(n) * PLEDGE_PEAK_COST + PLEDGE_BASE_COST
+  return opUpIterations(required, OPUP_AVAILABLE_BUDGET)
 }
 
 /**
@@ -288,7 +292,7 @@ export function pledgeOpUpIterations(n: bigint): number {
 export function refundOpUpIterations(n: bigint, k: bigint): number {
   const { r, c, hasTop } = pathShape(n, k)
   const pathElements = r + c + (hasTop ? 1 : 0)
-  const required = pathElements * 250 + 700
+  const required = pathElements * SPEND_ELEMENT_COST + SPEND_BASE_COST
   return Math.max(0, Math.ceil((required + SPEND_TOP_UP_OVERHEAD) / OPUP_SPEND_NET_BUDGET))
 }
 
@@ -300,7 +304,7 @@ export function refundOpUpIterations(n: bigint, k: bigint): number {
  * @returns The iteration count.
  */
 function opUpIterations(required: number, available: number): number {
-  return Math.max(0, Math.ceil((required + 10 - available) / OPUP_BUDGET_PER_ITERATION))
+  return Math.max(0, Math.ceil((required + OPUP_ITERATION_SLACK - available) / OPUP_BUDGET_PER_ITERATION))
 }
 
 /**

@@ -15,6 +15,12 @@ import {
   itxn,
   op,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  MAX_REFUND_WINDOW_SECONDS as MAX_REFUND_WINDOW_SECONDS_VALUE,
+  MAX_TREE_SIZE as MAX_TREE_SIZE_VALUE,
+  MIN_REFUND_WINDOW_SECONDS as MIN_REFUND_WINDOW_SECONDS_VALUE,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+} from '@kasakame/constants/source'
 
 /**
  * Registry - the canonical, ownerless on-chain registry for kasakame campaigns.
@@ -33,17 +39,17 @@ import {
  */
 
 // Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
-const REGISTER_MBR = 18_900
+const REGISTER_MBR = Uint64(REGISTER_DEPOSIT_MICRO_ALGOS)
 
-// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A registered campaign at the cap that has not
-// reached its goal can never succeed, so `unregister` must allow the early `[unregister, delete]` cleanup group.
-const MAX_TREE_SIZE = Uint64(524_287)
+// 2^19 - 1: a registered campaign at the cap that has not reached its goal can never succeed, so `unregister`
+// must allow the early `[unregister, delete]` cleanup group.
+const MAX_TREE_SIZE = Uint64(MAX_TREE_SIZE_VALUE)
 
-// Keep in sync with ClaimsVault.MIN_REFUND_WINDOW_SECONDS; bind the vault window to the same range.
-const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
+// Bind the vault window to the same range as ClaimsVault.
+const MIN_REFUND_WINDOW_SECONDS = Uint64(MIN_REFUND_WINDOW_SECONDS_VALUE)
 
 // Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Bind the vault window to the same bound.
-const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
+const MAX_REFUND_WINDOW_SECONDS = Uint64(MAX_REFUND_WINDOW_SECONDS_VALUE)
 
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
 const CAMPAIGN_OPEN = Uint64(0)

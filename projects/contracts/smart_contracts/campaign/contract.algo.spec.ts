@@ -14,7 +14,7 @@ import { Campaign } from './contract.algo'
  * Behavioral tests for the Campaign contract (claim-tree design), run against the offline AVM emulation.
  *
  * Every tree operation runs differentially: expected roots come from the Python reference oracle
- * (`../../test/utils/oracle.py`), driven with the mock payments' real `txnId`s. The vault inner calls
+ * (`../../test/helpers/oracle.py`), driven with the mock payments' real `txnId`s. The vault inner calls
  * (`payBack`/`payClaim`/`settle`/`notifyDelete`)
  * target the stub vault app and succeed as no-ops offline - their real routing and effects run on LocalNet in
  * `test/02-funding.test.ts` and `test/04-bad-paths.test.ts`.
@@ -36,7 +36,7 @@ const VAULT_APP_ID = 777
 const REGISTRY_APP_ID = 7
 const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb')
 const REGISTRY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277')
-const ORACLE = path.resolve(__dirname, '../../test/utils/oracle.py')
+const ORACLE = path.resolve(__dirname, '../../test/helpers/oracle.py')
 
 describe('Campaign', () => {
   const ctx = new TestExecutionContext()

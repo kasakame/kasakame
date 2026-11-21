@@ -17,9 +17,9 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './utils'
-import { describeScale, scaleConfig } from './utils/scale'
-import { runSequence } from './utils/sequence'
+} from './helpers'
+import { describeScale, scaleConfig } from './helpers/scale'
+import { runSequence } from './helpers/sequence'
 
 const scale = scaleConfig('normal')
 

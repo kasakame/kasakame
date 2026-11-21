@@ -13,7 +13,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `test/` - LocalNet suites (`00-deploy`, `01-single-campaign`, ...), run in path order
-  - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the size-budget fixture
+  - `test/helpers/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the compiled-size snapshot
   - `test/formulas.spec.ts`, `test/08-size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
@@ -31,6 +31,10 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   production-neutral hash/selector/bytes helpers, `./testing` holds LocalNet
   deploy/ledger helpers. Never published; consumers link it with a `file:`
   dependency. See [`projects/utils/README.md`](projects/utils/README.md).
+- `projects/constants/` - public `@kasakame/constants` protocol, fee, and AVM
+  values. The `.` entry is the compiled package; `./source` is the TypeScript
+  source the contract compiler imports. One `src/index.ts`; `dist` is a build
+  output. See [`projects/constants/README.md`](projects/constants/README.md).
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
@@ -55,7 +59,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils
+(cd projects/constants && npm install && npm run build)  # consumers pack the built package
+algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils + constants
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
@@ -75,6 +80,12 @@ npx vitest list test -t "<ID>"  # find the file that owns a test ID
 npx vitest run test -t "<ID>"   # one test by ID (chain tests need the whole file)
 
 cd ../utils
+npm run check-types              # tsc --noEmit
+npm run lint                     # ESLint
+npm run format                   # Prettier check
+
+cd ../constants
+npm run build                    # tsc emit to dist
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
@@ -156,8 +167,8 @@ the product contract. The pinned values and the AVM limits are in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
-  job after `npm run build`. Update the fixture and `docs/limits.md` together.
+  `test/helpers/contract-sizes.ts`; it runs in the `compile-contracts` CI
+  job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
   contracts. `raised` and `paidIn` have explicit uint64 overflow guards; there is
@@ -168,10 +179,11 @@ the product contract. The pinned values and the AVM limits are in
   opcodes, and the SDK's zero-headroom fee bound funds the takes so groups never
   underpay. The boundary ladder in the integration suite proves the prelude
   leaves enough ops for the cap; if a contract change breaks that guard,
-  re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
-  ClaimsVault, Registry, and the SDK and must stay in sync; the cap counts every
-  appended position, including cancelled leaves. The heavy-tests workflow runs
-  the cap-scale suites end to end; never run them locally in a normal change.
+  re-measure and lower the cap. `MAX_TREE_SIZE` lives in
+  `@kasakame/constants`; Campaign, ClaimsVault, Registry, and the SDK import it.
+  The cap counts every appended position, including cancelled leaves. The
+  heavy-tests workflow runs the cap-scale suites end to end; never run them
+  locally in a normal change.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise; the pinned MBR and fee values live in
   [`docs/limits.md`](docs/limits.md). If a change crosses a page boundary, adds a
@@ -205,7 +217,17 @@ the product contract. The pinned values and the AVM limits are in
   editing it. Its exports point at TypeScript sources, so there is no build step:
   run `npm run check-types`/`lint`/`format` in the package. Generic LocalNet
   helpers belong in `@kasakame/utils/testing`; contract-only helpers stay in
-  `projects/contracts/test/utils`.
+  `projects/contracts/test/helpers`.
+- **The shared constants package has two entry points.** `@kasakame/constants`
+  is the compiled runtime package; `@kasakame/constants/source` is the
+  TypeScript source for the Puya contract compiler. Contracts import `/source`;
+  SDK, CLI, frontend, and test helpers import the package name. Keep
+  `projects/constants/src/index.ts` a single file with direct `export const`
+  declarations: Puya does not support re-export declarations or `BigInt()` in
+  that source. `dist` is the `tsc` build output. Consumers install it with
+  `install-links = true`, which packs the package at install time, so build
+  `projects/constants` before installing them (CI runs
+  `.github/scripts/build-constants.sh` first).
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
@@ -272,8 +294,9 @@ the product contract. The pinned values and the AVM limits are in
     SDK replay depends on top-level pledges and payments.
   - **Cap-saturated campaigns fail early.** At `n == MAX_TREE_SIZE` with `raised < goal`,
     `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
-    `Registry.unregister` treat the campaign as failed-in-fact. The cap is
-    duplicated in Campaign, ClaimsVault, Registry, and the SDK - keep it in sync.
+    `Registry.unregister` treat the campaign as failed-in-fact. The cap lives in
+    `@kasakame/constants` and Campaign, ClaimsVault, Registry, and the SDK import
+    it.
   - **Final-day goal protection.** `Campaign.cancelPledge` rejects a cancel in the final
     24 hours that would drop a campaign at or above its goal below the goal. Cancels
     that keep the goal, and cancels in an already-below-goal campaign, are allowed;
@@ -318,10 +341,11 @@ the product contract. The pinned values and the AVM limits are in
   - `README.md` for spec-level behavior, the status summary, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
-- **Package READMEs are user-facing.** `projects/sdk/README.md` and
-  `projects/cli/README.md` are the READMEs npm publishes. Keep them to install,
-  usage, documentation links, and license; repository status, work tracking, and
-  contributor instructions belong in the root README or `docs/`.
+- **Package READMEs are user-facing.** `projects/constants/README.md`,
+  `projects/sdk/README.md`, and `projects/cli/README.md` are the READMEs npm
+  publishes. Keep them to install, usage, documentation links, and license;
+  repository status, work tracking, and contributor instructions belong in the
+  root README or `docs/`.
 
 ## Testing
 

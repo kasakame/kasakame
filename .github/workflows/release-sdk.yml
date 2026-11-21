@@ -14,7 +14,9 @@ name: release-sdk
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
 # public API before the publish job runs. The frontend is released separately
-# against the published version.
+# against the published version. Release @kasakame/constants first: the SDK
+# declares it as a peer dependency, and the smoke test installs it from the
+# registry.
 on:
   workflow_dispatch:
     inputs:
@@ -53,6 +55,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/sdk/package-lock.json
+
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
 
       - name: Install SDK dependencies
         run: npm ci

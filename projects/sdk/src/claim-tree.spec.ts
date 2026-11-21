@@ -109,14 +109,20 @@ describe('fee sizing', () => {
     expect(MAX_TREE_SIZE).toEqual(524_287n)
   })
 
-  it('matches the contract budget constants', () => {
+  it('uses the shared contract budget constants', () => {
     const contracts = fileURLToPath(new URL('../../contracts/smart_contracts', import.meta.url))
     const campaign = fs.readFileSync(path.join(contracts, 'campaign/contract.algo.ts'), 'utf8')
     const vault = fs.readFileSync(path.join(contracts, 'claimsvault/contract.algo.ts'), 'utf8')
-    expect(campaign).toContain('const MAX_TREE_SIZE = Uint64(524_287)')
-    expect(campaign).toContain('ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)')
+    const registry = fs.readFileSync(path.join(contracts, 'registry/contract.algo.ts'), 'utf8')
+    for (const source of [campaign, vault, registry]) {
+      expect(source).toContain('@kasakame/constants/source')
+      expect(source).not.toContain('524_287')
+    }
+    expect(campaign).toContain('PLEDGE_PEAK_COST')
+    expect(campaign).toContain('PLEDGE_BASE_COST')
     for (const source of [campaign, vault]) {
-      expect(source).toContain('op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700)')
+      expect(source).toContain('SPEND_ELEMENT_COST')
+      expect(source).toContain('SPEND_BASE_COST')
       expect(source).not.toContain('requiredOps')
     }
   })

@@ -117,9 +117,9 @@ chain-global time travel from overlapping.
 
 ### Scale config and seeds
 
-`test/utils/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
+`test/helpers/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
 normal/heavy presets and `07` runs the heavy seeds through the same
-`test/utils/sequence.ts` engine. Every field has an env override:
+`test/helpers/sequence.ts` engine. Every field has an env override:
 `KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
 `KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
 `KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
@@ -179,14 +179,23 @@ same file, so `-t` on one of them fails on the missing prerequisite; use
 Generic LocalNet helpers live in the private `projects/utils` package, never
 published:
 
-- `@kasakame/utils` - `programHash`/`specProgramHash`, `selectorOf`, and the
-  byte helpers (`addrHex`, `appIdBytes`, `base32ToBytes`, `concatHex`).
+- `@kasakame/utils` - `programHash`/`specProgramHash` for the deploy code and
+  tests.
 - `@kasakame/utils/testing` - `deployPlatform` (Registry + ClaimsVault from
-  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `advanceTime`, and
-  Node-`assert` checks. It does not import a test runner, so each consumer keeps
-  Vitest.
+  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `advanceTime`,
+  `selectorOf`, the byte helpers (`addrHex`, `appIdBytes`, `base32ToBytes`,
+  `concatHex`), and Node-`assert` checks. It does not import a test runner, so
+  each consumer keeps Vitest.
 
-Contract-only helpers live in `projects/contracts/test/utils/` and are imported
+Protocol values live in the public `projects/constants` package:
+
+- `@kasakame/constants` - compiled values for the SDK, CLI, frontend, and test
+  helpers.
+- `@kasakame/constants/source` - the same TypeScript source for the Puya contract
+  compiler. The `/source` entry is required because Puya inlines compile-time
+  values; a compiled-only package fails type-checking or emits empty values.
+
+Contract-only helpers live in `projects/contracts/test/helpers/` and are imported
 through its `index.ts`:
 
 - `deployStack` deploys and funds the Registry, deploys and binds the vault, and
@@ -202,7 +211,7 @@ through its `index.ts`:
 - `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, and `registrationBoxRef`
   read the vault's per-campaign state.
 
-The cap suites use `test/utils/fast-pledge.ts` instead of the per-pledge
+The cap suites use `test/helpers/fast-pledge.ts` instead of the per-pledge
 oracle/ledger helpers: it keeps the tree in memory and sends the same
 `[pay, campaign.pledge, vault.credit]` group without per-pledge reads, so 524,287
 positions take hours instead of days. The contract still verifies the frontier
@@ -225,9 +234,9 @@ class as it does not extend Contract or BaseContract".
 
 `npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
 approval/clear/total bytes, extra pages, page capacity, global schema, and app
-MBR in `test/utils/size-budget.fixture.ts`. The checks live in
+MBR in `test/helpers/contract-sizes.ts`. The checks live in
 `test/08-size-budget.spec.ts`. They run in the
-`compile-contracts` CI job after `npm run build`; update the fixture and
+`compile-contracts` CI job after `npm run build`; update the snapshot and
 [`limits.md`](limits.md) together when a contract changes. It is excluded from
 `npm test` and `test:coverage` because those jobs do not build the artifacts.
 
@@ -323,16 +332,16 @@ on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
 `[unregister, delete]` group). Rejected transactions are asserted to move
 **nothing** (atomic failure charges no fee). The expected app MBRs come from
-`size-budget.fixture.ts`, so a schema or page change fails until the fixture and
+`contract-sizes.ts`, so a schema or page change fails until the snapshot and
 `docs/limits.md` are updated.
 
 **Contract sizes.** `npm run test:size` reads the built ARC-56 bytecode and pins
 the approval/clear bytes, page count, schema, and app MBR in
-`test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+`test/helpers/contract-sizes.ts`; it runs in the `compile-contracts` CI
 job after `npm run build`. See [`limits.md`](limits.md) for the current values.
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
-reference oracle (`test/utils/oracle.py`, backed by
+reference oracle (`test/helpers/oracle.py`, backed by
 `docs/claim-tree-protocol-reference.py`) with the REAL confirmed payment TxIDs
 and assert `root`/`n`/`raised` - plus the vault box's `paidIn`/`paidOut` - after
 every step. Forged frontiers, stale proofs, and double-spends are asserted to

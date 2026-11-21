@@ -12,8 +12,8 @@ import {
   deleteCampaign,
   deployCampaign,
   deployStack,
-} from './utils'
-import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
+} from './helpers'
+import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from './helpers/fast-pledge'
 
 /**
  * 99 - cap-scale successful campaign (#220): the full 2^19 - 1 tree, then claim and delete.

@@ -1,11 +1,17 @@
+import {
+  MAX_REFUND_WINDOW_SECONDS as MAX_REFUND_WINDOW_SECONDS_VALUE,
+  MIN_REFUND_WINDOW_SECONDS as MIN_REFUND_WINDOW_SECONDS_VALUE,
+  SECONDS_PER_DAY,
+} from '@kasakame/constants'
+
 /** Default refund window: 730 days, per the spec recommendation. */
-export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * 24 * 60 * 60)
+export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * SECONDS_PER_DAY)
 
 /** Minimum refund window: 30 days, matching `ClaimsVault.MIN_REFUND_WINDOW_SECONDS`. */
-export const MIN_REFUND_WINDOW_SECONDS = BigInt(30 * 24 * 60 * 60)
+export const MIN_REFUND_WINDOW_SECONDS = BigInt(MIN_REFUND_WINDOW_SECONDS_VALUE)
 
 /** Deployment sanity cap: 10 years. Prevents `settledAt + refundWindow` overflow from a misconfigured env. */
-export const MAX_REFUND_WINDOW_SECONDS = BigInt(10 * 365 * 24 * 60 * 60)
+export const MAX_REFUND_WINDOW_SECONDS = BigInt(MAX_REFUND_WINDOW_SECONDS_VALUE)
 
 /**
  * Parse and sanity-check `REFUND_WINDOW_SECONDS`.

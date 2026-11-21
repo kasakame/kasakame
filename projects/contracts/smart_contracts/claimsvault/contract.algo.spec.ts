@@ -16,7 +16,7 @@ import { ClaimsVault } from './contract.algo'
  * The Registry registration inner call inside first-touch `credit` can't be emulated offline (no inner-call logs) - it
  * is covered on LocalNet in `test/04-bad-paths.test.ts` (CON-107). Everything else runs here, including full
  * differential pledge/refund flows: expected roots come from the Python reference oracle
- * (`../../test/utils/oracle.py`), driven with the mock payments' real `txnId`s.
+ * (`../../test/helpers/oracle.py`), driven with the mock payments' real `txnId`s.
  */
 
 const CAMPAIGN_APP_ID = 42
@@ -27,7 +27,7 @@ const WINDOW = MIN_WINDOW
 const MAX_TREE_SIZE = 524_287
 const MAX_UINT64 = 18_446_744_073_709_551_615n
 const Z_HEX = '00'.repeat(32)
-const ORACLE = path.resolve(__dirname, '../../test/utils/oracle.py')
+const ORACLE = path.resolve(__dirname, '../../test/helpers/oracle.py')
 
 // Packed box statuses: 1 = Open, 2 = Failed, 3 = Claimed.
 const OPEN = 1

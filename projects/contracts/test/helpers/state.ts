@@ -1,5 +1,5 @@
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { appIdBytes } from '@kasakame/utils'
+import { appIdBytes } from '@kasakame/utils/testing'
 
 /**
  * @param vaultId The vault app id.

@@ -17,6 +17,23 @@ import {
   op,
   urange,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  FINAL_DAY_SECONDS as FINAL_DAY_SECONDS_VALUE,
+  MAX_CAMPAIGN_DURATION_SECONDS as MAX_CAMPAIGN_DURATION_SECONDS_VALUE,
+  MAX_GOAL_MICRO_ALGOS as MAX_GOAL_MICRO_ALGOS_VALUE,
+  MAX_METADATA_URI_BYTES as MAX_METADATA_URI_BYTES_VALUE,
+  MAX_PLEDGE_MICRO_ALGOS as MAX_PLEDGE_MICRO_ALGOS_VALUE,
+  MAX_TITLE_BYTES as MAX_TITLE_BYTES_VALUE,
+  MAX_TREE_SIZE as MAX_TREE_SIZE_VALUE,
+  MIN_CAMPAIGN_DURATION_SECONDS as MIN_CAMPAIGN_DURATION_SECONDS_VALUE,
+  MIN_GOAL_MICRO_ALGOS as MIN_GOAL_MICRO_ALGOS_VALUE,
+  MIN_PLEDGE_MICRO_ALGOS as MIN_PLEDGE_MICRO_ALGOS_VALUE,
+  PLEDGE_BASE_COST,
+  PLEDGE_PEAK_COST,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+  ZERO_ROOT_HEX,
+} from '@kasakame/constants/source'
 
 /**
  * Campaign - a non-custodial crowdfunding campaign with a frontier-Merkle receipt tree (see
@@ -50,49 +67,42 @@ const STATUS_FAILED = 1
 const STATUS_CLAIMED = 2
 
 // The AVM caps a global-state entry at 128 bytes including the key.
-const MAX_BYTES_PER_STATE_KEY = 128
-// 'title' is 5 bytes and 'metadataUri' is 11 bytes, so their values are capped at 123 and 117.
-const MAX_TITLE_BYTES = MAX_BYTES_PER_STATE_KEY - 5
-const MAX_METADATA_URI_BYTES = MAX_BYTES_PER_STATE_KEY - 11
+const MAX_TITLE_BYTES = MAX_TITLE_BYTES_VALUE
+const MAX_METADATA_URI_BYTES = MAX_METADATA_URI_BYTES_VALUE
 
 // Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
-const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
+const MAX_DURATION_SECONDS = Uint64(MAX_CAMPAIGN_DURATION_SECONDS_VALUE)
 
 // Give backers a real review and pledge window; reject flash campaigns.
-const MIN_DURATION_SECONDS = Uint64(24 * 60 * 60)
+const MIN_DURATION_SECONDS = Uint64(MIN_CAMPAIGN_DURATION_SECONDS_VALUE)
 
 // Kickstarter-style goal protection: in the final 24 hours, a cancellation cannot drop a successful campaign below
 // its goal. A 1-day campaign is entirely inside this window; once its goal is reached, no cancel can drop it.
-const FINAL_DAY_SECONDS = Uint64(24 * 60 * 60)
+const FINAL_DAY_SECONDS = Uint64(FINAL_DAY_SECONDS_VALUE)
 
 // Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
-const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
+const MIN_PLEDGE_MICROALGOS = Uint64(MIN_PLEDGE_MICRO_ALGOS_VALUE)
 
 // A goal below the minimum pledge can only be met by overfunding with the smallest pledge.
-const MIN_GOAL_MICROALGOS = MIN_PLEDGE_MICROALGOS
+const MIN_GOAL_MICROALGOS = Uint64(MIN_GOAL_MICRO_ALGOS_VALUE)
 
 // 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
-const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
+const MAX_GOAL_MICROALGOS = Uint64(MAX_GOAL_MICRO_ALGOS_VALUE)
 
 // A single pledge cannot exceed the total ALGO supply either.
-const MAX_PLEDGE_MICROALGOS = MAX_GOAL_MICROALGOS
+const MAX_PLEDGE_MICROALGOS = Uint64(MAX_PLEDGE_MICRO_ALGOS_VALUE)
 
 // uint64 maximum, for the explicit cumulative-flow overflow guard.
 const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
 
-// 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18, 36 path elements)
-// fits the 16-inner limit with the measured ~600-op prelude budget: 14 OpUp takes +
-// payBack + payment = 16. The SDK's zero-headroom fee bound funds 15 takes, so the group
-// never underpays. The N=1,023 ladder rung pins the prelude headroom; a larger tree can
-// request a 15th take, over the per-transaction inner limit.
-// Keep in sync with the SDK's MAX_TREE_SIZE.
-const MAX_TREE_SIZE = Uint64(524_287)
+// 2^19 - 1: the largest tree whose worst-case refund path fits the inner-transaction limit.
+const MAX_TREE_SIZE = Uint64(MAX_TREE_SIZE_VALUE)
 
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
 const LEAF_DOMAIN = Bytes.fromHex('01')
 
-// `Z`, the consumed-leaf marker and the empty-tree root: 32 zero bytes.
-const ZERO_ROOT = Bytes.fromHex('0000000000000000000000000000000000000000000000000000000000000000')
+// `Z`, the consumed-leaf marker and the empty-tree root.
+const ZERO_ROOT = Bytes.fromHex(ZERO_ROOT_HEX)
 
 // ARC-4 method selectors for the ClaimsVault methods this contract invokes as inner app calls (computed from the
 // emitted ARC-56 signatures - see smart_contracts/claimsvault/contract.algo.ts; kept in sync by the integration tests).
@@ -214,7 +224,7 @@ export class Campaign extends Contract {
     assert(frontier.length === p * Uint64(32), 'bad frontier length')
     // 240 per peak covers the hash plus the fold-loop overhead; 400 covers the rest of this
     // method and the following vault credit, which shares the group's opcode budget.
-    ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)
+    ensureBudget(p * Uint64(PLEDGE_PEAK_COST) + Uint64(PLEDGE_BASE_COST), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
@@ -443,7 +453,7 @@ export class Campaign extends Contract {
 
     // Reserve the whole spend from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
     // base budget. The blob length is validated below, and an underfunded group fails atomically.
-    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)
