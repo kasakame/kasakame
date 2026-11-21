@@ -359,7 +359,7 @@ export class Campaign extends Contract {
 
     // The vault records the official Registry. If this is a real deployment, the previous transaction must be the
     // Registry's unregister for this campaign, so the registration cannot be left behind by a raw delete.
-    const vaultRegistry = op.AppGlobal.getExUint64(this.vault.value, Bytes('factory'))
+    const vaultRegistry = op.AppGlobal.getExUint64(this.vault.value, Bytes('registry'))
     if (vaultRegistry[1]) {
       assert(Txn.groupIndex > Uint64(0), 'unregister must precede delete')
       const unregisterIndex: uint64 = Txn.groupIndex - Uint64(1)

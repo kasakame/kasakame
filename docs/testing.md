@@ -336,7 +336,7 @@ earlier tests in the same file, which stop on first failure).
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
 | `CON-001` | Registry is ownerless and bound to the official vault | always | No owner/timelock methods or globals, bound vault, Campaign/Vault hashes equal the compiled bytecode, Registry app-account funding |
-| `CON-002` | ClaimsVault records the Registry, sweep target, and window | always | Vault globals (`factory` holds the Registry id, sweep target, refund window) and app-account funding |
+| `CON-002` | ClaimsVault records the Registry, sweep target, and window | always | Vault globals (`registry` holds the Registry id, sweep target, refund window) and app-account funding |
 | `CON-003` | contracts embed the expected inner-call selectors | always | Campaign/Vault/Registry TEAL embeds the selectors used by the inner calls |
 | `CON-004` | bindVault rejects a second bind, a foreign Registry, and wrong config | always | Already bound, foreign back-pointer, wrong program hash, wrong sweep target, and wrong refund window rejected; the binding stays unset |
 | `CON-005` | bindVault is permissionless | always | A stranger can bind the first correct vault |
@@ -605,7 +605,7 @@ the pinned release predates all three.
 | `refund` | success / before deadline / `raised >= goal` / claimed / bad txid / unknown position / bad path / proof mismatch / double refund (LocalNet) | ✅ |
 | `cancelPledge` | success / after deadline / not open / zero amount / bad txid / unknown position / bad path / double cancel (LocalNet) / final-day goal-dropping reject / final-day keeps-goal allow / final-day below-goal allow / before-final-day allow | ✅ |
 | `delete` | failed-in-fact materialization + vault settle / cap-saturated failure before the deadline / claimed + notifyDelete / pristine (settle no-op) / all-cancelled settle / non-creator / live pledges / Registry-bound requires the preceding NoOp unregister / raw and ClearState delete bypass rejected | ✅ |
-| `ClaimsVault.create` | success / window 30 days − 1, 30 days, 10 years, above the cap / zero Registry id (factory key) / zero sweep target / vault itself as sweep target | ✅ |
+| `ClaimsVault.create` | success / window 30 days − 1, 30 days, 10 years, above the cap / zero Registry id (registry key) / zero sweep target / vault itself as sweep target | ✅ |
 | `credit` | preceding pledge required / wrong pledge app/sender/args/selector / ClearState pledge rejected / existing-box inflow / `paidIn` overflow guard / zero amount / unregistered first touch / closed box / no matching payment / close-remainder and rekey payments rejected | ✅ (+ first-touch happy path on LocalNet) |
 | `payBack` | success / non-campaign caller / unknown campaign / closed box / zero / insufficient | ✅ |
 | `payClaim` | success (derived amount) / non-campaign caller / unknown / closed box / empty payout | ✅ |

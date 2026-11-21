@@ -77,10 +77,9 @@ const MAX_TREE_SIZE = Uint64(524_287)
 
 export class ClaimsVault extends Contract {
   /**
-   * The Registry app id, stored in the `factory` key for compatibility; its `registered` boxes are the canonical campaign
-   * records.
+   * The Registry app id, stored in the `registry` key; its `registered` boxes are the canonical campaign records.
    */
-  factory = GlobalState<Application>()
+  registry = GlobalState<Application>()
 
   /** Where `finalize()` sweeps a failed campaign's residual after the refund window; fixed at creation. */
   sweepTarget = GlobalState<Account>()
@@ -97,22 +96,22 @@ export class ClaimsVault extends Contract {
    * The platform funds the vault's application account after creation (the account base plus headroom: each campaign's
    * first `credit` parks a 32,100 µA box on the vault, recovered by `notifyDelete`/`finalize`).
    *
-   * @param factory The Registry app (stored in the `factory` key).
+   * @param registry The Registry app (stored in the `registry` key).
    * @param target Where `finalize()` sweeps failed campaigns' residuals after the refund window.
    * @param window Refund window in seconds after settlement.
    */
   @abimethod({ onCreate: 'require' })
-  create(factory: Application, target: Account, window: uint64): void {
+  create(registry: Application, target: Account, window: uint64): void {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
-    assert(factory.id !== Uint64(0), 'factory required')
+    assert(registry.id !== Uint64(0), 'registry required')
     assert(target !== Global.zeroAddress, 'sweep target must not be zero')
     assert(target !== Global.currentApplicationAddress, 'sweep target must not be the vault')
-    assert(target !== factory.address, 'sweep target must not be the registry')
+    assert(target !== registry.address, 'sweep target must not be the registry')
     assert(window >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
     assert(window <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
 
-    this.factory.value = factory
+    this.registry.value = registry
     this.sweepTarget.value = target
     this.refundWindow.value = window
   }
@@ -199,7 +198,7 @@ export class ClaimsVault extends Contract {
   private checkRegistration(app: Application): void {
     const registrationCheck = itxn
       .applicationCall({
-        appId: this.factory.value,
+        appId: this.registry.value,
         appArgs: [REGISTRY_IS_REGISTERED_SELECTOR, op.itob(app.id)],
         fee: Uint64(0),
       })

@@ -117,8 +117,8 @@ export class Registry extends Contract {
     assert(vault.id !== Uint64(0), 'vault required')
     assert(this.vaultProgramHash.value.length === Uint64(32), 'vault program hash not configured')
 
-    const vaultFactory = op.AppGlobal.getExUint64(vault, Bytes('factory'))
-    assert(vaultFactory[1] && vaultFactory[0] === Global.currentApplicationId.id, 'vault is not bound to this registry')
+    const vaultRegistry = op.AppGlobal.getExUint64(vault, Bytes('registry'))
+    assert(vaultRegistry[1] && vaultRegistry[0] === Global.currentApplicationId.id, 'vault is not bound to this registry')
 
     const vaultSweep = op.AppGlobal.getExBytes(vault, Bytes('sweepTarget'))
     assert(vaultSweep[1] && vaultSweep[0] === this.expectedSweepTarget.value.bytes, 'vault sweep target mismatch')

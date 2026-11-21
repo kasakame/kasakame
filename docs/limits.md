@@ -76,12 +76,12 @@ Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
 
 | Contract | Approval | Clear | Total | Extra pages | Page capacity | Headroom to next page |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Campaign | 2,245 B | 4 B | 2,249 B | 1 (2 pages) | 4,096 B | 1,847 B |
-| ClaimsVault | 2,865 B | 4 B | 2,869 B | 1 (2 pages) | 4,096 B | 1,227 B |
-| Registry | 960 B | 4 B | 964 B | 0 (1 page) | 2,048 B | 1,084 B |
+| Campaign | 2,246 B | 4 B | 2,250 B | 1 (2 pages) | 4,096 B | 1,846 B |
+| ClaimsVault | 2,866 B | 4 B | 2,870 B | 1 (2 pages) | 4,096 B | 1,226 B |
+| Registry | 961 B | 4 B | 965 B | 0 (1 page) | 2,048 B | 1,083 B |
 
-The campaign is **201 bytes over** the 1-page (2,048 B) limit. It is already a
-2-page app; the next page boundary is 4,096 B. Trimming 201 B would return it to
+The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
+2-page app; the next page boundary is 4,096 B. Trimming 202 B would return it to
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in

@@ -65,7 +65,7 @@ describe('00 deployment and wiring', () => {
   test('CON-002 ClaimsVault records the Registry, sweep target, and window', { tags: ['smoke', 'always'] }, async () => {
     const vault = stack.vault.client
     expect(stack.vault.appId).toBeGreaterThan(0n)
-    expect(await vault.state.global.getValue('factory')).toEqual(stack.registry.appId)
+    expect(await vault.state.global.getValue('registry')).toEqual(stack.registry.appId)
     expect(await vault.state.global.getValue('sweepTarget')).toEqual(stack.sweeperAddress)
     expect(await vault.state.global.getValue('refundWindow')).toEqual(TEST_VAULT_WINDOW)
     expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual({
