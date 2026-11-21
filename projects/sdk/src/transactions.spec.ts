@@ -16,6 +16,7 @@ import {
   refund,
   refundGroup,
   refundWindowEndsAt,
+  registerCampaign,
   vaultAddress,
 } from './transactions.js'
 
@@ -197,17 +198,79 @@ describe('transaction helpers', () => {
   })
 
   it('createCampaign runs create then register (nothing funded)', async () => {
-    await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
 
+    expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
+  it('returns the app id when registration fails', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    expect(result).toEqual({
+      appId: 9n,
+      appAddress: 'ESCROW',
+      registered: false,
+      registerError: 'not an official kasakame campaign',
+    })
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('stringifies a non-Error registration failure', async () => {
+    sendRegisterMock.mockRejectedValueOnce('not an official kasakame campaign')
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    expect(result.registered).toBe(false)
+    expect(result.registerError).toBe('not an official kasakame campaign')
+  })
+
+  it('registerCampaign retries registration and tolerates an already-registered campaign', async () => {
+    await registerCampaign(9n, session)
+    expect(sendRegisterMock).toHaveBeenCalledOnce()
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+
+    sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
+    await expect(registerCampaign(9n, session)).resolves.toBeUndefined()
+    expect(sendRegisterMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('registerCampaign surfaces other registration failures', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+
+    await expect(registerCampaign(9n, session)).rejects.toThrow('not an official kasakame campaign')
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+  })
+
+  it('registerCampaign is a no-op when no registry is configured', async () => {
+    registryAppIdMock.mockReturnValue(0n)
+
+    await registerCampaign(9n, session)
+
+    expect(sendRegisterMock).not.toHaveBeenCalled()
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+  })
+
+  it('a campaign whose registration failed can still be deleted', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    await deleteCampaign(result.appId, session)
+
+    expect(paramsUnregisterMock).toHaveBeenCalledOnce()
+    expect(composerAddMock).toHaveBeenCalledTimes(2)
+    expect(composerSendMock).toHaveBeenCalledOnce()
+  })
+
   it('creates without registering when no registry is configured', async () => {
     registryAppIdMock.mockReturnValue(0n)
-    await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
 
+    expect(result.registered).toBe(true)
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).not.toHaveBeenCalled()
   })
