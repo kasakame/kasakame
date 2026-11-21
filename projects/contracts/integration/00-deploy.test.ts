@@ -17,7 +17,7 @@ import {
   registerCampaign,
   specProgramHash,
   type ContractStack,
-} from './support/localnet'
+} from '../test/utils'
 
 /**
  * 00 - deployment and wiring.

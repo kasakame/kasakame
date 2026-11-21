@@ -14,7 +14,7 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './support/localnet'
+} from '../test/utils'
 
 interface CampaignFixture {
   appClient: AppClient
