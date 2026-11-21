@@ -16,11 +16,17 @@ interface Arc56SizeFields {
   state: { schema: { global: { bytes: number; ints: number } } }
 }
 
-describe('contract size budget', () => {
-  for (const [directory, budget] of Object.entries(SIZE_BUDGET)) {
-    const { contract, ...expected } = budget
+const TEST_IDS = {
+  campaign: 'CON-300',
+  claimsvault: 'CON-301',
+  registry: 'CON-302',
+} satisfies Record<keyof typeof SIZE_BUDGET, string>
 
-    test(`${contract} matches the pinned size and MBR`, () => {
+describe('contract size budget', () => {
+  for (const directory of Object.keys(SIZE_BUDGET) as Array<keyof typeof SIZE_BUDGET>) {
+    const { contract, ...expected } = SIZE_BUDGET[directory]
+
+    test(`${TEST_IDS[directory]} ${contract} matches the pinned size and MBR`, () => {
       const specPath = path.join(ARTIFACTS, directory, `${contract}.arc56.json`)
       const spec = JSON.parse(fs.readFileSync(specPath, 'utf8')) as Arc56SizeFields
       const approval = Buffer.from(spec.byteCode.approval, 'base64').length

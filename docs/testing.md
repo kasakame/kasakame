@@ -73,7 +73,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Suite | File pattern | Command | CI job | Trigger |
 | --- | --- | --- | --- | --- |
 | Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `test/formulas.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
-| Contract size budget | `test/size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
+| Contract size budget | `test/08-size-budget.spec.ts` (`CON-300`..`CON-302`) | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet | `test/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `test/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
@@ -225,10 +225,17 @@ class as it does not extend Contract or BaseContract".
 
 `npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
 approval/clear/total bytes, extra pages, page capacity, global schema, and app
-MBR in `test/utils/size-budget.fixture.ts`. It runs in the
+MBR in `test/utils/size-budget.fixture.ts`. The checks live in
+`test/08-size-budget.spec.ts`. They run in the
 `compile-contracts` CI job after `npm run build`; update the fixture and
 [`limits.md`](limits.md) together when a contract changes. It is excluded from
 `npm test` and `test:coverage` because those jobs do not build the artifacts.
+
+| ID | Test | Verifies |
+| --- | --- | --- |
+| `CON-300` | Campaign matches the pinned size and MBR | Campaign approval/clear bytes, pages, global schema, and app MBR |
+| `CON-301` | ClaimsVault matches the pinned size and MBR | ClaimsVault approval/clear bytes, pages, global schema, and app MBR |
+| `CON-302` | Registry matches the pinned size and MBR | Registry approval/clear bytes, pages, global schema, and app MBR |
 
 ## LocalNet integration notes
 
