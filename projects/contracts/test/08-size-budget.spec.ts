@@ -9,7 +9,7 @@ import {
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { CONTRACT_SIZES } from './helpers/contract-sizes'
+import { CONTRACT_SIZES } from './utils/contract-sizes'
 
 const ARTIFACTS = path.resolve(__dirname, '../smart_contracts/artifacts')
 

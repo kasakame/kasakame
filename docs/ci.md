@@ -31,7 +31,7 @@ reasoning behind the splits.
   the pinned release otherwise.
 - **The compiled footprint is gated.** `compile-contracts` runs
   `npm run test:size` after `npm run build`, so a byte, page, or schema change
-  fails unless `test/helpers/contract-sizes.ts` and `docs/limits.md` are
+  fails unless `test/utils/contract-sizes.ts` and `docs/limits.md` are
   updated. `check-contracts` does not build artifacts, so the size test is
   excluded from `npm test` and `test:coverage`.
 - **The constants build is committed.** `projects/constants/dist` is tracked so

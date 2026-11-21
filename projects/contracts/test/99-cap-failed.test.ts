@@ -13,8 +13,8 @@ import {
 } from '@kasakame/constants'
 import { accountInfo, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
-import { campaignBox, campaignBoxExists, campaignState, deleteCampaign, deployCampaign, deployStack } from './helpers'
-import { FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './helpers/fast-pledge'
+import { campaignBox, campaignBoxExists, campaignState, deleteCampaign, deployCampaign, deployStack } from './utils'
+import { FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
  * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.

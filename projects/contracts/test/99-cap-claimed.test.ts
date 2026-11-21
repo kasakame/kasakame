@@ -10,8 +10,8 @@ import {
 } from '@kasakame/constants'
 import { accountInfo, advanceTime } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
-import { campaignBox, campaignBoxExists, campaignState, claimCampaign, deleteCampaign, deployCampaign, deployStack } from './helpers'
-import { FastTree, hex, pathShape, runPledges } from './helpers/fast-pledge'
+import { campaignBox, campaignBoxExists, campaignState, claimCampaign, deleteCampaign, deployCampaign, deployStack } from './utils'
+import { FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
  * 99 - cap-scale successful campaign (#220): the full 2^19 - 1 tree, then claim and delete.

@@ -9,7 +9,7 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
   Vitest or any other runner.
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
-in `projects/contracts/test/helpers`.
+in `projects/contracts/test/utils`.
 
 ## Use
 

@@ -14,7 +14,7 @@ import {
   deployStack,
   registerCampaign,
   type ContractStack,
-} from './helpers'
+} from './utils'
 
 /**
  * 00 - deployment and wiring.

@@ -23,7 +23,7 @@ import {
   spendCampaign,
   spendVault,
   type ContractStack,
-} from './helpers'
+} from './utils'
 
 interface CampaignFixture {
   appClient: AppClient

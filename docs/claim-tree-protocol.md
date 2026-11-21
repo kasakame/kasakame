@@ -4,7 +4,7 @@
 > frontier-Merkle claim tree with in-place null-deletion**. The contracts, the offline and LocalNet test suites, and the frontend proof
 > builder follow it. The language-independent reference model with property tests lives in
 > [`claim-tree-protocol-reference.py`](claim-tree-protocol-reference.py) and serves as the oracle for the contract test suite
-> (driven via `test/helpers/oracle.py`).
+> (driven via `test/utils/oracle.py`).
 
 ## 1. Repository and protocol verification
 

@@ -85,7 +85,7 @@ The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
-`test/helpers/contract-sizes.ts` and runs in the `compile-contracts` CI
+`test/utils/contract-sizes.ts` and runs in the `compile-contracts` CI
 job after `npm run build`. A byte, page, or schema change must update the snapshot
 and this table together.
 

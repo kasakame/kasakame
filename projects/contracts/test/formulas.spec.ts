@@ -1,7 +1,7 @@
 import { FEE_MICRO_ALGOS } from '@kasakame/constants'
 import { selectorOf } from '@kasakame/utils/testing'
 import { describe, expect, it } from 'vitest'
-import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './helpers/campaign'
+import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './utils/campaign'
 
 /**
  * Pins the shared helper formulas and selectors. The spend fee assumes no prelude budget survives, which overfunds

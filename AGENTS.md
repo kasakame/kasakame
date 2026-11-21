@@ -13,7 +13,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `test/` - LocalNet suites (`00-deploy`, `01-single-campaign`, ...), run in path order
-  - `test/helpers/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the compiled-size snapshot
+  - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the compiled-size snapshot
   - `test/formulas.spec.ts`, `test/08-size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
@@ -167,7 +167,7 @@ the product contract. The pinned values and the AVM limits are in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `test/helpers/contract-sizes.ts`; it runs in the `compile-contracts` CI
+  `test/utils/contract-sizes.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
@@ -217,7 +217,7 @@ the product contract. The pinned values and the AVM limits are in
   editing it. Its exports point at TypeScript sources, so there is no build step:
   run `npm run check-types`/`lint`/`format` in the package. Generic LocalNet
   helpers belong in `@kasakame/utils/testing`; contract-only helpers stay in
-  `projects/contracts/test/helpers`.
+  `projects/contracts/test/utils`.
 - **The shared constants package has two entry points.** `@kasakame/constants`
   is the compiled runtime package; `@kasakame/constants/source` is the
   TypeScript source for the Puya contract compiler. Contracts import `/source`;
