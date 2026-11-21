@@ -55,8 +55,6 @@ export interface DeployPlatformOptions {
   bindVault?: boolean
 }
 
-const DEFAULT_FUNDING = PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
-
 async function fund(algorand: AlgorandClient, sender: string, receiver: string, amount: bigint): Promise<void> {
   if (amount === 0n) return
   await algorand.send.payment({ sender, receiver, amount: microAlgos(amount), suppressLog: true })
@@ -81,7 +79,7 @@ async function createRegistry(
     sender: ownerAddress,
     suppressLog: true,
   })
-  const funding = options.registryFunding ?? DEFAULT_FUNDING
+  const funding = options.registryFunding ?? PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
   await fund(algorand, ownerAddress, appClient.appAddress.toString(), funding)
   assertBalance(`registry ${appClient.appId.toString()}`, (await accountInfo(algorand, appClient.appAddress.toString())).balance, funding)
   return { client: appClient, appId: appClient.appId, address: appClient.appAddress.toString() }
@@ -103,7 +101,7 @@ async function createVault(
     appReferences: [registryId],
     suppressLog: true,
   })
-  const funding = options.vaultFunding ?? DEFAULT_FUNDING
+  const funding = options.vaultFunding ?? PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
   await fund(algorand, ownerAddress, appClient.appAddress.toString(), funding)
   assertBalance(`vault ${appClient.appId.toString()}`, (await accountInfo(algorand, appClient.appAddress.toString())).balance, funding)
   return { client: appClient, appId: appClient.appId, address: appClient.appAddress.toString() }
