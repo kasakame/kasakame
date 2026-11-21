@@ -64,7 +64,7 @@ const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 // A 1-second window is not credible backer protection; the deploy default stays 730 days.
 const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
 
-// Deployment sanity cap: 10 years, matching claimsvault/deploy-config.ts. Keeps `settledAt + refundWindow` far from
+// Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Keeps `settledAt + refundWindow` far from
 // uint64 overflow even if the vault is created directly instead of through the deploy script.
 const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 

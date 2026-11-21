@@ -57,7 +57,7 @@ export async function peraUniversalWalletAccount(
 }
 
 /**
- * Resolves the deployer account for every deploy-config. On LocalNet this auto-creates and funds a KMD wallet called
+ * Resolves the deployer account for every deployer. On LocalNet this auto-creates and funds a KMD wallet called
  * `DEPLOYER`; elsewhere it reads `DEPLOYER_MNEMONIC` - a 25-word Algo25 phrase, or a 24-word Pera Universal Wallet
  * passphrase together with `DEPLOYER_ADDRESS` (registering a raw signer for the derived account).
  *

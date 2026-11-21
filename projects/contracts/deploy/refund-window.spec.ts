@@ -5,7 +5,7 @@ import {
   MIN_REFUND_WINDOW_SECONDS,
   parseRefundWindow,
   resolveSweepTarget,
-} from './deploy-config'
+} from './refund-window'
 
 describe('parseRefundWindow', () => {
   it('defaults to 730 days when unset', () => {
