@@ -1,4 +1,14 @@
-import { FEE_MICRO_ALGOS } from '@kasakame/constants'
+import {
+  ADDRESS_BYTES,
+  APP_ID_BYTES,
+  BOX_KEY_PREFIX_BYTES,
+  BOX_MBR_BASE_MICRO_ALGOS,
+  BOX_MBR_PER_BYTE_MICRO_ALGOS,
+  FEE_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  VAULT_BOX_BYTES,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
 import { selectorOf } from '@kasakame/utils/testing'
 import { describe, expect, it } from 'vitest'
 import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './utils/campaign'
@@ -30,6 +40,13 @@ describe('contract LocalNet helpers', () => {
     const capPath = { siblings: Array<string>(18).fill('00'), top: null, lower: Array<string>(18).fill('00') }
     expect(spendExtraFee(capPath, 2)).toEqual(17_000n)
     expect(spendExtraFee(capPath, 1)).toEqual(16_000n)
+  })
+
+  it('derives the registration deposit and vault box MBR from the ledger inputs', () => {
+    const registerBytes = BOX_KEY_PREFIX_BYTES + APP_ID_BYTES + ADDRESS_BYTES
+    const vaultBytes = BOX_KEY_PREFIX_BYTES + APP_ID_BYTES + VAULT_BOX_BYTES
+    expect(BOX_MBR_BASE_MICRO_ALGOS + BOX_MBR_PER_BYTE_MICRO_ALGOS * BigInt(registerBytes)).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+    expect(BOX_MBR_BASE_MICRO_ALGOS + BOX_MBR_PER_BYTE_MICRO_ALGOS * BigInt(vaultBytes)).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
   })
 
   it('pins the embedded selectors', () => {

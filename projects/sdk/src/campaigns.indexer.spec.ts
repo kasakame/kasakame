@@ -1,4 +1,5 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
+import { REGISTRY_BOX_PREFIX, VAULT_BOX_STATUS_CLAIMED_HEX } from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -119,7 +120,7 @@ function boxSearchBuilder(getBoxes: () => { name: Uint8Array }[]): unknown {
  */
 function registrationBoxName(appId: bigint): Uint8Array {
   const name = new Uint8Array(9)
-  name[0] = 0x72
+  name[0] = REGISTRY_BOX_PREFIX.charCodeAt(0)
   for (let i = 8; i >= 1; i--) {
     name[i] = Number(appId & 0xffn)
     appId >>= 8n
@@ -175,7 +176,7 @@ describe('fetchRegisteredCampaignIds', () => {
       boxSearchBuilder(() => [
         { name: registrationBoxName(7n) },
         { name: registrationBoxName(1_234_567_890n) },
-        { name: new Uint8Array([0x72, 1, 2, 3]) }, // malformed: too short
+        { name: new Uint8Array([REGISTRY_BOX_PREFIX.charCodeAt(0), 1, 2, 3]) }, // malformed: too short
         { name: new Uint8Array([0x71, 1, 2, 3, 4, 5, 6, 7, 8]) }, // wrong prefix
       ]),
     )
@@ -343,7 +344,12 @@ describe('getCampaign', () => {
         ],
       }),
     )
-    fetchVaultBoxMock.mockResolvedValue({ paidIn: 7_000_000n, paidOut: 1_000_000n, status: 3, settledAt: 1_500n })
+    fetchVaultBoxMock.mockResolvedValue({
+      paidIn: 7_000_000n,
+      paidOut: 1_000_000n,
+      status: Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16),
+      settledAt: 1_500n,
+    })
 
     expect(await getCampaign(44n, 3_000n)).toEqual({
       id: 44n,

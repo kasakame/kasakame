@@ -18,13 +18,18 @@ import {
   urange,
 } from '@algorandfoundation/algorand-typescript'
 import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
   FINAL_DAY_SECONDS,
+  LEAF_DOMAIN_HEX,
   MAX_CAMPAIGN_DURATION_SECONDS,
   MAX_GOAL_MICRO_ALGOS,
   MAX_METADATA_URI_BYTES,
   MAX_PLEDGE_MICRO_ALGOS,
   MAX_TITLE_BYTES,
   MAX_TREE_SIZE,
+  MAX_UINT64,
   MIN_CAMPAIGN_DURATION_SECONDS,
   MIN_GOAL_MICRO_ALGOS,
   MIN_PLEDGE_MICRO_ALGOS,
@@ -61,16 +66,12 @@ import {
  */
 
 // Status is stored in global state as a uint64.
-// 0 = Open, 1 = Failed, 2 = Claimed.
-const STATUS_OPEN = 0
-const STATUS_FAILED = 1
-const STATUS_CLAIMED = 2
-
-// uint64 maximum, for the explicit cumulative-flow overflow guard.
-const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
+const STATUS_OPEN = Uint64(CAMPAIGN_STATUS_OPEN)
+const STATUS_FAILED = Uint64(CAMPAIGN_STATUS_FAILED)
+const STATUS_CLAIMED = Uint64(CAMPAIGN_STATUS_CLAIMED)
 
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
-const LEAF_DOMAIN = Bytes.fromHex('01')
+const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
 
 // `Z`, the consumed-leaf marker and the empty-tree root.
 const ZERO_ROOT = Bytes.fromHex(ZERO_ROOT_HEX)
@@ -191,7 +192,7 @@ export class Campaign extends Contract {
     // ~3x the vault box MBR and 100x the minimum fee; a pledge cannot exceed the total ALGO supply either.
     assert(payment.amount >= Uint64(MIN_PLEDGE_MICRO_ALGOS), 'pledge below minimum')
     assert(payment.amount <= Uint64(MAX_PLEDGE_MICRO_ALGOS), 'pledge too large')
-    assert(this.raised.value <= MAX_UINT64 - payment.amount, 'raised overflow')
+    assert(this.raised.value <= Uint64(MAX_UINT64) - payment.amount, 'raised overflow')
 
     const n = this.n.value
     // 2^19 - 1: the largest tree whose worst-case refund path fits the inner-transaction limit.

@@ -1,4 +1,5 @@
 import {
+  LEAF_DOMAIN_HEX,
   OPUP_AVAILABLE_BUDGET,
   OPUP_BUDGET_PER_ITERATION,
   OPUP_ITERATION_SLACK,
@@ -141,7 +142,7 @@ export function u64beDecode(value: Uint8Array): bigint {
  */
 export function leafFor(backer: string, amount: bigint, txidHex: string): Uint8Array {
   const preimage = new Uint8Array(1 + 32 + 8 + 32)
-  preimage[0] = 0x01
+  preimage[0] = Number.parseInt(LEAF_DOMAIN_HEX, 16)
   preimage.set(decodeAddress(backer).publicKey, 1)
   preimage.set(u64be(amount), 33)
   preimage.set(hexToBytes(txidHex), 41)
