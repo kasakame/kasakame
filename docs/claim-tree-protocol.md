@@ -6,7 +6,7 @@
 > [`claim-tree-protocol-reference.py`](claim-tree-protocol-reference.py) and serves as the oracle for the contract test suite
 > (driven via `test/utils/oracle.py`).
 
-The cap, fee coefficients, and zero root live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts); see [`constants.md`](constants.md).
+The cap, fee coefficients, and zero root live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
 
 ## 1. Repository and protocol verification
 

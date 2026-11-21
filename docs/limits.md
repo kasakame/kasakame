@@ -1,6 +1,6 @@
 # Limits, sizes, storage, and fees
 
-The values below live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts); see [`constants.md`](constants.md) for the inventory and type convention.
+The values below live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
 
 Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the

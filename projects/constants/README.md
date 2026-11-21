@@ -23,8 +23,6 @@ import the compiled package.
 Values use `bigint` for 64-bit on-chain amounts and caps (microAlgos, tree
 size, fee totals) and `number` for counts, byte sizes, seconds, page sizes, and
 OpUp coefficients. Contracts convert at the AVM boundary with `Uint64(...)`.
-See [`docs/constants.md`](../../docs/constants.md) for the full inventory and
-the delivery and drift rules.
 
 ## Commands
 

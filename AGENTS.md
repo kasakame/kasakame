@@ -49,8 +49,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   security), [`frontend.md`](docs/frontend.md), [`cli.md`](docs/cli.md)
   (escape-hatch CLI: signers, commands, networks, self-hosting),
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
-  [`constants.md`](docs/constants.md) (shared constants: source, types, and
-  inventory), [`testing.md`](docs/testing.md),
+  [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
