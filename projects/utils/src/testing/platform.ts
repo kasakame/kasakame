@@ -4,7 +4,7 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import type { Account } from 'algosdk'
-import { programHash, specProgramHash } from '../program-hash.js'
+import { specProgramHash } from '../program-hash.js'
 import { assertBalance } from './assertions.js'
 import { accountInfo } from './localnet.js'
 
@@ -134,16 +134,4 @@ export async function deployPlatform(algorand: AlgorandClient, options: DeployPl
   }
 
   return { algorand, registry, vault }
-}
-
-/**
- * The program hash of a deployed application, exactly what the Registry verifies.
- *
- * @param algorand The LocalNet client.
- * @param appId The deployed application id.
- * @returns The 32-byte hash.
- */
-export async function programHashAt(algorand: AlgorandClient, appId: bigint): Promise<Uint8Array> {
-  const info = await algorand.app.getById(appId)
-  return programHash(Buffer.from(info.approvalProgram), Buffer.from(info.clearStateProgram))
 }

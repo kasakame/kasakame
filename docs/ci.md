@@ -55,8 +55,9 @@ reasoning behind the splits.
 - **The trigger policy is centralized.** `changes` publishes derived `run_*`
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
-  `run_check_backend`, `run_integration`). Every job reads one boolean, so the
-  trigger rules live in one place instead of repeated `if` expressions.
+  `run_check_backend`, `run_check_utils`, `run_integration`). Every job reads
+  one boolean, so the trigger rules live in one place instead of repeated `if`
+  expressions.
   Separate jobs (no matrix) keep the conditional presence and the status-check
   names stable.
 - **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
@@ -237,7 +238,7 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `ci` - `.github/**` (workflows and release scripts).
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
-  and fails on drift. LocalNet stays contracts-only, so an oracle-only change
+  and fails on drift. An oracle-only change does not trigger LocalNet, so it
   runs the offline suites, not `integration-test`.
 - `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
 - `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
@@ -248,15 +249,16 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   shell scripts, docs images, licenses, and inert root files are excluded from
   it.
 - `run_repo_lint` - `ci || shell || markdown`.
-- `run_compile_contracts` - `contracts`.
-- `run_check_contracts` - `contracts || oracle || workspace`.
+- `run_compile_contracts` - `contracts || utils`.
+- `run_check_contracts` - `contracts || utils || oracle || workspace`.
 - `run_build_sdk` - `contracts || sdk`; the frontend and CLI lanes also use it
   to choose the packed local SDK instead of the published package.
-- `run_check_sdk` - `contracts || sdk || oracle || workspace`.
+- `run_check_sdk` - `contracts || sdk || utils || oracle || workspace`.
 - `run_check_frontend` - `contracts || sdk || frontend || workspace`.
 - `run_check_cli` - `contracts || sdk || cli || workspace`.
 - `run_check_backend` - `backend || workspace`.
-- `run_integration` - `contracts`.
+- `run_check_utils` - `utils`.
+- `run_integration` - `contracts || utils`.
 
 Every `run_*` output is true on a manual `workflow_dispatch`.
 
@@ -273,7 +275,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   clients), and uploads `contracts-artifacts` with `overwrite: true` and 7-day
   retention.
 - **`check-contracts`** - runs when `run_check_contracts` is true (contracts,
-  oracle, or workspace). Pure Node: format, lint, type-check, and
+  utils, oracle, or workspace). Pure Node: format, lint, type-check, and
   `npm run test:coverage`. The offline suite runs the contract source directly,
   so it never needs the compiled artifacts. A failed check does not stop the
   rest.
@@ -281,10 +283,10 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   changed). Downloads `contracts-artifacts` when the contracts changed, installs
   the SDK dependencies, builds the package (`npm run build` → codegen + tsc),
   and uploads `sdk-generated` and `sdk-dist` (7-day retention).
-- **`check-sdk`** - runs when `run_check_sdk` is true (contracts, SDK, oracle,
-  or workspace). Downloads `sdk-generated` when `build-sdk` ran; when the
-  producer was skipped (`workspace`-only changes), regenerates the clients from
-  the pinned release. Then format, lint, type-check, and `npm run test:coverage`.
+- **`check-sdk`** - runs when `run_check_sdk` is true (contracts, SDK, utils,
+  oracle, or workspace). Downloads `sdk-generated` when `build-sdk` ran; when
+  the producer was skipped (`workspace`-only changes), regenerates the clients
+  from the pinned release. Then format, lint, type-check, and `npm run test:coverage`.
   It does not download `contracts-artifacts` directly. It also regenerates
   `src/claim-tree.vectors.ts` from the Python oracle, formats it, and fails with
   `git diff --exit-code` when the committed vectors are stale.
@@ -303,6 +305,9 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   workspace): starts a Postgres service, runs format, lint, and type-check, then
   migrations and `npm run test:coverage`. It is independent of
   contracts/SDK/frontend/CLI.
+- **`check-utils`** - runs when `run_check_utils` is true (`utils` changed):
+  installs the private package, then format, lint, and type-check. It produces
+  no artifact and publishes nothing.
 - **`integration-test`** - runs when `run_integration` is true and waits for
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
   runs even if contract verification failed, so a lint/test failure still
