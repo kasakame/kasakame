@@ -394,8 +394,7 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   clients from the pinned `specs-vX.Y.Z` release, compile TypeScript, lint,
   format, type-check, run coverage, inspect the packed tarball, and dry-run the
   publish. Each command is its own step. It uploads the tested `dist/`.
-- `smoke` runs `projects/sdk/scripts/smoke-package.mjs` (a thin wrapper over
-  `scripts/pack-smoke.mjs`): it packs the tested
+- `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
   `dist/`, installs the tarball into a clean consumer, checks the version and
   `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
   pin. It gates the publish.
@@ -446,8 +445,7 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   it is unpublished, then lints, formats, type-checks, runs coverage, builds,
   inspects the packed tarball, and dry-runs the publish. Each command is its own
   step. It uploads the tested `dist/`.
-- `smoke` runs `projects/cli/scripts/smoke-package.mjs` (a thin wrapper over
-  `scripts/pack-smoke.mjs`): it packs the tested
+- `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
   `dist/`, installs the tarball into a clean consumer, checks the version and
   `LICENSE`, and runs `kasakame --help`. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and

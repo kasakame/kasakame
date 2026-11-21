@@ -7,7 +7,6 @@ Operational scripts, grouped by the project that owns their dependencies. Run th
 | `.github/scripts/check-release-version.mjs` | Validate a release version and the package's `version` field. | `node .github/scripts/check-release-version.mjs <package.json> <version>` | Node |
 | `.github/scripts/install-algokit.sh` | Install AlgoKit 2.10.2 for CI. | `bash .github/scripts/install-algokit.sh` | CI (`GITHUB_PATH`), `pipx` |
 | `.github/scripts/install-local-sdk.sh` | Install the packed local SDK when `LOCAL_SDK=true`, otherwise `npm ci`. | `bash ../../.github/scripts/install-local-sdk.sh` from a project | npm |
-| `scripts/pack-smoke.mjs` | Shared pack, install, version, and license smoke helper. | Used by the SDK/CLI `smoke-package.mjs` wrappers | npm |
 | `projects/contracts/scripts/advance-time.ts` | Shift the LocalNet clock and mine a block. | `SECONDS=<offset> npm run localnet:advance` | LocalNet |
 | `projects/contracts/scripts/fund-account.ts` | Fund an address from the LocalNet dispenser. | `ADDRESS=<addr> [ALGO=<amount>] npm run localnet:fund` | LocalNet |
 | `projects/contracts/scripts/demo/seed.ts` | Create demo campaigns and their pledges. | `npm run seed:localnet` / `npm run seed:testnet` | Registry and Vault IDs; `.env.localnet` or `.env.testnet` |
@@ -24,6 +23,8 @@ Operational scripts, grouped by the project that owns their dependencies. Run th
 | `projects/cli/scripts/smoke-package.mjs` | Pack and smoke-test the CLI tarball. | `node scripts/smoke-package.mjs` | CLI build; npm |
 | `docs/claim-tree-protocol-reference.py` | Language-independent reference model for the claim tree. | `python3 docs/claim-tree-protocol-reference.py` | Python 3 |
 | `projects/contracts/smart_contracts/oracle.py` | Stateful oracle used by the contract tests and vector generator. | `python3 smart_contracts/oracle.py <state-file> <command>` | Python 3; moves to `contracts/test/utils` in #166 |
+
+The shared SDK/CLI tarball smoke helper moves to `projects/utils/scripts/pack-smoke.mjs` in #164. Until then the SDK and CLI keep their own `scripts/smoke-package.mjs` copies.
 
 ## Python chain
 

@@ -40,8 +40,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
   [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
-  (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
-- [`scripts/`](scripts/README.md) - cross-project script index and the shared pack-smoke helper
+  (lint/format/tsconfig rules), [`scripts.md`](docs/scripts.md) (operational
+  script index), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, and Feature
 - [`README.md`](README.md) - project overview, quick start, and docs map
 
