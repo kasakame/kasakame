@@ -18,9 +18,9 @@ import {
 import { accountInfo, addrHex, base32ToBytes, concatHex, selectorOf } from '@kasakame/utils/testing'
 import { ABIMethod } from 'algosdk'
 import { expect } from 'vitest'
-import { CONTRACT_SIZES } from './contract-sizes'
 import type { ClaimTreeOracle, OraclePath } from './oracle'
 import type { ContractStack } from './platform'
+import { CONTRACT_SIZES } from './size-budget.fixture'
 import { campaignBox, campaignBoxExists, campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
 /** Default campaign goal for lifecycle tests. */

@@ -2,8 +2,6 @@
 export declare const MICRO_ALGOS_PER_ALGO = 1000000n;
 /** Maximum claim-tree positions: 2^19 - 1. */
 export declare const MAX_TREE_SIZE = 524287n;
-/** Bytes in a claim-tree hash. */
-export declare const TREE_HASH_BYTES = 32;
 /** The empty-tree root and consumed-leaf marker. */
 export declare const ZERO_ROOT_HEX = "0000000000000000000000000000000000000000000000000000000000000000";
 /** Minimum campaign goal, in microAlgos. */
@@ -12,13 +10,13 @@ export declare const MIN_GOAL_MICRO_ALGOS = 100000n;
 export declare const MAX_GOAL_MICRO_ALGOS = 10000000000000000n;
 /** Minimum pledge, in microAlgos. */
 export declare const MIN_PLEDGE_MICRO_ALGOS = 100000n;
-/** Maximum pledge, in microAlgos. */
+/** Maximum pledge, in microAlgos: the total ALGO supply, the same bound as the goal. */
 export declare const MAX_PLEDGE_MICRO_ALGOS = 10000000000000000n;
 /** Maximum bytes in one AVM state key. */
 export declare const MAX_STATE_KEY_BYTES = 128;
-/** Maximum campaign title bytes. */
+/** Maximum campaign title bytes (the 5-byte `title` state key counts toward the 128-byte entry cap). */
 export declare const MAX_TITLE_BYTES: number;
-/** Maximum campaign metadata URI bytes. */
+/** Maximum campaign metadata URI bytes (the 11-byte `metadataUri` key counts toward the entry cap). */
 export declare const MAX_METADATA_URI_BYTES: number;
 /** Seconds in one day. */
 export declare const SECONDS_PER_DAY = 86400;
@@ -92,18 +90,6 @@ export declare const APP_MBR_BYTE_MICRO_ALGOS = 50000;
 export declare const APP_MBR_UINT_MICRO_ALGOS = 28500;
 /** App MBR per extra program page, in microAlgos. */
 export declare const APP_MBR_PAGE_MICRO_ALGOS = 100000;
-/** Box MBR base, in microAlgos. */
-export declare const BOX_MBR_BASE_MICRO_ALGOS = 2500n;
-/** Box MBR per name-or-value byte, in microAlgos. */
-export declare const BOX_MBR_BYTE_MICRO_ALGOS = 400n;
-/** Bytes in a box name (`prefix + app id`). */
-export declare const BOX_NAME_BYTES = 9;
-/** Bytes in the Registry registration box. */
-export declare const REGISTRATION_BOX_BYTES = 32;
-/** Bytes in the vault campaign box. */
-export declare const VAULT_BOX_BYTES = 65;
-/** Registry registration box MBR, in microAlgos. */
-export declare const REGISTRATION_BOX_MBR_MICRO_ALGOS = 18900n;
 /** Vault campaign box MBR, in microAlgos. */
 export declare const VAULT_BOX_MBR_MICRO_ALGOS = 32100n;
 //# sourceMappingURL=index.d.ts.map

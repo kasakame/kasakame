@@ -67,6 +67,7 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/architecture.md`](docs/architecture.md) | Pieces, creation and settlement flows, tech stack |
 | [`docs/campaign.md`](docs/campaign.md) | Campaign contract reference: state, methods, fees |
 | [`docs/limits.md`](docs/limits.md) | AVM limits, compiled sizes, page counts, MBR, storage, and fees |
+| [`docs/constants.md`](docs/constants.md) | Shared constants: source, types, inventory, and drift gate |
 | [`docs/claim-tree-protocol.md`](docs/claim-tree-protocol.md) | Claim-tree math, proofs, and security analysis |
 | [`docs/frontend.md`](docs/frontend.md) | UI structure, wallet, reads, writes, metadata |
 | [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |

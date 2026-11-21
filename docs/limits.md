@@ -1,5 +1,7 @@
 # Limits, sizes, storage, and fees
 
+The values below live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts); see [`constants.md`](constants.md) for the inventory and type convention.
+
 Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
@@ -85,7 +87,7 @@ The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
-`test/utils/contract-sizes.ts` and runs in the `compile-contracts` CI
+`test/utils/size-budget.fixture.ts` and runs in the `compile-contracts` CI
 job after `npm run build`. A byte, page, or schema change must update the snapshot
 and this table together.
 

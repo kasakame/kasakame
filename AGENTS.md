@@ -49,7 +49,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   security), [`frontend.md`](docs/frontend.md), [`cli.md`](docs/cli.md)
   (escape-hatch CLI: signers, commands, networks, self-hosting),
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
-  [`testing.md`](docs/testing.md),
+  [`constants.md`](docs/constants.md) (shared constants: source, types, and
+  inventory), [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
@@ -167,7 +168,7 @@ the product contract. The pinned values and the AVM limits are in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `test/utils/contract-sizes.ts`; it runs in the `compile-contracts` CI
+  `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
