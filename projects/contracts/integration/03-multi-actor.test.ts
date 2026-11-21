@@ -20,9 +20,9 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './support/localnet'
-import { describeScale, scaleConfig } from './support/scale'
-import { runSequence } from './support/sequence'
+} from '../test/utils'
+import { describeScale, scaleConfig } from '../test/utils/scale'
+import { runSequence } from '../test/utils/sequence'
 
 const scale = scaleConfig('normal')
 

@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { SIZE_BUDGET } from './size-budget.fixture'
+import { SIZE_BUDGET } from '../test/utils/size-budget.fixture'
 
 const ARTIFACTS = path.resolve(__dirname, 'artifacts')
 const BASE_PAGE_BYTES = 2_048

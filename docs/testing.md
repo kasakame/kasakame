@@ -72,9 +72,9 @@ Run it with `npm run test:coverage`. The thresholds live in
 
 | Suite | File pattern | Command | CI job | Trigger |
 | --- | --- | --- | --- | --- |
-| Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
+| Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `test/formulas.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet | `integration/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
+| Contract LocalNet | `integration/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `integration/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
@@ -83,7 +83,7 @@ The LocalNet integration lane runs the small-shape suites plus the scale,
 boundary, and randomized-sequence suites. The larger shapes raise N,
 campaigns/backers, and the seed count through the same config, without changing
 the test code; counts, N, and seeds are helper parameters, not constants inside
-the suites. The shared cross-project harness is #164.
+the suites. The shared helpers live in `projects/utils` (#164).
 
 ## Integration test order
 
@@ -117,9 +117,9 @@ chain-global time travel from overlapping.
 
 ### Scale config and seeds
 
-`integration/support/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
+`test/utils/scale.ts` holds the typed `ScaleConfig`. `03`/`05` use the
 normal/heavy presets and `07` runs the heavy seeds through the same
-`integration/support/sequence.ts` engine. Every field has an env override:
+`test/utils/sequence.ts` engine. Every field has an env override:
 `KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
 `KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
 `KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
@@ -176,11 +176,18 @@ same file, so `-t` on one of them fails on the missing prerequisite; use
 
 ## Shared LocalNet helpers
 
-The contract suites import their fixture, oracle, ledger, box, and fee helpers from
-`smart_contracts/testing/localnet.ts` through the `integration/support/localnet.ts`
-re-export. The helper stays under `smart_contracts/testing/` until the
-cross-project harness (#164) moves it; the helper unit spec runs with `npm test`,
-while `integration/**` is reserved for LocalNet tests:
+Generic LocalNet helpers live in the private `projects/utils` package, never
+published:
+
+- `@kasakame/utils` - `programHash`/`specProgramHash`, `selectorOf`, and the
+  byte helpers (`addrHex`, `appIdBytes`, `base32ToBytes`, `concatHex`).
+- `@kasakame/utils/testing` - `deployPlatform` (Registry + ClaimsVault from
+  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `advanceTime`, and
+  Node-`assert` checks. It does not import a test runner, so each consumer keeps
+  Vitest.
+
+Contract-only helpers live in `projects/contracts/test/utils/` and are imported
+through its `index.ts`:
 
 - `deployStack` deploys and funds the Registry, deploys and binds the vault, and
   optionally configures the campaign hash. `deployCampaign`, `registerCampaign`,
@@ -188,14 +195,14 @@ while `integration/**` is reserved for LocalNet tests:
 - `pledge`, `spendCampaign`, `spendVault`, and `claimCampaign` send the real
   groups, assert the exact balance/MBR/fee delta for the actor and the vault, and
   compare campaign state and the vault box with the Python oracle.
-- `ClaimTreeOracle` wraps `oracle.py` with one state file per campaign.
+- `ClaimTreeOracle` (`oracle.ts`) wraps `oracle.py`, backed by
+  `docs/claim-tree-protocol-reference.py`, with one state file per campaign.
   `pledgeExtraFee`, `spendExtraFee`, and `spendFee` mirror the contract/SDK take
   formulas.
-- `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, `registrationBoxRef`,
-  `accountInfo`, `balanceOf`, `minBalanceOf`, `advanceTime`, `concatHex`,
-  `base32ToBytes`, and `addrHex` are the shared primitives.
+- `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, and `registrationBoxRef`
+  read the vault's per-campaign state.
 
-The cap suites use `integration/support/fast-pledge.ts` instead of the per-pledge
+The cap suites use `test/utils/fast-pledge.ts` instead of the per-pledge
 oracle/ledger helpers: it keeps the tree in memory and sends the same
 `[pay, campaign.pledge, vault.credit]` group without per-pledge reads, so 524,287
 positions take hours instead of days. The contract still verifies the frontier
@@ -203,7 +210,7 @@ root at every position (the suite checks it every 1,000), and refunds are
 simulated for the take count before sending. The non-cap LocalNet suites do not
 use it.
 
-`smart_contracts/testing/localnet.spec.ts` pins the fee formulas and the embedded selectors
+`test/formulas.spec.ts` pins the fee formulas and the embedded selectors
 offline, so a contract or SDK formula change fails without LocalNet.
 
 ## Test file naming (important)
@@ -218,7 +225,7 @@ class as it does not extend Contract or BaseContract".
 
 `npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
 approval/clear/total bytes, extra pages, page capacity, global schema, and app
-MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
+MBR in `test/utils/size-budget.fixture.ts`. It runs in the
 `compile-contracts` CI job after `npm run build`; update the fixture and
 [`limits.md`](limits.md) together when a contract changes. It is excluded from
 `npm test` and `test:coverage` because those jobs do not build the artifacts.
@@ -293,7 +300,7 @@ chain-relative deadlines (`+1 day` at deploy) valid. The cap suites each own a
 runner and a LocalNet instance, so they run in parallel jobs.
 Offline specs live next to each contract plus the deploy suites:
 **215 tests**, including the helper formula/selector tests in
-`smart_contracts/testing/localnet.spec.ts`, all green with 100% line/branch/function
+`test/formulas.spec.ts`, all green with 100% line/branch/function
 coverage of the contracts.
 
 **Ledger accounting.** The lifecycle helpers assert the money ledger, µA-exact,
@@ -314,11 +321,11 @@ registration deposit (18,900 µA, returned by `unregister` in the
 
 **Contract sizes.** `npm run test:size` reads the built ARC-56 bytecode and pins
 the approval/clear bytes, page count, schema, and app MBR in
-`smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+`test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
 job after `npm run build`. See [`limits.md`](limits.md) for the current values.
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python
-reference oracle (`smart_contracts/oracle.py`, backed by
+reference oracle (`test/utils/oracle.py`, backed by
 `docs/claim-tree-protocol-reference.py`) with the REAL confirmed payment TxIDs
 and assert `root`/`n`/`raised` - plus the vault box's `paidIn`/`paidOut` - after
 every step. Forged frontiers, stale proofs, and double-spends are asserted to

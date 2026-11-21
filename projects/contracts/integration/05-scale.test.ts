@@ -13,8 +13,8 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './support/localnet'
-import { backersPerCampaign, describeScale, scaleConfig } from './support/scale'
+} from '../test/utils'
+import { backersPerCampaign, describeScale, scaleConfig } from '../test/utils/scale'
 
 interface CampaignFixture {
   appClient: AppClient

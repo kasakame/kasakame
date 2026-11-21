@@ -22,7 +22,7 @@ import {
   spendCampaign,
   spendVault,
   type ContractStack,
-} from './support/localnet'
+} from '../test/utils'
 
 interface CampaignFixture {
   appClient: AppClient

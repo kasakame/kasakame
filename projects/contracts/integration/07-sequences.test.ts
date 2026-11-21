@@ -1,8 +1,8 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { beforeAll, describe, test } from 'vitest'
-import { deployStack, type ContractStack } from './support/localnet'
-import { describeScale, scaleConfig } from './support/scale'
-import { runSequence } from './support/sequence'
+import { deployStack, type ContractStack } from '../test/utils'
+import { describeScale, scaleConfig } from '../test/utils/scale'
+import { runSequence } from '../test/utils/sequence'
 
 const scale = scaleConfig('heavy')
 

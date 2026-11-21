@@ -1,10 +1,10 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
+import { specProgramHash } from '@kasakame/utils'
 import fs from 'node:fs'
 import path from 'node:path'
 import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from './deployer'
-import { programHash } from './program-hash'
 import { parseRefundWindow, resolveSweepTarget } from './refund-window'
 
 /**
@@ -16,10 +16,7 @@ import { parseRefundWindow, resolveSweepTarget } from './refund-window'
  */
 function artifactProgramHash(relativePath: string, name: string): Uint8Array {
   const spec = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../smart_contracts/artifacts', relativePath), 'utf8')) as Arc56Contract
-  if (spec.byteCode === undefined) {
-    throw new Error(`${name} has no byteCode; run \`npm run build\` first.`)
-  }
-  return programHash(Buffer.from(spec.byteCode.approval, 'base64'), Buffer.from(spec.byteCode.clear, 'base64'))
+  return specProgramHash(spec, name)
 }
 
 /**

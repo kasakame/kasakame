@@ -1,7 +1,7 @@
 import { Bytes, Global, OnCompleteAction, type Account, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
+import { programHash } from '@kasakame/utils'
 import { beforeEach, describe, expect, test } from 'vitest'
-import { programHash as programHashBytes } from '../../deploy/program-hash'
 import { Campaign } from '../campaign/contract.algo'
 import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Registry } from './contract.algo'
@@ -15,7 +15,7 @@ import { Registry } from './contract.algo'
 
 const REGISTER_MBR = 18_900
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
-const FAKE_PROGRAM_HASH = programHashBytes(FAKE_PROGRAM, new Uint8Array())
+const FAKE_PROGRAM_HASH = programHash(FAKE_PROGRAM, new Uint8Array())
 const TITLE = Bytes('Test campaign')
 const METADATA_URI = Bytes('ipfs://test')
 const GOAL = 1_000_000
@@ -42,7 +42,7 @@ describe('Registry', () => {
     const campaign = ctx.contract.create(Campaign)
     campaign.create(vault, TITLE, METADATA_URI, GOAL, DEADLINE)
     const app = ctx.ledger.getApplicationForContract(campaign)
-    return programHashBytes(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
+    return programHash(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
   }
 
   /** The official ClaimsVault program hash, from a probe app. */
@@ -51,7 +51,7 @@ describe('Registry', () => {
     const vault = ctx.contract.create(ClaimsVault)
     vault.create(registry, ctx.defaultSender, WINDOW)
     const app = ctx.ledger.getApplicationForContract(vault)
-    return programHashBytes(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
+    return programHash(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
   }
 
   function createRegistry(

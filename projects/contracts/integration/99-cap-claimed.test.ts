@@ -1,6 +1,5 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { expect, test } from 'vitest'
-import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from './support/fast-pledge'
 import {
   ALGO,
   FEE_CLAIM,
@@ -15,7 +14,8 @@ import {
   deleteCampaign,
   deployCampaign,
   deployStack,
-} from './support/localnet'
+} from '../test/utils'
+import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from '../test/utils/fast-pledge'
 
 /**
  * 99 - cap-scale successful campaign (#220): the full 2^19 - 1 tree, then claim and delete.

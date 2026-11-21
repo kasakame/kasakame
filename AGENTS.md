@@ -12,7 +12,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
   - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
-  - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with shared setup helpers in `integration/support/`
+  - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with contract-only helpers in `test/utils/`
+  - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the size-budget fixture
+  - `test/formulas.spec.ts` - offline pins for the fee formulas and embedded selectors
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
     escrow is never funded and holds nothing
@@ -25,6 +27,10 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
     `isRegistered`)
   - `smart_contracts/artifacts/` - **generated** (compiled TEAL, ARC-32/56 specs, clients)
 - `projects/frontend/` - React + Vite + TypeScript dApp
+- `projects/utils/` - private `@kasakame/utils` repo helpers: the `.` entry holds
+  production-neutral hash/selector/bytes helpers, `./testing` holds LocalNet
+  deploy/ledger helpers. Never published; consumers link it with a `file:`
+  dependency. See [`projects/utils/README.md`](projects/utils/README.md).
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
@@ -49,7 +55,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend
+algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
@@ -67,6 +73,11 @@ npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
 npm run localnet:fund            # fund an address from the dispenser (ADDRESS=..., ALGO=...)
 npx vitest list integration -t "CON-042"  # find the file that owns a test ID
 npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
+
+cd ../utils
+npm run check-types              # tsc --noEmit
+npm run lint                     # ESLint
+npm run format                   # Prettier check
 
 cd ../frontend
 npm run dev:localnet             # Vite with the LocalNet env (published SDK)
@@ -153,7 +164,7 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `smart_contracts/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+  `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal `>= 0.1 ALGO` and `<= 10¹⁶ µA`,
   pledge `<= 10¹⁶ µA`, refund window 30 days to 10 years, and the exact 18,900 µA
@@ -202,6 +213,15 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
 
 ## Conventions
 
+- **The shared utils package is repo-local.** `projects/utils` is private and
+  never published; contracts and the SDK install it with a `file:../utils`
+  dependency, and AlgoKit bootstrap discovers its `.algokit.toml`. The consumer
+  `.npmrc` sets `install-links = true` so npm packs the package into the
+  consumer's `node_modules` with its dependencies; re-run `npm install` after
+  editing it. Its exports point at TypeScript sources, so there is no build step:
+  run `npm run check-types`/`lint`/`format` in the package. Generic LocalNet
+  helpers belong in `@kasakame/utils/testing`; contract-only helpers stay in
+  `projects/contracts/test/utils`.
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in

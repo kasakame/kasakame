@@ -22,7 +22,7 @@ import json
 import sys
 from pathlib import Path
 
-REF_PATH = Path(__file__).resolve().parent.parent.parent.parent / "docs" / "claim-tree-protocol-reference.py"
+REF_PATH = Path(__file__).resolve().parent.parent.parent.parent.parent / "docs" / "claim-tree-protocol-reference.py"
 _spec = importlib.util.spec_from_file_location("claim_tree_ref", REF_PATH)
 assert _spec is not None and _spec.loader is not None
 ref = importlib.util.module_from_spec(_spec)

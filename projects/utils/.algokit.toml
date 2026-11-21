@@ -1,0 +1,11 @@
+[algokit]
+min_version = "v2.0.0"
+
+[project]
+type = "library"
+name = "utils"
+
+[project.run]
+lint = { commands = ['npm run lint'], description = 'Lint shared helpers with ESLint' }
+format = { commands = ['npm run format'], description = 'Check formatting with Prettier' }
+check-types = { commands = ['npm run check-types'], description = 'Type-check shared helpers with tsc' }

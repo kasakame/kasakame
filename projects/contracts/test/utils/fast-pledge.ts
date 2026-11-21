@@ -1,19 +1,13 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
+import { base32ToBytes } from '@kasakame/utils'
+import { FEE } from '@kasakame/utils/testing'
 import { ABIMethod, decodeAddress } from 'algosdk'
 import { createHash } from 'node:crypto'
-import {
-  base32ToBytes,
-  campaignState,
-  FEE,
-  PLEDGE_FEES,
-  pledgeExtraFee,
-  registrationBoxRef,
-  spendExtraFee,
-  vaultBoxRef,
-  type ContractStack,
-} from './localnet'
+import { PLEDGE_FEES, pledgeExtraFee, spendExtraFee } from './campaign'
+import type { ContractStack } from './platform'
+import { campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
 /**
  * Fast test-only pledge/spend helpers for the cap-scale suites (#220).

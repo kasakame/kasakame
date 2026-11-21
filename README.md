@@ -32,7 +32,7 @@ A pledge is one atomic group: payment to the vault, campaign leaf append, vault 
 Prerequisites: Node.js LTS (v24 or newer), Docker (LocalNet only), AlgoKit CLI.
 
 ```bash
-algokit project bootstrap all  # install deps for contracts, frontend, sdk, cli, backend
+algokit project bootstrap all  # install deps for contracts, frontend, sdk, cli, backend, utils
 algokit localnet start         # start algod + indexer in Docker
 
 cd projects/contracts
