@@ -1,3 +1,4 @@
+import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -398,7 +399,7 @@ describe('transaction helpers', () => {
     const box = new Uint8Array(65)
     box[56] = 2
     campaignBoxValueMock.mockResolvedValue(box)
-    await expect(fetchVaultBox(9n)).resolves.toMatchObject({ status: 2 })
+    await expect(fetchVaultBox(9n)).resolves.toMatchObject({ status: Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16) })
 
     campaignBoxValueMock.mockRejectedValue(new Error('missing'))
     await expect(fetchVaultBox(9n)).resolves.toBeUndefined()

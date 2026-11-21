@@ -1,6 +1,14 @@
 import { Bytes, Global, OnCompleteAction, type Account, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
-import { MAX_REFUND_WINDOW_SECONDS, MAX_TREE_SIZE, MIN_REFUND_WINDOW_SECONDS, REGISTER_DEPOSIT_MICRO_ALGOS } from '@kasakame/constants'
+import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
+  MAX_REFUND_WINDOW_SECONDS,
+  MAX_TREE_SIZE,
+  MIN_REFUND_WINDOW_SECONDS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+} from '@kasakame/constants'
 import { programHash } from '@kasakame/utils'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
@@ -21,6 +29,11 @@ const METADATA_URI = Bytes('ipfs://test')
 const GOAL = 1_000_000
 const DEADLINE = 1_000_000
 const DELETE_SELECTOR = Bytes.fromHex('24378d3c')
+
+// Campaign global-state statuses: 0 = Open, 1 = Failed, 2 = Claimed.
+const CAMPAIGN_OPEN = Number(CAMPAIGN_STATUS_OPEN)
+const CAMPAIGN_FAILED = Number(CAMPAIGN_STATUS_FAILED)
+const CAMPAIGN_CLAIMED = Number(CAMPAIGN_STATUS_CLAIMED)
 
 let nextProbeId = 10_000
 
@@ -547,7 +560,7 @@ describe('Registry', () => {
   describe('unregister', () => {
     test('returns the deposit and removes the registration for a pristine campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
 
       unregisterWithDelete(registry, app)
 
@@ -560,7 +573,7 @@ describe('Registry', () => {
     test('allows an all-cancelled campaign before the deadline', () => {
       ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 2_000, n: 2 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 2_000, n: 2 })
 
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
@@ -568,14 +581,14 @@ describe('Registry', () => {
 
     test('allows a settled failed campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 1, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_FAILED, raised: 100, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('allows a claimed campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 2, raised: 1000, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_CLAIMED, raised: 1000, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
@@ -583,21 +596,27 @@ describe('Registry', () => {
     test('allows a failed-in-fact campaign', () => {
       ctx.ledger.patchGlobalData({ latestTimestamp: 3_000 })
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 100, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('allows a cap-saturated campaign before the deadline', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000, n: Number(MAX_TREE_SIZE) })
+      const app = registeredCampaign(registry, {
+        status: CAMPAIGN_OPEN,
+        raised: 100,
+        goal: 1000,
+        deadline: 2_000,
+        n: Number(MAX_TREE_SIZE),
+      })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('rejects a live campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 100, goal: 1000, deadline: 2_000 })
       expect(() => {
         unregisterWithDelete(registry, app)
       }).toThrow('campaign is still live')
@@ -613,7 +632,7 @@ describe('Registry', () => {
 
     test('rejects a non-creator', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.account()
       expect(() => {
         ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: other }), deleteCall(app, other)], 0).execute(() => {
@@ -624,7 +643,7 @@ describe('Registry', () => {
 
     test('rejects a registration box owned by another account', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       registry.registered(app.id).value = ctx.any.account()
       expect(() => {
         unregisterWithDelete(registry, app)
@@ -645,7 +664,7 @@ describe('Registry', () => {
 
     test('rejects a delete for another app', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.application({ applicationId: 999 })
       expect(() => {
         ctx.txn
@@ -658,7 +677,7 @@ describe('Registry', () => {
 
     test('rejects a delete from another sender', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.account()
       expect(() => {
         ctx.txn
@@ -671,7 +690,7 @@ describe('Registry', () => {
 
     test('rejects a non-delete action', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({ appId: app, sender: ctx.defaultSender, appArgs: [DELETE_SELECTOR] })
       expect(() => {
         ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender }), call], 0).execute(() => {
@@ -682,7 +701,7 @@ describe('Registry', () => {
 
     test('rejects a delete with missing args', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({
         appId: app,
         sender: ctx.defaultSender,
@@ -697,7 +716,7 @@ describe('Registry', () => {
 
     test('rejects a delete with the wrong selector', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({
         appId: app,
         sender: ctx.defaultSender,
@@ -713,7 +732,7 @@ describe('Registry', () => {
 
     test('rejects an inner unregister', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
         registry.unregister(app)

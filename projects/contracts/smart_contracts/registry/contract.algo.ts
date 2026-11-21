@@ -16,10 +16,14 @@ import {
   op,
 } from '@algorandfoundation/algorand-typescript'
 import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
   MAX_REFUND_WINDOW_SECONDS,
   MAX_TREE_SIZE,
   MIN_REFUND_WINDOW_SECONDS,
   REGISTER_DEPOSIT_MICRO_ALGOS,
+  REGISTRY_BOX_PREFIX,
 } from '@kasakame/constants/source'
 
 /**
@@ -39,9 +43,9 @@ import {
  */
 
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
-const CAMPAIGN_OPEN = Uint64(0)
-const CAMPAIGN_FAILED = Uint64(1)
-const CAMPAIGN_CLAIMED = Uint64(2)
+const CAMPAIGN_OPEN = Uint64(CAMPAIGN_STATUS_OPEN)
+const CAMPAIGN_FAILED = Uint64(CAMPAIGN_STATUS_FAILED)
+const CAMPAIGN_CLAIMED = Uint64(CAMPAIGN_STATUS_CLAIMED)
 
 // ARC-4 selector for Campaign.delete()void; unregister must be followed by it in the same atomic group.
 const CAMPAIGN_DELETE_SELECTOR = Bytes.fromHex('24378d3c')
@@ -63,7 +67,7 @@ export class Registry extends Contract {
   vault = GlobalState<uint64>({ initialValue: 0 })
 
   /** Registered campaigns: app id → campaign creator. */
-  registered = BoxMap<uint64, Account>({ keyPrefix: 'r' })
+  registered = BoxMap<uint64, Account>({ keyPrefix: REGISTRY_BOX_PREFIX })
 
   /**
    * Deploy the Registry with the immutable platform bundle.

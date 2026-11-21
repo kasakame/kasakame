@@ -1,7 +1,7 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { FEE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS, PLEDGE_GROUP_FEE_MICRO_ALGOS } from '@kasakame/constants'
+import { FEE_MICRO_ALGOS, LEAF_DOMAIN_HEX, MIN_PLEDGE_MICRO_ALGOS, PLEDGE_GROUP_FEE_MICRO_ALGOS } from '@kasakame/constants'
 import { base32ToBytes } from '@kasakame/utils/testing'
 import { ABIMethod, decodeAddress } from 'algosdk'
 import { createHash } from 'node:crypto'
@@ -34,7 +34,7 @@ const pair = (left: Uint8Array, right: Uint8Array): Uint8Array => sha(Buffer.con
 export const hex = (value: Uint8Array): string => Buffer.from(value).toString('hex')
 const leafFor = (backer: string, amount: bigint, txidHex: string): Uint8Array => {
   const preimage = Buffer.alloc(73)
-  preimage[0] = 0x01
+  preimage[0] = Number.parseInt(LEAF_DOMAIN_HEX, 16)
   Buffer.from(decodeAddress(backer).publicKey).copy(preimage, 1)
   preimage.writeBigUInt64BE(amount, 33)
   Buffer.from(txidHex, 'hex').copy(preimage, 41)

@@ -1,6 +1,7 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import {
+  CAMPAIGN_STATUS_OPEN,
   FEE_MICRO_ALGOS,
   MAX_CAMPAIGN_DURATION_SECONDS,
   MAX_TREE_SIZE,
@@ -9,6 +10,8 @@ import {
   MIN_REFUND_WINDOW_SECONDS,
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
   ZERO_ROOT_HEX,
 } from '@kasakame/constants'
 import { accountInfo, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
@@ -28,6 +31,8 @@ import { FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from
  */
 
 const GOAL = 60_000n * MICRO_ALGOS_PER_ALGO // above the 52,428.7 ALGO principal
+const BOX_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const BOX_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 const DEADLINE = MAX_CAMPAIGN_DURATION_SECONDS - SECONDS_PER_DAY // inside the 180-day contract maximum
 const TOP_LEAF = 2 ** 18 // first leaf with a higher-peak fold
 const MID_LEAF = 3 * 2 ** 17 // mid-range path with a multi-peak top fold
@@ -59,14 +64,14 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
     n: MAX_TREE_SIZE,
     root,
     raised: run.principal,
-    status: 0n,
+    status: CAMPAIGN_STATUS_OPEN,
   })
   expect(await campaignBox(stack.vault.client, campaign.appId)).toMatchObject({
     paidIn: run.principal,
     paidOut: 0n,
     root: ZERO_ROOT_HEX,
     n: 0n,
-    status: 1,
+    status: BOX_OPEN,
   })
   const backerAfterPledges = await accountInfo(stack.algorand, backerAddr)
   expect(backerBefore.balance - backerAfterPledges.balance).toEqual(run.principal + run.fees)
@@ -94,7 +99,7 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
     paidOut: 0n,
     root: hex(tree.root()),
     n: MAX_TREE_SIZE,
-    status: 2,
+    status: BOX_FAILED,
   })
   expect(earlyBox.settledAt).toBeGreaterThan(0n)
 

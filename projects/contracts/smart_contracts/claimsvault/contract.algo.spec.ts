@@ -1,7 +1,19 @@
 import type { Account, bytes } from '@algorandfoundation/algorand-typescript'
 import { Bytes, Global, OnCompleteAction } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
-import { MAX_REFUND_WINDOW_SECONDS, MAX_TREE_SIZE, MIN_REFUND_WINDOW_SECONDS, ZERO_ROOT_HEX } from '@kasakame/constants'
+import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
+  MAX_REFUND_WINDOW_SECONDS,
+  MAX_TREE_SIZE,
+  MAX_UINT64,
+  MIN_REFUND_WINDOW_SECONDS,
+  VAULT_BOX_STATUS_CLAIMED_HEX,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
+  ZERO_ROOT_HEX,
+} from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -22,13 +34,17 @@ import { ClaimsVault } from './contract.algo'
 
 const CAMPAIGN_APP_ID = 42
 const REGISTRY_APP_ID = 7
-const MAX_UINT64 = 18_446_744_073_709_551_615n
 const ORACLE = path.resolve(__dirname, '../../test/utils/oracle.py')
 
 // Packed box statuses: 1 = Open, 2 = Failed, 3 = Claimed.
-const OPEN = 1
-const FAILED = 2
-const CLAIMED = 3
+const OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
+const CLAIMED = Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16)
+
+// Campaign global-state statuses: 0 = Open, 1 = Failed, 2 = Claimed.
+const CAMPAIGN_OPEN = Number(CAMPAIGN_STATUS_OPEN)
+const CAMPAIGN_FAILED = Number(CAMPAIGN_STATUS_FAILED)
+const CAMPAIGN_CLAIMED = Number(CAMPAIGN_STATUS_CLAIMED)
 
 describe('ClaimsVault', () => {
   const ctx = new TestExecutionContext()
@@ -827,7 +843,14 @@ describe('ClaimsVault', () => {
 
     test('rejects an already claimed campaign', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign(vault, { status: 2, raised: 1000, goal: 1000, deadline: 100, root: ZERO_ROOT_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, {
+        status: CAMPAIGN_CLAIMED,
+        raised: 1000,
+        goal: 1000,
+        deadline: 100,
+        root: ZERO_ROOT_HEX,
+        n: 1,
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -848,7 +871,7 @@ describe('ClaimsVault', () => {
     test('rejects a campaign n above the tree cap', () => {
       const vault = createVault()
       const { app, id } = foreignCampaign(vault, {
-        status: 0,
+        status: CAMPAIGN_OPEN,
         raised: 800,
         goal: 1000,
         deadline: 5_000,
@@ -864,7 +887,14 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign before its deadline', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign(vault, { status: 0, raised: 500, goal: 1000, deadline: 5_000, root: ZERO_ROOT_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, {
+        status: CAMPAIGN_OPEN,
+        raised: 500,
+        goal: 1000,
+        deadline: 5_000,
+        root: ZERO_ROOT_HEX,
+        n: 1,
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -875,7 +905,14 @@ describe('ClaimsVault', () => {
     test('settles a cap-saturated campaign before the deadline', () => {
       const vault = createVault()
       const root = '22'.repeat(32)
-      const { app, id } = foreignCampaign(vault, { status: 0, raised: 800, goal: 1000, deadline: 5_000, root, n: Number(MAX_TREE_SIZE) })
+      const { app, id } = foreignCampaign(vault, {
+        status: CAMPAIGN_OPEN,
+        raised: 800,
+        goal: 1000,
+        deadline: 5_000,
+        root,
+        n: Number(MAX_TREE_SIZE),
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       vault.settleOpen(app)
@@ -890,7 +927,7 @@ describe('ClaimsVault', () => {
     test('rejects a cap-saturated campaign that reached its goal', () => {
       const vault = createVault()
       const { app, id } = foreignCampaign(vault, {
-        status: 0,
+        status: CAMPAIGN_OPEN,
         raised: 1000,
         goal: 1000,
         deadline: 5_000,
@@ -906,7 +943,14 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign that reached its goal', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign(vault, { status: 0, raised: 1000, goal: 1000, deadline: 100, root: ZERO_ROOT_HEX, n: 1 })
+      const { app, id } = foreignCampaign(vault, {
+        status: CAMPAIGN_OPEN,
+        raised: 1000,
+        goal: 1000,
+        deadline: 100,
+        root: ZERO_ROOT_HEX,
+        n: 1,
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -917,7 +961,14 @@ describe('ClaimsVault', () => {
     test('rejects a campaign bound to another vault', () => {
       const vault = createVault()
       const otherVault = createVault(ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS, REGISTRY_APP_ID + 1)
-      const { app, id } = foreignCampaign(otherVault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: ZERO_ROOT_HEX, n: 4 })
+      const { app, id } = foreignCampaign(otherVault, {
+        status: CAMPAIGN_FAILED,
+        raised: 800,
+        goal: 1000,
+        deadline: 100,
+        root: ZERO_ROOT_HEX,
+        n: 4,
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -927,7 +978,14 @@ describe('ClaimsVault', () => {
 
     test('rejects a non-32-byte root', () => {
       const vault = createVault()
-      const { app, id } = foreignCampaign(vault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: '22'.repeat(31), n: 4 })
+      const { app, id } = foreignCampaign(vault, {
+        status: CAMPAIGN_FAILED,
+        raised: 800,
+        goal: 1000,
+        deadline: 100,
+        root: '22'.repeat(31),
+        n: 4,
+      })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       expect(() => {
@@ -938,7 +996,7 @@ describe('ClaimsVault', () => {
     test('settles a failed campaign from its live global state', () => {
       const vault = createVault()
       const root = '22'.repeat(32)
-      const { app, id } = foreignCampaign(vault, { status: 1, raised: 800, goal: 1000, deadline: 100, root, n: 4 })
+      const { app, id } = foreignCampaign(vault, { status: CAMPAIGN_FAILED, raised: 800, goal: 1000, deadline: 100, root, n: 4 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       vault.settleOpen(app)

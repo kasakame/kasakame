@@ -1,11 +1,14 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import {
+  CAMPAIGN_STATUS_OPEN,
   CLAIM_FEE_MICRO_ALGOS,
   MAX_CAMPAIGN_DURATION_SECONDS,
   MAX_TREE_SIZE,
   MICRO_ALGOS_PER_ALGO,
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
+  VAULT_BOX_STATUS_CLAIMED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
   ZERO_ROOT_HEX,
 } from '@kasakame/constants'
 import { accountInfo, advanceTime } from '@kasakame/utils/testing'
@@ -25,6 +28,8 @@ import { FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
 const GOAL = 50_000n * MICRO_ALGOS_PER_ALGO // below the 52,428.7 ALGO principal
 const DEADLINE = MAX_CAMPAIGN_DURATION_SECONDS - SECONDS_PER_DAY // inside the 180-day contract maximum
 const LAST_LEAF = Number(MAX_TREE_SIZE) - 1 // top-only path
+const BOX_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const BOX_CLAIMED = Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16)
 
 test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale'], timeout: 20_000_000 }, async () => {
   expect(pathShape(Number(MAX_TREE_SIZE), LAST_LEAF)).toEqual({ r: 0, c: 0, hasTop: true })
@@ -48,10 +53,10 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
     n: MAX_TREE_SIZE,
     root,
     raised: run.principal,
-    status: 0n,
+    status: CAMPAIGN_STATUS_OPEN,
   })
   const box = await campaignBox(stack.vault.client, campaign.appId)
-  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: ZERO_ROOT_HEX, n: 0n, status: 1 })
+  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: ZERO_ROOT_HEX, n: 0n, status: BOX_OPEN })
   expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
 
   // The cap is full but the goal was reached, so the early escape must not settle a campaign that can still succeed.
@@ -79,7 +84,7 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
     paidOut: run.principal,
     root: ZERO_ROOT_HEX,
     n: 0n,
-    status: 3,
+    status: BOX_CLAIMED,
   })
   const vaultAfterClaim = await accountInfo(stack.algorand, stack.vault.address)
   expect(vaultAfterClaim.balance).toEqual(vaultBefore.balance)

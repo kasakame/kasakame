@@ -1,9 +1,15 @@
+// --- Units and claim tree ---------------------------------------------------
 /** MicroAlgos in one ALGO. */
 export const MICRO_ALGOS_PER_ALGO = 1000000n;
+/** Maximum uint64 value, for the explicit overflow guards. */
+export const MAX_UINT64 = 18446744073709551615n;
 /** Maximum claim-tree positions: 2^19 - 1. */
 export const MAX_TREE_SIZE = 524287n;
 /** The empty-tree root and consumed-leaf marker. */
 export const ZERO_ROOT_HEX = '0000000000000000000000000000000000000000000000000000000000000000';
+/** Domain prefix for leaves: `H(0x01 ‖ backer ‖ amount-be64 ‖ txid)`. */
+export const LEAF_DOMAIN_HEX = '01';
+// --- Campaign bounds and durations -----------------------------------------
 /** Minimum campaign goal, in microAlgos. */
 export const MIN_GOAL_MICRO_ALGOS = 100000n;
 /** Maximum campaign goal, in microAlgos. */
@@ -30,10 +36,18 @@ export const FINAL_DAY_SECONDS = SECONDS_PER_DAY;
 export const MIN_REFUND_WINDOW_SECONDS = 30 * SECONDS_PER_DAY;
 /** Maximum vault refund window, in seconds. */
 export const MAX_REFUND_WINDOW_SECONDS = 10 * 365 * SECONDS_PER_DAY;
-/** Registry registration deposit, in microAlgos. */
+// --- Storage costs ----------------------------------------------------------
+/** Box MBR base per box, in microAlgos. */
+export const BOX_MBR_BASE_MICRO_ALGOS = 2500n;
+/** Box MBR per key/value byte, in microAlgos. */
+export const BOX_MBR_PER_BYTE_MICRO_ALGOS = 400n;
+/** Registry registration deposit, in microAlgos: 2,500 + 400 × (9 + 32). */
 export const REGISTER_DEPOSIT_MICRO_ALGOS = 18900n;
+/** Vault campaign box MBR, in microAlgos: 2,500 + 400 × (9 + 65). */
+export const VAULT_BOX_MBR_MICRO_ALGOS = 32100n;
 /** Platform storage reserve funded to each deployed app account, in microAlgos. */
 export const PLATFORM_STORAGE_RESERVE_MICRO_ALGOS = 1000000n;
+// --- Fees and group totals --------------------------------------------------
 /** Minimum transaction fee, in microAlgos. */
 export const FEE_MICRO_ALGOS = 1000n;
 /** Inner transactions funded by the credit call: the first-touch Registry check. */
@@ -66,6 +80,7 @@ export const PLEDGE_GROUP_FEE_MICRO_ALGOS = 2n * FEE_MICRO_ALGOS + CREDIT_FEE_MI
 export const REGISTER_GROUP_FEE_MICRO_ALGOS = 2n * FEE_MICRO_ALGOS;
 /** Cleanup group fee: unregister and delete. */
 export const CLEANUP_GROUP_FEE_MICRO_ALGOS = UNREGISTER_FEE_MICRO_ALGOS + DELETE_FEE_MICRO_ALGOS;
+// --- OpUp budget ------------------------------------------------------------
 /** Budget cost per frontier peak in `pledge`. */
 export const PLEDGE_PEAK_COST = 240;
 /** Base budget cost in `pledge`. */
@@ -84,6 +99,7 @@ export const OPUP_SPEND_NET_BUDGET = 670;
 export const SPEND_TOP_UP_OVERHEAD = 12;
 /** Safety margin in the off-chain pledge top-up estimate. */
 export const OPUP_ITERATION_SLACK = 10;
+// --- AVM program and app MBR inputs -----------------------------------------
 /** Bytes in one AVM program page. */
 export const APP_PAGE_BYTES = 2_048;
 /** Maximum extra pages allowed without the surcharge path. */
@@ -100,6 +116,41 @@ export const APP_MBR_BYTES_MICRO_ALGOS = 25_000;
 export const APP_MBR_UINT_MICRO_ALGOS = 3_500;
 /** App MBR per extra program page, in microAlgos (`AppFlatParamsMinBalance`). */
 export const APP_MBR_PAGE_MICRO_ALGOS = 100_000;
-/** Vault campaign box MBR, in microAlgos. */
-export const VAULT_BOX_MBR_MICRO_ALGOS = 32100n;
+// --- Protocol encodings -----------------------------------------------------
+/** Campaign status: Open. */
+export const CAMPAIGN_STATUS_OPEN = 0n;
+/** Campaign status: Failed. */
+export const CAMPAIGN_STATUS_FAILED = 1n;
+/** Campaign status: Claimed. */
+export const CAMPAIGN_STATUS_CLAIMED = 2n;
+/** Vault box status byte: Open. */
+export const VAULT_BOX_STATUS_OPEN_HEX = '01';
+/** Vault box status byte: Failed. */
+export const VAULT_BOX_STATUS_FAILED_HEX = '02';
+/** Vault box status byte: Claimed. */
+export const VAULT_BOX_STATUS_CLAIMED_HEX = '03';
+/** Packed vault campaign box length, in bytes. */
+export const VAULT_BOX_BYTES = 65;
+/** `paidIn` offset in the packed vault box. */
+export const VAULT_BOX_PAID_IN_OFFSET = 0;
+/** `paidOut` offset in the packed vault box. */
+export const VAULT_BOX_PAID_OUT_OFFSET = 8;
+/** Root offset in the packed vault box. */
+export const VAULT_BOX_ROOT_OFFSET = 16;
+/** `n` offset in the packed vault box. */
+export const VAULT_BOX_N_OFFSET = 48;
+/** Status byte offset in the packed vault box. */
+export const VAULT_BOX_STATUS_OFFSET = 56;
+/** `settledAt` offset in the packed vault box. */
+export const VAULT_BOX_SETTLED_AT_OFFSET = 57;
+/** Bytes in one box key prefix. */
+export const BOX_KEY_PREFIX_BYTES = 1;
+/** Bytes in an AVM application id (and in an app-id box key suffix). */
+export const APP_ID_BYTES = 8;
+/** Bytes in an Algorand address (and in a Registry box value). */
+export const ADDRESS_BYTES = 32;
+/** Vault campaign box key prefix (the box key is `c` + 8-byte app id). */
+export const VAULT_BOX_PREFIX = 'c';
+/** Registry registration box key prefix (the box key is `r` + 8-byte app id). */
+export const REGISTRY_BOX_PREFIX = 'r';
 //# sourceMappingURL=index.js.map
