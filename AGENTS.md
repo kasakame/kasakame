@@ -14,7 +14,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `test/` - LocalNet suites (`00-deploy`, `01-single-campaign`, ...), run in path order
   - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the size-budget fixture
-  - `test/formulas.spec.ts`, `test/size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
+  - `test/formulas.spec.ts`, `test/08-size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
     escrow is never funded and holds nothing
