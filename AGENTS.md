@@ -36,8 +36,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`docs/sdk.md`](docs/sdk.md) for the migration order
 - `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
   (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see
-  [`docs/cli.md`](docs/cli.md) and the [CLI component](https://github.com/kasakame/kasakame/issues/40)
-- `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage; pinning and catalog planned)
+  [`docs/cli.md`](docs/cli.md)
+- `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage, pinning and catalog)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) (tree math and
@@ -47,7 +47,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
-- `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, and Feature
+- `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
 - [`README.md`](README.md) - project overview, quick start, and docs map
 
 ## Commands
@@ -66,13 +66,13 @@ npm run build                    # compile contracts + generate typed clients
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
-npm run test:integration         # LocalNet integration lane (files 00-07; PR gate)
-npm run test:cap:failed          # cap-scale failed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
-npm run test:cap:claimed         # cap-scale claimed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
+npm run test:integration         # LocalNet integration lane (PR gate)
+npm run test:cap:failed          # cap-scale failed campaign (heavy-tests workflow, CI only)
+npm run test:cap:claimed         # cap-scale claimed campaign (heavy-tests workflow, CI only)
 npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
 npm run localnet:fund            # fund an address from the dispenser (ADDRESS=..., ALGO=...)
-npx vitest list integration -t "CON-042"  # find the file that owns a test ID
-npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
+npx vitest list integration -t "<ID>"  # find the file that owns a test ID
+npx vitest run integration -t "<ID>"   # one test by ID (chain tests need the whole file)
 
 cd ../utils
 npm run check-types              # tsc --noEmit
@@ -145,17 +145,9 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 ## Contract size, storage, and fees
 
 The compiled size, page count, app MBR, box MBR, and transaction fees are part of
-the product contract. The current numbers and the AVM limits are in
+the product contract. The pinned values and the AVM limits are in
 [`docs/limits.md`](docs/limits.md); read it before touching
 `smart_contracts/**/contract.algo.ts`.
-
-Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
-
-| Contract | Approval + clear | Pages | App MBR |
-| --- | ---: | ---: | ---: |
-| Campaign | 2,250 B | 2 (1 extra) | 571,000 µA |
-| ClaimsVault | 2,870 B | 2 (1 extra) | 307,000 µA |
-| Registry | 965 B | 1 | 307,000 µA |
 
 - **Measure before and after.** Run `npm run build` in `projects/contracts`,
   record the approval/clear bytecode sizes, page count, app MBR, box MBR, and the
@@ -166,50 +158,42 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
   pages, global schema, and app MBR in
   `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the fixture and `docs/limits.md` together.
-- **The product input bounds are pinned.** Goal `>= 0.1 ALGO` and `<= 10¹⁶ µA`,
-  pledge `<= 10¹⁶ µA`, refund window 30 days to 10 years, and the exact 18,900 µA
-  registration deposit. `raised` and `paidIn` have explicit uint64 overflow
-  guards; there is no product cumulative-flow cap. Update
-  [`docs/limits.md`](docs/limits.md) and the SDK/frontend constants with any change.
-- **The claim-tree size is capped at 2¹⁹ − 1 (524,287 positions).** At the
-  worst-case refund path (`r = c = 18`, 36 elements) the contract needs 14
-  actual OpUp takes. The ABI router and guards consume the first part of the
-  700 base opcodes, so 14 + `payBack` + payment = 16 inner transactions.
-  The SDK's zero-headroom fee bound funds 15, so groups never underpay. The
-  `06` ladder's N=1,023 rung (7 takes at h=18) proves the prelude leaves enough
-  ops for the ~262 the cap needs; if a contract change breaks that guard,
+- **The product input bounds are pinned.** Goal, pledge, refund window, and
+  registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
+  contracts. `raised` and `paidIn` have explicit uint64 overflow guards; there is
+  no product cumulative-flow cap. Update `docs/limits.md` and the SDK/frontend
+  constants with any change.
+- **The claim-tree size is capped at 2¹⁹ − 1.** The worst-case refund path needs
+  the full OpUp budget: the ABI router and guards consume part of the 700 base
+  opcodes, and the SDK's zero-headroom fee bound funds the takes so groups never
+  underpay. The boundary ladder in the integration suite proves the prelude
+  leaves enough ops for the cap; if a contract change breaks that guard,
   re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
   ClaimsVault, Registry, and the SDK and must stay in sync; the cap counts every
-  appended position, including cancelled leaves. The `heavy-tests` workflow runs
-  the full tree end to end (`99-cap-failed` / `99-cap-claimed`); `99-cap-failed`
-  now exercises the early cap-saturation settlement and the worst-case vault
-  refund, while the offline cap test keeps the campaign-refund-at-cap arithmetic.
-  Never run the heavy lane locally as part of a normal change.
+  appended position, including cancelled leaves. The heavy-tests workflow runs
+  the cap-scale suites end to end; never run them locally in a normal change.
 - **Never silently change the creator cost.** The campaign create cost is a
-  product promise. The current 2-page campaign locks ~0.59 ALGO (571,000 µA app
-  MBR + 18,900 µA registration deposit) plus ~5,000 µA fees; the 1-page target is
-  ~0.49 ALGO. An extra page is +100,000 µA. If a change crosses a page boundary,
-  adds a global/local slot (a byte slice is +50,000 µA, a uint +28,500 µA), adds a
-  box, adds an inner txn to create/register, or changes a group shape or fee, stop
-  and call it out in the commit/PR; get explicit approval before proceeding.
+  product promise; the pinned MBR and fee values live in
+  [`docs/limits.md`](docs/limits.md). If a change crosses a page boundary, adds a
+  global/local slot, adds a box, adds an inner txn to create/register, or changes
+  a group shape or fee, stop and call it out in the commit/PR; get explicit
+  approval before proceeding.
 - **Any campaign program change changes the Registry `campaignProgramHash`.**
   Update the deploy script, tests, docs, specs/SDK release, and deploy a new
-  Registry + Vault bundle. The current hash is
+  Registry + Vault bundle. The hash is
   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
   binds the approval/clear split. The Campaign hash, Vault hash, sweep target,
   and refund window are fixed at Registry `create`; there is no in-place update
   or timelock. The vault is bound once and checked in `bindVault`.
 - **Locked is not spent.** App/box MBR and the registration deposit are locked
-  and recoverable; transaction fees are spent. The vault box (32,100 µA) is
-  platform-funded; the Registry registration box (18,900 µA) is covered by the
-  creator deposit.
-- **Respect the no-surcharge page limit.** The current limit is 3 extra pages
-  (8,192 B total). Do not rely on the 7-extra-page surcharge path unless the
+  and recoverable; transaction fees are spent. [`docs/limits.md`](docs/limits.md)
+  records which side funds each box and account balance.
+- **Respect the no-surcharge page limit.** The pinned limit is in
+  [`docs/limits.md`](docs/limits.md). Do not rely on the surcharge path unless the
   target network supports it and the cost is accepted.
 - **Keep the vault and Registry funded.** New boxes increase their accounts'
-  minimum balances. Check the group/resource limits (8 references, 16 inner
-  txns per app call, 2,048 B app args, 700 opcode budget per app call) when
-  adding a call, box, or reference.
+  minimum balances. Check the group and resource limits in
+  [`docs/limits.md`](docs/limits.md) when adding a call, box, or reference.
 
 ## Conventions
 
@@ -227,9 +211,10 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
   `projects/sdk`).
 - **The frontend consumes the published SDK.** `projects/frontend` depends on
-  `@kasakame/sdk@^0.1.0` from npm; to test unreleased contracts/SDK changes,
-  build the SDK (`npm run build` in `projects/sdk`) and install it as a packed
-  local copy (`npm install --no-save --install-links "file:../sdk"` in
+  the published `@kasakame/sdk`; check its `package.json` for the current range.
+  To test unreleased contracts/SDK changes, build the SDK (`npm run build` in
+  `projects/sdk`) and install it as a packed local copy
+  (`npm install --no-save --install-links "file:../sdk"` in
   `projects/frontend`) - a plain `npm ci` restores the published package. CI
   installs the same copy only when the SDK or contracts changed; other frontend
   runs test the registry package. The CLI (`projects/cli`) consumes the same
@@ -243,12 +228,12 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
   local contract work use it. Never copy clients between projects.
 - **Never commit secrets.** `.env` files are gitignored; mnemonics/API keys never go in code.
 - **Env files are per network, never a shared `.env`.** Commands name their network
-  explicitly (`.env.localnet` / `.env.testnet`; e.g. `npm run dev:testnet`,
-  `npm run seed:testnet`; `algokit project deploy <network>` maps to the matching command in
+  explicitly (`.env.localnet` / `.env.testnet`; for example, `npm run dev:testnet`
+  and `npm run seed:testnet`; `algokit project deploy <network>` maps to the matching command in
   `.algokit.toml`). The committed `.env.<network>.template` files document the shape, and
   `algokit project bootstrap all` creates the matching `.env.<network>` from them when missing -
   never a base `.env`, since Vite layers `.env` underneath `.env.<mode>`.
-  MainNet is not wired up yet; the convention extends to `.env.mainnet` when it is.
+  Add `.env.mainnet` when MainNet is wired, using the same pattern.
 - **Lint, format, and compiler rules** (ESLint, Prettier, and `tsconfig.json` options)
   are documented in [`docs/conventions.md`](docs/conventions.md).
 - **Algorand TypeScript gotchas** (contracts use `@algorandfoundation/algorand-typescript`):
@@ -284,15 +269,15 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
     `Registry.create/register/unregister` assert `Global.callerApplicationId == 0`.
     The campaign-driven vault methods (`payBack`, `payClaim`, `settle`, `notifyDelete`)
     and `Registry.isRegistered` stay inner-callable; do not add the guard there. The
-    SDK replay depends on top-level pledges and payments (see #199).
+    SDK replay depends on top-level pledges and payments.
   - **Cap-saturated campaigns fail early.** At `n == MAX_TREE_SIZE` with `raised < goal`,
     `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
-    `Registry.unregister` treat the campaign as failed-in-fact (see #229). The cap is
+    `Registry.unregister` treat the campaign as failed-in-fact. The cap is
     duplicated in Campaign, ClaimsVault, Registry, and the SDK - keep it in sync.
   - **Final-day goal protection.** `Campaign.cancelPledge` rejects a cancel in the final
     24 hours that would drop a campaign at or above its goal below the goal. Cancels
     that keep the goal, and cancels in an already-below-goal campaign, are allowed;
-    `refund` is unaffected. A one-day campaign is entirely inside the window (see #232).
+    `refund` is unaffected. A one-day campaign is entirely inside the window.
   - `app_global_get_ex` **fails on deleted apps** (not exists=false) - never
     make vault logic depend on reading a possibly-deleted campaign's state; use
     vault-local markers written by the campaign (for example, the `root`/`N`/`settledAt`
@@ -341,8 +326,9 @@ Current footprint (2026-11-20, `npm run build`; app MBR measured on LocalNet):
 ## Testing
 
 - Contracts: simulator tests for full behavioral coverage (every method × every branch).
-- Contract cap scale: the `99-cap-*` suites fill the full 2¹⁹−1 tree and run only
-  in the separate `heavy-tests` workflow (weekly + manual); do not run them locally.
+- Contract cap scale: the cap-scale suites fill the maximum tree and run only in
+  the separate `heavy-tests` workflow (scheduled and manual); do not run them
+  locally.
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
@@ -364,9 +350,8 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Commits & pull requests
 
 - **Never commit or push automatically** unless asked; always propose a commit message first.
-- **Branch naming:** `type/issue-number-slug`, for example `feat/42-backer-banner`,
-  `fix/51-defly-first-connect`, `docs/69-work-tracking`. Use the commit type as
-  the prefix and the issue number after it.
+- **Branch naming:** `type/issue-number-slug`, for example `feat/42-backer-banner`.
+  Use the commit type as the prefix and the issue number after it.
 - Follow **Conventional Commits**: `<type>(<scope>): <description>`
   - Types: `feat`, `fix`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `perf`, `style`
   - Scopes: `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`, `docs`,
@@ -376,7 +361,7 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
   - The title is the change name in Conventional Commit form.
-  - List the issue in the **Related issues** section, e.g. `#N`. The
+  - List the issue in the **Related issues** section, for example `#N`. The
     `gh issue develop` branch links the PR and closes the issue on merge; do not
     add a `Closes`/`Fixes` keyword. Close it after merge only if it is still open.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
@@ -397,8 +382,9 @@ status definitions, the views, and the commands.
   priority, and sync the epic status. The PR template repeats this check.
 - Use the Epic and Component forms for those issue types; do not create them as
   Task and retype.
-- Milestones: `v0.2.0` is the coordinated release. Product design and open
-  questions live in [`docs/design.md`](docs/design.md).
+- Milestones: use the current release milestone from the project; do not create
+  one per package unless a package ships alone. Product design and open questions
+  live in [`docs/design.md`](docs/design.md).
 
 ## References
 
