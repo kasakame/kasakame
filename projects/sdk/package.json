@@ -56,6 +56,9 @@
     "@noble/hashes": "^2.4.0",
     "algosdk": "^3.9.0"
   },
+  "peerDependencies": {
+    "@kasakame/constants": "^0.2.0"
+  },
   "scripts": {
     "prebuild": "node scripts/codegen.mjs",
     "build": "tsc -p tsconfig.build.json",
@@ -73,6 +76,7 @@
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "^6.0.1",
     "@eslint/js": "^9.39.5",
+    "@kasakame/constants": "file:../constants",
     "@kasakame/utils": "file:../utils",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^5.0.5",

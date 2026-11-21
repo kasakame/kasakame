@@ -62,6 +62,9 @@ jobs:
         run: bash .github/scripts/install-algokit.sh
         shell: bash
 
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
+
       - name: Install contract dependencies
         run: npm ci
         working-directory: projects/contracts
@@ -113,6 +116,9 @@ jobs:
       - name: Install AlgoKit CLI
         run: bash .github/scripts/install-algokit.sh
         shell: bash
+
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
 
       - name: Install contract dependencies
         run: npm ci

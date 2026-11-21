@@ -1,10 +1,11 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
+import { REGISTER_DEPOSIT_MICRO_ALGOS, SECONDS_PER_DAY } from '@kasakame/constants'
 import { ABIMethod } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'
-import { CAMPAIGNS_LOCALNET, CAMPAIGNS_TESTNET, DAY, REGISTER_MBR } from './campaigns'
+import { CAMPAIGNS_LOCALNET, CAMPAIGNS_TESTNET } from './campaigns'
 import { STATE_PATH, appIdBytes, isLocalNet, writeSeedState, type SeedEntry } from './state'
 
 /**
@@ -64,7 +65,7 @@ void (async () => {
     const campaignFactory = new AppFactory({ appSpec: spec, algorand, defaultSender: creator.addr })
 
     const goal = toMicroAlgos(c.goalAlgo)
-    const deadline = BigInt(Math.floor(Date.now() / 1000) + c.days * DAY)
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + c.days * SECONDS_PER_DAY)
 
     const { result } = await campaignFactory.send.create({
       method: 'create(uint64,byte[],byte[],uint64,uint64)void',
@@ -80,7 +81,7 @@ void (async () => {
     const registerPayment = await algorand.createTransaction.payment({
       sender: creator.addr,
       receiver: registryClient.appAddress,
-      amount: microAlgos(REGISTER_MBR),
+      amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
     })
     await registryClient.send.call({
       method: 'register(uint64,pay)void',

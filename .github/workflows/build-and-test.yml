@@ -28,21 +28,23 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       backend: ${{ steps.filter.outputs.backend }}
       utils: ${{ steps.filter.outputs.utils }}
+      constants: ${{ steps.filter.outputs.constants }}
       ci: ${{ steps.filter.outputs.ci }}
       oracle: ${{ steps.filter.outputs.oracle }}
       markdown: ${{ steps.filter.outputs.markdown }}
       shell: ${{ steps.filter.outputs.shell }}
       workspace: ${{ steps.filter.outputs.workspace }}
       run_repo_lint: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
-      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' }}
-      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' }}
-      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' }}
-      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' }}
+      run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
+      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -86,6 +88,10 @@ jobs:
               - 'projects/utils/**'
               - '!**/*.md'
               - '!**/LICENSE'
+            constants:
+              - 'projects/constants/**'
+              - '!**/*.md'
+              - '!**/LICENSE'
             ci:
               - '.github/**'
               - '!**/*.md'
@@ -106,6 +112,7 @@ jobs:
               - '!projects/cli/**'
               - '!projects/backend/**'
               - '!projects/utils/**'
+              - '!projects/constants/**'
               - '!.github/**'
               - '!docs/claim-tree-protocol-reference.py'
               - '!docs/**/*.{png,jpg,jpeg,gif,svg,webp,pdf}'
@@ -178,6 +185,9 @@ jobs:
         run: bash .github/scripts/install-algokit.sh
         shell: bash
 
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
+
       - name: Install dependencies
         run: npm ci
         working-directory: projects/contracts
@@ -216,6 +226,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/contracts/package-lock.json
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -258,11 +270,14 @@ jobs:
           cache-dependency-path: projects/sdk/package-lock.json
 
       - name: Download contract artifacts
-        if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true'
+        if: needs.changes.outputs.run_compile_contracts == 'true'
         uses: actions/download-artifact@v8
         with:
           name: contracts-artifacts
           path: projects/contracts/smart_contracts/artifacts
+
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
 
       - name: Install dependencies
         run: npm ci
@@ -272,7 +287,7 @@ jobs:
         run: npm run build
         working-directory: projects/sdk
         env:
-          SDK_SPECS: ${{ (github.event_name == 'workflow_dispatch' || needs.changes.outputs.contracts == 'true') && 'local' || 'release' }}
+          SDK_SPECS: ${{ needs.changes.outputs.run_compile_contracts == 'true' && 'local' || 'release' }}
 
       - name: Upload generated clients
         uses: actions/upload-artifact@v7
@@ -310,6 +325,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/sdk/package-lock.json
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -374,6 +391,8 @@ jobs:
         with:
           name: sdk-dist
           path: projects/sdk/dist
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         env:
@@ -425,6 +444,8 @@ jobs:
         with:
           name: sdk-dist
           path: projects/sdk/dist
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         env:
@@ -510,6 +531,44 @@ jobs:
         run: npm run test:coverage
         working-directory: projects/backend
 
+  # Shared constants package verification. Public, but built and checked here
+  # before the consumer lanes install it.
+  check-constants:
+    name: Check constants
+    needs: changes
+    if: needs.changes.outputs.run_check_constants == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/constants/package-lock.json
+      - name: Install dependencies
+        id: install
+        run: npm ci
+        working-directory: projects/constants
+      - name: Build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run build
+        working-directory: projects/constants
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run format
+        working-directory: projects/constants
+      - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run lint
+        working-directory: projects/constants
+      - name: Type-check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run check-types
+        working-directory: projects/constants
+
   # Shared-helper package verification. Private and never published; the
   # consumers install it from the checkout with a `file:` dependency.
   check-utils:
@@ -527,6 +586,8 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/utils/package-lock.json
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -585,6 +646,9 @@ jobs:
         run: bash .github/scripts/install-algokit.sh
         shell: bash
 
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
+
       - name: Install contract dependencies
         run: npm ci
         working-directory: projects/contracts
@@ -612,6 +676,7 @@ jobs:
       - check-cli
       - check-backend
       - check-utils
+      - check-constants
       - integration-test
     runs-on: ubuntu-latest
     timeout-minutes: 5

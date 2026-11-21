@@ -43,6 +43,7 @@
     "@algorandfoundation/puya-ts": "^1.0.1",
     "@algorandfoundation/xhd-wallet-api": "^1.0.3",
     "@eslint/js": "^9.39.5",
+    "@kasakame/constants": "file:../constants",
     "@kasakame/utils": "file:../utils",
     "@rollup/plugin-typescript": "^12.3.1",
     "@tsconfig/node24": "^24.0.0",

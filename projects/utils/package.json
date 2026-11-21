@@ -41,5 +41,8 @@
   "peerDependencies": {
     "@algorandfoundation/algokit-utils": "^9.0.0",
     "algosdk": "^3.0.0"
+  },
+  "dependencies": {
+    "@kasakame/constants": "file:../constants"
   }
 }

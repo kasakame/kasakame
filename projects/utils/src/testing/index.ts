@@ -1,3 +1,5 @@
 export * from './assertions.js'
+export * from './bytes.js'
 export * from './localnet.js'
 export * from './platform.js'
+export * from './selector.js'

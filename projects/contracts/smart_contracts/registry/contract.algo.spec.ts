@@ -1,5 +1,6 @@
 import { Bytes, Global, OnCompleteAction, type Account, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
+import { MAX_REFUND_WINDOW_SECONDS, MAX_TREE_SIZE, MIN_REFUND_WINDOW_SECONDS, REGISTER_DEPOSIT_MICRO_ALGOS } from '@kasakame/constants'
 import { programHash } from '@kasakame/utils'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
@@ -13,17 +14,14 @@ import { Registry } from './contract.algo'
  * program, sweep target, and refund window; `register`/`unregister` keep the original registration and cleanup behavior.
  */
 
-const REGISTER_MBR = 18_900
+const REGISTER_MBR = Number(REGISTER_DEPOSIT_MICRO_ALGOS) // the simulator takes number amounts
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
 const FAKE_PROGRAM_HASH = programHash(FAKE_PROGRAM, new Uint8Array())
 const TITLE = Bytes('Test campaign')
 const METADATA_URI = Bytes('ipfs://test')
 const GOAL = 1_000_000
 const DEADLINE = 1_000_000
-const MIN_WINDOW = 30 * 24 * 60 * 60
-const MAX_WINDOW = 10 * 365 * 24 * 60 * 60
-const WINDOW = MIN_WINDOW
-const MAX_TREE_SIZE = 524_287
+const WINDOW = MIN_REFUND_WINDOW_SECONDS
 const DELETE_SELECTOR = Bytes.fromHex('24378d3c')
 
 let nextProbeId = 10_000
@@ -199,24 +197,24 @@ describe('Registry', () => {
     test('rejects a refund window below the 30-day minimum', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_WINDOW - 1)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS - 1)
       }).toThrow('refund window too short')
     })
 
     test('accepts a refund window exactly at the 30-day minimum', () => {
-      const registry = createRegistry({ window: MIN_WINDOW })
-      expect(registry.expectedRefundWindow.value).toEqual(MIN_WINDOW)
+      const registry = createRegistry({ window: MIN_REFUND_WINDOW_SECONDS })
+      expect(registry.expectedRefundWindow.value).toEqual(MIN_REFUND_WINDOW_SECONDS)
     })
 
     test('accepts a refund window exactly at the 10-year maximum', () => {
-      const registry = createRegistry({ window: MAX_WINDOW })
-      expect(registry.expectedRefundWindow.value).toEqual(MAX_WINDOW)
+      const registry = createRegistry({ window: MAX_REFUND_WINDOW_SECONDS })
+      expect(registry.expectedRefundWindow.value).toEqual(MAX_REFUND_WINDOW_SECONDS)
     })
 
     test('rejects a refund window above the cap', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MAX_WINDOW + 1)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MAX_REFUND_WINDOW_SECONDS + 1)
       }).toThrow('refund window too long')
     })
 

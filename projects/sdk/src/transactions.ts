@@ -1,5 +1,13 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
+import {
+  FEE_CLAIM_EXTRA_MICRO_ALGOS,
+  FEE_CREDIT_EXTRA_MICRO_ALGOS,
+  FEE_DELETE_EXTRA_MICRO_ALGOS,
+  FEE_MICRO_ALGOS,
+  FEE_UNREGISTER_EXTRA_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+} from '@kasakame/constants'
 import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getApplicationAddress, hexToBytes } from 'algosdk'
 import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from './chain.js'
@@ -66,16 +74,8 @@ export function isStaleProofError(error: unknown): boolean {
 
 type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
 
-// The Registry registration deposit: the registration box's minimum balance, returned by `unregister()`.
-const REGISTER_DEPOSIT_MICRO_ALGOS = 18_900n
-
 // Fee headroom per call (measured on LocalNet - see docs/campaign.md "Minimum balances"): the outer call always covers
 // its inners via fee pooling, so every extra inner transaction costs one more minimum fee on the outer call.
-const FEE_MICRO_ALGOS = 1_000n
-const FEE_CREDIT_EXTRA = 1_000n // possible first-touch registry check
-const FEE_CLAIM_EXTRA = 2_000n // inner payClaim + inner payment
-const FEE_DELETE_EXTRA = 2_000n // inner settle/notify + escrow close
-const FEE_UNREGISTER_EXTRA = 1_000n // inner deposit-back
 
 /**
  * Extra fee for a spend: the payout inner transactions for this path plus one 1,000 µA fee per OpUp
@@ -340,7 +340,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
       // The first-touch registration check runs inside the vault; the campaign app is the pledge txn before this call.
       appReferences: [registryAppId],
       boxReferences: [...vaultBoxRef(appId), ...registrationBox(appId)],
-      extraFee: microAlgos(FEE_CREDIT_EXTRA),
+      extraFee: microAlgos(FEE_CREDIT_EXTRA_MICRO_ALGOS),
     }),
   )
   return composer
@@ -517,7 +517,7 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
     args: [],
     appReferences: [vaultAppId],
     boxReferences: vaultBoxRef(appId),
-    extraFee: microAlgos(FEE_CLAIM_EXTRA),
+    extraFee: microAlgos(FEE_CLAIM_EXTRA_MICRO_ALGOS),
   })
 
   const confirmedRound = result.confirmation.confirmedRound
@@ -548,7 +548,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
         args: { app: appId },
         sender: session.address,
         appReferences: [appId],
-        extraFee: microAlgos(FEE_UNREGISTER_EXTRA),
+        extraFee: microAlgos(FEE_UNREGISTER_EXTRA_MICRO_ALGOS),
       }),
     )
   }
@@ -558,7 +558,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
       sender: session.address,
       appReferences: [vaultAppId],
       boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(FEE_DELETE_EXTRA),
+      extraFee: microAlgos(FEE_DELETE_EXTRA_MICRO_ALGOS),
     }),
   )
   await composer.send()

@@ -1,11 +1,11 @@
 name: release-cli
 
 # Manual release of @kasakame/cli. The CLI consumes the published SDK, so this
-# workflow never builds or installs a local copy: `npm ci` installs exactly what
-# users get. Every gate is its own step so a failure and its timing are visible
-# in the run. The dispatch version must match projects/cli/package.json, and
-# dry_run defaults to true; set it to false only for a real release. Release the
-# SDK first.
+# workflow never builds or installs a local copy of it: `npm ci` installs
+# exactly what users get. Every gate is its own step so a failure and its timing
+# are visible in the run. The dispatch version must match
+# projects/cli/package.json, and dry_run defaults to true; set it to false only
+# for a real release. Release @kasakame/constants and the SDK first.
 #
 # Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
 # --provenance. Configure the trusted publisher for @kasakame/cli as GitHub
@@ -54,6 +54,9 @@ jobs:
 
       # The committed dependency is the published SDK. Do not install
       # file:../sdk here: a published CLI must ship against a released SDK.
+      - name: Build local constants
+        run: bash .github/scripts/build-constants.sh
+
       - name: Install CLI dependencies
         run: npm ci
         working-directory: projects/cli

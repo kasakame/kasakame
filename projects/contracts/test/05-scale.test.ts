@@ -12,8 +12,8 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './utils'
-import { backersPerCampaign, describeScale, scaleConfig } from './utils/scale'
+} from './helpers'
+import { backersPerCampaign, describeScale, scaleConfig } from './helpers/scale'
 
 interface CampaignFixture {
   appClient: AppClient

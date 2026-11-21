@@ -1,4 +1,5 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { MAX_CAMPAIGN_DURATION_SECONDS, MAX_TREE_SIZE, SECONDS_PER_DAY } from '@kasakame/constants'
 import { ALGO, accountInfo, advanceTime } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
 import {
@@ -12,8 +13,8 @@ import {
   deleteCampaign,
   deployCampaign,
   deployStack,
-} from './utils'
-import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
+} from './helpers'
+import { FastTree, hex, pathShape, runPledges } from './helpers/fast-pledge'
 
 /**
  * 99 - cap-scale successful campaign (#220): the full 2^19 - 1 tree, then claim and delete.
@@ -25,11 +26,11 @@ import { CAP_TREE_SIZE, FastTree, hex, pathShape, runPledges } from './utils/fas
  */
 
 const GOAL = 50_000n * ALGO // below the 52,428.7 ALGO principal
-const DEADLINE = 179 * 24 * 60 * 60 // inside the 180-day contract maximum
-const LAST_LEAF = CAP_TREE_SIZE - 1 // top-only path
+const DEADLINE = MAX_CAMPAIGN_DURATION_SECONDS - SECONDS_PER_DAY // inside the 180-day contract maximum
+const LAST_LEAF = MAX_TREE_SIZE - 1 // top-only path
 
 test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale'], timeout: 20_000_000 }, async () => {
-  expect(pathShape(CAP_TREE_SIZE, LAST_LEAF)).toEqual({ r: 0, c: 0, hasTop: true })
+  expect(pathShape(MAX_TREE_SIZE, LAST_LEAF)).toEqual({ r: 0, c: 0, hasTop: true })
 
   const fixture = algorandFixture()
   const stack = await deployStack(fixture)
@@ -43,11 +44,11 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
 
-  const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, CAP_TREE_SIZE)
+  const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, MAX_TREE_SIZE)
 
   const root = hex(tree.root())
   expect(await campaignState(campaign.appClient)).toEqual({
-    n: BigInt(CAP_TREE_SIZE),
+    n: BigInt(MAX_TREE_SIZE),
     root,
     raised: run.principal,
     status: 0n,
@@ -67,7 +68,7 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
     }),
   ).rejects.toThrow(/goal was reached/)
 
-  await advanceTime(fixture, 180 * 24 * 60 * 60)
+  await advanceTime(fixture, MAX_CAMPAIGN_DURATION_SECONDS)
 
   // The creator claims the full raised principal; the vault pays paidIn - paidOut.
   console.log('deadline passed: claiming')

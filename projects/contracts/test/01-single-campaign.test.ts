@@ -14,7 +14,7 @@ import {
   pledge,
   spendCampaign,
   type ContractStack,
-} from './utils'
+} from './helpers'
 
 interface CampaignFixture {
   appClient: AppClient
