@@ -76,7 +76,16 @@ describe('00 deployment and wiring', () => {
       path.resolve(__dirname, '../smart_contracts/artifacts/campaign/Campaign.approval.teal'),
       'utf8',
     )
-    for (const selector of [SELECTORS.payBack, SELECTORS.payClaim, SELECTORS.settle, SELECTORS.notifyDelete, SELECTORS.credit]) {
+    for (const selector of [
+      SELECTORS.payBack,
+      SELECTORS.payClaim,
+      SELECTORS.settle,
+      SELECTORS.notifyDelete,
+      SELECTORS.credit,
+      SELECTORS.pledge,
+      SELECTORS.cancelPledge,
+      SELECTORS.refund,
+    ]) {
       expect(campaignApproval).toContain(selector)
     }
 
@@ -86,6 +95,7 @@ describe('00 deployment and wiring', () => {
     )
     expect(vaultApproval).toContain(SELECTORS.isRegistered)
     expect(vaultApproval).toContain(SELECTORS.pledge)
+    expect(vaultApproval).toContain(SELECTORS.vaultRefund)
 
     const registryApproval = fs.readFileSync(
       path.resolve(__dirname, '../smart_contracts/artifacts/registry/Registry.approval.teal'),
