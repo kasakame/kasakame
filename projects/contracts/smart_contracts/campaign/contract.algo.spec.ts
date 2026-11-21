@@ -350,7 +350,7 @@ describe('Campaign', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
-      const before = oracle('bulk', String(MAX_TREE_SIZE - 1)) as { root: string; peaks: string[] }
+      const before = oracle('bulk', String(MAX_TREE_SIZE - 1n)) as { root: string; peaks: string[] }
       ctx.ledger.setGlobalState(contract, Bytes('n'), 524_286)
       ctx.ledger.setGlobalState(contract, Bytes('root'), Bytes(Buffer.from(before.root, 'hex')))
       const frontier = Buffer.concat(before.peaks.map((p) => Buffer.from(p, 'hex')))
@@ -367,7 +367,14 @@ describe('Campaign', () => {
       ctx.txn.createScope(group, 1).execute(() => {
         const scopedPay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
         const txid = Buffer.from(toExternalValue(scopedPay.txnId)).toString('hex')
-        const after = oracle('bulk', String(MAX_TREE_SIZE), String(MAX_TREE_SIZE - 1), accountHex(backer), MIN_PLEDGE.toString(), txid) as {
+        const after = oracle(
+          'bulk',
+          String(MAX_TREE_SIZE),
+          String(MAX_TREE_SIZE - 1n),
+          accountHex(backer),
+          MIN_PLEDGE.toString(),
+          txid,
+        ) as {
           root: string
         }
         contract.pledge(scopedPay, Bytes(frontier))
@@ -1142,7 +1149,7 @@ describe('Campaign', () => {
 
     test('deletes a cap-saturated campaign before the deadline', () => {
       const contract = createCampaign()
-      contract.n.value = MAX_TREE_SIZE
+      contract.n.value = Number(MAX_TREE_SIZE)
       contract.raised.value = MIN_PLEDGE
       deleteScope(contract, ctx.defaultSender).execute(() => {
         contract.delete()
@@ -1154,7 +1161,7 @@ describe('Campaign', () => {
 
     test('deletes a cap-saturated campaign with a Registry binding before the deadline', () => {
       const { contract, registryApp } = createCampaignWithRegistry()
-      contract.n.value = MAX_TREE_SIZE
+      contract.n.value = Number(MAX_TREE_SIZE)
       contract.raised.value = MIN_PLEDGE
       ctx.txn.createScope(deleteGroup(contract, registryApp), 1).execute(() => {
         contract.delete()
@@ -1166,7 +1173,7 @@ describe('Campaign', () => {
 
     test('rejects deleting a cap-saturated campaign that reached its goal', () => {
       const contract = createCampaign()
-      contract.n.value = MAX_TREE_SIZE
+      contract.n.value = Number(MAX_TREE_SIZE)
       contract.raised.value = GOAL
       deleteScope(contract, ctx.defaultSender).execute(() => {
         expect(() => {

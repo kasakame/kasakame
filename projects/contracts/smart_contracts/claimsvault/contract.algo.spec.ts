@@ -22,7 +22,6 @@ import { ClaimsVault } from './contract.algo'
 
 const CAMPAIGN_APP_ID = 42
 const REGISTRY_APP_ID = 7
-const WINDOW = MIN_REFUND_WINDOW_SECONDS
 const MAX_UINT64 = 18_446_744_073_709_551_615n
 const ORACLE = path.resolve(__dirname, '../../test/helpers/oracle.py')
 
@@ -46,7 +45,7 @@ describe('ClaimsVault', () => {
     return JSON.parse(out) as unknown
   }
 
-  function createVault(sweep = ctx.defaultSender, window = WINDOW, registryId = REGISTRY_APP_ID): ClaimsVault {
+  function createVault(sweep = ctx.defaultSender, window = MIN_REFUND_WINDOW_SECONDS, registryId = REGISTRY_APP_ID): ClaimsVault {
     const vault = ctx.contract.create(ClaimsVault)
     vault.create(ctx.any.application({ applicationId: registryId }), sweep, window)
     return vault
@@ -169,7 +168,7 @@ describe('ClaimsVault', () => {
     test('stores the registry, sweep target, and window', () => {
       const vault = createVault()
       expect(toExternalValue(vault.registry.value.id)).toEqual(REGISTRY_APP_ID)
-      expect(toExternalValue(vault.refundWindow.value)).toEqual(WINDOW)
+      expect(toExternalValue(vault.refundWindow.value)).toEqual(MIN_REFUND_WINDOW_SECONDS)
     })
 
     test('rejects a window below the 30-day minimum', () => {
@@ -199,14 +198,14 @@ describe('ClaimsVault', () => {
     test('rejects a zero registry', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: 0 }), ctx.defaultSender, WINDOW)
+        vault.create(ctx.any.application({ applicationId: 0 }), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('registry required')
     })
 
     test('rejects a zero sweep target', () => {
       const vault = ctx.contract.create(ClaimsVault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), Global.zeroAddress, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), Global.zeroAddress, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('sweep target must not be zero')
     })
 
@@ -214,7 +213,7 @@ describe('ClaimsVault', () => {
       const vault = ctx.contract.create(ClaimsVault)
       const vaultApp = ctx.ledger.getApplicationForContract(vault)
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), vaultApp.address, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), vaultApp.address, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('sweep target must not be the vault')
     })
 
@@ -222,7 +221,7 @@ describe('ClaimsVault', () => {
       const vault = ctx.contract.create(ClaimsVault)
       const registry = ctx.any.application({ applicationId: REGISTRY_APP_ID })
       expect(() => {
-        vault.create(registry, registry.address, WINDOW)
+        vault.create(registry, registry.address, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('sweep target must not be the registry')
     })
   })
@@ -764,7 +763,7 @@ describe('ClaimsVault', () => {
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: ZERO_ROOT_HEX, n: 1, status: OPEN, settledAt: 0 })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
         expect(() => {
-          vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), MAX_TREE_SIZE + 1)
+          vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), Number(MAX_TREE_SIZE) + 1)
         }).toThrow('n above maximum')
       })
     })
@@ -774,12 +773,12 @@ describe('ClaimsVault', () => {
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 5_000 })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: campaignAppAccount() })]).execute(() => {
-        vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), MAX_TREE_SIZE)
+        vault.settle(campaignApp(), Bytes(Buffer.from(ROOT, 'hex')), Number(MAX_TREE_SIZE))
       })
 
       const box = readBox(vault, CAMPAIGN_APP_ID)
       expect(box.root).toEqual(ROOT)
-      expect(box.n).toEqual(BigInt(MAX_TREE_SIZE))
+      expect(box.n).toEqual(MAX_TREE_SIZE)
       expect(box.status).toEqual(FAILED)
       expect(box.settledAt).toEqual(5_000n)
       expect(box.paidIn).toEqual(1000n)
@@ -854,7 +853,7 @@ describe('ClaimsVault', () => {
         goal: 1000,
         deadline: 5_000,
         root: ZERO_ROOT_HEX,
-        n: MAX_TREE_SIZE + 1,
+        n: Number(MAX_TREE_SIZE) + 1,
       })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
@@ -876,14 +875,14 @@ describe('ClaimsVault', () => {
     test('settles a cap-saturated campaign before the deadline', () => {
       const vault = createVault()
       const root = '22'.repeat(32)
-      const { app, id } = foreignCampaign(vault, { status: 0, raised: 800, goal: 1000, deadline: 5_000, root, n: MAX_TREE_SIZE })
+      const { app, id } = foreignCampaign(vault, { status: 0, raised: 800, goal: 1000, deadline: 5_000, root, n: Number(MAX_TREE_SIZE) })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
       vault.settleOpen(app)
 
       const box = readBox(vault, id)
       expect(box.root).toEqual(root)
-      expect(box.n).toEqual(BigInt(MAX_TREE_SIZE))
+      expect(box.n).toEqual(MAX_TREE_SIZE)
       expect(box.status).toEqual(FAILED)
       expect(box.settledAt).toEqual(500n)
     })
@@ -896,7 +895,7 @@ describe('ClaimsVault', () => {
         goal: 1000,
         deadline: 5_000,
         root: ZERO_ROOT_HEX,
-        n: MAX_TREE_SIZE,
+        n: Number(MAX_TREE_SIZE),
       })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
@@ -917,7 +916,7 @@ describe('ClaimsVault', () => {
 
     test('rejects a campaign bound to another vault', () => {
       const vault = createVault()
-      const otherVault = createVault(ctx.defaultSender, WINDOW, REGISTRY_APP_ID + 1)
+      const otherVault = createVault(ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS, REGISTRY_APP_ID + 1)
       const { app, id } = foreignCampaign(otherVault, { status: 1, raised: 800, goal: 1000, deadline: 100, root: ZERO_ROOT_HEX, n: 4 })
       writeBox(vault, id, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 0, status: OPEN, settledAt: 0 })
       ctx.ledger.patchGlobalData({ latestTimestamp: 500 })
@@ -1033,7 +1032,7 @@ describe('ClaimsVault', () => {
     test('rejects a refund after the window closes', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 0, root: ZERO_ROOT_HEX, n: 1, status: FAILED, settledAt: 100 })
-      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + WINDOW + 1 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + MIN_REFUND_WINDOW_SECONDS + 1 })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: vault, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
           vault.refund(campaignApp(), 0, 100, Bytes(Buffer.alloc(32)), Bytes(new Uint8Array()))
@@ -1167,7 +1166,7 @@ describe('ClaimsVault', () => {
         paidIn: AMOUNT,
         paidOut: 0,
         root: bulk.root,
-        n: MAX_TREE_SIZE,
+        n: Number(MAX_TREE_SIZE),
         status: FAILED,
         settledAt: 100,
       })
@@ -1309,7 +1308,7 @@ describe('ClaimsVault', () => {
     test('rejects finalization while the window is still open', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 1, status: FAILED, settledAt: 100 })
-      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + WINDOW - 1 })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + MIN_REFUND_WINDOW_SECONDS - 1 })
       expect(() => {
         vault.finalize(campaignApp())
       }).toThrow('refund window still open')
@@ -1319,7 +1318,7 @@ describe('ClaimsVault', () => {
       const sweep = ctx.any.account()
       const vault = createVault(sweep)
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 200, root: ZERO_ROOT_HEX, n: 1, status: FAILED, settledAt: 100 })
-      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + WINDOW })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + MIN_REFUND_WINDOW_SECONDS })
       vault.finalize(campaignApp())
 
       expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
@@ -1340,7 +1339,7 @@ describe('ClaimsVault', () => {
     test('deletes the box without paying when nothing is left', () => {
       const vault = createVault()
       writeBox(vault, CAMPAIGN_APP_ID, { paidIn: 1000, paidOut: 1000, root: ZERO_ROOT_HEX, n: 1, status: FAILED, settledAt: 100 })
-      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + WINDOW })
+      ctx.ledger.patchGlobalData({ latestTimestamp: 100 + MIN_REFUND_WINDOW_SECONDS })
       vault.finalize(campaignApp())
 
       expect(vault.campaignBox(CAMPAIGN_APP_ID).exists).toEqual(false)
@@ -1352,7 +1351,7 @@ describe('ClaimsVault', () => {
       const vault = ctx.contract.create(ClaimsVault)
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
-        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, WINDOW)
+        vault.create(ctx.any.application({ applicationId: REGISTRY_APP_ID }), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('must be called from the top level')
     })
 

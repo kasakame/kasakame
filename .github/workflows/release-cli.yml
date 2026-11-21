@@ -54,8 +54,6 @@ jobs:
 
       # The committed dependency is the published SDK. Do not install
       # file:../sdk here: a published CLI must ship against a released SDK.
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
 
       - name: Install CLI dependencies
         run: npm ci

@@ -56,9 +56,6 @@ jobs:
           cache: npm
           cache-dependency-path: projects/sdk/package-lock.json
 
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
-
       - name: Install SDK dependencies
         run: npm ci
         working-directory: projects/sdk

@@ -1,17 +1,7 @@
-import {
-  MAX_REFUND_WINDOW_SECONDS as MAX_REFUND_WINDOW_SECONDS_VALUE,
-  MIN_REFUND_WINDOW_SECONDS as MIN_REFUND_WINDOW_SECONDS_VALUE,
-  SECONDS_PER_DAY,
-} from '@kasakame/constants'
+import { MAX_REFUND_WINDOW_SECONDS, MIN_REFUND_WINDOW_SECONDS, SECONDS_PER_DAY } from '@kasakame/constants'
 
 /** Default refund window: 730 days, per the spec recommendation. */
 export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * SECONDS_PER_DAY)
-
-/** Minimum refund window: 30 days, matching `ClaimsVault.MIN_REFUND_WINDOW_SECONDS`. */
-export const MIN_REFUND_WINDOW_SECONDS = BigInt(MIN_REFUND_WINDOW_SECONDS_VALUE)
-
-/** Deployment sanity cap: 10 years. Prevents `settledAt + refundWindow` overflow from a misconfigured env. */
-export const MAX_REFUND_WINDOW_SECONDS = BigInt(MAX_REFUND_WINDOW_SECONDS_VALUE)
 
 /**
  * Parse and sanity-check `REFUND_WINDOW_SECONDS`.
@@ -30,7 +20,7 @@ export function parseRefundWindow(value: string | undefined): bigint {
   } catch {
     throw new Error('REFUND_WINDOW_SECONDS must be an integer number of seconds.')
   }
-  if (seconds < MIN_REFUND_WINDOW_SECONDS || seconds > MAX_REFUND_WINDOW_SECONDS) {
+  if (seconds < BigInt(MIN_REFUND_WINDOW_SECONDS) || seconds > BigInt(MAX_REFUND_WINDOW_SECONDS)) {
     throw new Error(
       `REFUND_WINDOW_SECONDS must be between ${MIN_REFUND_WINDOW_SECONDS.toString()} (30 days) and ${MAX_REFUND_WINDOW_SECONDS.toString()} seconds.`,
     )

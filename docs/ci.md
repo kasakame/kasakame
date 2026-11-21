@@ -34,6 +34,9 @@ reasoning behind the splits.
   fails unless `test/helpers/contract-sizes.ts` and `docs/limits.md` are
   updated. `check-contracts` does not build artifacts, so the size test is
   excluded from `npm test` and `test:coverage`.
+- **The constants build is committed.** `projects/constants/dist` is tracked so
+  `file:` consumers install it without a per-job build. `check-constants`
+  rebuilds it and fails when the committed output drifts from `src`.
 - **Split by prerequisite, not by phase.** Each project has one verification
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
@@ -242,9 +245,9 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   project path itself, no folding. A contracts change does not set `sdk`,
   `frontend`, `cli`, `utils`, or `constants`; the derived outputs OR the inputs
   they need. `check-utils` runs the private helper package's format, lint, and
-  type-check; `check-constants` builds and checks the public constants package.
-  Changes to `utils` or `constants` re-run the contract and SDK checks that
-  consume them.
+  type-check; `check-constants` rebuilds the public constants package and fails
+  when the committed `dist` drifts. Changes to `utils` or `constants` re-run the
+  contract and SDK checks that consume them.
 - `ci` - `.github/**` (workflows and release scripts).
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
@@ -378,9 +381,8 @@ workflow, together with files `00`-`04`.
 ## Workflow: release-specs (separate file)
 
 Implemented at `.github/workflows/release-specs.yml`. Manual (`workflow_dispatch`)
-release of the **contract interface**: it builds the shared constants package,
-then the contracts from the dispatched commit, runs the offline contract tests,
-and attaches the compiled
+release of the **contract interface**: it builds the contracts from the
+dispatched commit, runs the offline contract tests, and attaches the compiled
 per-app artifacts to a GitHub Release tagged `specs-v<version>` as one tarball
 per artifact kind - `arc56.tar.gz` (ARC-56 specs), `arc32.tar.gz` (ARC-32
 specs), `teal.tar.gz` (approval/clear TEAL), and `puya.tar.gz` (`*.puya.map`
@@ -415,10 +417,10 @@ release commit. The dispatch inputs mirror the SDK release:
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` installs the package, validates the input version against
-  `package.json` and that it is unpublished, builds `dist`, formats, lints,
-  type-checks, inspects the packed tarball, dry-runs the publish, and installs
-  the tarball in a clean consumer to import the compiled values. It uploads the
-  tested `dist/`.
+  `package.json` and that it is unpublished, builds `dist`, verifies the
+  committed `dist` is unchanged, formats, lints, type-checks, inspects the
+  packed tarball, dry-runs the publish, and installs the tarball in a clean
+  consumer to import the compiled values. It uploads the tested `dist/`.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
@@ -443,9 +445,8 @@ are:
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
-- `prep` is Node/npm only and never builds the contracts: it builds the local
-  constants package (the SDK's `file:` dev dependency), then installs, validates
-  the input version against `package.json` and that it is unpublished, regenerates
+- `prep` is Node/npm only and never builds the contracts: it validates the
+  input version against `package.json` and that it is unpublished, regenerates
   clients from the pinned `specs-vX.Y.Z` release, compiles TypeScript, lints,
   format-checks, type-checks, runs coverage, inspects the packed tarball, and
   dry-runs the publish. Each command is its own step. It uploads the tested
@@ -498,8 +499,7 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
   never the `file:../sdk` copy, because a released CLI must ship against a
-  released SDK. It builds the local constants package for its `file:` dev
-  dependency, then validates the input version against `package.json` and that
+  released SDK. It validates the input version against `package.json` and that
   it is unpublished, lints, formats, type-checks, runs coverage, builds,
   inspects the packed tarball, and dry-runs the publish. Each command is its own
   step. It uploads the tested `dist/`.

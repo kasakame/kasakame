@@ -2,7 +2,7 @@
 export const MICRO_ALGOS_PER_ALGO = 1_000_000n
 
 /** Maximum claim-tree positions: 2^19 - 1. */
-export const MAX_TREE_SIZE = 524_287
+export const MAX_TREE_SIZE = 524_287n
 
 /** Bytes in a claim-tree hash. */
 export const TREE_HASH_BYTES = 32
@@ -69,6 +69,27 @@ export const FEE_DELETE_EXTRA_MICRO_ALGOS = 2_000n
 
 /** Extra fee for the unregister inner deposit return. */
 export const FEE_UNREGISTER_EXTRA_MICRO_ALGOS = 1_000n
+
+/** Credit call fee: outer call plus the first-touch Registry check. */
+export const CREDIT_FEE_MICRO_ALGOS = FEE_MICRO_ALGOS + FEE_CREDIT_EXTRA_MICRO_ALGOS
+
+/** Claim call fee: outer call plus the inner app call and payment. */
+export const CLAIM_FEE_MICRO_ALGOS = FEE_MICRO_ALGOS + FEE_CLAIM_EXTRA_MICRO_ALGOS
+
+/** Delete call fee: outer call plus the settle/notify inner call and escrow close. */
+export const DELETE_FEE_MICRO_ALGOS = FEE_MICRO_ALGOS + FEE_DELETE_EXTRA_MICRO_ALGOS
+
+/** Unregister call fee: outer call plus the inner deposit return. */
+export const UNREGISTER_FEE_MICRO_ALGOS = FEE_MICRO_ALGOS + FEE_UNREGISTER_EXTRA_MICRO_ALGOS
+
+/** Pledge group fee before OpUp takes: payment, pledge, and credit. */
+export const PLEDGE_GROUP_FEE_MICRO_ALGOS = 2n * FEE_MICRO_ALGOS + CREDIT_FEE_MICRO_ALGOS
+
+/** Register group fee: register and its payment. */
+export const REGISTER_GROUP_FEE_MICRO_ALGOS = 2n * FEE_MICRO_ALGOS
+
+/** Cleanup group fee: unregister and delete. */
+export const CLEANUP_GROUP_FEE_MICRO_ALGOS = UNREGISTER_FEE_MICRO_ALGOS + DELETE_FEE_MICRO_ALGOS
 
 /** Budget cost per frontier peak in `pledge`. */
 export const PLEDGE_PEAK_COST = 240

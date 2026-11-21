@@ -1,11 +1,11 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
-import { base32ToBytes, FEE } from '@kasakame/utils/testing'
+import { FEE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS, PLEDGE_GROUP_FEE_MICRO_ALGOS } from '@kasakame/constants'
+import { base32ToBytes } from '@kasakame/utils/testing'
 import { ABIMethod, decodeAddress } from 'algosdk'
 import { createHash } from 'node:crypto'
-import { PLEDGE_FEES, pledgeExtraFee, spendExtraFee } from './campaign'
+import { pledgeExtraFee, spendExtraFee } from './campaign'
 import type { ContractStack } from './platform'
 import { campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
@@ -214,7 +214,7 @@ export async function fastPledge(
     sender: backer,
     appReferences: [stack.registry.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.registry.appId, appId)],
-    extraFee: microAlgos(FEE),
+    extraFee: microAlgos(FEE_MICRO_ALGOS),
   })
   const result = await composer.send({ suppressLog: true, populateAppCallResources: false })
   const payTxid = result.txIds[0]
@@ -223,7 +223,7 @@ export async function fastPledge(
   const leaf = leafFor(backer, amount, txid)
   const index = tree.n
   tree.append(leaf, txid)
-  return { index, txid, leaf, fee: PLEDGE_FEES + extraFee }
+  return { index, txid, leaf, fee: PLEDGE_GROUP_FEE_MICRO_ALGOS + extraFee }
 }
 
 /** The principal and pledge fees spent to fill a tree. */
@@ -334,7 +334,7 @@ export async function fastSpend(
   const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
   tree.null(k)
-  return { k, takes, fee: extraFee + FEE, path }
+  return { k, takes, fee: extraFee + FEE_MICRO_ALGOS, path }
 }
 
 /**
@@ -377,7 +377,7 @@ export async function fastVaultSpend(
   const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
   tree.null(k)
-  return { k, takes, fee: extraFee + FEE, path }
+  return { k, takes, fee: extraFee + FEE_MICRO_ALGOS, path }
 }
 
 /** The leaf hash for a pledge (exported for tests/assertions). */

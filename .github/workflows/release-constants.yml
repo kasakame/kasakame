@@ -88,6 +88,9 @@ jobs:
         run: npm run build
         working-directory: projects/constants
 
+      - name: Check committed dist is current
+        run: git diff --exit-code -- projects/constants/dist
+
       - name: Check formatting
         run: npm run format
         working-directory: projects/constants

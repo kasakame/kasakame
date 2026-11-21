@@ -1,6 +1,7 @@
 import { XHDWalletAPI } from '@algorandfoundation/xhd-wallet-api'
+import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
 import { describe, expect, it } from 'vitest'
-import { PLATFORM_STORAGE_RESERVE, peraUniversalWalletAccount } from './deployer'
+import { peraUniversalWalletAccount } from './deployer'
 
 // ARC-52 reference vector: m'/44'/283'/0'/0/0, Peikert mode.
 const VECTOR_MNEMONIC =
@@ -9,7 +10,7 @@ const VECTOR_ADDRESS = 'PPNHVQJGE6ZMEWPR35UHLUYMCCZV6VNTHLJMZDVCONXKUPV47K4WGQJW
 
 describe('deploy reserve', () => {
   it('funds each app account with 1 ALGO', () => {
-    expect(PLATFORM_STORAGE_RESERVE).toBe(1_000_000n)
+    expect(PLATFORM_STORAGE_RESERVE_MICRO_ALGOS).toBe(1_000_000n)
   })
 })
 

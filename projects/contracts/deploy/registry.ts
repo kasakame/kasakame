@@ -1,10 +1,11 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
+import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
 import fs from 'node:fs'
 import path from 'node:path'
-import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from './deployer'
+import { resolveDeployerAccount } from './deployer'
 import { parseRefundWindow, resolveSweepTarget } from './refund-window'
 
 /**
@@ -61,7 +62,7 @@ export async function deploy() {
   await algorand.send.payment({
     sender: deployer.addr,
     receiver: appClient.appAddress,
-    amount: microAlgos(PLATFORM_STORAGE_RESERVE),
+    amount: microAlgos(PLATFORM_STORAGE_RESERVE_MICRO_ALGOS),
   })
 
   console.log(

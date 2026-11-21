@@ -70,9 +70,6 @@ jobs:
             exit 1
           fi
 
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
-
       - name: Install contract dependencies
         run: npm ci
         working-directory: projects/contracts

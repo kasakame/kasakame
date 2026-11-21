@@ -3,28 +3,25 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
-import { SECONDS_PER_DAY } from '@kasakame/constants'
+import {
+  ACCOUNT_BASE_MICRO_ALGOS,
+  CLEANUP_GROUP_FEE_MICRO_ALGOS,
+  FEE_MICRO_ALGOS,
+  MIN_REFUND_WINDOW_SECONDS,
+  PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  REGISTER_GROUP_FEE_MICRO_ALGOS,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
-import { FEE, accountInfo, deployPlatform, type PlatformStack } from '@kasakame/utils/testing'
+import { accountInfo, deployPlatform, type PlatformStack } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect } from 'vitest'
-import {
-  APP_BASE,
-  CAMPAIGN_MBR,
-  CLEANUP_FEES,
-  CREATE_FEE,
-  DEFAULT_GOAL,
-  DEPLOY_FUNDING,
-  REGISTER_FEES,
-  REGISTER_MBR,
-  REGISTRY_MBR,
-  TEST_VAULT_WINDOW,
-  VAULT_BOX_MBR,
-  VAULT_MBR,
-} from './campaign'
+import { CAMPAIGN_MBR, DEFAULT_GOAL, REGISTRY_MBR, VAULT_MBR } from './campaign'
 import { vaultBoxRef } from './state'
 
 /** The three ARC-56 specs the integration suites deploy. */
@@ -62,9 +59,9 @@ export interface ContractStack extends PlatformStack {
 export interface DeployStackOptions {
   /** ALGO funded to the platform deployer. Defaults to 50. */
   ownerAlgo?: number
-  /** Refund window for the test vault. Defaults to {@link TEST_VAULT_WINDOW}. */
+  /** Refund window for the test vault. Defaults to {@link MIN_REFUND_WINDOW_SECONDS}. */
   vaultWindowSeconds?: bigint
-  /** ALGO funded to the vault app account. Defaults to {@link DEPLOY_FUNDING}; use 0 to assert a bare vault. */
+  /** ALGO funded to the vault app account. Defaults to {@link PLATFORM_STORAGE_RESERVE_MICRO_ALGOS}; use 0 to assert a bare vault. */
   fundVault?: bigint
   /** Bind the vault to the Registry. Defaults to true; bind-guard tests start unbound. */
   bindVault?: boolean
@@ -95,9 +92,9 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   const sweeper = await fixture.context.generateAccount({ initialFunds: (10).algo(), suppressLog: true })
   const ownerAddress = owner.addr.toString()
   const sweeperAddress = sweeper.addr.toString()
-  const fundVault = options.fundVault ?? DEPLOY_FUNDING
+  const fundVault = options.fundVault ?? PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
   const bindVaultToRegistry = options.bindVault ?? true
-  const windowSeconds = options.vaultWindowSeconds ?? TEST_VAULT_WINDOW
+  const windowSeconds = options.vaultWindowSeconds ?? BigInt(MIN_REFUND_WINDOW_SECONDS)
 
   const ownerBefore = await accountInfo(algorand, ownerAddress)
   const { registry, vault } = await deployPlatform(algorand, {
@@ -116,9 +113,14 @@ export async function deployStack(fixture: AlgorandFixture, options: DeployStack
   const ownerAfter = await accountInfo(algorand, ownerAddress)
   const operations = 3 + (fundVault > 0n ? 1 : 0) + (bindVaultToRegistry ? 1 : 0)
   expect(ownerAfter.minBalance - ownerBefore.minBalance).toEqual(REGISTRY_MBR + VAULT_MBR)
-  expect(ownerBefore.balance - ownerAfter.balance - DEPLOY_FUNDING - fundVault).toEqual(BigInt(operations) * FEE)
-  expect(await accountInfo(algorand, registry.address)).toEqual({ balance: DEPLOY_FUNDING, minBalance: APP_BASE })
-  expect(await accountInfo(algorand, vault.address)).toEqual({ balance: fundVault, minBalance: APP_BASE })
+  expect(ownerBefore.balance - ownerAfter.balance - PLATFORM_STORAGE_RESERVE_MICRO_ALGOS - fundVault).toEqual(
+    BigInt(operations) * FEE_MICRO_ALGOS,
+  )
+  expect(await accountInfo(algorand, registry.address)).toEqual({
+    balance: PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
+    minBalance: ACCOUNT_BASE_MICRO_ALGOS,
+  })
+  expect(await accountInfo(algorand, vault.address)).toEqual({ balance: fundVault, minBalance: ACCOUNT_BASE_MICRO_ALGOS })
 
   return { algorand, specs, owner, sweeper, ownerAddress, sweeperAddress, registry, vault }
 }
@@ -143,7 +145,7 @@ export async function registerCampaign(stack: ContractStack, appId: bigint, crea
   const registerPayment = await stack.algorand.createTransaction.payment({
     sender: creatorAddr,
     receiver: registryClient.appAddress,
-    amount: microAlgos(REGISTER_MBR),
+    amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
   })
   await registryClient.send.call({
     method: 'register(uint64,pay)void',
@@ -154,10 +156,10 @@ export async function registerCampaign(stack: ContractStack, appId: bigint, crea
   })
   const creatorAfter = await accountInfo(stack.algorand, creatorAddr)
   const registryAfter = await accountInfo(stack.algorand, stack.registry.address)
-  expect(creatorBefore.balance - creatorAfter.balance - REGISTER_MBR).toEqual(REGISTER_FEES)
+  expect(creatorBefore.balance - creatorAfter.balance - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(REGISTER_GROUP_FEE_MICRO_ALGOS)
   expect(creatorAfter.minBalance).toEqual(creatorBefore.minBalance)
-  expect(registryAfter.minBalance - registryBefore.minBalance).toEqual(REGISTER_MBR)
-  expect(registryAfter.balance - registryBefore.balance).toEqual(REGISTER_MBR)
+  expect(registryAfter.minBalance - registryBefore.minBalance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+  expect(registryAfter.balance - registryBefore.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
 }
 
 /** Options for {@link deployCampaign}. */
@@ -210,9 +212,9 @@ export async function deployCampaign(
   })
   const appId = appClient.appId
   const creatorAfterCreate = await accountInfo(stack.algorand, creatorAddr)
-  expect(creatorBefore.balance - creatorAfterCreate.balance).toEqual(CREATE_FEE)
+  expect(creatorBefore.balance - creatorAfterCreate.balance).toEqual(FEE_MICRO_ALGOS)
   expect(creatorAfterCreate.minBalance - creatorBefore.minBalance).toEqual(CAMPAIGN_MBR)
-  expect(await accountInfo(stack.algorand, appClient.appAddress.toString())).toEqual({ balance: 0n, minBalance: APP_BASE })
+  expect(await accountInfo(stack.algorand, appClient.appAddress.toString())).toEqual({ balance: 0n, minBalance: ACCOUNT_BASE_MICRO_ALGOS })
   if (options.register ?? true) await registerCampaign(stack, appId, creatorAddr)
   return { appClient, appId }
 }
@@ -251,7 +253,7 @@ export async function deleteCampaign(
     args: [appId],
     sender: creatorAddr,
     appReferences: [appId],
-    extraFee: microAlgos(FEE),
+    extraFee: microAlgos(FEE_MICRO_ALGOS),
   })
   composer.addAppCallMethodCall({
     appId,
@@ -261,17 +263,19 @@ export async function deleteCampaign(
     onComplete: OnApplicationComplete.DeleteApplicationOC,
     appReferences: [stack.vault.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
-    extraFee: microAlgos(2n * FEE),
+    extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
   })
   await composer.send({ suppressLog: true })
   const creatorAfter = await accountInfo(stack.algorand, creatorAddr)
   const registryAfter = await accountInfo(stack.algorand, stack.registry.address)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
   expect(creatorBefore.minBalance - creatorAfter.minBalance).toEqual(CAMPAIGN_MBR)
-  expect(creatorAfter.balance - creatorBefore.balance).toEqual((registered ? REGISTER_MBR : 0n) - CLEANUP_FEES)
-  expect(registryBefore.minBalance - registryAfter.minBalance).toEqual(registered ? REGISTER_MBR : 0n)
-  expect(registryBefore.balance - registryAfter.balance).toEqual(registered ? REGISTER_MBR : 0n)
-  expect(vaultBefore.minBalance - vaultAfter.minBalance).toEqual(vaultBoxRelease ? VAULT_BOX_MBR : 0n)
+  expect(creatorAfter.balance - creatorBefore.balance).toEqual(
+    (registered ? REGISTER_DEPOSIT_MICRO_ALGOS : 0n) - CLEANUP_GROUP_FEE_MICRO_ALGOS,
+  )
+  expect(registryBefore.minBalance - registryAfter.minBalance).toEqual(registered ? REGISTER_DEPOSIT_MICRO_ALGOS : 0n)
+  expect(registryBefore.balance - registryAfter.balance).toEqual(registered ? REGISTER_DEPOSIT_MICRO_ALGOS : 0n)
+  expect(vaultBefore.minBalance - vaultAfter.minBalance).toEqual(vaultBoxRelease ? VAULT_BOX_MBR_MICRO_ALGOS : 0n)
 }
 
 /**

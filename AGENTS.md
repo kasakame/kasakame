@@ -33,8 +33,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   dependency. See [`projects/utils/README.md`](projects/utils/README.md).
 - `projects/constants/` - public `@kasakame/constants` protocol, fee, and AVM
   values. The `.` entry is the compiled package; `./source` is the TypeScript
-  source the contract compiler imports. One `src/index.ts`; `dist` is a build
-  output. See [`projects/constants/README.md`](projects/constants/README.md).
+  source the contract compiler imports. One `src/index.ts`; `dist` is committed
+  so consumers can install the package without a build step. See
+  [`projects/constants/README.md`](projects/constants/README.md).
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
@@ -59,7 +60,6 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-(cd projects/constants && npm install && npm run build)  # consumers pack the built package
 algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils + constants
 algokit localnet start           # start algod + indexer (Docker)
 
@@ -224,14 +224,14 @@ the product contract. The pinned values and the AVM limits are in
   SDK, CLI, frontend, and test helpers import the package name. Keep
   `projects/constants/src/index.ts` a single file with direct `export const`
   declarations: Puya does not support re-export declarations or `BigInt()` in
-  that source. `dist` is the `tsc` build output. Consumers install it with
-  `install-links = true`, which packs the package at install time, so build
-  `projects/constants` before installing them (CI runs
-  `.github/scripts/build-constants.sh` first).
+  that source. `dist` is committed: rebuild it with `src` and commit both in the
+  same change; `check-constants` rebuilds and fails when the committed output
+  drifts.
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
-  `projects/sdk`).
+  `projects/sdk`). The one exception is `projects/constants/dist`, which is committed so
+  file-dependency consumers can install the constants package without a build step.
 - **The frontend consumes the published SDK.** `projects/frontend` depends on
   the published `@kasakame/sdk`; check its `package.json` for the current range.
   To test unreleased contracts/SDK changes, build the SDK (`npm run build` in

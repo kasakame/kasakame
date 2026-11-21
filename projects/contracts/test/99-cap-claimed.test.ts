@@ -1,19 +1,16 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
-import { MAX_CAMPAIGN_DURATION_SECONDS, MAX_TREE_SIZE, SECONDS_PER_DAY } from '@kasakame/constants'
-import { ALGO, accountInfo, advanceTime } from '@kasakame/utils/testing'
-import { expect, test } from 'vitest'
 import {
-  FEE_CLAIM,
-  VAULT_BOX_MBR,
-  Z_HEX,
-  campaignBox,
-  campaignBoxExists,
-  campaignState,
-  claimCampaign,
-  deleteCampaign,
-  deployCampaign,
-  deployStack,
-} from './helpers'
+  CLAIM_FEE_MICRO_ALGOS,
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_TREE_SIZE,
+  MICRO_ALGOS_PER_ALGO,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+  ZERO_ROOT_HEX,
+} from '@kasakame/constants'
+import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { expect, test } from 'vitest'
+import { campaignBox, campaignBoxExists, campaignState, claimCampaign, deleteCampaign, deployCampaign, deployStack } from './helpers'
 import { FastTree, hex, pathShape, runPledges } from './helpers/fast-pledge'
 
 /**
@@ -25,12 +22,12 @@ import { FastTree, hex, pathShape, runPledges } from './helpers/fast-pledge'
  * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
  */
 
-const GOAL = 50_000n * ALGO // below the 52,428.7 ALGO principal
+const GOAL = 50_000n * MICRO_ALGOS_PER_ALGO // below the 52,428.7 ALGO principal
 const DEADLINE = MAX_CAMPAIGN_DURATION_SECONDS - SECONDS_PER_DAY // inside the 180-day contract maximum
-const LAST_LEAF = MAX_TREE_SIZE - 1 // top-only path
+const LAST_LEAF = Number(MAX_TREE_SIZE) - 1 // top-only path
 
 test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale'], timeout: 20_000_000 }, async () => {
-  expect(pathShape(MAX_TREE_SIZE, LAST_LEAF)).toEqual({ r: 0, c: 0, hasTop: true })
+  expect(pathShape(Number(MAX_TREE_SIZE), LAST_LEAF)).toEqual({ r: 0, c: 0, hasTop: true })
 
   const fixture = algorandFixture()
   const stack = await deployStack(fixture)
@@ -44,17 +41,17 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   const backerBefore = await accountInfo(stack.algorand, backerAddr)
   const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
 
-  const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, MAX_TREE_SIZE)
+  const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, Number(MAX_TREE_SIZE))
 
   const root = hex(tree.root())
   expect(await campaignState(campaign.appClient)).toEqual({
-    n: BigInt(MAX_TREE_SIZE),
+    n: MAX_TREE_SIZE,
     root,
     raised: run.principal,
     status: 0n,
   })
   const box = await campaignBox(stack.vault.client, campaign.appId)
-  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: Z_HEX, n: 0n, status: 1 })
+  expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: ZERO_ROOT_HEX, n: 0n, status: 1 })
   expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
 
   // The cap is full but the goal was reached, so the early escape must not settle a campaign that can still succeed.
@@ -74,17 +71,19 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   console.log('deadline passed: claiming')
   const creatorBeforeClaim = await accountInfo(stack.algorand, creatorAddr)
   await claimCampaign(stack, campaign.appClient, campaign.appId, creatorAddr)
-  expect((await accountInfo(stack.algorand, creatorAddr)).balance).toEqual(creatorBeforeClaim.balance + run.principal - FEE_CLAIM)
+  expect((await accountInfo(stack.algorand, creatorAddr)).balance).toEqual(
+    creatorBeforeClaim.balance + run.principal - CLAIM_FEE_MICRO_ALGOS,
+  )
   expect(await campaignBox(stack.vault.client, campaign.appId)).toMatchObject({
     paidIn: run.principal,
     paidOut: run.principal,
-    root: Z_HEX,
+    root: ZERO_ROOT_HEX,
     n: 0n,
     status: 3,
   })
   const vaultAfterClaim = await accountInfo(stack.algorand, stack.vault.address)
   expect(vaultAfterClaim.balance).toEqual(vaultBefore.balance)
-  expect(vaultAfterClaim.minBalance).toEqual(vaultBefore.minBalance + VAULT_BOX_MBR)
+  expect(vaultAfterClaim.minBalance).toEqual(vaultBefore.minBalance + VAULT_BOX_MBR_MICRO_ALGOS)
 
   // Cleanup releases the vault box and returns the campaign MBR and registration deposit.
   console.log('deleting campaign')

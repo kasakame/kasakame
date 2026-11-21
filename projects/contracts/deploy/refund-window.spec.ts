@@ -1,11 +1,6 @@
+import { MAX_REFUND_WINDOW_SECONDS, MIN_REFUND_WINDOW_SECONDS } from '@kasakame/constants'
 import { describe, expect, it } from 'vitest'
-import {
-  DEFAULT_REFUND_WINDOW_SECONDS,
-  MAX_REFUND_WINDOW_SECONDS,
-  MIN_REFUND_WINDOW_SECONDS,
-  parseRefundWindow,
-  resolveSweepTarget,
-} from './refund-window'
+import { DEFAULT_REFUND_WINDOW_SECONDS, parseRefundWindow, resolveSweepTarget } from './refund-window'
 
 describe('parseRefundWindow', () => {
   it('defaults to 730 days when unset', () => {
@@ -14,18 +9,18 @@ describe('parseRefundWindow', () => {
   })
 
   it('accepts a value at the 30-day minimum and at the cap', () => {
-    expect(parseRefundWindow(MIN_REFUND_WINDOW_SECONDS.toString())).toBe(MIN_REFUND_WINDOW_SECONDS)
-    expect(parseRefundWindow(MAX_REFUND_WINDOW_SECONDS.toString())).toBe(MAX_REFUND_WINDOW_SECONDS)
+    expect(parseRefundWindow(MIN_REFUND_WINDOW_SECONDS.toString())).toBe(BigInt(MIN_REFUND_WINDOW_SECONDS))
+    expect(parseRefundWindow(MAX_REFUND_WINDOW_SECONDS.toString())).toBe(BigInt(MAX_REFUND_WINDOW_SECONDS))
   })
 
   it('rejects values below the 30-day minimum', () => {
-    expect(() => parseRefundWindow((MIN_REFUND_WINDOW_SECONDS - 1n).toString())).toThrow('between 2592000')
+    expect(() => parseRefundWindow((BigInt(MIN_REFUND_WINDOW_SECONDS) - 1n).toString())).toThrow('between 2592000')
     expect(() => parseRefundWindow('0')).toThrow('between 2592000')
     expect(() => parseRefundWindow('-1')).toThrow('between 2592000')
   })
 
   it('rejects values above the cap', () => {
-    expect(() => parseRefundWindow((MAX_REFUND_WINDOW_SECONDS + 1n).toString())).toThrow('between 2592000')
+    expect(() => parseRefundWindow((BigInt(MAX_REFUND_WINDOW_SECONDS) + 1n).toString())).toThrow('between 2592000')
   })
 
   it('rejects non-integer values', () => {

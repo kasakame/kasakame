@@ -185,9 +185,6 @@ jobs:
         run: bash .github/scripts/install-algokit.sh
         shell: bash
 
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
-
       - name: Install dependencies
         run: npm ci
         working-directory: projects/contracts
@@ -226,8 +223,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/contracts/package-lock.json
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -276,9 +271,6 @@ jobs:
           name: contracts-artifacts
           path: projects/contracts/smart_contracts/artifacts
 
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
-
       - name: Install dependencies
         run: npm ci
         working-directory: projects/sdk
@@ -325,8 +317,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/sdk/package-lock.json
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -391,8 +381,6 @@ jobs:
         with:
           name: sdk-dist
           path: projects/sdk/dist
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         env:
@@ -444,8 +432,6 @@ jobs:
         with:
           name: sdk-dist
           path: projects/sdk/dist
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         env:
@@ -556,6 +542,9 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run build
         working-directory: projects/constants
+      - name: Check committed dist is current
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: git diff --exit-code -- projects/constants/dist
       - name: Check formatting
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run format
@@ -586,8 +575,6 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: projects/utils/package-lock.json
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
       - name: Install dependencies
         id: install
         run: npm ci
@@ -645,9 +632,6 @@ jobs:
       - name: Install AlgoKit CLI
         run: bash .github/scripts/install-algokit.sh
         shell: bash
-
-      - name: Build local constants
-        run: bash .github/scripts/build-constants.sh
 
       - name: Install contract dependencies
         run: npm ci

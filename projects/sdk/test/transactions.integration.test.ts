@@ -1,8 +1,9 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { CLAIM_FEE_MICRO_ALGOS, MICRO_ALGOS_PER_ALGO, MIN_REFUND_WINDOW_SECONDS, PLEDGE_GROUP_FEE_MICRO_ALGOS } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
-import { ALGO, advanceTime, balanceOf, deployPlatform } from '@kasakame/utils/testing'
+import { advanceTime, balanceOf, deployPlatform } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { CampaignFactory } from '../src/generated/CampaignClient.js'
 import { ClaimsVaultFactory } from '../src/generated/ClaimsVaultClient.js'
@@ -33,11 +34,8 @@ import {
  * release by default, or the local artifacts after `SDK_SPECS=local npm run codegen` (see docs/testing.md).
  */
 
-const WINDOW = 30n * 24n * 60n * 60n
-const FEE_PLEDGE = 4_000n // pay + pledge + credit (credit carries the first-touch registry check)
 const FEE_SPEND = 5_000n // outer + 2 payout inners + 2 OpUp takes (zero-headroom sizing)
 const FEE_VAULT_REFUND = 4_000n // outer + 1 payout inner + 2 OpUp takes
-const FEE_CLAIM = 3_000n // inner payClaim + inner payment
 
 describe('SDK send path (localnet)', () => {
   const fixture = algorandFixture()
@@ -47,7 +45,7 @@ describe('SDK send path (localnet)', () => {
     await fixture.newScope()
     algorand = fixture.context.algorand
 
-    const owner = await fixture.context.generateAccount({ initialFunds: microAlgos(50n * ALGO), suppressLog: true })
+    const owner = await fixture.context.generateAccount({ initialFunds: microAlgos(50n * MICRO_ALGOS_PER_ALGO), suppressLog: true })
     const ownerAddress = owner.addr.toString()
 
     const campaignFactory = new CampaignFactory({ algorand, defaultSender: ownerAddress })
@@ -58,7 +56,7 @@ describe('SDK send path (localnet)', () => {
       specs: { registry: registryFactory.appSpec, vault: vaultFactory.appSpec },
       owner,
       sweepTarget: ownerAddress,
-      vaultWindowSeconds: WINDOW,
+      vaultWindowSeconds: BigInt(MIN_REFUND_WINDOW_SECONDS),
       campaignProgramHash: specProgramHash(campaignFactory.appSpec, 'Campaign'),
     })
 
@@ -66,7 +64,10 @@ describe('SDK send path (localnet)', () => {
   })
 
   async function session(initialAlgos: bigint): Promise<WalletSession> {
-    const account = await fixture.context.generateAccount({ initialFunds: microAlgos(initialAlgos * ALGO), suppressLog: true })
+    const account = await fixture.context.generateAccount({
+      initialFunds: microAlgos(initialAlgos * MICRO_ALGOS_PER_ALGO),
+      suppressLog: true,
+    })
     return { address: account.addr.toString(), signer: account.signer }
   }
 
@@ -80,12 +81,12 @@ describe('SDK send path (localnet)', () => {
     const creator = await session(50n)
     const backer = await session(50n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK open campaign', 'ipfs://sdk-open', 10n * ALGO, deadline)
+    const { appId } = await createCampaign(creator, 'SDK open campaign', 'ipfs://sdk-open', 10n * MICRO_ALGOS_PER_ALGO, deadline)
     expect(await isRegistered(appId)).toBe(true)
 
     const backerBefore = await balanceOf(algorand, backer.address)
-    await pledge(appId, backer, 2n * ALGO)
-    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(2n * ALGO)
+    await pledge(appId, backer, 2n * MICRO_ALGOS_PER_ALGO)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(2n * MICRO_ALGOS_PER_ALGO)
 
     const leaves = await fetchMyLeaves(appId, backer.address)
     expect(leaves).toHaveLength(1)
@@ -96,7 +97,7 @@ describe('SDK send path (localnet)', () => {
     expect(await fetchMyLeaves(appId, backer.address)).toEqual([])
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(0n)
     // Pledge group + cancel call: the backer pays both fees and gets the principal back.
-    expect(await balanceOf(algorand, backer.address)).toEqual(backerBefore - FEE_PLEDGE - FEE_SPEND)
+    expect(await balanceOf(algorand, backer.address)).toEqual(backerBefore - PLEDGE_GROUP_FEE_MICRO_ALGOS - FEE_SPEND)
 
     await deleteCampaign(appId, creator)
     expect(await isRegistered(appId)).toBe(false)
@@ -107,19 +108,19 @@ describe('SDK send path (localnet)', () => {
     const creator = await session(50n)
     const backer = await session(50n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK successful campaign', 'ipfs://sdk-success', ALGO, deadline)
+    const { appId } = await createCampaign(creator, 'SDK successful campaign', 'ipfs://sdk-success', MICRO_ALGOS_PER_ALGO, deadline)
 
-    await pledge(appId, backer, ALGO)
+    await pledge(appId, backer, MICRO_ALGOS_PER_ALGO)
     await advanceTime(fixture, 90_001)
 
     const creatorBefore = await balanceOf(algorand, creator.address)
     await claim(appId, creator)
-    expect(await balanceOf(algorand, creator.address)).toEqual(creatorBefore + ALGO - FEE_CLAIM)
+    expect(await balanceOf(algorand, creator.address)).toEqual(creatorBefore + MICRO_ALGOS_PER_ALGO - CLAIM_FEE_MICRO_ALGOS)
     expect((await headerOf(appId)).status).toEqual('claimed')
     const box = await fetchVaultBox(appId)
     expect(box?.status).toEqual(3)
-    expect(box?.paidIn).toEqual(ALGO)
-    expect(box?.paidOut).toEqual(ALGO)
+    expect(box?.paidIn).toEqual(MICRO_ALGOS_PER_ALGO)
+    expect(box?.paidOut).toEqual(MICRO_ALGOS_PER_ALGO)
 
     await deleteCampaign(appId, creator)
     expect(await isRegistered(appId)).toBe(false)
@@ -132,49 +133,49 @@ describe('SDK send path (localnet)', () => {
     const backerA = await session(50n)
     const backerB = await session(50n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK failed campaign', 'ipfs://sdk-failed', 10n * ALGO, deadline)
+    const { appId } = await createCampaign(creator, 'SDK failed campaign', 'ipfs://sdk-failed', 10n * MICRO_ALGOS_PER_ALGO, deadline)
 
-    await pledge(appId, backerA, 3n * ALGO)
-    await pledge(appId, backerB, 2n * ALGO)
+    await pledge(appId, backerA, 3n * MICRO_ALGOS_PER_ALGO)
+    await pledge(appId, backerB, 2n * MICRO_ALGOS_PER_ALGO)
     await advanceTime(fixture, 90_001)
 
     const leafA = (await fetchMyLeaves(appId, backerA.address))[0]
     if (leafA === undefined) throw new Error('backer A leaf missing')
     const backerABefore = await balanceOf(algorand, backerA.address)
     await refund(appId, backerA, leafA)
-    expect(await balanceOf(algorand, backerA.address)).toEqual(backerABefore + 3n * ALGO - FEE_SPEND)
+    expect(await balanceOf(algorand, backerA.address)).toEqual(backerABefore + 3n * MICRO_ALGOS_PER_ALGO - FEE_SPEND)
     expect(await fetchMyLeaves(appId, backerA.address)).toEqual([])
-    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(2n * ALGO)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(2n * MICRO_ALGOS_PER_ALGO)
     expect((await headerOf(appId)).status).toEqual('failed')
 
     await deleteCampaign(appId, creator)
     expect(await isRegistered(appId)).toBe(false)
     const settled = await fetchVaultBox(appId)
     expect(settled?.status).toEqual(2)
-    expect(settled?.paidIn).toEqual(5n * ALGO)
-    expect(settled?.paidOut).toEqual(3n * ALGO)
+    expect(settled?.paidIn).toEqual(5n * MICRO_ALGOS_PER_ALGO)
+    expect(settled?.paidOut).toEqual(3n * MICRO_ALGOS_PER_ALGO)
     const deletedHeader = await headerOf(appId)
     expect(deletedHeader.deleted).toBe(true)
-    expect(deletedHeader.raisedMicroAlgos).toEqual(2n * ALGO)
+    expect(deletedHeader.raisedMicroAlgos).toEqual(2n * MICRO_ALGOS_PER_ALGO)
 
     const leafB = (await fetchMyLeaves(appId, backerB.address))[0]
     if (leafB === undefined) throw new Error('backer B leaf missing')
     const backerBBefore = await balanceOf(algorand, backerB.address)
     await refund(appId, backerB, leafB)
-    expect(await balanceOf(algorand, backerB.address)).toEqual(backerBBefore + 2n * ALGO - FEE_VAULT_REFUND)
+    expect(await balanceOf(algorand, backerB.address)).toEqual(backerBBefore + 2n * MICRO_ALGOS_PER_ALGO - FEE_VAULT_REFUND)
     expect(await fetchMyLeaves(appId, backerB.address)).toEqual([])
     const box = await fetchVaultBox(appId)
-    expect(box?.paidIn).toEqual(5n * ALGO)
-    expect(box?.paidOut).toEqual(5n * ALGO)
+    expect(box?.paidIn).toEqual(5n * MICRO_ALGOS_PER_ALGO)
+    expect(box?.paidOut).toEqual(5n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('mid-size tree → cancel and refund on both paths', async () => {
     const creator = await session(50n)
     const backer = await session(100n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK mid-size campaign', 'ipfs://sdk-mid', 100n * ALGO, deadline)
+    const { appId } = await createCampaign(creator, 'SDK mid-size campaign', 'ipfs://sdk-mid', 100n * MICRO_ALGOS_PER_ALGO, deadline)
 
-    for (let i = 0; i < 47; i++) await pledge(appId, backer, ALGO)
+    for (let i = 0; i < 47; i++) await pledge(appId, backer, MICRO_ALGOS_PER_ALGO)
     const initial = await fetchMyLeaves(appId, backer.address)
     expect(initial).toHaveLength(47)
 
@@ -182,14 +183,14 @@ describe('SDK send path (localnet)', () => {
     const leaf0 = initial.find((leaf) => leaf.position === 0)
     if (leaf0 === undefined) throw new Error('leaf 0 missing')
     await cancelPledge(appId, backer, leaf0)
-    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(46n * ALGO)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(46n * MICRO_ALGOS_PER_ALGO)
 
     await advanceTime(fixture, 90_001)
 
     const leaf1 = (await fetchMyLeaves(appId, backer.address)).find((leaf) => leaf.position === 1)
     if (leaf1 === undefined) throw new Error('leaf 1 missing')
     await refund(appId, backer, leaf1)
-    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(45n * ALGO)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(45n * MICRO_ALGOS_PER_ALGO)
     expect((await headerOf(appId)).status).toEqual('failed')
 
     await deleteCampaign(appId, creator)
@@ -198,17 +199,17 @@ describe('SDK send path (localnet)', () => {
     if (leaf2 === undefined) throw new Error('leaf 2 missing')
     await refund(appId, backer, leaf2)
     const box = await fetchVaultBox(appId)
-    expect(box?.paidIn).toEqual(47n * ALGO)
-    expect(box?.paidOut).toEqual(3n * ALGO)
+    expect(box?.paidIn).toEqual(47n * MICRO_ALGOS_PER_ALGO)
+    expect(box?.paidOut).toEqual(3n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('large tree → cancel and refund with a deep path', { timeout: 300_000 }, async () => {
     const creator = await session(50n)
     const backer = await session(300n)
     const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK large campaign', 'ipfs://sdk-large', 1_000n * ALGO, deadline)
+    const { appId } = await createCampaign(creator, 'SDK large campaign', 'ipfs://sdk-large', 1_000n * MICRO_ALGOS_PER_ALGO, deadline)
 
-    for (let i = 0; i < 255; i++) await pledge(appId, backer, ALGO)
+    for (let i = 0; i < 255; i++) await pledge(appId, backer, MICRO_ALGOS_PER_ALGO)
     const initial = await fetchMyLeaves(appId, backer.address)
     expect(initial).toHaveLength(255)
 
@@ -216,7 +217,7 @@ describe('SDK send path (localnet)', () => {
     const leaf9 = initial.find((leaf) => leaf.position === 9)
     if (leaf9 === undefined) throw new Error('leaf 9 missing')
     await cancelPledge(appId, backer, leaf9)
-    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(254n * ALGO)
+    expect((await headerOf(appId)).raisedMicroAlgos).toEqual(254n * MICRO_ALGOS_PER_ALGO)
 
     await advanceTime(fixture, 90_001)
 
@@ -229,7 +230,7 @@ describe('SDK send path (localnet)', () => {
     if (leaf11 === undefined) throw new Error('leaf 11 missing')
     await refund(appId, backer, leaf11)
     const box = await fetchVaultBox(appId)
-    expect(box?.paidIn).toEqual(255n * ALGO)
-    expect(box?.paidOut).toEqual(3n * ALGO)
+    expect(box?.paidIn).toEqual(255n * MICRO_ALGOS_PER_ALGO)
+    expect(box?.paidOut).toEqual(3n * MICRO_ALGOS_PER_ALGO)
   })
 })

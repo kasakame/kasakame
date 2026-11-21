@@ -1,5 +1,4 @@
 import {
-  MAX_TREE_SIZE as MAX_TREE_SIZE_VALUE,
   OPUP_AVAILABLE_BUDGET,
   OPUP_BUDGET_PER_ITERATION,
   OPUP_ITERATION_SLACK,
@@ -269,7 +268,7 @@ export function pathShape(n: bigint, k: bigint): { r: number; c: number; hasTop:
  * makes the contract request 14, so 14 + two payout inners = 16 inner transactions. The extra funded take is never
  * requested.
  */
-export const MAX_TREE_SIZE = BigInt(MAX_TREE_SIZE_VALUE)
+export { MAX_TREE_SIZE } from '@kasakame/constants'
 
 /**
  * OpUp iterations the campaign will request for a pledge at the current tree size.
