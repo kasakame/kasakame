@@ -31,7 +31,7 @@ reasoning behind the splits.
   the pinned release otherwise.
 - **The compiled footprint is gated.** `compile-contracts` runs
   `npm run test:size` after `npm run build`, so a byte, page, or schema change
-  fails unless `test/utils/contract-sizes.ts` and `docs/limits.md` are
+  fails unless `test/utils/size-budget.fixture.ts` and `docs/limits.md` are
   updated. `check-contracts` does not build artifacts, so the size test is
   excluded from `npm test` and `test:coverage`.
 - **The constants build is committed.** `projects/constants/dist` is tracked so
@@ -430,7 +430,10 @@ Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-constants.yml`, no environment, and **Allow npm
 publish** enabled. Release it before the SDK and CLI: both declare it as a peer
-dependency, and their smoke tests install it from the registry.
+dependency, and their smoke tests install it from the registry. The first
+publish is the one exception to OIDC: npm trusted publishing requires an
+existing package, so bootstrap `0.2.0` with a one-time manual `npm publish`
+(or a granular token), then configure the trusted publisher for later versions.
 
 ## Workflow: release-sdk (separate file)
 

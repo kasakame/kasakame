@@ -116,7 +116,9 @@ describe('fee sizing', () => {
     const registry = fs.readFileSync(path.join(contracts, 'registry/contract.algo.ts'), 'utf8')
     for (const source of [campaign, vault, registry]) {
       expect(source).toContain('@kasakame/constants/source')
+      expect(source).toContain('Uint64(MAX_TREE_SIZE)')
       expect(source).not.toContain('524_287')
+      expect(source).not.toContain('_VALUE')
     }
     expect(campaign).toContain('PLEDGE_PEAK_COST')
     expect(campaign).toContain('PLEDGE_BASE_COST')

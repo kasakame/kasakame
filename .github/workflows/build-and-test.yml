@@ -544,7 +544,7 @@ jobs:
         working-directory: projects/constants
       - name: Check committed dist is current
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: git diff --exit-code -- projects/constants/dist
+        run: test -z "$(git status --porcelain -- projects/constants/dist)"
       - name: Check formatting
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run format

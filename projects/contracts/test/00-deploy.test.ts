@@ -50,7 +50,7 @@ describe('00 deployment and wiring', () => {
       Buffer.from(specProgramHash(stack.specs.vault, 'ClaimsVault.arc56.json')),
     )
     expect(await registry.state.global.getValue('expectedSweepTarget')).toEqual(stack.sweeperAddress)
-    expect(await registry.state.global.getValue('expectedRefundWindow')).toEqual(MIN_REFUND_WINDOW_SECONDS)
+    expect(await registry.state.global.getValue('expectedRefundWindow')).toEqual(BigInt(MIN_REFUND_WINDOW_SECONDS))
 
     expect(await accountInfo(stack.algorand, stack.registry.address)).toEqual({
       balance: PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
@@ -64,7 +64,7 @@ describe('00 deployment and wiring', () => {
     expect(stack.vault.appId).toBeGreaterThan(0n)
     expect(await vault.state.global.getValue('registry')).toEqual(stack.registry.appId)
     expect(await vault.state.global.getValue('sweepTarget')).toEqual(stack.sweeperAddress)
-    expect(await vault.state.global.getValue('refundWindow')).toEqual(MIN_REFUND_WINDOW_SECONDS)
+    expect(await vault.state.global.getValue('refundWindow')).toEqual(BigInt(MIN_REFUND_WINDOW_SECONDS))
     expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual({
       balance: PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
       minBalance: ACCOUNT_BASE_MICRO_ALGOS,

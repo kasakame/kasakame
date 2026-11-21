@@ -3,6 +3,7 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
+import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
 import type { Account } from 'algosdk'
 import { specProgramHash } from '../program-hash.js'
 import { assertBalance } from './assertions.js'
@@ -54,7 +55,7 @@ export interface DeployPlatformOptions {
   bindVault?: boolean
 }
 
-const DEFAULT_FUNDING = 1_000_000n
+const DEFAULT_FUNDING = PLATFORM_STORAGE_RESERVE_MICRO_ALGOS
 
 async function fund(algorand: AlgorandClient, sender: string, receiver: string, amount: bigint): Promise<void> {
   if (amount === 0n) return

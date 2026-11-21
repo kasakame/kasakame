@@ -10,6 +10,8 @@ name: release-constants
 # --provenance. Configure the trusted publisher for @kasakame/constants as
 # GitHub owner `kasakame`, repository `kasakame`, workflow
 # `release-constants.yml`, with no environment and "Allow npm publish" enabled.
+# The first publish bootstraps the package with a one-time manual `npm publish`:
+# trusted publishing requires an existing npm package.
 on:
   workflow_dispatch:
     inputs:
@@ -89,7 +91,7 @@ jobs:
         working-directory: projects/constants
 
       - name: Check committed dist is current
-        run: git diff --exit-code -- projects/constants/dist
+        run: test -z "$(git status --porcelain -- projects/constants/dist)"
 
       - name: Check formatting
         run: npm run format
@@ -119,7 +121,7 @@ jobs:
           cd "$RUNNER_TEMP/consumer"
           npm init -y >/dev/null
           npm install --no-audit --no-fund "$RUNNER_TEMP/$tarball"
-          node --input-type=module -e "import('@kasakame/constants').then((c) => { if (c.ZERO_ROOT_HEX !== '0'.repeat(64)) throw new Error('bad zero root'); if (c.MAX_TREE_SIZE !== 524287) throw new Error('bad tree cap'); console.log('constants smoke passed') })"
+          node --input-type=module -e "import('@kasakame/constants').then((c) => { if (c.ZERO_ROOT_HEX !== '0'.repeat(64)) throw new Error('bad zero root'); if (c.MAX_TREE_SIZE !== 524287n) throw new Error('bad tree cap'); console.log('constants smoke passed') })"
         working-directory: projects/constants
 
       - name: Upload the tested dist
