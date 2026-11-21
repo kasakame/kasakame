@@ -1,0 +1,24 @@
+name: Epic
+description: A workstream inside one component. Set the parent component and project fields after creating.
+type: Epic
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What this workstream delivers, why it matters, and what is in scope.
+      placeholder: |
+        Outcome:
+        Why it matters:
+        In scope:
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Definition of done
+      description: Observable outcomes that allow closing the epic. An epic may stay open indefinitely; close it only when the work is finished for good or a follow-up epic exists.
+      value: |
+        - [ ]
+    validations:
+      required: true

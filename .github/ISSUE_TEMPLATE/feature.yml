@@ -13,7 +13,7 @@ body:
     id: behavior
     attributes:
       label: Proposed behavior
-      description: What the user should see or be able to do.
+      description: What the user sees or can do.
     validations:
       required: true
   - type: textarea
@@ -32,13 +32,6 @@ body:
         - [ ]
     validations:
       required: true
-  - type: textarea
-    id: out-of-scope
-    attributes:
-      label: Out of scope
-      description: What this feature deliberately does not cover.
-    validations:
-      required: false
   - type: textarea
     id: links
     attributes:

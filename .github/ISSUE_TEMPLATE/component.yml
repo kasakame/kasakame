@@ -1,0 +1,14 @@
+name: Component
+description: A stable product area. Components stay open and do not need a status.
+type: Component
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What this area owns and the key paths or projects. Write a short paragraph, not a one-line label.
+      placeholder: |
+        Owns:
+        Key paths:
+    validations:
+      required: true
