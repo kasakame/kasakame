@@ -12,7 +12,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { expect } from 'vitest'
-import { programHash } from '../program-hash'
+import { programHash } from '../../deploy/program-hash'
 import { SIZE_BUDGET } from '../size-budget.fixture'
 
 /**

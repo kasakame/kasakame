@@ -1,9 +1,9 @@
 import { Bytes, Global, OnCompleteAction, type Account, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import { beforeEach, describe, expect, test } from 'vitest'
+import { programHash as programHashBytes } from '../../deploy/program-hash'
 import { Campaign } from '../campaign/contract.algo'
 import { ClaimsVault } from '../claimsvault/contract.algo'
-import { programHash as programHashBytes } from '../program-hash'
 import { Registry } from './contract.algo'
 
 /**

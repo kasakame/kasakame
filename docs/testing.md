@@ -72,7 +72,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 
 | Suite | File pattern | Command | CI job | Trigger |
 | --- | --- | --- | --- | --- |
-| Offline AVM unit | `**/*.algo.spec.ts`, `deployer.spec.ts`, `deploy-config.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
+| Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `smart_contracts/testing/localnet.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet | `integration/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts change, manual |
 | Contract LocalNet, cap | `integration/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
@@ -292,7 +292,7 @@ chain-global - parallel files can jump the clock between another file's deploy a
 pledge, flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+1 day` at deploy) valid. The cap suites each own a
 runner and a LocalNet instance, so they run in parallel jobs.
-Offline specs live next to each contract plus the deployer and deploy-config suites:
+Offline specs live next to each contract plus the deploy suites:
 **215 tests**, including the helper formula/selector tests in
 `smart_contracts/testing/localnet.spec.ts`, all green with 100% line/branch/function
 coverage of the contracts.
