@@ -40,6 +40,9 @@ export const SELECTORS = {
   notifyDelete: selectorOf('notifyDelete(uint64)void'),
   credit: selectorOf('credit(uint64,uint64)void'),
   pledge: selectorOf('pledge(pay,byte[])void'),
+  cancelPledge: selectorOf('cancelPledge(uint64,uint64,byte[],byte[])void'),
+  refund: selectorOf('refund(uint64,uint64,byte[],byte[])void'),
+  vaultRefund: selectorOf('refund(uint64,uint64,uint64,byte[],byte[])void'),
   delete: selectorOf('delete()void'),
   isRegistered: selectorOf('isRegistered(uint64)bool'),
 } as const

@@ -40,6 +40,9 @@ describe('contract LocalNet helpers', () => {
       notifyDelete: '87060e1d',
       credit: '8027a4bb',
       pledge: 'a4030bd2',
+      cancelPledge: '457e292e',
+      refund: '4b1a1d96',
+      vaultRefund: '0fe03dd2',
       delete: '24378d3c',
       isRegistered: '716a3d0e',
     })

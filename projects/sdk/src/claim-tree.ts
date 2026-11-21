@@ -13,6 +13,7 @@ import { sha512_256 } from '@noble/hashes/sha2.js'
 import type algosdk from 'algosdk'
 import { bytesToHex, decodeAddress, getApplicationAddress, hexToBytes } from 'algosdk'
 import { getSdkConfig } from './chain.js'
+import { SELECTOR_CANCEL, SELECTOR_PLEDGE, SELECTOR_REFUND, SELECTOR_VAULT_REFUND } from './selectors.js'
 
 /**
  * Claim-tree math and indexer replay: the frontier-Merkle tree a campaign tracks on-chain, plus the read half that
@@ -488,14 +489,6 @@ function cached<T>(cache: Map<bigint, Promise<T>>, key: bigint, load: () => Prom
   })
   return pending
 }
-
-// ARC-4 selectors of the tree-relevant methods (first 4 bytes of SHA-512/256 of the signature; the contract pins them
-// with selector-bytes tests - see projects/contracts/test/00-deploy.test.ts and
-// projects/contracts/test/formulas.spec.ts).
-const SELECTOR_PLEDGE = 'a4030bd2'
-const SELECTOR_CANCEL = '457e292e'
-const SELECTOR_REFUND = '4b1a1d96'
-const SELECTOR_VAULT_REFUND = '0fe03dd2'
 
 /**
  * Method selector (first 4 bytes, hex) of an app call's args.
