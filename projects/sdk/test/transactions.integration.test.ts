@@ -4,10 +4,9 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { specProgramHash } from '@kasakame/utils'
 import { ALGO, advanceTime, balanceOf, deployPlatform } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { CampaignFactory } from './generated/CampaignClient.js'
-import { ClaimsVaultFactory } from './generated/ClaimsVaultClient.js'
-import { RegistryFactory } from './generated/RegistryClient.js'
-import type { CampaignHeader, WalletSession } from './index.js'
+import { CampaignFactory } from '../src/generated/CampaignClient.js'
+import { ClaimsVaultFactory } from '../src/generated/ClaimsVaultClient.js'
+import { RegistryFactory } from '../src/generated/RegistryClient.js'
 import {
   cancelPledge,
   claim,
@@ -21,7 +20,9 @@ import {
   isRegistered,
   pledge,
   refund,
-} from './index.js'
+  type CampaignHeader,
+  type WalletSession,
+} from '../src/index.js'
 
 /**
  * LocalNet integration tests for the SDK send path: deploy the Registry + ClaimsVault from the ARC-56 bytecode embedded in the

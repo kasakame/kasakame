@@ -333,7 +333,7 @@ without modifying files.
 Implemented at `.github/workflows/heavy-tests.yml`. This workflow is the only
 LocalNet lane **outside** the PR graph: it never runs on `pull_request` or
 `push`, is not part of the `Gate`, and cannot block a merge. It runs the
-cap-scale suites (`integration/99-*`). It runs:
+cap-scale suites (`test/99-*`). It runs:
 
 - on a weekly `schedule` (Monday 03:00 UTC), from the default branch; the
   schedule runs both cap outcomes;

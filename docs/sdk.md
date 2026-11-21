@@ -284,7 +284,7 @@ Creation chains `create` to Registry `register`. Pledges are one atomic group `[
 
 Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk`.
 
-LocalNet integration lives in `src/transactions.integration.test.ts` and is
+LocalNet integration lives in `test/transactions.integration.test.ts` and is
 excluded from `npm test` and coverage. `npm run test:integration` deploys its own
 Registry + ClaimsVault from the generated clients' ARC-56 bytecode and runs the
 create/cancel, claim/delete, and failed-refund flows. The clients decide which

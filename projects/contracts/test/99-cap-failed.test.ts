@@ -12,8 +12,8 @@ import {
   deleteCampaign,
   deployCampaign,
   deployStack,
-} from '../test/utils'
-import { CAP_AMOUNT, CAP_TREE_SIZE, FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from '../test/utils/fast-pledge'
+} from './utils'
+import { CAP_AMOUNT, CAP_TREE_SIZE, FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
  * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.

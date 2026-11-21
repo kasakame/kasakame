@@ -13,7 +13,7 @@ export default defineConfig({
       // The SDK is utils: same 100% gate as the frontend. Genuinely unreachable defensive
       // branches carry `/* v8 ignore next */` with a reason instead of theater tests.
       include: ['src/**/*.ts'],
-      exclude: ['src/**/*.spec.ts', 'src/**/*.integration.test.ts', 'src/generated/**'],
+      exclude: ['src/**/*.spec.ts', 'src/generated/**', 'test/**'],
       reporter: ['text', 'json-summary'],
       thresholds: {
         lines: 100,

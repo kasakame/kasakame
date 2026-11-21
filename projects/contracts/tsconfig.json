@@ -26,6 +26,6 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["deploy/**/*.ts", "smart_contracts/**/*.ts", "integration/**/*.ts", "test/**/*.ts"],
+  "include": ["deploy/**/*.ts", "smart_contracts/**/*.ts", "test/**/*.ts"],
   "exclude": ["node_modules", "dist", "coverage", "smart_contracts/artifacts"]
 }
