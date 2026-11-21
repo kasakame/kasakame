@@ -485,7 +485,7 @@ function cached<T>(cache: Map<bigint, Promise<T>>, key: bigint, load: () => Prom
 }
 
 // ARC-4 selectors of the tree-relevant methods (first 4 bytes of SHA-512/256 of the signature; the contract pins them
-// with selector-bytes tests - see projects/contracts/integration/00-deploy.test.ts and
+// with selector-bytes tests - see projects/contracts/test/00-deploy.test.ts and
 // projects/contracts/test/formulas.spec.ts).
 const SELECTOR_PLEDGE = 'a4030bd2'
 const SELECTOR_CANCEL = '457e292e'

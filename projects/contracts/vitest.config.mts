@@ -8,7 +8,7 @@ import { BaseSequencer } from 'vitest/node'
  * Run test files in deterministic path order.
  *
  * Vitest's default sequencer runs the largest files first, and failed/longer files first when it has a results cache.
- * The integration suites are numbered `00`-`07`, so path order keeps the CI log readable and reproducible. The files
+ * The LocalNet suites are numbered `00`-`07`, so path order keeps the CI log readable and reproducible. The files
  * are still independent: each deploys its own stack, and `--no-file-parallelism` keeps their chain-global time travel
  * from overlapping.
  */

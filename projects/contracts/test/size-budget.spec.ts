@@ -1,9 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, test } from 'vitest'
-import { SIZE_BUDGET } from '../test/utils/size-budget.fixture'
+import { SIZE_BUDGET } from './utils/size-budget.fixture'
 
-const ARTIFACTS = path.resolve(__dirname, 'artifacts')
+const ARTIFACTS = path.resolve(__dirname, '../smart_contracts/artifacts')
 const BASE_PAGE_BYTES = 2_048
 const MAX_EXTRA_PAGES = 3
 const APP_MBR_BASE = 100_000

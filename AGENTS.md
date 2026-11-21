@@ -12,9 +12,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
   - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
-  - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with contract-only helpers in `test/utils/`
+  - `test/` - LocalNet suites (`00-deploy`, `01-single-campaign`, ...), run in path order
   - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the size-budget fixture
-  - `test/formulas.spec.ts` - offline pins for the fee formulas and embedded selectors
+  - `test/formulas.spec.ts`, `test/size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
     escrow is never funded and holds nothing
@@ -71,8 +71,8 @@ npm run test:cap:failed          # cap-scale failed campaign (heavy-tests workfl
 npm run test:cap:claimed         # cap-scale claimed campaign (heavy-tests workflow, CI only)
 npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
 npm run localnet:fund            # fund an address from the dispenser (ADDRESS=..., ALGO=...)
-npx vitest list integration -t "<ID>"  # find the file that owns a test ID
-npx vitest run integration -t "<ID>"   # one test by ID (chain tests need the whole file)
+npx vitest list test -t "<ID>"  # find the file that owns a test ID
+npx vitest run test -t "<ID>"   # one test by ID (chain tests need the whole file)
 
 cd ../utils
 npm run check-types              # tsc --noEmit

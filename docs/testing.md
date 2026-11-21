@@ -10,7 +10,7 @@ Two complementary layers:
 1. **Offline AVM unit tests** (`algorand-typescript-testing` + Vitest) - the main
    behavioral matrix. Runs in-process, no network, deterministic and fast. This is
    where "every method × every branch" is proven.
-2. **LocalNet integration** (`integration/*.test.ts`) - deploy the compiled
+2. **LocalNet integration** (`test/*.test.ts`) - deploy the compiled
    TEAL to a live algod and exercise the flow end-to-end. Proves the compiled
    bytecode behaves as the unit tests expect.
 
@@ -73,10 +73,10 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Suite | File pattern | Command | CI job | Trigger |
 | --- | --- | --- | --- | --- |
 | Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `test/formulas.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
-| Contract size budget | `size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet | `integration/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
-| Contract LocalNet, cap | `integration/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| SDK LocalNet | `src/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
+| Contract size budget | `test/size-budget.spec.ts` | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
+| Contract LocalNet | `test/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
+| Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
+| SDK LocalNet | `test/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
@@ -97,16 +97,16 @@ chain-global time travel from overlapping.
 
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
-| `integration/00-deploy.test.ts` | `CON-001`..`CON-006` | `smoke`, `always` | Registry + Vault deploy, immutable hashes/config, ownerless layout, permissionless one-time `bindVault`, app accounts, selectors, and the register/unregister round trip |
-| `integration/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
-| `integration/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
-| `integration/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `integration/04-bad-paths.test.ts` | `CON-100`..`CON-132`, `CON-250`..`CON-253` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), app upgrade and raw on-completion guards, stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards, create byte caps |
-| `integration/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
-| `integration/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
-| `integration/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
-| `integration/99-cap-failed.test.ts` | `CON-240` | `scale` | full 2¹⁹−1 tree, rejected append at the cap, early `settleOpen` + Registry-backed delete, the worst-case vault refund (36-element path), two top-fold refunds, the nulled-sibling and top-only paths, and the residual sweep |
-| `integration/99-cap-claimed.test.ts` | `CON-241` | `scale` | full 2¹⁹−1 tree, rejected early settlement when the goal was reached, claim of the 52,428.7 ALGO principal, and delete with the vault box release |
+| `test/00-deploy.test.ts` | `CON-001`..`CON-006` | `smoke`, `always` | Registry + Vault deploy, immutable hashes/config, ownerless layout, permissionless one-time `bindVault`, app accounts, selectors, and the register/unregister round trip |
+| `test/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
+| `test/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
+| `test/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
+| `test/04-bad-paths.test.ts` | `CON-100`..`CON-132`, `CON-250`..`CON-253` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), app upgrade and raw on-completion guards, stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards, create byte caps |
+| `test/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
+| `test/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
+| `test/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
+| `test/99-cap-failed.test.ts` | `CON-240` | `scale` | full 2¹⁹−1 tree, rejected append at the cap, early `settleOpen` + Registry-backed delete, the worst-case vault refund (36-element path), two top-fold refunds, the nulled-sibling and top-only paths, and the residual sweep |
+| `test/99-cap-claimed.test.ts` | `CON-241` | `scale` | full 2¹⁹−1 tree, rejected early settlement when the goal was reached, claim of the 52,428.7 ALGO principal, and delete with the vault box release |
 
 - `beforeAll` deploys only the platform and wallets; campaigns are created by the tests.
 - `always` tests run alone with `vitest -t <ID>` and after unrelated failures.
@@ -150,17 +150,17 @@ in the `heavy-tests` workflow.
 cd projects/contracts
 
 # find which file owns an ID
-npx vitest list integration -t "CON-042"
+npx vitest list test -t "CON-042"
 
 # run one test by ID (always tests)
-npx vitest run integration -t "CON-042"
+npx vitest run test -t "CON-042"
 
 # chain tests depend on the earlier tests in their file: run the file
-npx vitest run integration/02-funding.test.ts
+npx vitest run test/02-funding.test.ts
 
 # run by tag
-npx vitest run integration --tags-filter="smoke"
-npx vitest run integration --tags-filter="bad"
+npx vitest run test --tags-filter="smoke"
+npx vitest run test --tags-filter="bad"
 
 # lanes
 npm run test:integration
@@ -232,7 +232,7 @@ MBR in `test/utils/size-budget.fixture.ts`. It runs in the
 
 ## LocalNet integration notes
 
-- Integration tests live in `integration/*.test.ts` (files `00`-`07`) -
+- Integration tests live in `test/*.test.ts` (files `00`-`07`) -
   **plain `.test.ts`** files, so the puya
   transformer skips them (no AVM emulation; they talk to real algod).
 - Uses `algorandFixture()` to fund throwaway accounts from the LocalNet dispenser.
@@ -298,8 +298,8 @@ chain-global - parallel files can jump the clock between another file's deploy a
 pledge, flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+1 day` at deploy) valid. The cap suites each own a
 runner and a LocalNet instance, so they run in parallel jobs.
-Offline specs live next to each contract plus the deploy suites:
-**215 tests**, including the helper formula/selector tests in
+Offline specs live next to each contract and the deploy code, plus the helper
+pins in `test/`: **231 tests**, including the formula/selector tests in
 `test/formulas.spec.ts`, all green with 100% line/branch/function
 coverage of the contracts.
 
@@ -337,7 +337,7 @@ Every integration test carries a stable `CON-<NNN>` ID in its title. `Class` is
 `always` (independent; runs alone with `vitest -t <ID>`) or `chain` (depends on
 earlier tests in the same file, which stop on first failure).
 
-#### `integration/00-deploy.test.ts` (6 tests)
+#### `test/00-deploy.test.ts` (6 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -348,7 +348,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-005` | bindVault is permissionless | always | A stranger can bind the first correct vault |
 | `CON-006` | register and unregister round-trip after binding | always | `register` creates the box, `[unregister, delete]` removes it and returns the deposit |
 
-#### `integration/01-single-campaign.test.ts` (6 tests)
+#### `test/01-single-campaign.test.ts` (6 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -359,7 +359,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-014` | delete a pristine campaign, registered and unregistered | always | Both cleanup paths: registered returns the deposit; unregistered `unregister` is a no-op; app gone |
 | `CON-015` | single-test happy path: create, pledge, cancel, delete | always | One standalone end-to-end lifecycle with ledger assertions |
 
-#### `integration/02-funding.test.ts` (15 tests)
+#### `test/02-funding.test.ts` (15 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -379,7 +379,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-043` | `settleOpen` makes the campaign refund path reject | always | After permissionless settlement the campaign path rejects; the backer balance is unchanged |
 | `CON-044` | `releaseClaimed` recovers a claimed box permissionlessly | always | Stranger releases a fully-paid Claimed box and its MBR; the creator's later `delete` still works |
 
-#### `integration/03-multi-actor.test.ts` (9 tests)
+#### `test/03-multi-actor.test.ts` (9 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -393,7 +393,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-061` | refunding one campaign leaves the other untouched | always | Per-campaign accounting isolation |
 | `CON-062` | seeded pledge/cancel/refund/finalize sequence | always | One normal-lane seed through the shared sequence engine (N ≤ 100) |
 
-#### `integration/04-bad-paths.test.ts` (35 tests)
+#### `test/04-bad-paths.test.ts` (35 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -433,13 +433,13 @@ earlier tests in the same file, which stop on first failure).
 | `CON-252` | OptIn and CloseOut are rejected on Campaign, ClaimsVault, and Registry | always | The apps accept no local state; both calls fail and the apps stay unchanged |
 | `CON-253` | ClearState cannot delete or alter the apps | always | No account can opt in, so ClearState fails; the apps stay unchanged |
 
-#### `integration/05-scale.test.ts` (1 test)
+#### `test/05-scale.test.ts` (1 test)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
 | `CON-202` | 25 campaigns by 25 creators with 4 backers each (config-driven) | always | Scale-lane isolation and pool accounting under load |
 
-#### `integration/06-tree-boundaries.test.ts` (15 tests)
+#### `test/06-tree-boundaries.test.ts` (15 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -447,19 +447,19 @@ earlier tests in the same file, which stop on first failure).
 | `CON-201` | N=100 refunds the worst-case and an interior leaf | always | Deep-path refund and an interior leaf at N=100 |
 | `CON-210`..`CON-222` | cumulative ladder at N=15,16,31,32,63,64,100,127,128,255,1,000,1,023,1,024 | chain | Each boundary pledges up to N and cancels one leaf with its pinned take count; N=1,023/k=11 pins the h=18 prelude guard; at N=1,024 it also settles, refunds through the campaign, deletes, refunds through the vault, and finalizes |
 
-#### `integration/07-sequences.test.ts` (1 test)
+#### `test/07-sequences.test.ts` (1 test)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
 | `CON-230` | seeded pledge/cancel/refund/finalize sequences | always | Three heavy seeds of random actions with oracle assertions; seed and ordered actions printed on failure |
 
-#### `integration/99-cap-failed.test.ts` (1 test)
+#### `test/99-cap-failed.test.ts` (1 test)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
 | `CON-240` | 524,287-position failed campaign | scale | Rejected append at the cap; early `settleOpen` + Registry-backed delete before the deadline; worst-case leaf 0 vault refund (36-element path); two top-fold refunds; nulled-sibling and top-only vault refunds; residual sweep; µA-exact ledger |
 
-#### `integration/99-cap-claimed.test.ts` (1 test)
+#### `test/99-cap-claimed.test.ts` (1 test)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -506,7 +506,7 @@ Three cases stay offline-only because LocalNet cannot produce the state:
 
 ## SDK LocalNet integration
 
-`projects/sdk/src/transactions.integration.test.ts` closes the client send-path
+`projects/sdk/test/transactions.integration.test.ts` closes the client send-path
 gap: it deploys a Registry + ClaimsVault from the ARC-56 bytecode embedded in the
 generated clients, calls `configureSdk`, and drives the SDK write helpers against
 a live chain. Five flows run with fresh campaigns and generated-account signers

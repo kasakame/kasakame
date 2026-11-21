@@ -1,7 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": false
+    "noEmit": false,
+    "rootDir": "src"
   },
-  "exclude": ["src/**/*.spec.ts", "src/**/*.integration.test.ts", "src/**/*.vectors.ts"]
+  "exclude": ["src/**/*.spec.ts", "src/**/*.vectors.ts", "test/**"]
 }

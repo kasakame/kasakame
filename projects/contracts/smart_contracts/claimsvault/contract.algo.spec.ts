@@ -14,7 +14,7 @@ import { ClaimsVault } from './contract.algo'
  * Behavioral tests for the ClaimsVault (claim-tree design), run against the offline AVM emulation.
  *
  * The Registry registration inner call inside first-touch `credit` can't be emulated offline (no inner-call logs) - it
- * is covered on LocalNet in `integration/04-bad-paths.test.ts` (CON-107). Everything else runs here, including full
+ * is covered on LocalNet in `test/04-bad-paths.test.ts` (CON-107). Everything else runs here, including full
  * differential pledge/refund flows: expected roots come from the Python reference oracle
  * (`../../test/utils/oracle.py`), driven with the mock payments' real `txnId`s.
  */
