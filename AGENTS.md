@@ -366,44 +366,91 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1),
-not in a Markdown checklist.
+not in a Markdown checklist. The project README is the human-facing summary of
+the hierarchy, fields, views, and rules; this section is the agent/contributor
+instruction.
 
-Hierarchy: **Component** (type `Component`, no parent) -> **Epic** (type `Epic`,
-parent = component) -> **Ticket** (type `Task`, `Bug`, or `Feature`, parent = epic).
-A ticket never sits under another ticket; link sibling tickets in the body.
+### Hierarchy
 
-- **Components:** `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`,
-  `docs`, `maintenance`. Each is an issue of type `Component`; the project field of
-  the same name makes them filterable.
-- **Epics:** persistent workstreams inside a component (for example
-  `frontend / UX clarity`). They are issues of type `Epic` and may stay open
-  indefinitely.
-- **Tickets:** type `Task`, `Bug`, or `Feature`; sub-issue of an epic. Use the
-  forms in `.github/ISSUE_TEMPLATE/` and give the ticket context: what changes,
-  why it matters, the background a reader needs, acceptance criteria, out of
-  scope, and links. Bugs add what happened, expected vs actual, steps,
-  environment, logs, and screenshots. Update the body as decisions land; the
-  migrated one-line roadmap summaries are a starting point, not the spec.
-- **Fields:** `Component` (single select), `Priority` (`P1`-`P3`), `Target date`;
-  `Status` is the project flow (`Todo`, `In Progress`, `Done`).
+**Component** (type `Component`, no parent) -> **Epic** (type `Epic`, parent =
+component) -> **Ticket** (type `Task`, `Bug`, or `Feature`, parent = epic).
+Every ticket belongs to an epic. A ticket never sits under another ticket.
 
-**Creating an issue.** Forms set only the body. After creating: set the type
-(`gh issue edit <n> --type Task|Bug|Feature`), the parent epic (`--parent <epic>`),
-the milestone (`--milestone v0.2.0` for release work), and the project
-`Component`/`Priority` fields (`gh project item-add 1 --owner kasakame --url <url>`,
-then `gh project item-edit ... --field Component --value contracts`). Verify
-`gh issue view <n> --json issueType,parent`; type and parent are not inferred.
+- **Components** are the stable product areas: `contracts`, `frontend`, `sdk`,
+  `cli`, `backend`, `ci`, `infra`, `docs`, `maintenance`. A component stays open
+  and is not a work item; it does not need a status. The project `Component`
+  field makes it filterable.
+- **Epics** are workstreams inside one component. An epic may stay open
+  indefinitely. Close it only when the work is finished for good or a follow-up
+  epic exists; link the follow-up in both bodies. No quarterly organization for
+  now.
+- **Tickets** are leaf work: one issue per PR. Use the Task/Bug/Feature forms
+  and give the ticket context: what changes, why it matters, acceptance
+  criteria, out of scope, and links. Bugs add actual vs expected, steps,
+  environment, logs, and screenshots. Update the body as decisions land.
+- **Fields:** `Component`, `Priority` (`P1`-`P3`), and `Target date` (release work
+  only); `Status` is `Todo`, `In Progress`, `Done`.
 
-**Where it goes.** The epic is the workstream, not the file you touch: contract and
-contract-test coverage belongs under #183 (`contracts`); cross-project tooling
-(shared harness, catalog/runner, scripts) belongs under #66 (`maintenance`).
+### Epic lifecycle
 
-- **Keep the epic status in sync manually.** The project has no automatic parent
-  rollup. When you start a ticket, if its epic is still `Todo`, move the epic to
-  `In Progress` with the ticket; if you move the ticket when opening the PR, move
-  the epic then. If you notice an epic still in `Todo` while working on a
-  sub-issue, move it to `In Progress` even when other sub-issues are already
-  `Done` - that means the update was missed.
+- Create an epic when a workstream needs more than one ticket, or when an
+  existing ticket grows into multiple independent deliverables.
+- When a ticket grows, create the epic under the same component, move the
+  remaining scope into child tickets, and close or convert the original. Do not
+  nest a ticket under another ticket.
+- An epic may stay open indefinitely. Close it only when the work is finished
+  for good or a follow-up epic exists.
+- Split an epic that becomes too large to scan (rule of thumb: more than ~15 open
+  tickets) into coherent epics under the same component and re-parent the
+  related tickets.
+- No quarterly epic organization for now.
+
+### Priority and status
+
+- `P1` blocks the release, funds, or security.
+- `P2` is the current milestone.
+- `P3` is cleanup or later.
+- `Todo` = not started; `In Progress` = actively worked; `Done` = acceptance met
+  and the PR merged. An epic is `Done` only when all sub-issues are `Done`.
+
+### Creating an issue
+
+Forms set the body and type. After creating:
+
+1. Set the parent epic (`gh issue edit <n> --parent <epic>`). Every ticket needs
+   one; a new epic gets its parent component.
+2. Set the milestone (`--milestone v0.2.0` for release work).
+3. Add it to the project and set `Component`, `Priority`, and `Status`:
+   `gh project item-add 1 --owner kasakame --url <url>`, then
+   `gh project item-edit ...`.
+4. Verify with `gh issue view <n> --json issueType,parent`; type and parent are
+   not inferred.
+
+Use the Epic and Component forms for those issue types; do not create them as
+Task and retype.
+
+### Issues vs direct edits
+
+Create issues only for changes that need a PR. Do project metadata edits
+directly, without an issue: epic and component descriptions, the project README
+and short description, views, fields, statuses, priorities, and re-parenting.
+If a direct edit changes the documented workflow, update this section or the
+project README in the same pass.
+
+### Keeping epics in sync
+
+The project has no automatic parent rollup. When a child starts, move the epic
+to `In Progress` if it is still `Todo`. When the last child is done, check the
+close rule before closing the epic. If an epic is `Todo` while a child is
+`In Progress`, fix the epic.
+
+### Where it goes
+
+The epic is the workstream, not the file you touch: contract and contract-test
+coverage belongs under #46/#183 (`contracts`); cross-project tooling (shared
+harness, scripts, repo structure) belongs under #66 (`maintenance`); work
+tracking itself under #67 (`maintenance`).
+
 - **Milestones:** `v0.2.0` is the coordinated release. Use a version milestone
   for a release; do not create one per package unless a package ships alone.
 - **Query:** `gh project item-list 1 --owner kasakame --limit 100`,

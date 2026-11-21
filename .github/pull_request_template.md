@@ -12,6 +12,9 @@
 
 ## Checklist
 
+- [ ] Work tracking: the linked issue has its type, parent epic, component, and priority set
+- [ ] Epic status updated: `In Progress` when work started, `Done` when the last sub-issue lands
+- [ ] If this PR split or changed scope, the epic and child issue links are updated
 - [ ] Tests added or updated, and passing
 - [ ] Docs updated if behavior, commands, or limits changed
 - [ ] No secrets or generated artifacts committed

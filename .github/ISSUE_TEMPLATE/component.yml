@@ -1,0 +1,41 @@
+name: Component
+description: A stable product area. Components stay open and do not need a status.
+type: Component
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What
+      description: The area this component owns and why it exists.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What belongs in this component.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: textarea
+    id: not-in-this-component
+    attributes:
+      label: Not in this component
+      description: Adjacent work owned by another component; link it.
+    validations:
+      required: false
+  - type: textarea
+    id: key-paths
+    attributes:
+      label: Key paths
+      description: Repository paths this component owns.
+    validations:
+      required: false
+  - type: textarea
+    id: related-epics
+    attributes:
+      label: Related epics
+      description: The workstreams inside this component.
+    validations:
+      required: false
