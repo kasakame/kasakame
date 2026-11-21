@@ -3,39 +3,13 @@ description: A stable product area. Components stay open and do not need a statu
 type: Component
 body:
   - type: textarea
-    id: what
+    id: description
     attributes:
-      label: What
-      description: The area this component owns and why it exists.
+      label: Description
+      description: What this area owns, what it does not own, and the key paths or projects. Write a short paragraph, not a one-line label.
+      placeholder: |
+        Owns:
+        Does not own:
+        Key paths:
     validations:
       required: true
-  - type: textarea
-    id: scope
-    attributes:
-      label: Scope
-      description: What belongs in this component.
-      value: |
-        - [ ]
-    validations:
-      required: true
-  - type: textarea
-    id: not-in-this-component
-    attributes:
-      label: Not in this component
-      description: Adjacent work owned by another component; link it.
-    validations:
-      required: false
-  - type: textarea
-    id: key-paths
-    attributes:
-      label: Key paths
-      description: Repository paths this component owns.
-    validations:
-      required: false
-  - type: textarea
-    id: related-epics
-    attributes:
-      label: Related epics
-      description: The workstreams inside this component.
-    validations:
-      required: false

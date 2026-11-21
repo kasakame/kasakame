@@ -13,7 +13,7 @@ body:
     id: expected-actual
     attributes:
       label: Expected vs actual
-      description: What should happen, and what happens instead.
+      description: What you expect to happen, and what happens instead.
     validations:
       required: true
   - type: textarea

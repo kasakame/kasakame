@@ -3,32 +3,20 @@ description: A workstream inside one component. Set the parent component and pro
 type: Epic
 body:
   - type: textarea
-    id: what
+    id: description
     attributes:
-      label: What
-      description: The outcome this workstream delivers, in one or two sentences.
+      label: Description
+      description: What this workstream delivers, why it matters, and what is in scope. Link the planned child tickets.
+      placeholder: |
+        Outcome:
+        Why it matters:
+        In scope:
     validations:
       required: true
   - type: textarea
-    id: why
+    id: done
     attributes:
-      label: Why
-      description: Why this matters now, and what is blocked or lost if it is not done.
-    validations:
-      required: true
-  - type: textarea
-    id: scope
-    attributes:
-      label: Scope
-      description: The work included. Link the planned child tickets as they are created.
-      value: |
-        - [ ]
-    validations:
-      required: true
-  - type: textarea
-    id: done-when
-    attributes:
-      label: Done when
+      label: Definition of done
       description: Observable outcomes that allow closing the epic. An epic may stay open indefinitely; close it only when the work is finished for good or a follow-up epic exists.
       value: |
         - [ ]
