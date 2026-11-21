@@ -36,14 +36,22 @@ export declare const REGISTER_DEPOSIT_MICRO_ALGOS = 18900n;
 export declare const PLATFORM_STORAGE_RESERVE_MICRO_ALGOS = 1000000n;
 /** Minimum transaction fee, in microAlgos. */
 export declare const FEE_MICRO_ALGOS = 1000n;
+/** Inner transactions funded by the credit call: the first-touch Registry check. */
+export declare const CREDIT_EXTRA_INNERS = 1n;
+/** Inner transactions funded by the claim call: the vault app call and payment. */
+export declare const CLAIM_EXTRA_INNERS = 2n;
+/** Inner transactions funded by the delete call: settle/notify and the escrow close. */
+export declare const DELETE_EXTRA_INNERS = 2n;
+/** Inner transactions funded by the unregister call: the deposit return. */
+export declare const UNREGISTER_EXTRA_INNERS = 1n;
 /** Extra fee for the first-touch Registry check inside `credit`. */
-export declare const FEE_CREDIT_EXTRA_MICRO_ALGOS = 1000n;
+export declare const FEE_CREDIT_EXTRA_MICRO_ALGOS: bigint;
 /** Extra fee for the claim inner app call plus payment. */
-export declare const FEE_CLAIM_EXTRA_MICRO_ALGOS = 2000n;
+export declare const FEE_CLAIM_EXTRA_MICRO_ALGOS: bigint;
 /** Extra fee for the delete settle/notify inner call plus escrow close. */
-export declare const FEE_DELETE_EXTRA_MICRO_ALGOS = 2000n;
+export declare const FEE_DELETE_EXTRA_MICRO_ALGOS: bigint;
 /** Extra fee for the unregister inner deposit return. */
-export declare const FEE_UNREGISTER_EXTRA_MICRO_ALGOS = 1000n;
+export declare const FEE_UNREGISTER_EXTRA_MICRO_ALGOS: bigint;
 /** Credit call fee: outer call plus the first-touch Registry check. */
 export declare const CREDIT_FEE_MICRO_ALGOS: bigint;
 /** Claim call fee: outer call plus the inner app call and payment. */

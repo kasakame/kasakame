@@ -141,7 +141,7 @@ The full behavioral matrix lives in `contract.algo.spec.ts` (100% lines/branches
 
 ## Fees
 
-Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the dynamic SDK extras, is in [`limits.md`](limits.md).
+Measured on LocalNet; each inner transaction costs one current minimum fee via `extraFee` (1,000 µA on LocalNet; the SDK reads `SuggestedParams.minFee`). Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the dynamic SDK extras, is in [`limits.md`](limits.md).
 
 | Call | SDK total | Notes |
 | --- | ---: | --- |

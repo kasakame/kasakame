@@ -1,12 +1,11 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import {
-  FEE_CLAIM_EXTRA_MICRO_ALGOS,
-  FEE_CREDIT_EXTRA_MICRO_ALGOS,
-  FEE_DELETE_EXTRA_MICRO_ALGOS,
-  FEE_MICRO_ALGOS,
-  FEE_UNREGISTER_EXTRA_MICRO_ALGOS,
+  CLAIM_EXTRA_INNERS,
+  CREDIT_EXTRA_INNERS,
+  DELETE_EXTRA_INNERS,
   REGISTER_DEPOSIT_MICRO_ALGOS,
+  UNREGISTER_EXTRA_INNERS,
 } from '@kasakame/constants'
 import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getApplicationAddress, hexToBytes } from 'algosdk'
@@ -74,21 +73,34 @@ export function isStaleProofError(error: unknown): boolean {
 
 type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
 
-// Fee headroom per call (measured on LocalNet - see docs/campaign.md "Minimum balances"): the outer call always covers
-// its inners via fee pooling, so every extra inner transaction costs one more minimum fee on the outer call.
+// Fee headroom per call: the outer call covers its inners via fee pooling, so every extra inner transaction costs one
+// more current minimum fee. The counts are group-shape facts; the price comes from SuggestedParams.minFee at runtime.
 
 /**
- * Extra fee for a spend: the payout inner transactions for this path plus one 1,000 µA fee per OpUp
- * iteration the contract will request.
+ * Read the current minimum transaction fee. `AlgorandClient` caches suggested params, so this does not add a network
+ * call per group.
+ *
+ * @param algorand The configured Algorand client.
+ * @returns The minimum fee in microAlgos.
+ */
+async function minimumFee(algorand: AlgorandClient): Promise<bigint> {
+  const { minFee } = await algorand.getSuggestedParams()
+  return BigInt(minFee)
+}
+
+/**
+ * Extra fee for a spend: the payout inner transactions for this path plus one minimum fee per OpUp iteration the
+ * contract will request.
  *
  * @param tree Current tree (its length is N).
  * @param position Leaf position.
  * @param payoutInners 2 for the campaign path (`payBack` app call + payment), 1 for the vault path (payment).
+ * @param minFee Current minimum transaction fee in microAlgos.
  * @returns The extra fee in microAlgos.
  */
-function spendExtraFee(tree: TreeState, position: number, payoutInners: 1 | 2): bigint {
+function spendExtraFee(tree: TreeState, position: number, payoutInners: 1 | 2, minFee: bigint): bigint {
   const iterations = refundOpUpIterations(BigInt(tree.leaves.length), BigInt(position))
-  return (BigInt(payoutInners) + BigInt(iterations)) * FEE_MICRO_ALGOS
+  return (BigInt(payoutInners) + BigInt(iterations)) * minFee
 }
 
 function campaignClientFor(appId: bigint, session: WalletSession): CampaignClient {
@@ -308,6 +320,7 @@ export async function createCampaign(
  */
 async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  const minFee = await minimumFee(algorand)
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
   await waitForIndexerCatchUp()
@@ -330,7 +343,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
         frontier: frontierForPledge(tree),
       },
       sender: session.address,
-      extraFee: microAlgos(BigInt(pledgeOpUpIterations(n)) * FEE_MICRO_ALGOS),
+      extraFee: microAlgos(BigInt(pledgeOpUpIterations(n)) * minFee),
     }),
   )
   composer.addAppCallMethodCall(
@@ -340,7 +353,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
       // The first-touch registration check runs inside the vault; the campaign app is the pledge txn before this call.
       appReferences: [registryAppId],
       boxReferences: [...vaultBoxRef(appId), ...registrationBox(appId)],
-      extraFee: microAlgos(FEE_CREDIT_EXTRA_MICRO_ALGOS),
+      extraFee: microAlgos(CREDIT_EXTRA_INNERS * minFee),
     }),
   )
   return composer
@@ -394,6 +407,7 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
   // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check),
   // so register globally like pledge/delete do - otherwise this always throws "No signer found".
   algorand.account.setSigner(session.address, session.signer)
+  const minFee = await minimumFee(algorand)
   const attempt = async (): Promise<bigint | undefined> => {
     await waitForIndexerCatchUp()
     const tree = await loadTree(appId, vaultAppId, vaultAddress())
@@ -408,7 +422,7 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
       sender: session.address,
       appReferences: [vaultAppId],
       boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2)),
+      extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2, minFee)),
     })
     return result.confirmation.confirmedRound
   }
@@ -435,6 +449,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
   const { algorand, vaultAppId } = getSdkConfig()
   // Same signer registration as cancelPledge (see above): without it both the campaign and vault paths fail.
   algorand.account.setSigner(session.address, session.signer)
+  const minFee = await minimumFee(algorand)
   await waitForIndexerCatchUp()
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
   const path = pathBlobForRefund(tree, leaf.position)
@@ -448,7 +463,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         args: { app: appId, k: leaf.position, amount: leaf.amount, txid, path },
         sender: session.address,
         boxReferences: vaultBoxRef(appId),
-        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 1)),
+        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 1, minFee)),
       }),
     )
   } else {
@@ -459,7 +474,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
         sender: session.address,
         appReferences: [vaultAppId],
         boxReferences: vaultBoxRef(appId),
-        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2)),
+        extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2, minFee)),
       }),
     )
   }
@@ -512,12 +527,13 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
   const { algorand, vaultAppId } = getSdkConfig()
   // Same signer registration as pledge (see cancelPledge): without it the send always throws "No signer found".
   algorand.account.setSigner(session.address, session.signer)
+  const minFee = await minimumFee(algorand)
   const client = campaignClientFor(appId, session)
   const result = await client.send.claim({
     args: [],
     appReferences: [vaultAppId],
     boxReferences: vaultBoxRef(appId),
-    extraFee: microAlgos(FEE_CLAIM_EXTRA_MICRO_ALGOS),
+    extraFee: microAlgos(CLAIM_EXTRA_INNERS * minFee),
   })
 
   const confirmedRound = result.confirmation.confirmedRound
@@ -537,6 +553,7 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
  */
 export async function deleteCampaign(appId: bigint, session: WalletSession): Promise<void> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  const minFee = await minimumFee(algorand)
   const client = campaignClientFor(appId, session)
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
@@ -548,7 +565,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
         args: { app: appId },
         sender: session.address,
         appReferences: [appId],
-        extraFee: microAlgos(FEE_UNREGISTER_EXTRA_MICRO_ALGOS),
+        extraFee: microAlgos(UNREGISTER_EXTRA_INNERS * minFee),
       }),
     )
   }
@@ -558,7 +575,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
       sender: session.address,
       appReferences: [vaultAppId],
       boxReferences: vaultBoxRef(appId),
-      extraFee: microAlgos(FEE_DELETE_EXTRA_MICRO_ALGOS),
+      extraFee: microAlgos(DELETE_EXTRA_INNERS * minFee),
     }),
   )
   await composer.send()

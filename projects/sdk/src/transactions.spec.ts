@@ -46,6 +46,7 @@ const {
   frontierMock,
   pathBlobMock,
   registryAppIdMock,
+  getSuggestedParamsMock,
 } = vi.hoisted(() => ({
   sendCreateMock: vi.fn(),
   sendRegisterMock: vi.fn(),
@@ -73,6 +74,7 @@ const {
   frontierMock: vi.fn(),
   pathBlobMock: vi.fn(),
   registryAppIdMock: vi.fn(),
+  getSuggestedParamsMock: vi.fn(),
 }))
 
 vi.mock('./generated/CampaignClient.js', () => ({
@@ -130,6 +132,7 @@ vi.mock('./chain.js', () => ({
   getSdkConfig: () => ({
     algorand: {
       createTransaction: { payment: paymentMock },
+      getSuggestedParams: (...args: unknown[]) => getSuggestedParamsMock(...args),
       send: {
         newGroup: () => ({
           addAppCallMethodCall: (...args: unknown[]) => composerAddMock(...args),
@@ -174,6 +177,7 @@ describe('transaction helpers', () => {
     frontierMock.mockReturnValue(new Uint8Array())
     pathBlobMock.mockReturnValue(new Uint8Array())
     registryAppIdMock.mockReturnValue(1001n)
+    getSuggestedParamsMock.mockResolvedValue({ minFee: 1_000n })
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
     paramsCreditMock.mockResolvedValue({ credit: 'params' })
     paramsCampaignRefundMock.mockResolvedValue({ refund: 'params' })
@@ -283,6 +287,20 @@ describe('transaction helpers', () => {
 
     composerSendMock.mockRejectedValueOnce(new Error('boom'))
     await expect(pledge(9n, session, 1_000_000n)).rejects.toThrow('boom')
+  })
+
+  it('scales extra fees with the runtime minimum fee', async () => {
+    getSuggestedParamsMock.mockResolvedValue({ minFee: 1_200n })
+
+    await claim(9n, session)
+    const claimCall = sendClaimMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(claimCall.extraFee.microAlgo).toEqual(2_400n)
+
+    await deleteCampaign(9n, session)
+    const unregisterCall = paramsUnregisterMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    const deleteCall = paramsPledgeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(unregisterCall.extraFee.microAlgo).toEqual(1_200n)
+    expect(deleteCall.extraFee.microAlgo).toEqual(2_400n)
   })
 
   it('cancelPledge spends one leaf with a fresh path', async () => {
