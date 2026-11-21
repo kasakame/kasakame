@@ -6,10 +6,9 @@ body:
     id: description
     attributes:
       label: Description
-      description: What this area owns, what it does not own, and the key paths or projects. Write a short paragraph, not a one-line label.
+      description: What this area owns and the key paths or projects. Write a short paragraph, not a one-line label.
       placeholder: |
         Owns:
-        Does not own:
         Key paths:
     validations:
       required: true
