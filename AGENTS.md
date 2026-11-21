@@ -375,7 +375,8 @@ The project README is the source of truth for the hierarchy (Component ->
 Epic -> Ticket), the epic lifecycle, the issue-vs-direct-edit rule, priority and
 status definitions, the views, and the commands.
 
-- Every ticket belongs to an epic; a ticket never sits under another ticket.
+- Every ticket belongs to an epic; if no existing epic fits, create one under
+  the component. A ticket never sits under another ticket.
 - Create issues only for changes that need a PR. Project metadata edits are done
   directly; if one changes the workflow, update the project README.
 - Before opening a PR, set the linked issue's type, parent epic, component, and

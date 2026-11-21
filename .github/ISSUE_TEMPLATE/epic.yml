@@ -6,7 +6,7 @@ body:
     id: description
     attributes:
       label: Description
-      description: What this workstream delivers, why it matters, and what is in scope. Link the planned child tickets.
+      description: What this workstream delivers, why it matters, and what is in scope.
       placeholder: |
         Outcome:
         Why it matters:
@@ -22,17 +22,3 @@ body:
         - [ ]
     validations:
       required: true
-  - type: textarea
-    id: not-in-this-epic
-    attributes:
-      label: Not in this epic
-      description: Work deliberately outside this workstream; link the epic that owns it.
-    validations:
-      required: false
-  - type: textarea
-    id: links
-    attributes:
-      label: Links
-      description: Component issue, related epics and tickets, docs.
-    validations:
-      required: false
