@@ -12,8 +12,8 @@ export declare const MAX_GOAL_MICRO_ALGOS = 10000000000000000n;
 export declare const MIN_PLEDGE_MICRO_ALGOS = 100000n;
 /** Maximum pledge, in microAlgos: the total ALGO supply, the same bound as the goal. */
 export declare const MAX_PLEDGE_MICRO_ALGOS = 10000000000000000n;
-/** Maximum bytes in one AVM state key. */
-export declare const MAX_STATE_KEY_BYTES = 128;
+/** Maximum bytes in one AVM state entry (key + value). */
+export declare const MAX_STATE_ENTRY_BYTES = 128;
 /** Maximum campaign title bytes (the 5-byte `title` state key counts toward the 128-byte entry cap). */
 export declare const MAX_TITLE_BYTES: number;
 /** Maximum campaign metadata URI bytes (the 11-byte `metadataUri` key counts toward the entry cap). */
@@ -82,13 +82,15 @@ export declare const APP_PAGE_BYTES = 2048;
 export declare const MAX_EXTRA_PAGES = 3;
 /** Account base minimum balance, in microAlgos. */
 export declare const ACCOUNT_BASE_MICRO_ALGOS = 100000n;
-/** App-account base minimum balance, in microAlgos. */
+/** App-account base minimum balance, in microAlgos (`AppFlatParamsMinBalance`). */
 export declare const APP_MBR_BASE_MICRO_ALGOS = 100000;
-/** App MBR per global/local byte-slice, in microAlgos. */
-export declare const APP_MBR_BYTE_MICRO_ALGOS = 50000;
-/** App MBR per global/local uint, in microAlgos. */
-export declare const APP_MBR_UINT_MICRO_ALGOS = 28500;
-/** App MBR per extra program page, in microAlgos. */
+/** App MBR per global/local schema entry, in microAlgos (`SchemaMinBalancePerEntry`). */
+export declare const APP_MBR_ENTRY_MICRO_ALGOS = 25000;
+/** App MBR per byte-slice schema value, in microAlgos (`SchemaBytesMinBalance`). */
+export declare const APP_MBR_BYTES_MICRO_ALGOS = 25000;
+/** App MBR per uint schema value, in microAlgos (`SchemaUintMinBalance`). */
+export declare const APP_MBR_UINT_MICRO_ALGOS = 3500;
+/** App MBR per extra program page, in microAlgos (`AppFlatParamsMinBalance`). */
 export declare const APP_MBR_PAGE_MICRO_ALGOS = 100000;
 /** Vault campaign box MBR, in microAlgos. */
 export declare const VAULT_BOX_MBR_MICRO_ALGOS = 32100n;

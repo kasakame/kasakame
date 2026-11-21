@@ -19,14 +19,14 @@ export const MIN_PLEDGE_MICRO_ALGOS = 100_000n
 /** Maximum pledge, in microAlgos: the total ALGO supply, the same bound as the goal. */
 export const MAX_PLEDGE_MICRO_ALGOS = 10_000_000_000_000_000n
 
-/** Maximum bytes in one AVM state key. */
-export const MAX_STATE_KEY_BYTES = 128
+/** Maximum bytes in one AVM state entry (key + value). */
+export const MAX_STATE_ENTRY_BYTES = 128
 
 /** Maximum campaign title bytes (the 5-byte `title` state key counts toward the 128-byte entry cap). */
-export const MAX_TITLE_BYTES = MAX_STATE_KEY_BYTES - 5
+export const MAX_TITLE_BYTES = MAX_STATE_ENTRY_BYTES - 5
 
 /** Maximum campaign metadata URI bytes (the 11-byte `metadataUri` key counts toward the entry cap). */
-export const MAX_METADATA_URI_BYTES = MAX_STATE_KEY_BYTES - 11
+export const MAX_METADATA_URI_BYTES = MAX_STATE_ENTRY_BYTES - 11
 
 /** Seconds in one day. */
 export const SECONDS_PER_DAY = 86_400
@@ -124,16 +124,19 @@ export const MAX_EXTRA_PAGES = 3
 /** Account base minimum balance, in microAlgos. */
 export const ACCOUNT_BASE_MICRO_ALGOS = 100_000n
 
-/** App-account base minimum balance, in microAlgos. */
+/** App-account base minimum balance, in microAlgos (`AppFlatParamsMinBalance`). */
 export const APP_MBR_BASE_MICRO_ALGOS = 100_000
 
-/** App MBR per global/local byte-slice, in microAlgos. */
-export const APP_MBR_BYTE_MICRO_ALGOS = 50_000
+/** App MBR per global/local schema entry, in microAlgos (`SchemaMinBalancePerEntry`). */
+export const APP_MBR_ENTRY_MICRO_ALGOS = 25_000
 
-/** App MBR per global/local uint, in microAlgos. */
-export const APP_MBR_UINT_MICRO_ALGOS = 28_500
+/** App MBR per byte-slice schema value, in microAlgos (`SchemaBytesMinBalance`). */
+export const APP_MBR_BYTES_MICRO_ALGOS = 25_000
 
-/** App MBR per extra program page, in microAlgos. */
+/** App MBR per uint schema value, in microAlgos (`SchemaUintMinBalance`). */
+export const APP_MBR_UINT_MICRO_ALGOS = 3_500
+
+/** App MBR per extra program page, in microAlgos (`AppFlatParamsMinBalance`). */
 export const APP_MBR_PAGE_MICRO_ALGOS = 100_000
 
 /** Vault campaign box MBR, in microAlgos. */

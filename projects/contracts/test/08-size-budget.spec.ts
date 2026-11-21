@@ -1,6 +1,7 @@
 import {
   APP_MBR_BASE_MICRO_ALGOS,
-  APP_MBR_BYTE_MICRO_ALGOS,
+  APP_MBR_BYTES_MICRO_ALGOS,
+  APP_MBR_ENTRY_MICRO_ALGOS,
   APP_MBR_PAGE_MICRO_ALGOS,
   APP_MBR_UINT_MICRO_ALGOS,
   APP_PAGE_BYTES,
@@ -40,7 +41,8 @@ describe('contract size budget', () => {
       const globalInts = spec.state.schema.global.ints
       const appMbr =
         APP_MBR_BASE_MICRO_ALGOS +
-        APP_MBR_BYTE_MICRO_ALGOS * globalBytes +
+        APP_MBR_ENTRY_MICRO_ALGOS * (globalBytes + globalInts) +
+        APP_MBR_BYTES_MICRO_ALGOS * globalBytes +
         APP_MBR_UINT_MICRO_ALGOS * globalInts +
         APP_MBR_PAGE_MICRO_ALGOS * extraPages
 
