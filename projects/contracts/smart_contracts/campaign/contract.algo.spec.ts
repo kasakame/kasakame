@@ -1,6 +1,16 @@
 import type { Account, Application, bytes } from '@algorandfoundation/algorand-typescript'
 import { Bytes, OnCompleteAction, Uint64 } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
+import {
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_PLEDGE_MICRO_ALGOS,
+  MAX_TREE_SIZE,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  MIN_GOAL_MICRO_ALGOS,
+  MIN_PLEDGE_MICRO_ALGOS,
+  ZERO_ROOT_HEX,
+} from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -21,15 +31,15 @@ import { Campaign } from './contract.algo'
  */
 
 const GOAL = 10_000_000
-const MIN_GOAL = 100_000
-const MAX_GOAL = 10_000_000_000_000_000n
-const MAX_PLEDGE = MAX_GOAL
+const MIN_GOAL = Number(MIN_GOAL_MICRO_ALGOS)
+const MAX_GOAL = MAX_GOAL_MICRO_ALGOS
+const MAX_PLEDGE = MAX_PLEDGE_MICRO_ALGOS
 const MAX_UINT64 = 18_446_744_073_709_551_615n
 const CREATION_TIME = 1_000
-const MIN_DURATION = 24 * 60 * 60
+const MIN_DURATION = MIN_CAMPAIGN_DURATION_SECONDS
 const DEADLINE = CREATION_TIME + MIN_DURATION
-const MAX_DURATION = 180 * 24 * 60 * 60
-const MIN_PLEDGE = 100_000
+const MAX_DURATION = MAX_CAMPAIGN_DURATION_SECONDS
+const MIN_PLEDGE = Number(MIN_PLEDGE_MICRO_ALGOS)
 const TITLE = Bytes('My first novel')
 const METADATA_URI = Bytes('ipfs://QmExample')
 const VAULT_APP_ID = 777
@@ -192,7 +202,7 @@ describe('Campaign', () => {
       expect(contract.deadline.value).toEqual(DEADLINE)
       expect(contract.raised.value).toEqual(0)
       expect(contract.status.value).toEqual(0)
-      expect(rootHex(contract)).toEqual('00'.repeat(32))
+      expect(rootHex(contract)).toEqual(ZERO_ROOT_HEX)
       expect(contract.n.value).toEqual(0)
     })
 
@@ -317,7 +327,7 @@ describe('Campaign', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
-      ctx.ledger.setGlobalState(contract, Bytes('n'), 524_287)
+      ctx.ledger.setGlobalState(contract, Bytes('n'), MAX_TREE_SIZE)
       const pay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
       const group = [
         pay,
@@ -333,14 +343,14 @@ describe('Campaign', () => {
           contract.pledge(pay, Bytes(new Uint8Array()))
         }).toThrow('campaign reached maximum size')
       })
-      expect(contract.n.value).toEqual(524_287)
+      expect(contract.n.value).toEqual(MAX_TREE_SIZE)
     })
 
     test('accepts the last pledge at N=524,286', () => {
       const contract = createCampaign()
       const backer = ctx.any.account()
       const campaignId = toExternalValue(ctx.ledger.getApplicationForContract(contract).id)
-      const before = oracle('bulk', '524286') as { root: string; peaks: string[] }
+      const before = oracle('bulk', String(MAX_TREE_SIZE - 1)) as { root: string; peaks: string[] }
       ctx.ledger.setGlobalState(contract, Bytes('n'), 524_286)
       ctx.ledger.setGlobalState(contract, Bytes('root'), Bytes(Buffer.from(before.root, 'hex')))
       const frontier = Buffer.concat(before.peaks.map((p) => Buffer.from(p, 'hex')))
@@ -357,11 +367,11 @@ describe('Campaign', () => {
       ctx.txn.createScope(group, 1).execute(() => {
         const scopedPay = ctx.any.txn.payment({ sender: backer, receiver: vaultAccount(), amount: MIN_PLEDGE })
         const txid = Buffer.from(toExternalValue(scopedPay.txnId)).toString('hex')
-        const after = oracle('bulk', '524287', '524286', accountHex(backer), MIN_PLEDGE.toString(), txid) as {
+        const after = oracle('bulk', String(MAX_TREE_SIZE), String(MAX_TREE_SIZE - 1), accountHex(backer), MIN_PLEDGE.toString(), txid) as {
           root: string
         }
         contract.pledge(scopedPay, Bytes(frontier))
-        expect(contract.n.value).toEqual(524_287)
+        expect(contract.n.value).toEqual(MAX_TREE_SIZE)
         expect(rootHex(contract)).toEqual(after.root)
         expect(contract.raised.value).toEqual(MIN_PLEDGE)
       })
@@ -939,12 +949,12 @@ describe('Campaign', () => {
     const backer = ctx.any.account()
     const amount = MIN_PLEDGE
     const txid = 'ab'.repeat(32)
-    const bulk = oracle('bulk', '524287', '0', accountHex(backer), amount.toString(), txid) as {
+    const bulk = oracle('bulk', String(MAX_TREE_SIZE), '0', accountHex(backer), amount.toString(), txid) as {
       root: string
       path: { siblings: string[]; top: string | null; lower: string[] }
     }
     expect([bulk.path.siblings.length, bulk.path.lower.length]).toEqual([18, 18])
-    ctx.ledger.setGlobalState(contract, Bytes('n'), 524_287)
+    ctx.ledger.setGlobalState(contract, Bytes('n'), MAX_TREE_SIZE)
     ctx.ledger.setGlobalState(contract, Bytes('root'), Bytes(Buffer.from(bulk.root, 'hex')))
     ctx.ledger.setGlobalState(contract, Bytes('raised'), amount)
     ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE + 1 })
@@ -969,7 +979,7 @@ describe('Campaign', () => {
     expect(funded).toEqual(15)
     expect(takes).toEqual(14)
     expect(takes + 2).toBeLessThanOrEqual(16)
-    expect(contract.n.value).toEqual(524_287)
+    expect(contract.n.value).toEqual(MAX_TREE_SIZE)
     expect(contract.raised.value).toEqual(0)
   })
 
@@ -1132,7 +1142,7 @@ describe('Campaign', () => {
 
     test('deletes a cap-saturated campaign before the deadline', () => {
       const contract = createCampaign()
-      contract.n.value = 524_287
+      contract.n.value = MAX_TREE_SIZE
       contract.raised.value = MIN_PLEDGE
       deleteScope(contract, ctx.defaultSender).execute(() => {
         contract.delete()
@@ -1144,7 +1154,7 @@ describe('Campaign', () => {
 
     test('deletes a cap-saturated campaign with a Registry binding before the deadline', () => {
       const { contract, registryApp } = createCampaignWithRegistry()
-      contract.n.value = 524_287
+      contract.n.value = MAX_TREE_SIZE
       contract.raised.value = MIN_PLEDGE
       ctx.txn.createScope(deleteGroup(contract, registryApp), 1).execute(() => {
         contract.delete()
@@ -1156,7 +1166,7 @@ describe('Campaign', () => {
 
     test('rejects deleting a cap-saturated campaign that reached its goal', () => {
       const contract = createCampaign()
-      contract.n.value = 524_287
+      contract.n.value = MAX_TREE_SIZE
       contract.raised.value = GOAL
       deleteScope(contract, ctx.defaultSender).execute(() => {
         expect(() => {

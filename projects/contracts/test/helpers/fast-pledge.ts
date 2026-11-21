@@ -1,6 +1,7 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
+import { MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import { base32ToBytes, FEE } from '@kasakame/utils/testing'
 import { ABIMethod, decodeAddress } from 'algosdk'
 import { createHash } from 'node:crypto'
@@ -225,11 +226,6 @@ export async function fastPledge(
   return { index, txid, leaf, fee: PLEDGE_FEES + extraFee }
 }
 
-/** The cap size (#220): 2^19 - 1, the largest tree the contract accepts. */
-export const CAP_TREE_SIZE = 524_287
-/** Pledge amount at the cap: 0.1 ALGO. */
-export const CAP_AMOUNT = 100_000n
-
 /** The principal and pledge fees spent to fill a tree. */
 export interface CapPledgeRun {
   principal: bigint
@@ -259,7 +255,7 @@ export async function runPledges(
   let fees = 0n
   console.log(`filling ${count.toString()} positions`)
   for (let i = 0; i < count; i++) {
-    fees += (await fastPledge(stack, appId, backer, CAP_AMOUNT, tree)).fee
+    fees += (await fastPledge(stack, appId, backer, MIN_PLEDGE_MICRO_ALGOS, tree)).fee
     const done = i + 1
     if (done % 1_000 === 0) {
       const state = await campaignState(appClient)
@@ -274,7 +270,7 @@ export async function runPledges(
       console.log(`${done.toString()}/${count.toString()} pledges, ${rate.toFixed(2)} pledges/s, eta ${etaMinutes.toString()} min`)
     }
   }
-  return { principal: BigInt(count) * CAP_AMOUNT, fees }
+  return { principal: BigInt(count) * MIN_PLEDGE_MICRO_ALGOS, fees }
 }
 
 interface InnerTxnList {

@@ -3,6 +3,7 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
+import { SECONDS_PER_DAY } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
 import { FEE, accountInfo, deployPlatform, type PlatformStack } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
@@ -191,7 +192,7 @@ export async function deployCampaign(
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
   const status = await stack.algorand.client.algod.status().do()
   const block = await stack.algorand.client.algod.block(status.lastRound).do()
-  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? 24 * 60 * 60)
+  const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? SECONDS_PER_DAY)
   const vaultId = options.vaultId ?? stack.vault.appId
   const registry = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
   const { appClient } = await registry.send.create({
