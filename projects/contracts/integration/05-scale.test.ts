@@ -1,11 +1,10 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
+import { ALGO, advanceTime } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
-  ALGO,
   ClaimTreeOracle,
-  advanceTime,
   campaignBox,
   campaignState,
   deployCampaign,

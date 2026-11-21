@@ -1,7 +1,7 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import { addrHex, base32ToBytes, concatHex, selectorOf } from '@kasakame/utils'
-import { accountInfo, FEE } from '@kasakame/utils/testing'
+import { accountInfo, ALGO, FEE } from '@kasakame/utils/testing'
 import { ABIMethod } from 'algosdk'
 import { expect } from 'vitest'
 import type { ClaimTreeOracle, OraclePath } from './oracle'
@@ -10,7 +10,7 @@ import { SIZE_BUDGET } from './size-budget.fixture'
 import { campaignBox, campaignBoxExists, campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
 /** Default campaign goal for lifecycle tests. */
-export const DEFAULT_GOAL = 10n * 1_000_000n
+export const DEFAULT_GOAL = 10n * ALGO
 /** Refund window used by the test vault (seconds): the 30-day contract minimum. */
 export const TEST_VAULT_WINDOW = 30n * 24n * 60n * 60n
 /** Registration deposit: the minimum balance of the Registry's 32-byte registration box. */

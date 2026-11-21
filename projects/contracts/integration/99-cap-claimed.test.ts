@@ -1,12 +1,10 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { ALGO, accountInfo, advanceTime } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
 import {
-  ALGO,
   FEE_CLAIM,
   VAULT_BOX_MBR,
   Z_HEX,
-  accountInfo,
-  advanceTime,
   campaignBox,
   campaignBoxExists,
   campaignState,

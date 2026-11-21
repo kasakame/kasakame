@@ -1,4 +1,6 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { specProgramHash } from '@kasakame/utils'
+import { accountInfo, minBalanceOf } from '@kasakame/utils/testing'
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
@@ -9,13 +11,10 @@ import {
   SELECTORS,
   TEST_VAULT_WINDOW,
   VAULT_MBR,
-  accountInfo,
   deleteCampaign,
   deployCampaign,
   deployStack,
-  minBalanceOf,
   registerCampaign,
-  specProgramHash,
   type ContractStack,
 } from '../test/utils'
 
