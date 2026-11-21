@@ -75,7 +75,6 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/ci.md`](docs/ci.md) | GitHub Actions workflows and checks |
 | [`docs/conventions.md`](docs/conventions.md) | Lint, format, and TypeScript rules |
 | [`docs/design.md`](docs/design.md) | Product decisions and open questions |
-| [`docs/scripts.md`](docs/scripts.md) | Operational scripts: LocalNet helpers, demo seed/unseed, reclaim, smoke tests, release checks |
 
 Open work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
