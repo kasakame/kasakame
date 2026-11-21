@@ -10,6 +10,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 ## Layout
 
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
+  - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with shared setup helpers in `integration/support/`
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
@@ -39,6 +40,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   [`testing.md`](docs/testing.md),
   [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
+- [`scripts/`](scripts/README.md) - cross-project script index and the shared pack-smoke helper
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, and Feature
 - [`README.md`](README.md) - project overview, quick start, and docs map
 
@@ -61,6 +63,8 @@ npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet integration lane (files 00-07; PR gate)
 npm run test:cap:failed          # cap-scale failed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
 npm run test:cap:claimed         # cap-scale claimed campaign (524,287 positions, ~5 h); heavy-tests workflow, CI only
+npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
+npm run localnet:fund            # fund an address from the dispenser (ADDRESS=..., ALGO=...)
 npx vitest list integration -t "CON-042"  # find the file that owns a test ID
 npx vitest run integration -t "CON-042"   # one test by ID (chain tests need the whole file)
 
