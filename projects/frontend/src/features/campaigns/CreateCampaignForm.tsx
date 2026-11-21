@@ -1,3 +1,12 @@
+import {
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_METADATA_URI_BYTES,
+  MAX_TITLE_BYTES,
+  MICRO_ALGOS_PER_ALGO,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  SECONDS_PER_DAY,
+} from '@kasakame/constants'
 import { useNetwork, useWallet } from '@txnlab/use-wallet-react'
 import { useEffect, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
@@ -17,19 +26,14 @@ interface CreateCampaignFormProps {
 
 const CATEGORIES = ['Art', 'Music', 'Film', 'Games', 'Books', 'Tech']
 
-// Global-state byte caps: the 128-byte entry limit includes the key.
-const MAX_TITLE_BYTES = 123
-const MAX_METADATA_URI_BYTES = 117
 // Keep in sync with Campaign.MIN_DURATION_SECONDS and MAX_DURATION_SECONDS.
-const MIN_DURATION_DAYS = 1
-const MAX_DURATION_DAYS = 180
+const MIN_DURATION_DAYS = MIN_CAMPAIGN_DURATION_SECONDS / SECONDS_PER_DAY
+const MAX_DURATION_DAYS = MAX_CAMPAIGN_DURATION_SECONDS / SECONDS_PER_DAY
 const DEFAULT_DURATION_DAYS = 30
-const SECONDS_PER_DAY = 86_400
 // The create transaction lands in a later block, so keep a margin over the 24-hour minimum.
 const DEADLINE_BUFFER_SECONDS = 300
-// Keep in sync with Campaign.MAX_GOAL_MICROALGOS: 10 billion ALGO, the total supply.
-const MAX_GOAL_ALGO = 10_000_000_000
-const MAX_GOAL_MICROALGOS = BigInt(MAX_GOAL_ALGO) * 1_000_000n
+// 10 billion ALGO, the total supply.
+const MAX_GOAL_ALGO = Number(MAX_GOAL_MICRO_ALGOS / MICRO_ALGOS_PER_ALGO)
 
 /**
  * Parse a `datetime-local` value as a local date and time.
@@ -92,7 +96,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         setMessage('Goal must be greater than zero.')
         return
       }
-      if (goalMicroAlgos > MAX_GOAL_MICROALGOS) {
+      if (goalMicroAlgos > MAX_GOAL_MICRO_ALGOS) {
         setMessage('Goal must be 10 billion ALGO or less.')
         return
       }

@@ -1,9 +1,3 @@
-/** Seconds in one day. */
-export const DAY = 86_400
-
-/** The Registry registration deposit: the registration box's minimum balance, returned on unregister. */
-export const REGISTER_MBR = 18_900n
-
 /** One demo campaign: creator wallet, goal (ALGO), days until deadline, backer pledge (ALGO) or 0. */
 export interface SeedCampaign {
   creator: string

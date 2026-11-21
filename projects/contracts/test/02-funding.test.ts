@@ -1,15 +1,19 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { concatHex } from '@kasakame/utils'
-import { ALGO, FEE, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import {
+  CLAIM_FEE_MICRO_ALGOS,
+  FEE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  MIN_REFUND_WINDOW_SECONDS,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { advanceTime, balanceOf, concatHex, minBalanceOf } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
-  FEE_CLAIM,
-  TEST_VAULT_WINDOW,
-  VAULT_BOX_MBR,
   campaignBox,
   campaignBoxExists,
   campaignState,
@@ -77,29 +81,29 @@ describe('02 funding outcomes', () => {
       backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       backerC = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
 
-      txA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 3n * ALGO, oracle)
-      txB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, oracle)
-      await pledge(stack, campaign.appClient, campaign.appId, backerC.addr.toString(), 2n * ALGO, oracle)
+      txA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 3n * MICRO_ALGOS_PER_ALGO, oracle)
+      txB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracle)
+      await pledge(stack, campaign.appClient, campaign.appId, backerC.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
 
       const state = await campaignState(campaign.appClient)
       expect(state.n).toEqual(3n)
-      expect(state.raised).toEqual(6n * ALGO)
+      expect(state.raised).toEqual(6n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-022 advance and refund one backer through the campaign', async () => {
-      await advanceTime(fixture, 86_400)
+      await advanceTime(fixture, SECONDS_PER_DAY)
       await spendCampaign(
         stack,
         campaign.appClient,
         campaign.appId,
         backerA.addr.toString(),
         0,
-        3n * ALGO,
+        3n * MICRO_ALGOS_PER_ALGO,
         txA,
         'refund(uint64,uint64,byte[],byte[])void',
         oracle,
       )
-      expect((await campaignState(campaign.appClient)).raised).toEqual(3n * ALGO)
+      expect((await campaignState(campaign.appClient)).raised).toEqual(3n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-023 delete the failed campaign', async () => {
@@ -111,9 +115,9 @@ describe('02 funding outcomes', () => {
     })
 
     test('CON-024 refund another backer through the vault after delete', async () => {
-      await spendVault(stack, campaign.appId, backerB.addr.toString(), 1, 1n * ALGO, txB, oracle)
+      await spendVault(stack, campaign.appId, backerB.addr.toString(), 1, 1n * MICRO_ALGOS_PER_ALGO, txB, oracle)
       const box = await campaignBox(stack.vault.client, campaign.appId)
-      expect(box.paidOut).toEqual(4n * ALGO)
+      expect(box.paidOut).toEqual(4n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-025 reject early finalize, then sweep the residual', async () => {
@@ -122,24 +126,24 @@ describe('02 funding outcomes', () => {
           method: 'finalize(uint64)void',
           args: [campaign.appId],
           sender: backerA.addr,
-          extraFee: microAlgos(FEE),
+          extraFee: microAlgos(FEE_MICRO_ALGOS),
           suppressLog: true,
         }),
       ).rejects.toThrow(/refund window still open/)
 
       const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
       const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
-      await advanceTime(fixture, Number(TEST_VAULT_WINDOW) + 4_000)
+      await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
       await stack.vault.client.send.call({
         method: 'finalize(uint64)void',
         args: [campaign.appId],
         sender: backerA.addr,
-        extraFee: microAlgos(FEE),
+        extraFee: microAlgos(FEE_MICRO_ALGOS),
         suppressLog: true,
       })
 
-      expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + 2n * ALGO)
-      expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR)
+      expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + 2n * MICRO_ALGOS_PER_ALGO)
+      expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
     })
   })
@@ -164,7 +168,7 @@ describe('02 funding outcomes', () => {
 
     test('CON-030 create campaign S with a 3 ALGO goal', async () => {
       creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 3n * ALGO })
+      campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 3n * MICRO_ALGOS_PER_ALGO })
       oracle = new ClaimTreeOracle('successful-campaign-')
       expect((await campaignState(campaign.appClient)).n).toEqual(0n)
     })
@@ -172,20 +176,22 @@ describe('02 funding outcomes', () => {
     test('CON-031 fund the campaign to its goal', async () => {
       backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 2n * ALGO, oracle)
-      await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, oracle)
+      await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+      await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracle)
 
       const state = await campaignState(campaign.appClient)
       expect(state.n).toEqual(2n)
-      expect(state.raised).toEqual(3n * ALGO)
+      expect(state.raised).toEqual(3n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-032 advance and claim', async () => {
       const creatorBefore = await balanceOf(stack.algorand, creator.addr.toString())
-      await advanceTime(fixture, 86_400)
+      await advanceTime(fixture, SECONDS_PER_DAY)
       await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
 
-      expect(await balanceOf(stack.algorand, creator.addr.toString())).toEqual(creatorBefore + 3n * ALGO - FEE_CLAIM)
+      expect(await balanceOf(stack.algorand, creator.addr.toString())).toEqual(
+        creatorBefore + 3n * MICRO_ALGOS_PER_ALGO - CLAIM_FEE_MICRO_ALGOS,
+      )
       const box = await campaignBox(stack.vault.client, campaign.appId)
       expect(box.status).toEqual(3)
       expect(box.paidOut).toEqual(box.paidIn)
@@ -205,29 +211,29 @@ describe('02 funding outcomes', () => {
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('standalone-failed-')
 
-    const txA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 2n * ALGO, oracle)
-    const txB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, oracle)
-    await advanceTime(fixture, 86_400)
+    const txA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+    const txB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await spendCampaign(
       stack,
       campaign.appClient,
       campaign.appId,
       backerA.addr.toString(),
       0,
-      2n * ALGO,
+      2n * MICRO_ALGOS_PER_ALGO,
       txA,
       'refund(uint64,uint64,byte[],byte[])void',
       oracle,
     )
     await deleteCampaign(stack, campaign.appId, creator.addr.toString())
-    await spendVault(stack, campaign.appId, backerB.addr.toString(), 1, 1n * ALGO, txB, oracle)
+    await spendVault(stack, campaign.appId, backerB.addr.toString(), 1, 1n * MICRO_ALGOS_PER_ALGO, txB, oracle)
 
     await advanceTime(fixture, 4_000)
     await stack.vault.client.send.call({
       method: 'finalize(uint64)void',
       args: [campaign.appId],
       sender: backerA.addr,
-      extraFee: microAlgos(FEE),
+      extraFee: microAlgos(FEE_MICRO_ALGOS),
       suppressLog: true,
     })
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
@@ -236,11 +242,11 @@ describe('02 funding outcomes', () => {
   test('CON-041 standalone successful claim workflow', { tags: ['happy', 'always'] }, async () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * ALGO })
+    const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * MICRO_ALGOS_PER_ALGO })
     const oracle = new ClaimTreeOracle('standalone-claim-')
 
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 86_400)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
     await deleteCampaign(stack, campaign.appId, creator.addr.toString(), { vaultBoxRelease: true })
 
@@ -254,8 +260,8 @@ describe('02 funding outcomes', () => {
     const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('settle-open-')
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 86_400)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
 
     const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
     await stack.vault.client.send.call({
@@ -268,7 +274,7 @@ describe('02 funding outcomes', () => {
     expect((await campaignBox(stack.vault.client, campaign.appId)).status).toEqual(2)
     expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore)
 
-    await spendVault(stack, campaign.appId, backer.addr.toString(), 0, 2n * ALGO, txid, oracle)
+    await spendVault(stack, campaign.appId, backer.addr.toString(), 0, 2n * MICRO_ALGOS_PER_ALGO, txid, oracle)
 
     const dup = oracle.path(0)
     const blob = concatHex([...dup.siblings, ...(dup.top === null ? [] : [dup.top]), ...dup.lower])
@@ -276,10 +282,10 @@ describe('02 funding outcomes', () => {
     await expect(
       stack.vault.client.send.call({
         method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
-        args: [campaign.appId, 0n, 2n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [campaign.appId, 0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-        extraFee: microAlgos(3n * FEE),
+        extraFee: microAlgos(3n * FEE_MICRO_ALGOS),
         suppressLog: true,
       }),
     ).rejects.toThrow(/proof does not match root/)
@@ -293,7 +299,7 @@ describe('02 funding outcomes', () => {
       suppressLog: true,
     })
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR)
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR_MICRO_ALGOS)
   })
 
   test('CON-043 settleOpen makes the campaign refund path reject', { tags: ['bad', 'always'] }, async () => {
@@ -302,8 +308,8 @@ describe('02 funding outcomes', () => {
     const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('settle-open-reject-')
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 86_400)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await stack.vault.client.send.call({
       method: 'settleOpen(uint64)void',
       args: [campaign.appId],
@@ -318,7 +324,7 @@ describe('02 funding outcomes', () => {
     await expect(
       campaign.appClient.send.call({
         method: 'refund(uint64,uint64,byte[],byte[])void',
-        args: [0n, 2n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -333,10 +339,10 @@ describe('02 funding outcomes', () => {
     const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * ALGO })
+    const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: 2n * MICRO_ALGOS_PER_ALGO })
     const oracle = new ClaimTreeOracle('release-claimed-')
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
-    await advanceTime(fixture, 86_400)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
     const box = await campaignBox(stack.vault.client, campaign.appId)
     expect(box.status).toEqual(3)
@@ -353,7 +359,7 @@ describe('02 funding outcomes', () => {
     })
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
     expect(await balanceOf(stack.algorand, stack.vault.address)).toEqual(vaultBalance)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR)
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR_MICRO_ALGOS)
 
     await deleteCampaign(stack, campaign.appId, creator.addr.toString())
     await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()

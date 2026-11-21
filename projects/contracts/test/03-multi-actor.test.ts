@@ -1,13 +1,17 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { ALGO, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import {
+  ACCOUNT_BASE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
-  APP_BASE,
   ClaimTreeOracle,
-  DEPLOY_FUNDING,
-  VAULT_BOX_MBR,
   campaignBox,
   campaignBoxExists,
   campaignState,
@@ -91,34 +95,62 @@ describe('03 multiple actors and campaigns', () => {
         const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
         backers.push(backer)
         campaign0Txids.push(
-          await pledge(stack, at(campaigns, 0).appClient, at(campaigns, 0).appId, backer.addr.toString(), 1n * ALGO, at(oracles, 0)),
+          await pledge(
+            stack,
+            at(campaigns, 0).appClient,
+            at(campaigns, 0).appId,
+            backer.addr.toString(),
+            1n * MICRO_ALGOS_PER_ALGO,
+            at(oracles, 0),
+          ),
         )
       }
 
       const state = await campaignState(at(campaigns, 0).appClient)
       expect(state.n).toEqual(BigInt(scale.backers))
-      expect(state.raised).toEqual(BigInt(scale.backers) * ALGO)
+      expect(state.raised).toEqual(BigInt(scale.backers) * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-052 one backer pledges to several campaigns', async () => {
       const backer = at(backers, backers.length - 1)
-      await pledge(stack, at(campaigns, 1).appClient, at(campaigns, 1).appId, backer.addr.toString(), 2n * ALGO, at(oracles, 1))
-      await pledge(stack, at(campaigns, 2).appClient, at(campaigns, 2).appId, backer.addr.toString(), 1n * ALGO, at(oracles, 2))
+      await pledge(
+        stack,
+        at(campaigns, 1).appClient,
+        at(campaigns, 1).appId,
+        backer.addr.toString(),
+        2n * MICRO_ALGOS_PER_ALGO,
+        at(oracles, 1),
+      )
+      await pledge(
+        stack,
+        at(campaigns, 2).appClient,
+        at(campaigns, 2).appId,
+        backer.addr.toString(),
+        1n * MICRO_ALGOS_PER_ALGO,
+        at(oracles, 2),
+      )
 
-      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(2n * ALGO)
-      expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * ALGO)
+      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(2n * MICRO_ALGOS_PER_ALGO)
+      expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-053 a creator backs another campaign', async () => {
-      await pledge(stack, at(campaigns, 1).appClient, at(campaigns, 1).appId, at(creators, 0).addr.toString(), 1n * ALGO, at(oracles, 1))
+      await pledge(
+        stack,
+        at(campaigns, 1).appClient,
+        at(campaigns, 1).appId,
+        at(creators, 0).addr.toString(),
+        1n * MICRO_ALGOS_PER_ALGO,
+        at(oracles, 1),
+      )
 
-      expect((await campaignState(at(campaigns, 0).appClient)).raised).toEqual(BigInt(scale.backers) * ALGO)
+      expect((await campaignState(at(campaigns, 0).appClient)).raised).toEqual(BigInt(scale.backers) * MICRO_ALGOS_PER_ALGO)
       expect((await campaignState(at(campaigns, 1).appClient)).n).toEqual(2n)
-      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * ALGO)
+      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * MICRO_ALGOS_PER_ALGO)
     })
 
     test('CON-054 drain campaign 0 without touching the others', async () => {
-      await advanceTime(fixture, 86_400)
+      await advanceTime(fixture, SECONDS_PER_DAY)
       for (let i = 0; i < backers.length; i++) {
         await spendCampaign(
           stack,
@@ -126,7 +158,7 @@ describe('03 multiple actors and campaigns', () => {
           at(campaigns, 0).appId,
           at(backers, i).addr.toString(),
           i,
-          1n * ALGO,
+          1n * MICRO_ALGOS_PER_ALGO,
           at(campaign0Txids, i),
           'refund(uint64,uint64,byte[],byte[])void',
           at(oracles, 0),
@@ -136,23 +168,23 @@ describe('03 multiple actors and campaigns', () => {
       const drained = await campaignState(at(campaigns, 0).appClient)
       expect(drained.n).toEqual(BigInt(scale.backers))
       expect(drained.raised).toEqual(0n)
-      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * ALGO)
-      expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * ALGO)
+      expect((await campaignState(at(campaigns, 1).appClient)).raised).toEqual(3n * MICRO_ALGOS_PER_ALGO)
+      expect((await campaignState(at(campaigns, 2).appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
 
       const box0 = await campaignBox(stack.vault.client, at(campaigns, 0).appId)
       const box1 = await campaignBox(stack.vault.client, at(campaigns, 1).appId)
       const box2 = await campaignBox(stack.vault.client, at(campaigns, 2).appId)
-      expect(box0.paidIn).toEqual(BigInt(scale.backers) * ALGO)
-      expect(box0.paidOut).toEqual(BigInt(scale.backers) * ALGO)
-      expect(box1.paidIn).toEqual(3n * ALGO)
+      expect(box0.paidIn).toEqual(BigInt(scale.backers) * MICRO_ALGOS_PER_ALGO)
+      expect(box0.paidOut).toEqual(BigInt(scale.backers) * MICRO_ALGOS_PER_ALGO)
+      expect(box1.paidIn).toEqual(3n * MICRO_ALGOS_PER_ALGO)
       expect(box1.paidOut).toEqual(0n)
-      expect(box2.paidIn).toEqual(1n * ALGO)
+      expect(box2.paidIn).toEqual(1n * MICRO_ALGOS_PER_ALGO)
       expect(box2.paidOut).toEqual(0n)
     })
 
     test('CON-055 vault pool holds only the live pledges', async () => {
-      expect(await balanceOf(stack.algorand, stack.vault.address)).toEqual(DEPLOY_FUNDING + 4n * ALGO)
-      expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(APP_BASE + 3n * VAULT_BOX_MBR)
+      expect(await balanceOf(stack.algorand, stack.vault.address)).toEqual(PLATFORM_STORAGE_RESERVE_MICRO_ALGOS + 4n * MICRO_ALGOS_PER_ALGO)
+      expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(ACCOUNT_BASE_MICRO_ALGOS + 3n * VAULT_BOX_MBR_MICRO_ALGOS)
     })
   })
 
@@ -164,13 +196,13 @@ describe('03 multiple actors and campaigns', () => {
     const oracleA = new ClaimTreeOracle('cross-a-')
     const oracleB = new ClaimTreeOracle('cross-b-')
 
-    await pledge(stack, campaignA.appClient, campaignA.appId, creatorB.addr.toString(), 1n * ALGO, oracleA)
-    await pledge(stack, campaignB.appClient, campaignB.appId, creatorA.addr.toString(), 1n * ALGO, oracleB)
+    await pledge(stack, campaignA.appClient, campaignA.appId, creatorB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracleA)
+    await pledge(stack, campaignB.appClient, campaignB.appId, creatorA.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracleB)
 
     expect((await campaignState(campaignA.appClient)).n).toEqual(1n)
-    expect((await campaignState(campaignA.appClient)).raised).toEqual(1n * ALGO)
+    expect((await campaignState(campaignA.appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
     expect((await campaignState(campaignB.appClient)).n).toEqual(1n)
-    expect((await campaignState(campaignB.appClient)).raised).toEqual(1n * ALGO)
+    expect((await campaignState(campaignB.appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('CON-061 refunding one campaign leaves the other untouched', { tags: ['happy', 'always'] }, async () => {
@@ -181,15 +213,15 @@ describe('03 multiple actors and campaigns', () => {
     const oracleA = new ClaimTreeOracle('isolated-a-')
     const oracleB = new ClaimTreeOracle('isolated-b-')
 
-    const txid = await pledge(stack, campaignA.appClient, campaignA.appId, backer.addr.toString(), 2n * ALGO, oracleA)
-    await advanceTime(fixture, 86_400)
+    const txid = await pledge(stack, campaignA.appClient, campaignA.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracleA)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await spendCampaign(
       stack,
       campaignA.appClient,
       campaignA.appId,
       backer.addr.toString(),
       0,
-      2n * ALGO,
+      2n * MICRO_ALGOS_PER_ALGO,
       txid,
       'refund(uint64,uint64,byte[],byte[])void',
       oracleA,

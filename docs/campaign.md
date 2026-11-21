@@ -2,6 +2,8 @@
 
 This page is the reference for the Campaign app: its state, its methods, and the rules each method enforces. The tree math behind pledges and refunds is in [`claim-tree-protocol.md`](claim-tree-protocol.md); the system around the contract is in [`architecture.md`](architecture.md). Compiled sizes, page counts, MBR, and fee formulas are in [`limits.md`](limits.md).
 
+The numeric bounds and fee coefficients in this reference live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
+
 The chain is the source of truth; the indexer is a read model. Escrow and fee behavior below is verified on LocalNet.
 
 ## Trust model and receipts

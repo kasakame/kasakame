@@ -15,6 +15,12 @@ import {
   itxn,
   op,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  MAX_REFUND_WINDOW_SECONDS,
+  MAX_TREE_SIZE,
+  MIN_REFUND_WINDOW_SECONDS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+} from '@kasakame/constants/source'
 
 /**
  * Registry - the canonical, ownerless on-chain registry for kasakame campaigns.
@@ -31,19 +37,6 @@ import {
  * returned by `unregister()` in the same atomic group as the campaign's `delete()`. The Registry takes no part in pledging, refunding, or
  * cleanup - it is never a bottleneck and never performs per-backer operations.
  */
-
-// Minimum balance of one registration box: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
-const REGISTER_MBR = 18_900
-
-// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A registered campaign at the cap that has not
-// reached its goal can never succeed, so `unregister` must allow the early `[unregister, delete]` cleanup group.
-const MAX_TREE_SIZE = Uint64(524_287)
-
-// Keep in sync with ClaimsVault.MIN_REFUND_WINDOW_SECONDS; bind the vault window to the same range.
-const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
-
-// Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Bind the vault window to the same bound.
-const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
 const CAMPAIGN_OPEN = Uint64(0)
@@ -91,8 +84,9 @@ export class Registry extends Contract {
     assert(vaultProgramHash.length === Uint64(32), 'vault program hash must be 32 bytes')
     assert(expectedSweepTarget !== Global.zeroAddress, 'sweep target must not be zero')
     assert(expectedSweepTarget !== Global.currentApplicationAddress, 'sweep target must not be the registry')
-    assert(expectedRefundWindow >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
-    assert(expectedRefundWindow <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
+    // Bind the vault window to the same range as ClaimsVault: 30 days to 10 years.
+    assert(expectedRefundWindow >= Uint64(MIN_REFUND_WINDOW_SECONDS), 'refund window too short')
+    assert(expectedRefundWindow <= Uint64(MAX_REFUND_WINDOW_SECONDS), 'refund window too long')
 
     this.campaignProgramHash.value = campaignProgramHash
     this.vaultProgramHash.value = vaultProgramHash
@@ -158,7 +152,8 @@ export class Registry extends Contract {
     assert(app.creator === Txn.sender, 'only the campaign creator can register')
     assert(payment.sender === Txn.sender, 'payment must come from the caller')
     assert(payment.receiver === Global.currentApplicationAddress, 'payment must be made to the registry')
-    assert(payment.amount === REGISTER_MBR, 'registration deposit must be exact')
+    // Registration box MBR: 2,500 + 400 × (name bytes + value bytes) = 2,500 + 400 × (9 + 32) µA.
+    assert(payment.amount === Uint64(REGISTER_DEPOSIT_MICRO_ALGOS), 'registration deposit must be exact')
     assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(!this.registered(app.id).exists, 'campaign already registered')
@@ -211,7 +206,7 @@ export class Registry extends Contract {
       const settled = status[0] === CAMPAIGN_FAILED || status[0] === CAMPAIGN_CLAIMED
       const pristine = status[0] === CAMPAIGN_OPEN && raised[0] === Uint64(0)
       const failedInFact =
-        status[0] === CAMPAIGN_OPEN && (Global.latestTimestamp >= deadline[0] || n[0] >= MAX_TREE_SIZE) && raised[0] < goal[0]
+        status[0] === CAMPAIGN_OPEN && (Global.latestTimestamp >= deadline[0] || n[0] >= Uint64(MAX_TREE_SIZE)) && raised[0] < goal[0]
       assert(settled || pristine || failedInFact, 'campaign is still live')
     }
 
@@ -236,7 +231,7 @@ export class Registry extends Contract {
     itxn
       .payment({
         receiver: Txn.sender,
-        amount: REGISTER_MBR,
+        amount: Uint64(REGISTER_DEPOSIT_MICRO_ALGOS),
         fee: Uint64(0),
       })
       .submit()

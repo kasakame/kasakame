@@ -1,50 +1,36 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { addrHex, base32ToBytes, concatHex, selectorOf } from '@kasakame/utils'
-import { accountInfo, ALGO, FEE } from '@kasakame/utils/testing'
+import {
+  FEE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  OPUP_AVAILABLE_BUDGET,
+  OPUP_BUDGET_PER_ITERATION,
+  OPUP_ITERATION_SLACK,
+  OPUP_SPEND_NET_BUDGET,
+  PLEDGE_BASE_COST,
+  PLEDGE_GROUP_FEE_MICRO_ALGOS,
+  PLEDGE_PEAK_COST,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+  SPEND_TOP_UP_OVERHEAD,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { accountInfo, addrHex, base32ToBytes, concatHex, selectorOf } from '@kasakame/utils/testing'
 import { ABIMethod } from 'algosdk'
 import { expect } from 'vitest'
 import type { ClaimTreeOracle, OraclePath } from './oracle'
 import type { ContractStack } from './platform'
-import { SIZE_BUDGET } from './size-budget.fixture'
+import { CONTRACT_SIZES } from './size-budget.fixture'
 import { campaignBox, campaignBoxExists, campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
 /** Default campaign goal for lifecycle tests. */
-export const DEFAULT_GOAL = 10n * ALGO
-/** Refund window used by the test vault (seconds): the 30-day contract minimum. */
-export const TEST_VAULT_WINDOW = 30n * 24n * 60n * 60n
-/** Registration deposit: the minimum balance of the Registry's 32-byte registration box. */
-export const REGISTER_MBR = 18_900n
-/** Minimum balance parked by one 65-byte vault campaign box. */
-export const VAULT_BOX_MBR = 32_100n
-/** Base minimum balance of an application account. */
-export const APP_BASE = 100_000n
-/** Funding sent to a deployed app account in tests. */
-export const DEPLOY_FUNDING = 1_000_000n
+export const DEFAULT_GOAL = 10n * MICRO_ALGOS_PER_ALGO
 /** Campaign app MBR from the pinned size budget. */
-export const CAMPAIGN_MBR = BigInt(SIZE_BUDGET.campaign.appMbr)
+export const CAMPAIGN_MBR = BigInt(CONTRACT_SIZES.campaign.appMbr)
 /** ClaimsVault app MBR from the pinned size budget. */
-export const VAULT_MBR = BigInt(SIZE_BUDGET.claimsvault.appMbr)
+export const VAULT_MBR = BigInt(CONTRACT_SIZES.claimsvault.appMbr)
 /** Registry app MBR from the pinned size budget. */
-export const REGISTRY_MBR = BigInt(SIZE_BUDGET.registry.appMbr)
-/** A zero root before settlement. */
-export const Z_HEX = '00'.repeat(32)
-/** Fee for the campaign create call. */
-export const CREATE_FEE = FEE
-/** Fees for the register group: the register call plus its payment. */
-export const REGISTER_FEES = 2n * FEE
-/** Credit call fee plus the extra fee that covers the first-touch registry-check inner call. */
-export const FEE_CREDIT = 2n * FEE
-/** Pledge group fee excluding the tree-shape OpUp takes: pay + pledge + credit. */
-export const PLEDGE_FEES = FEE + FEE + FEE_CREDIT
-/** Claim inner app call plus inner payment. */
-export const FEE_CLAIM = 3n * FEE
-/** Delete with the settle/notify inner call plus escrow close. */
-export const FEE_DELETE_SETTLED = 3n * FEE
-/** Unregister call plus its inner deposit return. */
-export const FEE_UNREGISTER = 2n * FEE
-/** The atomic `[unregister, delete]` cleanup group. */
-export const CLEANUP_FEES = FEE_UNREGISTER + FEE_DELETE_SETTLED
+export const REGISTRY_MBR = BigInt(CONTRACT_SIZES.registry.appMbr)
 
 /** Selectors embedded in the contract bytecode and used by the integration tests. */
 export const SELECTORS = {
@@ -65,9 +51,9 @@ export const SELECTORS = {
  * @returns The extra fee in microAlgos.
  */
 export function pledgeExtraFee(peaks: number): bigint {
-  const required = peaks * 240 + 400
-  const iterations = Math.max(0, Math.ceil((required + 10 - 1_000) / 700))
-  return BigInt(iterations) * FEE
+  const required = peaks * PLEDGE_PEAK_COST + PLEDGE_BASE_COST
+  const iterations = Math.max(0, Math.ceil((required + OPUP_ITERATION_SLACK - OPUP_AVAILABLE_BUDGET) / OPUP_BUDGET_PER_ITERATION))
+  return BigInt(iterations) * FEE_MICRO_ALGOS
 }
 
 /**
@@ -81,9 +67,9 @@ export function pledgeExtraFee(peaks: number): bigint {
  */
 export function spendExtraFee(path: OraclePath, payoutInners: 1 | 2): bigint {
   const pathElements = path.siblings.length + path.lower.length + (path.top === null ? 0 : 1)
-  const required = pathElements * 250 + 700
-  const iterations = Math.max(0, Math.ceil((required + 12) / 670))
-  return BigInt(payoutInners + iterations) * FEE
+  const required = pathElements * SPEND_ELEMENT_COST + SPEND_BASE_COST
+  const iterations = Math.max(0, Math.ceil((required + SPEND_TOP_UP_OVERHEAD) / OPUP_SPEND_NET_BUDGET))
+  return BigInt(payoutInners + iterations) * FEE_MICRO_ALGOS
 }
 
 /**
@@ -94,7 +80,7 @@ export function spendExtraFee(path: OraclePath, payoutInners: 1 | 2): bigint {
  * @returns The total fee in microAlgos.
  */
 export function spendFee(path: OraclePath, payoutInners: 1 | 2): bigint {
-  return FEE + spendExtraFee(path, payoutInners)
+  return FEE_MICRO_ALGOS + spendExtraFee(path, payoutInners)
 }
 
 /**
@@ -143,7 +129,7 @@ export async function pledge(
     sender: backerAddr,
     appReferences: [stack.registry.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.registry.appId, appId)],
-    extraFee: microAlgos(FEE),
+    extraFee: microAlgos(FEE_MICRO_ALGOS),
   })
   const result = await composer.send({ suppressLog: true })
   const payTxid = result.txIds[0]
@@ -152,10 +138,10 @@ export async function pledge(
 
   const backerAfter = await accountInfo(stack.algorand, backerAddr)
   const vaultAfter = await accountInfo(stack.algorand, stack.vault.address)
-  expect(backerBefore.balance - backerAfter.balance - amount).toEqual(PLEDGE_FEES + extraFee)
+  expect(backerBefore.balance - backerAfter.balance - amount).toEqual(PLEDGE_GROUP_FEE_MICRO_ALGOS + extraFee)
   expect(backerAfter.minBalance).toEqual(backerBefore.minBalance)
   expect(vaultAfter.balance - vaultBefore.balance).toEqual(amount)
-  expect(vaultAfter.minBalance - vaultBefore.minBalance).toEqual(hadBox ? 0n : VAULT_BOX_MBR)
+  expect(vaultAfter.minBalance - vaultBefore.minBalance).toEqual(hadBox ? 0n : VAULT_BOX_MBR_MICRO_ALGOS)
 
   const exp = oracle.append(addrHex(backerAddr), amount, txidHex)
   const st = await campaignState(appClient)
@@ -323,7 +309,7 @@ export async function claimCampaign(stack: ContractStack, appClient: AppClient, 
     sender: creatorAddr,
     appReferences: [stack.vault.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId)],
-    extraFee: microAlgos(2n * FEE),
+    extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
     suppressLog: true,
   })
 }

@@ -6,6 +6,7 @@ verification job per project plus repo-wide workflow, shell, and Markdown lint,
 the separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-specs`](../.github/workflows/release-specs.yml),
+[`release-constants`](../.github/workflows/release-constants.yml),
 [`release-sdk`](../.github/workflows/release-sdk.yml), and
 [`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
 reasoning behind the splits.
@@ -13,10 +14,10 @@ reasoning behind the splits.
 ## Principles
 
 - **Build once, share the output.** The compiled contract artifacts (TEAL +
-  ARC specs) are gitignored and regenerable. A contracts or `utils` change
-  triggers `compile-contracts`, which compiles them once and uploads
-  `contracts-artifacts`; `build-sdk` and `integration-test` download it instead
-  of recompiling. When
+  ARC specs) are gitignored and regenerable. A contracts, `utils`, or
+  `constants` change triggers `compile-contracts`, which compiles them once and
+  uploads `contracts-artifacts`; `build-sdk` and `integration-test` download it
+  instead of recompiling. When
   the SDK or contracts changed, `build-sdk` runs codegen once, compiles the
   package once, and uploads both `sdk-generated` (the generated clients) and
   `sdk-dist` (the compiled package). The SDK verification job downloads
@@ -25,13 +26,17 @@ reasoning behind the splits.
   run skips the producer, so SDK verification regenerates the clients from the
   pinned release itself. The SDK never copies generated
   clients between projects: it regenerates them from the ARC-56 specs, from the
-  downloaded artifacts (`SDK_SPECS=local`) in contracts-changed runs and from
+  downloaded artifacts (`SDK_SPECS=local`) in runs where `compile-contracts`
+  produced artifacts and from
   the pinned release otherwise.
 - **The compiled footprint is gated.** `compile-contracts` runs
   `npm run test:size` after `npm run build`, so a byte, page, or schema change
   fails unless `test/utils/size-budget.fixture.ts` and `docs/limits.md` are
   updated. `check-contracts` does not build artifacts, so the size test is
   excluded from `npm test` and `test:coverage`.
+- **The constants build is committed.** `projects/constants/dist` is tracked so
+  `file:` consumers install it without a per-job build. `check-constants`
+  rebuilds it and fails when the committed output drifts from `src`.
 - **Split by prerequisite, not by phase.** Each project has one verification
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
@@ -42,12 +47,13 @@ reasoning behind the splits.
 - **Change detection, not matrices.** One `changes` job runs
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. Each filter is a lane input: contracts,
-  SDK, frontend, CLI, backend, `utils`, `ci` (workflows/scripts), `oracle` (the
-  contract/SDK test oracle), `markdown`, `shell`, and `workspace`. Unknown root
-  paths land in `workspace`, which fails open to the verification lanes but
-  never sets `contracts`: `compile-contracts` and `integration-test` run only
-  when the contracts or `utils` changed, and `check-contracts` runs for
-  contracts, `utils`, the oracle, or workspace changes. Markdown, shell, and
+  SDK, frontend, CLI, backend, `utils`, `constants`, `ci` (workflows/scripts),
+  `oracle` (the contract/SDK test oracle), `markdown`, `shell`, and `workspace`.
+  Unknown root paths land in `workspace`, which fails open to the verification
+  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
+  run only when the contracts, `utils`, or `constants` changed, and
+  `check-contracts` runs for contracts, `utils`, `constants`, the oracle, or
+  workspace changes. Markdown, shell, and
   workflow files run only `repo-lint`; docs images, licenses, and inert root
   files run no lane.
   `.prettierrc.json` is part of `workspace`, so formatting-config changes are
@@ -55,9 +61,9 @@ reasoning behind the splits.
 - **The trigger policy is centralized.** `changes` publishes derived `run_*`
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
-  `run_check_backend`, `run_check_utils`, `run_integration`). Every job reads
-  one boolean, so the trigger rules live in one place instead of repeated `if`
-  expressions.
+  `run_check_backend`, `run_check_utils`, `run_check_constants`,
+  `run_integration`). Every job reads one boolean, so the trigger rules live in
+  one place instead of repeated `if` expressions.
   Separate jobs (no matrix) keep the conditional presence and the status-check
   names stable.
 - **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
@@ -100,7 +106,8 @@ flowchart TD
     cli["Check CLI<br/>(checks + build)"]
     backend["Check backend<br/>(checks + Postgres)"]
     utils["Check utils<br/>(format/lint/types)"]
-    integration["LocalNet integration<br/>(contracts or utils)"]
+    constants["Check constants<br/>(build/format/lint/types)"]
+    integration["LocalNet integration<br/>(contracts, utils, or constants)"]
     gate["Gate<br/>(single required check)"]
 
     changes --> repo
@@ -112,6 +119,7 @@ flowchart TD
     changes --> cli
     changes --> backend
     changes --> utils
+    changes --> constants
     changes --> integration
     changes --> gate
     buildc -->|"contracts artifacts"| buildsdk
@@ -129,6 +137,7 @@ flowchart TD
     cli --> gate
     backend --> gate
     utils --> gate
+    constants --> gate
     integration --> gate
 ```
 
@@ -138,18 +147,20 @@ flowchart TD
 | --- | --- | --- | --- | --- | --- |
 | `changes` | always | - | - | - | - |
 | `repo-lint` | `ci`, `shell`, or `markdown` changed | ✅ | - | ✅ (actionlint image) | - |
-| `compile-contracts` | contracts or `utils` changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
-| `check-contracts` | contracts, `utils`, `oracle`, or `workspace` changed | ✅ | - | - | - |
-| `build-sdk` | SDK or contracts changed | ✅ | - | - | `contracts-artifacts` (contracts-changed runs); produces `sdk-generated` + `sdk-dist` |
-| `check-sdk` | contracts, SDK, `utils`, `oracle`, or `workspace` changed | ✅ | - | - | `sdk-generated` when the producer ran; regenerates from the pinned release otherwise |
-| `check-frontend` | contracts, SDK, frontend, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
-| `check-cli` | contracts, SDK, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
+| `compile-contracts` | contracts, `utils`, or `constants` changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
+| `check-contracts` | contracts, `utils`, `constants`, `oracle`, or `workspace` changed | ✅ | - | - | - |
+| `build-sdk` | SDK, contracts, or `constants` changed | ✅ | - | - | `contracts-artifacts` when `compile-contracts` ran; produces `sdk-generated` + `sdk-dist` |
+| `check-sdk` | contracts, SDK, `utils`, `constants`, `oracle`, or `workspace` changed | ✅ | - | - | `sdk-generated` when the producer ran; regenerates from the pinned release otherwise |
+| `check-frontend` | contracts, SDK, `constants`, frontend, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
+| `check-cli` | contracts, SDK, `constants`, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
-| `check-utils` | `utils` changed | ✅ | - | - | - |
-| `integration-test` | contracts or `utils` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
+| `check-constants` | `constants` changed | ✅ | - | - | - |
+| `integration-test` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
+| `release-constants` (own workflow) | manual | ✅ | - | - | - |
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
 | `release-cli` (own workflow) | manual | ✅ | - | - | - |
 
@@ -178,8 +189,8 @@ pinned `@algorandfoundation/algokit-client-generator`. By default codegen
 downloads the pinned `specs-v<version>` release asset over HTTPS
 (`.../releases/download/specs-v<version>/arc56.tar.gz`), so it needs no `gh`
 login; `SDK_SPECS=local` reads
-`projects/contracts/smart_contracts/artifacts` instead. On a
-contracts-changed run `build-sdk` downloads `contracts-artifacts` and runs
+`projects/contracts/smart_contracts/artifacts` instead. When
+`compile-contracts` ran `build-sdk` downloads `contracts-artifacts` and runs
 codegen with `SDK_SPECS=local`, so the generated clients, the type-check, the
 tests, and the built SDK all resolve against the change set's contracts;
 otherwise it uses the pinned release. `build-sdk` uploads the generated clients
@@ -230,11 +241,13 @@ changed-files API. No job needs repository write access. Licenses are excluded
 from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 `markdown`. It exposes the raw filters plus derived trigger outputs:
 
-- `contracts`, `sdk`, `frontend`, `cli`, `backend`, `utils` - the project path
-  itself, no folding. A contracts change does not set `sdk`, `frontend`, `cli`,
-  or `utils`; the derived outputs OR the inputs they need. `check-utils` runs
-  the private helper package's format, lint, and type-check; `utils` changes also
-  re-run the contract and SDK checks that consume it.
+- `contracts`, `sdk`, `frontend`, `cli`, `backend`, `utils`, `constants` - the
+  project path itself, no folding. A contracts change does not set `sdk`,
+  `frontend`, `cli`, `utils`, or `constants`; the derived outputs OR the inputs
+  they need. `check-utils` runs the private helper package's format, lint, and
+  type-check; `check-constants` rebuilds the public constants package and fails
+  when the committed `dist` drifts. Changes to `utils` or `constants` re-run the
+  contract and SDK checks that consume them.
 - `ci` - `.github/**` (workflows and release scripts).
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
@@ -242,23 +255,24 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   runs the offline suites, not `integration-test`.
 - `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
 - `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
-- `workspace` - any other non-inert root path outside the six projects (root
+- `workspace` - any other non-inert root path outside the seven projects (root
   config, `.prettierrc.json`, a new project). It fails open to the verification
   lanes but never sets `contracts`: `compile-contracts` and `integration-test`
-  run only when the contracts or `utils` changed. Markdown,
+  run only when the contracts, `utils`, or `constants` changed. Markdown,
   shell scripts, docs images, licenses, and inert root files are excluded from
   it.
 - `run_repo_lint` - `ci || shell || markdown`.
-- `run_compile_contracts` - `contracts || utils`.
-- `run_check_contracts` - `contracts || utils || oracle || workspace`.
-- `run_build_sdk` - `contracts || sdk`; the frontend and CLI lanes also use it
-  to choose the packed local SDK instead of the published package.
-- `run_check_sdk` - `contracts || sdk || utils || oracle || workspace`.
-- `run_check_frontend` - `contracts || sdk || frontend || workspace`.
-- `run_check_cli` - `contracts || sdk || cli || workspace`.
+- `run_compile_contracts` - `contracts || utils || constants`.
+- `run_check_contracts` - `contracts || utils || constants || oracle || workspace`.
+- `run_build_sdk` - `contracts || sdk || constants`; the frontend and CLI lanes
+  also use it to choose the packed local SDK instead of the published package.
+- `run_check_sdk` - `contracts || sdk || utils || constants || oracle || workspace`.
+- `run_check_frontend` - `contracts || sdk || constants || frontend || workspace`.
+- `run_check_cli` - `contracts || sdk || constants || cli || workspace`.
 - `run_check_backend` - `backend || workspace`.
-- `run_check_utils` - `utils`.
-- `run_integration` - `contracts || utils`.
+- `run_check_utils` - `utils || constants`.
+- `run_check_constants` - `constants`.
+- `run_integration` - `contracts || utils || constants`.
 
 Every `run_*` output is true on a manual `workflow_dispatch`.
 
@@ -384,11 +398,42 @@ pre-release status only affects the "Latest" label, not downloads by tag.
 The SDK pins `specs-v<version>` in `projects/sdk/package.json`
 (`config.specsVersion`), downloads the public `arc56.tar.gz` asset over HTTPS by
 default, and regenerates its clients from those specs with its own pinned
-generator; `SDK_SPECS=local` uses
-the contracts project's artifacts for contracts-changed lanes and local contract
-work. Nothing generated is committed. The other tarballs serve deployers and
+generator; `SDK_SPECS=local` uses the contracts project's artifacts for
+contracts, `utils`, or `constants` changes and local contract work. Nothing generated is committed. The other tarballs serve deployers and
 verifiers - the ARC-32 specs for legacy tooling and the TEAL + source maps for
 independent recompile-and-verify audits.
+
+## Workflow: release-constants (separate file)
+
+Implemented at `.github/workflows/release-constants.yml`. Manual
+(`workflow_dispatch`) release of `@kasakame/constants`; no reviewer gate (single
+developer). The version is `projects/constants/package.json`; bump it in the
+release commit. The dispatch inputs mirror the SDK release:
+
+- `version`: required, without the `v` prefix; must match the package version.
+- `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
+  and the prep publish dry-run, but skips the real publish and registry check.
+
+Prerelease versions publish under the `next` dist-tag, finals under `latest`.
+
+- `prep` installs the package, validates the input version against
+  `package.json` and that it is unpublished, builds `dist`, verifies the
+  committed `dist` is unchanged, formats, lints, type-checks, inspects the
+  packed tarball, dry-runs the publish, and installs the tarball in a clean
+  consumer to import the compiled values. It uploads the tested `dist/`.
+- `publish` downloads the tested `dist/`, verifies the package files and
+  version, and, when `dry_run=false`, publishes with the `next`/`latest`
+  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
+  `--provenance`, then polls the registry for the version for up to 10 minutes.
+
+Configure the trusted publisher for `@kasakame/constants` on npmjs.com
+(package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
+`kasakame`, workflow `release-constants.yml`, no environment, and **Allow npm
+publish** enabled. Release it before the SDK and CLI: both declare it as a peer
+dependency, and their smoke tests install it from the registry. The first
+publish is the one exception to OIDC: npm trusted publishing requires an
+existing package, so bootstrap `0.2.0` with a one-time manual `npm publish`
+(or a granular token), then configure the trusted publisher for later versions.
 
 ## Workflow: release-sdk (separate file)
 
@@ -403,13 +448,15 @@ are:
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
-- `prep` is Node/npm only and never builds the contracts: install, validate the
-  input version against `package.json` and that it is unpublished, regenerate
-  clients from the pinned `specs-vX.Y.Z` release, compile TypeScript, lint,
-  format, type-check, run coverage, inspect the packed tarball, and dry-run the
-  publish. Each command is its own step. It uploads the tested `dist/`.
+- `prep` is Node/npm only and never builds the contracts: it validates the
+  input version against `package.json` and that it is unpublished, regenerates
+  clients from the pinned `specs-vX.Y.Z` release, compiles TypeScript, lints,
+  format-checks, type-checks, runs coverage, inspects the packed tarball, and
+  dry-runs the publish. Each command is its own step. It uploads the tested
+  `dist/`.
 - `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer, checks the version and
+  `dist/`, installs the tarball into a clean consumer (npm pulls the
+  `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
   pin. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
@@ -456,11 +503,12 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 - `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
   never the `file:../sdk` copy, because a released CLI must ship against a
   released SDK. It validates the input version against `package.json` and that
-  it is unpublished, then lints, formats, type-checks, runs coverage, builds,
+  it is unpublished, lints, formats, type-checks, runs coverage, builds,
   inspects the packed tarball, and dry-runs the publish. Each command is its own
   step. It uploads the tested `dist/`.
 - `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer, checks the version and
+  `dist/`, installs the tarball into a clean consumer (npm pulls the
+  `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, and runs `kasakame --help`. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
@@ -487,6 +535,7 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
 | --- | --- | --- | --- |
 | ARC-56/ARC-32 specs, TEAL, source maps | GitHub Release | `specs-vX.Y.Z` | One tarball per kind; the audit bundle. |
 | `@kasakame/sdk` | npm | `X.Y.Z` (independent) | The only contract consumer; records the specs version it was built against. |
+| `@kasakame/constants` | npm | `X.Y.Z` (independent) | Protocol, fee, and AVM values; the SDK and CLI declare it as a peer dependency. |
 | `@kasakame/cli` | npm | `X.Y.Z` | Depends on the SDK; public indexer only, no backend. |
 | Frontend | static host | deploy | Built against a published SDK for frontend-only changes. |
 | Backend | deploy | - | Optional service; not an npm package. |
@@ -513,32 +562,32 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   independent of the published npm package versions. The SDK pins the consumed
   specs version in `package.json` (`config.specsVersion`) and exports it as
   `SPECS_VERSION`.
-- All three release workflows validate the dispatch version against their
+- All four release workflows validate the dispatch version against their
   project `package.json` with `.github/scripts/check-release-version.mjs`.
-- Release in order: contracts → specs release → SDK → frontend/CLI. A
-  frontend-only change tests and deploys against the published SDK.
+- Release in order: contracts → specs release → constants → SDK → frontend/CLI.
+  A frontend-only change tests and deploys against the published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
   the `next` dist-tag and finals to `latest`; npm versions and `specs-v*` tags
   are never reused.
 
 ### npm publishing
 
-- Publish only `@kasakame/sdk`, then `@kasakame/cli`. Both are public packages
-  with a `files` whitelist.
+- Publish `@kasakame/constants` first, then `@kasakame/sdk`, then
+  `@kasakame/cli`. All three are public packages with a `files` whitelist.
 - The SDK publishes only `dist/` plus the package metadata, README, and
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- `release-sdk` and `release-cli` use npm OIDC trusted publishing; every publish
-  passes `--provenance`. Set each package's publishing access to "Require
-  two-factor authentication and disallow tokens" so only the trusted publisher
-  can publish.
+- `release-constants`, `release-sdk`, and `release-cli` use npm OIDC trusted
+  publishing; every publish passes `--provenance`. Set each package's publishing
+  access to "Require two-factor authentication and disallow tokens" so only the
+  trusted publisher can publish.
 - **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.
 - The SDK must build without the contracts checkout: codegen downloads the
   pinned release by default. `SDK_SPECS=local` is the explicit override for
-  contracts-changed lanes and local contract work.
+  contracts, `utils`, or `constants` changes and local contract work.
 
 ### Repository shape
 
@@ -569,7 +618,7 @@ The offline contract tests don't need the AlgoKit CLI or Docker because the
 `algorand-typescript-testing` transformer runs the contract source directly
 under Node - the contracts verification job is pure Node and consumes nothing
 from `compile-contracts`, never the compiled TEAL. `build-sdk` downloads
-`contracts-artifacts` on contracts-changed runs (see above for why); SDK
+`contracts-artifacts` when `compile-contracts` ran (see above for why); SDK
 verification consumes `sdk-generated`, and the frontend and CLI lanes install
 the published SDK or the packed `sdk-dist` copy.
 

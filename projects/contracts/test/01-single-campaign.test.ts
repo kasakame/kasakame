@@ -1,6 +1,6 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { ALGO } from '@kasakame/utils/testing'
+import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
@@ -66,11 +66,11 @@ describe('01 single campaign', () => {
 
     test('CON-011 pledge to campaign A', async () => {
       backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
+      txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
 
       const state = await campaignState(campaign.appClient)
       expect(state.n).toEqual(1n)
-      expect(state.raised).toEqual(2n * ALGO)
+      expect(state.raised).toEqual(2n * MICRO_ALGOS_PER_ALGO)
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(true)
     })
 
@@ -81,7 +81,7 @@ describe('01 single campaign', () => {
         campaign.appId,
         backer.addr.toString(),
         0,
-        2n * ALGO,
+        2n * MICRO_ALGOS_PER_ALGO,
         txid,
         'cancelPledge(uint64,uint64,byte[],byte[])void',
         oracle,
@@ -120,14 +120,14 @@ describe('01 single campaign', () => {
     const campaign = await deployCampaign(stack, creator.addr.toString())
     const oracle = new ClaimTreeOracle('single-test-')
 
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, oracle)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
     await spendCampaign(
       stack,
       campaign.appClient,
       campaign.appId,
       backer.addr.toString(),
       0,
-      2n * ALGO,
+      2n * MICRO_ALGOS_PER_ALGO,
       txid,
       'cancelPledge(uint64,uint64,byte[],byte[])void',
       oracle,

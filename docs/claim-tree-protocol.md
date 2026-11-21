@@ -6,6 +6,8 @@
 > [`claim-tree-protocol-reference.py`](claim-tree-protocol-reference.py) and serves as the oracle for the contract test suite
 > (driven via `test/utils/oracle.py`).
 
+The cap, fee coefficients, and zero root live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
+
 ## 1. Repository and protocol verification
 
 AVM facts below were verified against go-algorand `master` (`data/transactions/logic/opcodes.go`,
@@ -54,7 +56,7 @@ AVM facts below were verified against go-algorand `master` (`data/transactions/l
 | Program size | 2,048 B combined approval + clear base; +2,048 B per extra page; 3 extra pages without surcharge (up to 7 with a fee surcharge on newer consensus) | `MaxAppTotalProgramLen`, `MaxExtraAppProgramPages`; [`limits.md`](limits.md) |
 | Inner transactions | 16 per app call; 256 per group | `MaxInnerTransactions`; [`limits.md`](limits.md) |
 | Box | 2,500 + 400×(name+value) µA MBR; name ≤ 64 B, value ≤ 32 KB; 8 refs/call; 2,048 B IO budget per ref | docs, `consensus.go` v36, repo constants |
-| App opt-in (local state) MBR | 100,000 + 50,000/byte-slice + 28,500/uint, on the **opted-in account**; app deletion does **not** release it | `userBalance.go`, `deleteApplication` |
+| App opt-in (local state) MBR | 100,000 + 25,000/entry + 25,000/byte-slice + 3,500/uint, on the **opted-in account**; app deletion does **not** release it | `userBalance.go`, `deleteApplication` |
 | No history access | `block` = header fields only; no opcode reads past transactions or logs; no state-proof verification | `opcodes.go` |
 
 ## 2. Formal protocol definition
@@ -407,7 +409,7 @@ vault/Registry app ids plus the campaign app id.
 
 Exactly as §9: campaign = 10 global slots; vault = one 65-byte box per campaign
 (live and failed; deleted on claim-finalization or finalize). **No local state, no ASA, no per-backer storage anywhere.** Campaign
-account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (4×50,000 + 6×28,500 = 371,000) + 1 extra page
+account balance: 0 (never funded). MBR: creator = app creation (100,000) + schema (10×25,000 + 4×25,000 + 6×3,500 = 371,000) + 1 extra page
 (100,000) + registration (18,900) = **589,900 µA (~0.59 ALGO)**, fully recovered in the atomic `[unregister, delete]` group; vault = 32,100 µA
 per live/failed campaign, recovered via `notifyDelete`/`releaseClaimed`/`finalize`; backer = **0**. The 1-page target is ~0.49 ALGO;
 see [`limits.md`](limits.md) for the current footprint and the page-boundary rule.

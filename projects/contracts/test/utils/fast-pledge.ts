@@ -1,11 +1,11 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { base32ToBytes } from '@kasakame/utils'
-import { FEE } from '@kasakame/utils/testing'
+import { FEE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS, PLEDGE_GROUP_FEE_MICRO_ALGOS } from '@kasakame/constants'
+import { base32ToBytes } from '@kasakame/utils/testing'
 import { ABIMethod, decodeAddress } from 'algosdk'
 import { createHash } from 'node:crypto'
-import { PLEDGE_FEES, pledgeExtraFee, spendExtraFee } from './campaign'
+import { pledgeExtraFee, spendExtraFee } from './campaign'
 import type { ContractStack } from './platform'
 import { campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
@@ -214,7 +214,7 @@ export async function fastPledge(
     sender: backer,
     appReferences: [stack.registry.appId],
     boxReferences: [vaultBoxRef(stack.vault.appId, appId), registrationBoxRef(stack.registry.appId, appId)],
-    extraFee: microAlgos(FEE),
+    extraFee: microAlgos(FEE_MICRO_ALGOS),
   })
   const result = await composer.send({ suppressLog: true, populateAppCallResources: false })
   const payTxid = result.txIds[0]
@@ -223,13 +223,8 @@ export async function fastPledge(
   const leaf = leafFor(backer, amount, txid)
   const index = tree.n
   tree.append(leaf, txid)
-  return { index, txid, leaf, fee: PLEDGE_FEES + extraFee }
+  return { index, txid, leaf, fee: PLEDGE_GROUP_FEE_MICRO_ALGOS + extraFee }
 }
-
-/** The cap size (#220): 2^19 - 1, the largest tree the contract accepts. */
-export const CAP_TREE_SIZE = 524_287
-/** Pledge amount at the cap: 0.1 ALGO. */
-export const CAP_AMOUNT = 100_000n
 
 /** The principal and pledge fees spent to fill a tree. */
 export interface CapPledgeRun {
@@ -260,7 +255,7 @@ export async function runPledges(
   let fees = 0n
   console.log(`filling ${count.toString()} positions`)
   for (let i = 0; i < count; i++) {
-    fees += (await fastPledge(stack, appId, backer, CAP_AMOUNT, tree)).fee
+    fees += (await fastPledge(stack, appId, backer, MIN_PLEDGE_MICRO_ALGOS, tree)).fee
     const done = i + 1
     if (done % 1_000 === 0) {
       const state = await campaignState(appClient)
@@ -275,7 +270,7 @@ export async function runPledges(
       console.log(`${done.toString()}/${count.toString()} pledges, ${rate.toFixed(2)} pledges/s, eta ${etaMinutes.toString()} min`)
     }
   }
-  return { principal: BigInt(count) * CAP_AMOUNT, fees }
+  return { principal: BigInt(count) * MIN_PLEDGE_MICRO_ALGOS, fees }
 }
 
 interface InnerTxnList {
@@ -339,7 +334,7 @@ export async function fastSpend(
   const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
   tree.null(k)
-  return { k, takes, fee: extraFee + FEE, path }
+  return { k, takes, fee: extraFee + FEE_MICRO_ALGOS, path }
 }
 
 /**
@@ -382,7 +377,7 @@ export async function fastVaultSpend(
   const takes = await simulatedTakeCount(composer)
   await composer.send({ suppressLog: true })
   tree.null(k)
-  return { k, takes, fee: extraFee + FEE, path }
+  return { k, takes, fee: extraFee + FEE_MICRO_ALGOS, path }
 }
 
 /** The leaf hash for a pledge (exported for tests/assertions). */

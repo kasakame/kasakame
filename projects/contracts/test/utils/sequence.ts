@@ -1,9 +1,16 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
-import { ALGO, FEE, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import {
+  FEE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  MIN_REFUND_WINDOW_SECONDS,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { expect } from 'vitest'
-import { TEST_VAULT_WINDOW, VAULT_BOX_MBR, pledge, spendCampaign, spendVault } from './campaign'
+import { pledge, spendCampaign, spendVault } from './campaign'
 import { ClaimTreeOracle } from './oracle'
 import { deleteCampaign, deployCampaign, type ContractStack } from './platform'
 import { seededRandom } from './random'
@@ -14,7 +21,7 @@ const SEQUENCE_BACKERS = 5
 const CANCEL_CHANCE = 0.25
 const CAMPAIGN_REFUND_DIVISOR = 10
 const VAULT_REFUND_DIVISOR = 20
-const VAULT_WINDOW_ADVANCE = Number(TEST_VAULT_WINDOW) + 4_000
+const VAULT_WINDOW_ADVANCE = MIN_REFUND_WINDOW_SECONDS + 4_000
 
 interface Leaf {
   backer: Account
@@ -56,7 +63,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
   for (let i = 0; i < SEQUENCE_BACKERS; i++) {
     backers.push(await fixture.context.generateAccount({ initialFunds: (300).algo(), suppressLog: true }))
   }
-  const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: BigInt(config.maxN + 1) * ALGO })
+  const campaign = await deployCampaign(stack, creator.addr.toString(), { goal: BigInt(config.maxN + 1) * MICRO_ALGOS_PER_ALGO })
   const oracle = new ClaimTreeOracle(`sequence-${seed.toString()}-`)
   const leaves: Leaf[] = []
   try {
@@ -72,7 +79,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
             campaign.appId,
             leaf.backer.addr.toString(),
             index,
-            1n * ALGO,
+            1n * MICRO_ALGOS_PER_ALGO,
             leaf.txid,
             'cancelPledge(uint64,uint64,byte[],byte[])void',
             oracle,
@@ -81,12 +88,12 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
         }
       }
       const backer = at(backers, i % backers.length)
-      const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, oracle)
+      const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, oracle)
       leaves.push({ backer, txid, spent: false })
       actions.push(`pledge:${i.toString()}:backer=${(i % backers.length).toString()}`)
     }
 
-    await advanceTime(fixture, 86_400)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     const campaignRefunds = Math.max(1, Math.floor(config.maxN / CAMPAIGN_REFUND_DIVISOR))
     for (let i = 0; i < campaignRefunds; i++) {
       const index = pickUnspent(random, leaves)
@@ -99,7 +106,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
         campaign.appId,
         leaf.backer.addr.toString(),
         index,
-        1n * ALGO,
+        1n * MICRO_ALGOS_PER_ALGO,
         leaf.txid,
         'refund(uint64,uint64,byte[],byte[])void',
         oracle,
@@ -114,7 +121,7 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
       if (index === undefined) break
       const leaf = at(leaves, index)
       actions.push(`vault-refund:${index.toString()}`)
-      await spendVault(stack, campaign.appId, leaf.backer.addr.toString(), index, 1n * ALGO, leaf.txid, oracle)
+      await spendVault(stack, campaign.appId, leaf.backer.addr.toString(), index, 1n * MICRO_ALGOS_PER_ALGO, leaf.txid, oracle)
       leaf.spent = true
     }
 
@@ -125,13 +132,15 @@ export async function runSequence(fixture: AlgorandFixture, stack: ContractStack
       method: 'finalize(uint64)void',
       args: [campaign.appId],
       sender: at(backers, 0).addr,
-      extraFee: microAlgos(FEE),
+      extraFee: microAlgos(FEE_MICRO_ALGOS),
       suppressLog: true,
     })
 
     const spent = leaves.filter((leaf) => leaf.spent).length
-    expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + BigInt(config.maxN - spent) * ALGO)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR)
+    expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(
+      sweeperBefore + BigInt(config.maxN - spent) * MICRO_ALGOS_PER_ALGO,
+    )
+    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)

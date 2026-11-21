@@ -1,4 +1,5 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
+import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
 
 /**
  * Fund any address on LocalNet from the dispenser (test accounts start at 0 ALGO).
@@ -16,7 +17,7 @@ void (async () => {
 
   const algorand = AlgorandClient.defaultLocalNet()
   const dispenser = await algorand.account.localNetDispenser()
-  await algorand.send.payment({ sender: dispenser.addr, receiver: address, amount: microAlgos(algo * 1_000_000n) })
+  await algorand.send.payment({ sender: dispenser.addr, receiver: address, amount: microAlgos(algo * MICRO_ALGOS_PER_ALGO) })
 
   const info = await algorand.account.getInformation(address)
   console.log(`funded ${address} balance=${String(info.balance.microAlgo)}`)

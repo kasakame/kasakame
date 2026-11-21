@@ -18,6 +18,13 @@ import {
   op,
   urange,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  MAX_REFUND_WINDOW_SECONDS,
+  MAX_TREE_SIZE,
+  MIN_REFUND_WINDOW_SECONDS,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+} from '@kasakame/constants/source'
 
 /**
  * ClaimsVault - the permanent, pooled refund escrow for kasakame campaigns (claim-tree design, see
@@ -61,19 +68,8 @@ const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 // vault inflow is tied to a backer leaf (kept in sync by the integration tests).
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
-// A 1-second window is not credible backer protection; the deploy default stays 730 days.
-const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
-
-// Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Keeps `settledAt + refundWindow` far from
-// uint64 overflow even if the vault is created directly instead of through the deploy script.
-const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
-
 // uint64 maximum, for the explicit paidIn overflow guard.
 const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
-
-// Keep in sync with Campaign.MAX_TREE_SIZE and the SDK's MAX_TREE_SIZE. A campaign at this cap that has not reached
-// its goal can never succeed, so `settleOpen` fails it early instead of waiting for the deadline.
-const MAX_TREE_SIZE = Uint64(524_287)
 
 export class ClaimsVault extends Contract {
   /**
@@ -108,8 +104,9 @@ export class ClaimsVault extends Contract {
     assert(target !== Global.zeroAddress, 'sweep target must not be zero')
     assert(target !== Global.currentApplicationAddress, 'sweep target must not be the vault')
     assert(target !== registry.address, 'sweep target must not be the registry')
-    assert(window >= MIN_REFUND_WINDOW_SECONDS, 'refund window too short')
-    assert(window <= MAX_REFUND_WINDOW_SECONDS, 'refund window too long')
+    // A 1-second window is not credible; cap at 10 years so `settledAt + refundWindow` cannot overflow.
+    assert(window >= Uint64(MIN_REFUND_WINDOW_SECONDS), 'refund window too short')
+    assert(window <= Uint64(MAX_REFUND_WINDOW_SECONDS), 'refund window too long')
 
     this.registry.value = registry
     this.sweepTarget.value = target
@@ -315,7 +312,8 @@ export class ClaimsVault extends Contract {
     const box = this.readBox(app.id)
     const status = box.slice(56, 57)
     if (status === BOX_OPEN) {
-      assert(n <= MAX_TREE_SIZE, 'n above maximum')
+      // 2^19 - 1: a cap-saturated campaign that missed its goal is failed in fact.
+      assert(n <= Uint64(MAX_TREE_SIZE), 'n above maximum')
       this.campaignBox(app.id).value = this.packBox(
         op.btoi(box.slice(0, 8)),
         op.btoi(box.slice(8, 16)),
@@ -361,8 +359,9 @@ export class ClaimsVault extends Contract {
     assert(rootState[0].length === Uint64(32), 'bad root length')
     assert(statusState[0] <= Uint64(2), 'invalid campaign status')
     assert(statusState[0] !== Uint64(2), 'campaign already claimed')
-    assert(nState[0] <= MAX_TREE_SIZE, 'n above maximum')
-    assert(Global.latestTimestamp >= deadlineState[0] || nState[0] >= MAX_TREE_SIZE, 'deadline has not passed')
+    // 2^19 - 1: settle a cap-saturated campaign before its deadline.
+    assert(nState[0] <= Uint64(MAX_TREE_SIZE), 'n above maximum')
+    assert(Global.latestTimestamp >= deadlineState[0] || nState[0] >= Uint64(MAX_TREE_SIZE), 'deadline has not passed')
     assert(raisedState[0] < goalState[0], 'goal was reached')
 
     this.campaignBox(app.id).value = this.packBox(
@@ -405,7 +404,7 @@ export class ClaimsVault extends Contract {
 
     // Reserve the whole refund from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
     // base budget. The blob length is validated below, and an underfunded group fails atomically.
-    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)

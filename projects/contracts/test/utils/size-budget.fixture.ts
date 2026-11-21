@@ -3,7 +3,7 @@
  *
  * Update this fixture and `docs/limits.md` together when a contract changes.
  */
-export const SIZE_BUDGET = {
+export const CONTRACT_SIZES = {
   campaign: {
     contract: 'Campaign',
     approval: 2_246,

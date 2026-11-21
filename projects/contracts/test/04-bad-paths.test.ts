@@ -2,15 +2,19 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
-import { appIdBytes, concatHex } from '@kasakame/utils'
-import { ALGO, FEE, accountInfo, advanceTime, balanceOf } from '@kasakame/utils/testing'
+import {
+  FEE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  MIN_REFUND_WINDOW_SECONDS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  SECONDS_PER_DAY,
+} from '@kasakame/constants'
+import { accountInfo, advanceTime, appIdBytes, balanceOf, concatHex } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { ABIMethod, OnApplicationComplete, decodeAddress, getApplicationAddress } from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
-  REGISTER_MBR,
-  TEST_VAULT_WINDOW,
   campaignBox,
   campaignBoxExists,
   campaignState,
@@ -133,7 +137,7 @@ async function buildPledgeGroup(
       sender: feePayer,
       receiver: feePayer,
       amount: microAlgos(0n),
-      staticFee: microAlgos(groupSize * FEE),
+      staticFee: microAlgos(groupSize * FEE_MICRO_ALGOS),
     })
   }
   const pay = await stack.algorand.createTransaction.payment({
@@ -162,7 +166,7 @@ async function buildPledgeGroup(
         sender: callerAddr,
         appReferences: target === stack.vault.appId ? [stack.registry.appId] : [stack.registry.appId, stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.registry.appId, campaign.appId)],
-        ...(defaultFee ? { extraFee: microAlgos(FEE) } : { staticFee: microAlgos(0n) }),
+        ...(defaultFee ? { extraFee: microAlgos(FEE_MICRO_ALGOS) } : { staticFee: microAlgos(0n) }),
       }
       if (options.rawSelector !== undefined) {
         composer.addAppCall({
@@ -193,13 +197,13 @@ async function buildPledgeGroup(
 async function failedCampaign(
   fixture: AlgorandFixture,
   stack: ContractStack,
-  amount = 1n * ALGO,
-  goal = 2n * ALGO,
+  amount = 1n * MICRO_ALGOS_PER_ALGO,
+  goal = 2n * MICRO_ALGOS_PER_ALGO,
 ): Promise<{ campaign: CampaignFixture; backer: Account; txid: string }> {
   const campaign = await createCampaign(fixture, stack, { goal })
   const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
   const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), amount, campaign.oracle)
-  await advanceTime(fixture, 86_400)
+  await advanceTime(fixture, SECONDS_PER_DAY)
   return { campaign, backer, txid }
 }
 
@@ -218,7 +222,7 @@ async function refundFromVault(
     args: [campaign.appId, BigInt(k), amount, Buffer.from(txid, 'hex'), blob],
     sender: backer.addr,
     boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-    extraFee: microAlgos(FEE + 2n * FEE),
+    extraFee: microAlgos(FEE_MICRO_ALGOS + 2n * FEE_MICRO_ALGOS),
     suppressLog: true,
   })
 }
@@ -305,7 +309,7 @@ describe('04 bad paths', () => {
 
   test('CON-100 creator cannot pledge to their own campaign', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
-    const composer = await buildPledgeGroup(stack, campaign, campaign.creator.addr.toString(), { amount: 1n * ALGO }, [])
+    const composer = await buildPledgeGroup(stack, campaign, campaign.creator.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, [])
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/creator cannot pledge to their own campaign/)
   })
 
@@ -316,7 +320,7 @@ describe('04 bad paths', () => {
       stack,
       campaign,
       backer.addr.toString(),
-      { amount: 1n * ALGO, receiver: campaign.creator.addr.toString() },
+      { amount: 1n * MICRO_ALGOS_PER_ALGO, receiver: campaign.creator.addr.toString() },
       [],
     )
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/payment must be made to the vault/)
@@ -329,7 +333,7 @@ describe('04 bad paths', () => {
       stack,
       campaign,
       backer.addr.toString(),
-      { amount: 1n * ALGO, sender: campaign.creator.addr.toString() },
+      { amount: 1n * MICRO_ALGOS_PER_ALGO, sender: campaign.creator.addr.toString() },
       [],
     )
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/payment must come from the caller/)
@@ -354,18 +358,18 @@ describe('04 bad paths', () => {
     const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
 
-    await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
     const staleFrontier = campaign.oracle
       .frontier()
       .peaks.map((peak) => (peak.slice(0, 2) === '00' ? `01${peak.slice(2)}` : `00${peak.slice(2)}`))
-    const composer = await buildPledgeGroup(stack, campaign, backerB.addr.toString(), { amount: 1n * ALGO }, staleFrontier)
+    const composer = await buildPledgeGroup(stack, campaign, backerB.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, staleFrontier)
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/stale or forged frontier/)
   })
 
   test('CON-106 pledge without the matching credit is rejected', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const composer = await buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * ALGO }, [], false)
+    const composer = await buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, [], false)
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
   })
@@ -373,7 +377,7 @@ describe('04 bad paths', () => {
   test('CON-107 unregistered campaign cannot be credited', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack, { register: false })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const composer = await buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * ALGO }, [])
+    const composer = await buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, [])
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/campaign not registered/)
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
   })
@@ -381,15 +385,15 @@ describe('04 bad paths', () => {
   test('CON-108 cancel after the deadline is rejected', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-    await advanceTime(fixture, 86_400)
+    await advanceTime(fixture, SECONDS_PER_DAY)
 
     await expect(
       campaign.appClient.send.call({
         method: 'cancelPledge(uint64,uint64,byte[],byte[])void',
-        args: [0n, 1n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [0n, 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -400,19 +404,26 @@ describe('04 bad paths', () => {
   })
 
   test('CON-130 final-day cancel that would drop the goal is rejected', { tags: ['bad', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 2n * ALGO, deadlineOffset: 2 * 86_400 })
+    const campaign = await createCampaign(fixture, stack, { goal: 2n * MICRO_ALGOS_PER_ALGO, deadlineOffset: 2 * SECONDS_PER_DAY })
     const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
-    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
-    await advanceTime(fixture, 86_400 + 60)
+    const txidA = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY + 60)
 
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
     await expect(
       campaign.appClient.send.call({
         method: 'cancelPledge(uint64,uint64,byte[],byte[])void',
-        args: [0n, 1n * ALGO, Buffer.from(txidA, 'hex'), blob],
+        args: [0n, 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(txidA, 'hex'), blob],
         sender: backerA.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -420,16 +431,23 @@ describe('04 bad paths', () => {
         suppressLog: true,
       }),
     ).rejects.toThrow(/cancel would drop below goal in the final day/)
-    expect((await campaignState(campaign.appClient)).raised).toEqual(2n * ALGO)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(2n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('CON-131 final-day cancel that keeps the goal is allowed', { tags: ['bad', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1n * ALGO, deadlineOffset: 2 * 86_400 })
+    const campaign = await createCampaign(fixture, stack, { goal: 1n * MICRO_ALGOS_PER_ALGO, deadlineOffset: 2 * SECONDS_PER_DAY })
     const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
-    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
-    await advanceTime(fixture, 86_400 + 60)
+    const txidA = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY + 60)
 
     await spendCampaign(
       stack,
@@ -437,20 +455,27 @@ describe('04 bad paths', () => {
       campaign.appId,
       backerA.addr.toString(),
       0,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       txidA,
       'cancelPledge(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
     )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * ALGO)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('CON-132 a goal-dropping cancel before the final day is allowed', { tags: ['bad', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 2n * ALGO, deadlineOffset: 2 * 86_400 })
+    const campaign = await createCampaign(fixture, stack, { goal: 2n * MICRO_ALGOS_PER_ALGO, deadlineOffset: 2 * SECONDS_PER_DAY })
     const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
-    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
+    const txidA = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
+    await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
 
     await spendCampaign(
       stack,
@@ -458,25 +483,25 @@ describe('04 bad paths', () => {
       campaign.appId,
       backerA.addr.toString(),
       0,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       txidA,
       'cancelPledge(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
     )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * ALGO)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(1n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('CON-109 refund before the deadline is rejected', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
 
     await expect(
       campaign.appClient.send.call({
         method: 'refund(uint64,uint64,byte[],byte[])void',
-        args: [0n, 1n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [0n, 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -487,17 +512,17 @@ describe('04 bad paths', () => {
   })
 
   test('CON-110 refund after the goal was reached is rejected', { tags: ['bad', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1n * ALGO })
+    const campaign = await createCampaign(fixture, stack, { goal: 1n * MICRO_ALGOS_PER_ALGO })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * ALGO, campaign.oracle)
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
     const path = campaign.oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-    await advanceTime(fixture, 86_400)
+    await advanceTime(fixture, SECONDS_PER_DAY)
 
     await expect(
       campaign.appClient.send.call({
         method: 'refund(uint64,uint64,byte[],byte[])void',
-        args: [0n, 2n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -508,10 +533,10 @@ describe('04 bad paths', () => {
   })
 
   test('CON-111 only the creator can claim', { tags: ['bad', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1n * ALGO })
+    const campaign = await createCampaign(fixture, stack, { goal: 1n * MICRO_ALGOS_PER_ALGO })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
-    await advanceTime(fixture, 86_400)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
+    await advanceTime(fixture, SECONDS_PER_DAY)
 
     await expect(
       campaign.appClient.send.call({
@@ -520,7 +545,7 @@ describe('04 bad paths', () => {
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-        extraFee: microAlgos(2n * FEE),
+        extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
         suppressLog: true,
       }),
     ).rejects.toThrow(/only the creator can claim/)
@@ -529,7 +554,7 @@ describe('04 bad paths', () => {
   test('CON-112 raw delete is rejected', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
 
     const composer = stack.algorand.send.newGroup()
     composer.addAppCallMethodCall({
@@ -540,7 +565,7 @@ describe('04 bad paths', () => {
       onComplete: OnApplicationComplete.DeleteApplicationOC,
       appReferences: [stack.vault.appId],
       boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-      extraFee: microAlgos(2n * FEE),
+      extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/unregister must precede delete/)
   })
@@ -548,7 +573,7 @@ describe('04 bad paths', () => {
   test('CON-113 a live campaign cannot be unregistered', { tags: ['bad', 'always'] }, async () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
 
     const composer = stack.algorand.send.newGroup()
     composer.addAppCallMethodCall({
@@ -557,7 +582,7 @@ describe('04 bad paths', () => {
       args: [campaign.appId],
       sender: campaign.creator.addr,
       appReferences: [campaign.appId],
-      extraFee: microAlgos(FEE),
+      extraFee: microAlgos(FEE_MICRO_ALGOS),
     })
     composer.addAppCallMethodCall({
       appId: campaign.appId,
@@ -567,7 +592,7 @@ describe('04 bad paths', () => {
       onComplete: OnApplicationComplete.DeleteApplicationOC,
       appReferences: [stack.vault.appId],
       boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-      extraFee: microAlgos(2n * FEE),
+      extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/campaign is still live/)
 
@@ -580,7 +605,7 @@ describe('04 bad paths', () => {
       args: [pristine.appId],
       sender: stranger.addr,
       appReferences: [pristine.appId],
-      extraFee: microAlgos(FEE),
+      extraFee: microAlgos(FEE_MICRO_ALGOS),
     })
     strangerGroup.addAppCallMethodCall({
       appId: pristine.appId,
@@ -589,7 +614,7 @@ describe('04 bad paths', () => {
       sender: pristine.creator.addr,
       onComplete: OnApplicationComplete.DeleteApplicationOC,
       appReferences: [stack.vault.appId],
-      extraFee: microAlgos(2n * FEE),
+      extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
     })
     await expect(strangerGroup.send({ suppressLog: true })).rejects.toThrow(/only the campaign creator can unregister/)
     expect(await isRegistered(stack.registry.client, pristine.appId, stack.ownerAddress)).toEqual(true)
@@ -601,18 +626,18 @@ describe('04 bad paths', () => {
     const pay = await stack.algorand.createTransaction.payment({
       sender: backer.addr,
       receiver: stack.vault.address,
-      amount: microAlgos(1n * ALGO),
+      amount: microAlgos(1n * MICRO_ALGOS_PER_ALGO),
     })
     const composer = stack.algorand.send.newGroup()
     composer.addTransaction(pay)
     composer.addAppCallMethodCall({
       appId: stack.vault.appId,
       method: ABIMethod.fromSignature('credit(uint64,uint64)void'),
-      args: [campaign.appId, 1n * ALGO],
+      args: [campaign.appId, 1n * MICRO_ALGOS_PER_ALGO],
       sender: backer.addr,
       appReferences: [stack.registry.appId],
       boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId), registrationBoxRef(stack.registry.appId, campaign.appId)],
-      extraFee: microAlgos(FEE),
+      extraFee: microAlgos(FEE_MICRO_ALGOS),
     })
     await expect(composer.send({ suppressLog: true })).rejects.toThrow(/credit must follow pledge/)
   })
@@ -621,7 +646,7 @@ describe('04 bad paths', () => {
     const campaign = await createCampaign(fixture, stack)
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const stranger = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle)
+    await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle)
 
     await expect(
       stack.vault.client.send.call({
@@ -679,7 +704,7 @@ describe('04 bad paths', () => {
     await stack.algorand.send.payment({
       sender: attacker.addr,
       receiver: getApplicationAddress(callerAppId).toString(),
-      amount: microAlgos(1n * ALGO),
+      amount: microAlgos(1n * MICRO_ALGOS_PER_ALGO),
       suppressLog: true,
     })
 
@@ -691,7 +716,7 @@ describe('04 bad paths', () => {
         args: [appIdBytes(campaign.appId), appIdBytes(amount), decodeAddress(stack.vault.address).publicKey],
         appReferences: [campaign.appId],
         accountReferences: [stack.vault.address],
-        extraFee: microAlgos(2n * FEE),
+        extraFee: microAlgos(2n * FEE_MICRO_ALGOS),
         suppressLog: true,
       }),
     ).rejects.toThrow(/must be called from the top level/)
@@ -701,7 +726,7 @@ describe('04 bad paths', () => {
     const payment = await stack.algorand.createTransaction.payment({
       sender: stack.owner.addr,
       receiver: stack.registry.address,
-      amount: microAlgos(REGISTER_MBR),
+      amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
     })
     await expect(
       stack.registry.client.send.call({
@@ -722,17 +747,24 @@ describe('04 bad paths', () => {
       const openState = await campaignState(open.campaign.appClient)
       const openBox = await campaignBox(stack.vault.client, open.campaign.appId)
       await expect(
-        refundFromVault(stack, open.campaign, open.backer, 0, 1n * ALGO, open.txid, open.campaign.oracle.path(0)),
+        refundFromVault(stack, open.campaign, open.backer, 0, 1n * MICRO_ALGOS_PER_ALGO, open.txid, open.campaign.oracle.path(0)),
       ).rejects.toThrow(/campaign is not refundable/)
       expect(await campaignState(open.campaign.appClient)).toEqual(openState)
       expect(await campaignBox(stack.vault.client, open.campaign.appId)).toEqual(openBox)
 
       const claimedCreator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       const claimedBacker = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * ALGO })
+      const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * MICRO_ALGOS_PER_ALGO })
       const claimedOracle = new ClaimTreeOracle('claimed-guard-')
-      const claimedTxid = await pledge(stack, claimed.appClient, claimed.appId, claimedBacker.addr.toString(), 1n * ALGO, claimedOracle)
-      await advanceTime(fixture, 86_400)
+      const claimedTxid = await pledge(
+        stack,
+        claimed.appClient,
+        claimed.appId,
+        claimedBacker.addr.toString(),
+        1n * MICRO_ALGOS_PER_ALGO,
+        claimedOracle,
+      )
+      await advanceTime(fixture, SECONDS_PER_DAY)
       await claimCampaign(stack, claimed.appClient, claimed.appId, claimedCreator.addr.toString())
       await expect(
         refundFromVault(
@@ -740,7 +772,7 @@ describe('04 bad paths', () => {
           { ...claimed, creator: claimedCreator, oracle: claimedOracle },
           claimedBacker,
           0,
-          1n * ALGO,
+          1n * MICRO_ALGOS_PER_ALGO,
           claimedTxid,
           claimedOracle.path(0),
         ),
@@ -749,9 +781,9 @@ describe('04 bad paths', () => {
       const window = await failedCampaign(fixture, stack)
       await deleteCampaign(stack, window.campaign.appId, window.campaign.creator.addr.toString())
       const windowBox = await campaignBox(stack.vault.client, window.campaign.appId)
-      await advanceTime(fixture, Number(TEST_VAULT_WINDOW) + 4_000)
+      await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
       await expect(
-        refundFromVault(stack, window.campaign, window.backer, 0, 1n * ALGO, window.txid, window.campaign.oracle.path(0)),
+        refundFromVault(stack, window.campaign, window.backer, 0, 1n * MICRO_ALGOS_PER_ALGO, window.txid, window.campaign.oracle.path(0)),
       ).rejects.toThrow(/refund window closed/)
       expect(await campaignBox(stack.vault.client, window.campaign.appId)).toEqual(windowBox)
 
@@ -761,10 +793,10 @@ describe('04 bad paths', () => {
       await expect(
         stack.vault.client.send.call({
           method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
-          args: [unknown.campaign.appId, 1n, 1n * ALGO, Buffer.from(unknown.txid, 'hex'), new Uint8Array()],
+          args: [unknown.campaign.appId, 1n, 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(unknown.txid, 'hex'), new Uint8Array()],
           sender: unknown.backer.addr,
           boxReferences: [vaultBoxRef(stack.vault.appId, unknown.campaign.appId)],
-          extraFee: microAlgos(FEE),
+          extraFee: microAlgos(FEE_MICRO_ALGOS),
           suppressLog: true,
         }),
       ).rejects.toThrow(/unknown position/)
@@ -778,23 +810,23 @@ describe('04 bad paths', () => {
     async () => {
       const early = await createCampaign(fixture, stack)
       const earlyBacker = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      await pledge(stack, early.appClient, early.appId, earlyBacker.addr.toString(), 1n * ALGO, early.oracle)
+      await pledge(stack, early.appClient, early.appId, earlyBacker.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, early.oracle)
       const earlyState = await campaignState(early.appClient)
       await expect(settleOpen(stack, early.appId, earlyBacker.addr.toString())).rejects.toThrow(/deadline has not passed/)
       expect(await campaignState(early.appClient)).toEqual(earlyState)
 
-      const goal = await createCampaign(fixture, stack, { goal: 1n * ALGO })
+      const goal = await createCampaign(fixture, stack, { goal: 1n * MICRO_ALGOS_PER_ALGO })
       const goalBacker = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      await pledge(stack, goal.appClient, goal.appId, goalBacker.addr.toString(), 1n * ALGO, goal.oracle)
-      await advanceTime(fixture, 86_400)
+      await pledge(stack, goal.appClient, goal.appId, goalBacker.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, goal.oracle)
+      await advanceTime(fixture, SECONDS_PER_DAY)
       await expect(settleOpen(stack, goal.appId, goalBacker.addr.toString())).rejects.toThrow(/goal was reached/)
 
       const claimedCreator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
       const claimedBacker = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-      const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * ALGO })
+      const claimed = await deployCampaign(stack, claimedCreator.addr.toString(), { goal: 1n * MICRO_ALGOS_PER_ALGO })
       const claimedOracle = new ClaimTreeOracle('settle-claimed-')
-      await pledge(stack, claimed.appClient, claimed.appId, claimedBacker.addr.toString(), 1n * ALGO, claimedOracle)
-      await advanceTime(fixture, 86_400)
+      await pledge(stack, claimed.appClient, claimed.appId, claimedBacker.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, claimedOracle)
+      await advanceTime(fixture, SECONDS_PER_DAY)
       await claimCampaign(stack, claimed.appClient, claimed.appId, claimedCreator.addr.toString())
       await expect(settleOpen(stack, claimed.appId, claimedBacker.addr.toString())).rejects.toThrow(/campaign is not open/)
 
@@ -830,7 +862,7 @@ describe('04 bad paths', () => {
         stack,
         close,
         closeBacker.addr.toString(),
-        { amount: 1n * ALGO, closeRemainderTo: close.creator.addr.toString(), feePayer: stack.ownerAddress },
+        { amount: 1n * MICRO_ALGOS_PER_ALGO, closeRemainderTo: close.creator.addr.toString(), feePayer: stack.ownerAddress },
         closeFrontier,
       ).then((c) => c.send({ suppressLog: true })),
     ).rejects.toThrow(/payment must not close/)
@@ -846,7 +878,7 @@ describe('04 bad paths', () => {
         stack,
         rekey,
         rekeyBacker.addr.toString(),
-        { amount: 1n * ALGO, rekeyTo: rekey.creator.addr.toString() },
+        { amount: 1n * MICRO_ALGOS_PER_ALGO, rekeyTo: rekey.creator.addr.toString() },
         rekeyFrontier,
       ).then((c) => c.send({ suppressLog: true })),
     ).rejects.toThrow(/payment must not rekey/)
@@ -863,7 +895,7 @@ describe('04 bad paths', () => {
           credit: { rawSelector: new Uint8Array(4), onComplete: OnApplicationComplete.ClearStateOC },
           message: /credit must be a NoOp call/,
         },
-        { credit: { amount: 2n * ALGO }, message: /credit amount mismatch/ },
+        { credit: { amount: 2n * MICRO_ALGOS_PER_ALGO }, message: /credit amount mismatch/ },
         { credit: { appId: stack.registry.appId }, message: /credit must call the vault/ },
         { credit: { rawSelector: new Uint8Array(4) }, message: /credit selector mismatch/ },
         { credit: { trailingTxn: true }, message: /final transaction in the group/ },
@@ -875,7 +907,7 @@ describe('04 bad paths', () => {
         const frontier = campaign.oracle.frontier().peaks
         const before = await balanceOf(stack.algorand, backer.addr.toString())
         await expect(
-          buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * ALGO }, frontier, credit).then((c) =>
+          buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, frontier, credit).then((c) =>
             c.send({ suppressLog: true }),
           ),
         ).rejects.toThrow(message)
@@ -891,7 +923,9 @@ describe('04 bad paths', () => {
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const frontier = campaign.oracle.frontier().peaks
     await expect(
-      buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * ALGO }, frontier).then((c) => c.send({ suppressLog: true })),
+      buildPledgeGroup(stack, campaign, backer.addr.toString(), { amount: 1n * MICRO_ALGOS_PER_ALGO }, frontier).then((c) =>
+        c.send({ suppressLog: true }),
+      ),
     ).rejects.toThrow()
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
   })
@@ -900,8 +934,22 @@ describe('04 bad paths', () => {
     const campaign = await createCampaign(fixture, stack)
     const backerA = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
     const backerB = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-    const txidA = await pledge(stack, campaign.appClient, campaign.appId, backerA.addr.toString(), 1n * ALGO, campaign.oracle)
-    const txidB = await pledge(stack, campaign.appClient, campaign.appId, backerB.addr.toString(), 1n * ALGO, campaign.oracle)
+    const txidA = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerA.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
+    const txidB = await pledge(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backerB.addr.toString(),
+      1n * MICRO_ALGOS_PER_ALGO,
+      campaign.oracle,
+    )
     const oldPathA = campaign.oracle.path(0)
     const oldPathB = campaign.oracle.path(1)
 
@@ -911,7 +959,7 @@ describe('04 bad paths', () => {
       campaign.appId,
       backerA.addr.toString(),
       0,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       txidA,
       'cancelPledge(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
@@ -923,7 +971,7 @@ describe('04 bad paths', () => {
       const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
       await campaign.appClient.send.call({
         method: 'cancelPledge(uint64,uint64,byte[],byte[])void',
-        args: [BigInt(k), 1n * ALGO, Buffer.from(txid, 'hex'), blob],
+        args: [BigInt(k), 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
         sender: backer.addr,
         appReferences: [stack.vault.appId],
         boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
@@ -944,7 +992,7 @@ describe('04 bad paths', () => {
       doubleGroup.addAppCallMethodCall({
         appId: campaign.appId,
         method: ABIMethod.fromSignature('cancelPledge(uint64,uint64,byte[],byte[])void'),
-        args: [1n, 1n * ALGO, Buffer.from(txidB, 'hex'), currentBlob],
+        args: [1n, 1n * MICRO_ALGOS_PER_ALGO, Buffer.from(txidB, 'hex'), currentBlob],
         sender: backerB.addr,
         note: new TextEncoder().encode(`double-spend-${i.toString()}`),
         appReferences: [stack.vault.appId],
@@ -972,7 +1020,7 @@ describe('04 bad paths', () => {
       campaign.appId,
       backerB.addr.toString(),
       1,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       txidB,
       'cancelPledge(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
@@ -988,7 +1036,7 @@ describe('04 bad paths', () => {
       const strangerPay = await stack.algorand.createTransaction.payment({
         sender: stranger.addr,
         receiver: stack.registry.address,
-        amount: microAlgos(REGISTER_MBR),
+        amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
       })
       await expect(
         stack.registry.client.send.call({
@@ -1004,7 +1052,7 @@ describe('04 bad paths', () => {
       const differentPay = await stack.algorand.createTransaction.payment({
         sender: differentVault.creator.addr,
         receiver: stack.registry.address,
-        amount: microAlgos(REGISTER_MBR),
+        amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
       })
       await expect(
         stack.registry.client.send.call({
@@ -1020,7 +1068,7 @@ describe('04 bad paths', () => {
       const doublePay = await stack.algorand.createTransaction.payment({
         sender: double.creator.addr,
         receiver: stack.registry.address,
-        amount: microAlgos(REGISTER_MBR),
+        amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
       })
       await expect(
         stack.registry.client.send.call({
@@ -1052,7 +1100,7 @@ describe('04 bad paths', () => {
       const pay = await stack.algorand.createTransaction.payment({
         sender: options.paySender ?? creator,
         receiver: options.receiver ?? stack.registry.address,
-        amount: microAlgos(options.amount ?? REGISTER_MBR),
+        amount: microAlgos(options.amount ?? REGISTER_DEPOSIT_MICRO_ALGOS),
         ...(options.rekeyTo === undefined ? {} : { rekeyTo: options.rekeyTo }),
       })
       const composer = stack.algorand.send.newGroup()
@@ -1069,7 +1117,7 @@ describe('04 bad paths', () => {
       return composer.send({ suppressLog: true })
     }
 
-    await expect(attempt({ amount: REGISTER_MBR - 1n })).rejects.toThrow(/registration deposit must be exact/)
+    await expect(attempt({ amount: REGISTER_DEPOSIT_MICRO_ALGOS - 1n })).rejects.toThrow(/registration deposit must be exact/)
     await expect(attempt({ receiver: creator })).rejects.toThrow(/payment must be made to the registry/)
     await expect(attempt({ paySender: stranger.addr.toString() })).rejects.toThrow(/payment must come from the caller/)
     await expect(attempt({ trailing: true })).rejects.toThrow(/register must be the final transaction in the group/)
