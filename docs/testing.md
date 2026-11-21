@@ -98,10 +98,10 @@ chain-global time travel from overlapping.
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
 | `test/00-deploy.test.ts` | `CON-001`..`CON-006` | `smoke`, `always` | Registry + Vault deploy, immutable hashes/config, ownerless layout, permissionless one-time `bindVault`, app accounts, selectors, and the register/unregister round trip |
-| `test/01-single-campaign.test.ts` | `CON-010`..`CON-015` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; registration round trip |
+| `test/01-single-campaign.test.ts` | `CON-010`..`CON-016` | `smoke`, `happy`, `always`/`chain` | create one campaign, pledge, cancel, delete; pristine delete (registered and unregistered); one full solo workflow; a minimum pledge accepted and cancelled; registration round trip |
 | `test/02-funding.test.ts` | `CON-020`..`CON-025`, `CON-030`..`CON-033`, `CON-040`..`CON-044` | `happy`, `always`/`chain` | failed refund path, successful claim path, early-finalize rejection, residual sweep, standalone workflows, `settleOpen`, `releaseClaimed` |
 | `test/03-multi-actor.test.ts` | `CON-050`..`CON-055`, `CON-060`/`CON-061`, `CON-062` | `happy`, `scale`, `always`/`chain` | 10 campaigns/10 creators, five backers, creator-as-backer, isolation, vault pool accounting, one seeded normal-lane sequence |
-| `test/04-bad-paths.test.ts` | `CON-100`..`CON-132`, `CON-250`..`CON-253` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), app upgrade and raw on-completion guards, stale and forged proofs with retry, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards, create byte caps |
+| `test/04-bad-paths.test.ts` | `CON-100`..`CON-135`, `CON-250`..`CON-253` | `bad`, `always` | pledge and credit guards (close/rekey, ClearState, wrong app/args/onCompletion), app upgrade and raw on-completion guards, stale and forged proofs with retry, sender-bound and cross-campaign replay rejection, tampered amount and position proofs, final-day goal protection, vault refund and `settleOpen`/`releaseClaimed` matrices, deleted-campaign spends, Registry register deposit/group guards and overpay rejection, create byte caps |
 | `test/05-scale.test.ts` | `CON-202` | `scale`, `always` | 25 campaigns by 25 creators with 4 backers each; campaign isolation under load |
 | `test/06-tree-boundaries.test.ts` | `CON-200`/`CON-201`, `CON-210`..`CON-222` | `scale`, `always`/`chain` | N=16/100 boundaries plus the cumulative 15→1,024 ladder; the N=1,023 rung is the prelude-budget guard; settlement, campaign refund, vault refund, and finalize at 1,024 |
 | `test/07-sequences.test.ts` | `CON-230` | `scale`, `happy`, `always` | three heavy seeds; random pledge/cancel/refund/finalize sequences with oracle assertions |
@@ -114,6 +114,13 @@ chain-global time travel from overlapping.
 - The `06` ladder grows one campaign through N=15..1,024; run it in order (only `CON-210` creates the campaign).
 - `07` runs three heavy seeds; `CON-062` runs one normal-lane seed through the same engine.
 - The legacy `smart_contracts/**/contract.integration.test.ts` files are retired; their coverage lives in these files (see [Legacy migration map](#legacy-migration-map)).
+
+**Boundary policy.** The exact deadline, refund-window-end, and 180-day
+equality cases are pinned by the offline input-bound matrix (#235). LocalNet
+`advanceTime` offsets the next block, so second-exact equality is not reliably
+reproducible. Where an on-chain case is useful, the integration suite exercises
+the boundary from both sides with a block of margin; the exact-equality cases
+are deferred to the offline matrix (#201).
 
 ### Scale config and seeds
 
@@ -640,7 +647,7 @@ the pinned release predates all three.
 | `Registry.bindVault` | success / second bind / zero vault id / foreign Registry / wrong vault program / wrong sweep target / wrong refund window / empty vault hash / inner bind | ✅ |
 | `Registry.register` | success / unconfigured program hash / unconfigured vault / wrong vault / custom clear-state program / different approval/clear split / non-creator / impostor / deposit below and above the exact amount / wrong payer / wrong receiver / close-remainder and rekey payments rejected / double registration | ✅ |
 | `Registry.unregister` | success (pristine / all-cancelled / failed / claimed / failed-in-fact / cap-saturated before the deadline) / unregistered no-op / live rejection / invalid status / missing state / non-creator / delete pairing (missing / wrong app / sender / action / args / selector) | ✅ |
-| Attacks (LocalNet) | double-spend / stale + forged proofs / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / inner-call pollution (`CON-129`) / cap-saturation early failure (`CON-240`/`CON-241`) / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
+| Attacks (LocalNet) | double-spend / stale + forged proofs / sender-bound proof rejection / cross-campaign replay rejection / tampered amount and position / unregistered credit / uncredited pledge / no unpaired credit / atomic delist+delete / top-level inner-only calls / inner-call pollution (`CON-129`) / cap-saturation early failure (`CON-240`/`CON-241`) / settleOpen interplay / window enforcement / self-harm containment (§17 #29) / pooled isolation | ✅ |
 
 ## Browser E2E / acceptance tests
 

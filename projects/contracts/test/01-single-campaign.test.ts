@@ -1,10 +1,11 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
-import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
+import { MICRO_ALGOS_PER_ALGO, MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
+  campaignBox,
   campaignBoxExists,
   campaignState,
   deleteCampaign,
@@ -135,5 +136,31 @@ describe('01 single campaign', () => {
     await deleteCampaign(stack, campaign.appId, creator.addr.toString())
 
     await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()
+  })
+
+  test('CON-016 a minimum pledge is accepted and cancelled', { tags: ['happy', 'always'] }, async () => {
+    const creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
+    const campaign = await deployCampaign(stack, creator.addr.toString())
+    const oracle = new ClaimTreeOracle('min-pledge-')
+
+    const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), MIN_PLEDGE_MICRO_ALGOS, oracle)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(MIN_PLEDGE_MICRO_ALGOS)
+    expect((await campaignBox(stack.vault.client, campaign.appId)).paidIn).toEqual(MIN_PLEDGE_MICRO_ALGOS)
+
+    await spendCampaign(
+      stack,
+      campaign.appClient,
+      campaign.appId,
+      backer.addr.toString(),
+      0,
+      MIN_PLEDGE_MICRO_ALGOS,
+      txid,
+      'cancelPledge(uint64,uint64,byte[],byte[])void',
+      oracle,
+    )
+    expect((await campaignState(campaign.appClient)).raised).toEqual(0n)
+
+    await deleteCampaign(stack, campaign.appId, creator.addr.toString())
   })
 })
