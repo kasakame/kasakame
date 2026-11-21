@@ -4,66 +4,32 @@ import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import { ABIMethod } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'
+import { CAMPAIGNS_LOCALNET, CAMPAIGNS_TESTNET, DAY, REGISTER_MBR } from './campaigns'
+import { STATE_PATH, appIdBytes, isLocalNet, writeSeedState, type SeedEntry } from './state'
 
 /**
  * Seed demo `Campaign` applications so the frontend has data to render.
  *
  * Requires the Registry (`REGISTRY_APP_ID`) and the ClaimsVault (`VAULT_APP_ID`) to be deployed. Creates one campaign per wallet below,
  * runs the setup chain (create → register), and pledges to a couple of them from a backer wallet so the list shows partial progress.
- * Pledge frontiers come from the claim-tree reference oracle (`../oracle.py`), one state file per campaign.
+ * Each campaign gets at most one pledge, so the frontier is always empty.
  *
  * `npm run seed:localnet` targets LocalNet (`AlgorandClient.defaultLocalNet()`, auto-created KMD wallets) and loads
  * `.env.localnet`; `npm run seed:testnet` loads `.env.testnet`, where accounts come from `<NAME>_MNEMONIC` env vars
  * (`BACKER_A`, `ALICE`, `BOB`, `CAROL`, `DAVE`) and must be pre-funded. TestNet amounts are smaller (faucet-friendly).
  *
- * Created campaigns are recorded in `.seed-state.<network>.json` (gitignored) for `unseed-demo.ts`.
+ * Created campaigns are recorded in `.seed-state.<network>.json` (gitignored) for `unseed.ts`.
  *
  * Metadata URIs default to `ipfs://seed/<creator>` placeholders. Override per campaign (in table order,
- * comma-separated) with `SEED_METADATA_URIS`, e.g. real pins from `demo-metadata/cids.json`:
+ * comma-separated) with `SEED_METADATA_URIS`, e.g. real pins from `scripts/demo/metadata/cids.json`:
  * `SEED_METADATA_URIS=ipfs://bafkreiAAA,ipfs://bafkreiBBB npm run seed`.
  *
  * Usage: `npm run seed:localnet` (the Registry and vault ids come from `.env.localnet`; `npm run seed:testnet` reads `.env.testnet`)
  */
 
-const SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/campaign/Campaign.arc56.json')
-const REGISTRY_SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/registry/Registry.arc56.json')
-const VAULT_SPEC_PATH = path.resolve(__dirname, '../smart_contracts/artifacts/claimsvault/ClaimsVault.arc56.json')
-const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
-const NETWORK = isLocalNet ? 'localnet' : 'testnet'
-const STATE_PATH = path.resolve(__dirname, `.seed-state.${NETWORK}.json`)
-
-const DAY = 86_400
-
-// The Registry registration deposit: the registration box's minimum balance, returned on unregister.
-const REGISTER_MBR = 18_900n
-
-interface SeedCampaign {
-  creator: string
-  goalAlgo: number
-  days: number
-  pledgeAlgo: number
-}
-
-/** Campaigns to create: creator wallet, goal (ALGO), days until deadline, backer pledge (ALGO) or 0. */
-const CAMPAIGNS_LOCALNET: ReadonlyArray<SeedCampaign> = [
-  { creator: 'alice', goalAlgo: 10, days: 1, pledgeAlgo: 4 },
-  { creator: 'bob', goalAlgo: 25, days: 1, pledgeAlgo: 0 },
-  { creator: 'carol', goalAlgo: 50, days: 1, pledgeAlgo: 18 },
-  { creator: 'dave', goalAlgo: 5, days: 1, pledgeAlgo: 0 },
-]
-
-// Faucet-friendly amounts for shared networks (one backer needs ~1.6 ALGO total; two creators need ~0.7 ALGO
-// each for the creation MBR + registration deposit + fees).
-const CAMPAIGNS_TESTNET: ReadonlyArray<SeedCampaign> = [
-  { creator: 'alice', goalAlgo: 2, days: 1, pledgeAlgo: 0.5 },
-  { creator: 'carol', goalAlgo: 5, days: 1, pledgeAlgo: 1 },
-]
-
-function appIdBytes(appId: bigint): Buffer {
-  const buf = Buffer.alloc(8)
-  buf.writeBigUInt64BE(appId)
-  return buf
-}
+const SPEC_PATH = path.resolve(__dirname, '../../smart_contracts/artifacts/campaign/Campaign.arc56.json')
+const REGISTRY_SPEC_PATH = path.resolve(__dirname, '../../smart_contracts/artifacts/registry/Registry.arc56.json')
+const VAULT_SPEC_PATH = path.resolve(__dirname, '../../smart_contracts/artifacts/claimsvault/ClaimsVault.arc56.json')
 
 function toMicroAlgos(algo: number): bigint {
   return BigInt(Math.round(algo * 1_000_000))
@@ -86,7 +52,7 @@ void (async () => {
   // LocalNet auto-creates and funds a KMD wallet; elsewhere this reads BACKER_A_MNEMONIC (pre-funded).
   const backer = await algorand.account.fromEnvironment('backer_a', (100).algo())
 
-  const seeded: { appId: string; creator: string }[] = []
+  const seeded: SeedEntry[] = []
   const metadataUris =
     process.env.SEED_METADATA_URIS !== undefined && process.env.SEED_METADATA_URIS !== '' ? process.env.SEED_METADATA_URIS.split(',') : []
   for (const [index, c] of campaigns.entries()) {
@@ -165,10 +131,6 @@ void (async () => {
     )
   }
 
-  // Pretty-printed: `prettier --check .` also covers this gitignored file.
-  fs.writeFileSync(
-    STATE_PATH,
-    `${JSON.stringify({ registryId: registryId.toString(), vaultId: vaultId.toString(), campaigns: seeded }, null, 2)}\n`,
-  )
+  writeSeedState({ registryId: registryId.toString(), vaultId: vaultId.toString(), campaigns: seeded })
   console.log(`seed state written to ${path.relative(process.cwd(), STATE_PATH)}`)
 })()

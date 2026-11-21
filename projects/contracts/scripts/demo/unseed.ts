@@ -1,10 +1,9 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
-import fs from 'node:fs'
-import path from 'node:path'
+import { clearSeedState, isLocalNet, readSeedState, vaultBoxName, writeSeedState, type SeedEntry } from './state'
 
 /**
- * Remove campaigns created by `seed-demo.ts`: creator-signed `unregister()` then `delete()` in one atomic group.
+ * Remove campaigns created by `seed.ts`: creator-signed `unregister()` then `delete()` in one atomic group.
  * Unregister runs first because it reads the campaign's on-chain state, which a deleted app cannot provide; the group
  * drops the campaign from the browse list and recovers the registration deposit. An unregistered campaign's unregister
  * is a no-op, so the same group still deletes it. Reads `.seed-state.<network>.json` and clears entries that fully clean
@@ -16,36 +15,8 @@ import path from 'node:path'
  * Usage: `npm run unseed:localnet` (the Registry and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
  */
 
-const isLocalNet = process.env.ALGOD_SERVER === undefined || process.env.ALGOD_SERVER.includes('localhost')
-const NETWORK = isLocalNet ? 'localnet' : 'testnet'
-const STATE_PATH = path.resolve(__dirname, `.seed-state.${NETWORK}.json`)
-
-interface SeedEntry {
-  appId: string
-  creator: string
-}
-
-interface SeedState {
-  registryId?: string
-  vaultId: string
-  campaigns: SeedEntry[]
-}
-
-function vaultBoxName(appId: bigint): Uint8Array {
-  let remaining = appId
-  const idBytes = new Uint8Array(8)
-  for (let i = 7; i >= 0; i--) {
-    idBytes[i] = Number(remaining & 0xffn)
-    remaining >>= 8n
-  }
-  return new Uint8Array([0x63, ...idBytes])
-}
-
 void (async () => {
-  if (!fs.existsSync(STATE_PATH)) {
-    throw new Error(`No ${path.basename(STATE_PATH)} found (run the matching seed script first).`)
-  }
-  const state = JSON.parse(fs.readFileSync(STATE_PATH, 'utf8')) as SeedState
+  const state = readSeedState()
   const algorand = isLocalNet ? AlgorandClient.defaultLocalNet() : AlgorandClient.fromEnvironment()
 
   const registryId = BigInt(state.registryId ?? '0')
@@ -84,10 +55,9 @@ void (async () => {
   }
 
   if (remaining.length === 0) {
-    fs.rmSync(STATE_PATH)
+    clearSeedState()
     console.log('unseeded: state cleared')
   } else {
-    // Pretty-printed: `prettier --check .` also covers this gitignored file.
-    fs.writeFileSync(STATE_PATH, `${JSON.stringify({ ...state, campaigns: remaining }, null, 2)}\n`)
+    writeSeedState({ ...state, campaigns: remaining })
   }
 })()

@@ -51,7 +51,7 @@ projects/frontend/src/
 └── utils/                    # ellipseAddress, network config
 ```
 
-`projects/frontend/scripts/` holds `reclaim.ts` (refunds/cancels known leaves, deletes, unregisters; reports unknown leaves); the claim-tree vectors and their generator live in `projects/sdk` (see [sdk.md](sdk.md)).
+`projects/frontend/scripts/` holds `reclaim.ts` (refunds/cancels known leaves, deletes, unregisters; reports unknown leaves); it reads the seed state from `projects/contracts/scripts/demo/.seed-state.testnet.json` or `SEED_STATE_PATH`. The claim-tree vectors and their generator live in `projects/sdk` (see [sdk.md](sdk.md)).
 
 ## Pages & routing
 

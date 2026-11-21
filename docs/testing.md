@@ -235,10 +235,9 @@ MBR in `smart_contracts/size-budget.fixture.ts`. It runs in the
 - LocalNet algod runs in **dev mode**: block timestamp = previous tip timestamp +
   offset. `advanceTime(n)` sets the offset, produces any transaction (a self-payment
   "time bump"), then resets the offset in a `finally`.
-- Two hand-testing scripts live in `projects/contracts/scripts/localnet/` (LocalNet only,
-  run with `npx tsx scripts/localnet/<name>.ts`):
-  `fund-account.ts` (`ADDRESS=… [ALGO=…]`, dispenser-funds any empty wallet) and
-  `advance-time.ts` (`SECONDS=…`, moves the chain clock past deadlines; the
+- Two hand-testing scripts live in `projects/contracts/scripts/` (LocalNet only):
+  `npm run localnet:fund` (`ADDRESS=… [ALGO=…]`, dispenser-funds any empty wallet) and
+  `npm run localnet:advance` (`SECONDS=…`, moves the chain clock past deadlines; the
   offset persists until changed, so new campaigns use it as their baseline).
 - Inner transactions need fee pooling via `extraFee: (1000).microAlgo()` per
   inner txn. Each OpUp iteration submits **one** inner app call (the Puya
@@ -665,7 +664,7 @@ remaining questions to settle before implementing:
 - Playwright vs. Vitest browser mode (Playwright is the natural fit for
   click-driven flows; Vitest browser mode keeps it in the existing runner).
 - How to seed campaigns idempotently before each run (`npm run seed:localnet` / `npm run unseed:localnet`
-  in `projects/contracts`, state-tracked via `scripts/.seed-state.<network>.json`; the `:testnet` variants read
+  in `projects/contracts`, state-tracked via `scripts/demo/.seed-state.<network>.json`; the `:testnet` variants read
   `.env.testnet` instead) and reclaim afterwards (`npm run reclaim` in `projects/frontend`, which reads
   its `.env.testnet`: refunds/cancels known leaves, deletes, unregisters; unknown leaves reported).
 

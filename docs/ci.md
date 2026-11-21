@@ -73,7 +73,9 @@ reasoning behind the splits.
   ShellCheck over every tracked `.sh`/`.bash` file via `git ls-files`
   (`shellcheck -x` follows sourced files), and markdownlint. Each step is
   conditional on its filter and independent, so one failure does not hide the
-  others. Workflow `run:` blocks are covered by actionlint's bundled ShellCheck.
+  others. Workflow files are checked by actionlint; the multi-line AlgoKit and
+  local-SDK install blocks live in `.github/scripts/*.sh` and are checked by
+  ShellCheck.
 - **Run once per change.** The workflow triggers on `pull_request` (any branch)
   and on `push` to `main` only - a same-repo branch would otherwise fire both
   `push` and `pull_request` events and run everything twice. Superseded PR runs

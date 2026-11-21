@@ -59,12 +59,7 @@ jobs:
           key: algokit-2.10.2-py3.12-${{ runner.os }}
 
       - name: Install AlgoKit CLI
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          if ! command -v algokit >/dev/null 2>&1; then
-            pipx install algokit==2.10.2
-          fi
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-algokit.sh
         shell: bash
 
       - name: Install contract dependencies
@@ -116,12 +111,7 @@ jobs:
           key: algokit-2.10.2-py3.12-${{ runner.os }}
 
       - name: Install AlgoKit CLI
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          if ! command -v algokit >/dev/null 2>&1; then
-            pipx install algokit==2.10.2
-          fi
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        run: bash .github/scripts/install-algokit.sh
         shell: bash
 
       - name: Install contract dependencies

@@ -1,3 +1,6 @@
 smart_contracts/artifacts/
 package-lock.json
 coverage/
+scripts/.seed-state*.json
+scripts/demo/.seed-state*.json
+scripts/demo/metadata/
