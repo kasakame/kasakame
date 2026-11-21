@@ -33,13 +33,6 @@ body:
     validations:
       required: true
   - type: textarea
-    id: out-of-scope
-    attributes:
-      label: Out of scope
-      description: What this feature deliberately does not cover.
-    validations:
-      required: false
-  - type: textarea
     id: links
     attributes:
       label: Links
