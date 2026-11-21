@@ -1,9 +1,9 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
+import { ALGO } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
-  ALGO,
   ClaimTreeOracle,
   campaignBoxExists,
   campaignState,
