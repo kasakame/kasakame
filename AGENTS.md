@@ -10,6 +10,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 ## Layout
 
 - `projects/contracts/` - AlgoKit contract project (Algorand TypeScript → AVM)
+  - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `integration/` - numbered LocalNet integration tests (`00-deploy`, `01-single-campaign`, ...), run in path order, with shared setup helpers in `integration/support/`
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app

@@ -3,9 +3,9 @@ import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
 import fs from 'node:fs'
 import path from 'node:path'
-import { parseRefundWindow, resolveSweepTarget } from '../claimsvault/deploy-config'
-import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from '../deployer'
-import { programHash } from '../program-hash'
+import { PLATFORM_STORAGE_RESERVE, resolveDeployerAccount } from './deployer'
+import { programHash } from './program-hash'
+import { parseRefundWindow, resolveSweepTarget } from './refund-window'
 
 /**
  * Read a compiled ARC-56 spec and return its program hash.
@@ -15,7 +15,7 @@ import { programHash } from '../program-hash'
  * @returns The SHA-256 hash of the approval + clear-state programs.
  */
 function artifactProgramHash(relativePath: string, name: string): Uint8Array {
-  const spec = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../artifacts', relativePath), 'utf8')) as Arc56Contract
+  const spec = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../smart_contracts/artifacts', relativePath), 'utf8')) as Arc56Contract
   if (spec.byteCode === undefined) {
     throw new Error(`${name} has no byteCode; run \`npm run build\` first.`)
   }
@@ -44,7 +44,7 @@ export async function deploy() {
   const sweepTarget = resolveSweepTarget(process.env.SWEEP_TARGET, deployer.addr.toString(), isLocalNet)
   const refundWindow = parseRefundWindow(process.env.REFUND_WINDOW_SECONDS)
 
-  const specPath = path.resolve(__dirname, '../artifacts/registry/Registry.arc56.json')
+  const specPath = path.resolve(__dirname, '../smart_contracts/artifacts/registry/Registry.arc56.json')
   const appSpec = JSON.parse(fs.readFileSync(specPath, 'utf8')) as Arc56Contract
   const registry = new AppFactory({ appSpec, algorand, defaultSender: deployer.addr })
 

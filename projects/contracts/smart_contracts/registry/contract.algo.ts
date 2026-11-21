@@ -42,7 +42,7 @@ const MAX_TREE_SIZE = Uint64(524_287)
 // Keep in sync with ClaimsVault.MIN_REFUND_WINDOW_SECONDS; bind the vault window to the same range.
 const MIN_REFUND_WINDOW_SECONDS = Uint64(30 * 24 * 60 * 60)
 
-// Deployment sanity cap: 10 years, matching claimsvault/deploy-config.ts. Bind the vault window to the same bound.
+// Deployment sanity cap: 10 years, matching deploy/refund-window.ts. Bind the vault window to the same bound.
 const MAX_REFUND_WINDOW_SECONDS = Uint64(10 * 365 * 24 * 60 * 60)
 
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
