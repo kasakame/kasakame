@@ -231,8 +231,12 @@ A create followed immediately by delete spends about 3,000 µA (create fees) +
 
 The SDK sizes pledge and spend extras from the claim tree. The contract's
 `ensureBudget` tops the group up in 700-op increments; each increment is one
-inner app call and costs one extra minimum fee (1,000 µA). The contract and SDK
-use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
+inner app call and costs one extra minimum fee. The SDK reads
+`SuggestedParams.minFee` at build time and multiplies the fixed inner counts and
+OpUp takes by it; the µA totals below use LocalNet's current 1,000 µA minimum as
+the example. Offline tests and fallbacks use `FEE_MICRO_ALGOS`. The contract and
+SDK use the same tree-shape formulas (see
+[`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
 
 | Action | Transactions | SDK total | Notes |
 | --- | --- | ---: | --- |
