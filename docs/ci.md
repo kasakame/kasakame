@@ -402,7 +402,8 @@ job installs the tarball in a clean consumer and reads an ARC-56 spec. The
 publish job uses npm OIDC trusted publishing with `--provenance`. The first
 release dispatches with `dry_run=false, bootstrap=true` and a temporary
 `NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Delete the secret and revoke the token after the first release.
+authenticates. Keep the token until `@kasakame/constants` has also completed its
+first publish, then delete the secret and revoke the token.
 `dry_run` defaults to true and skips both the GitHub release and the npm
 publish.
 
@@ -417,8 +418,9 @@ TEAL plus source maps for independent recompile-and-verify audits.
 Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-contracts.yml`, and no environment. Enable
-**Allow npm publish**. The first release uses the `bootstrap` input; configure
-the trusted publisher after it, and later releases use OIDC.
+**Allow npm publish**. The first release uses the `bootstrap` input. Configure
+the trusted publisher only when the next contracts release is within 2 days;
+that OIDC release validates it. An unused configuration expires after 2 days.
 
 ## Workflow: release-constants (separate file)
 
@@ -455,8 +457,9 @@ publish** enabled. Release it before the SDK and CLI: both declare it as a peer
 dependency, and their smoke tests install it from the registry. The first
 release dispatches with `dry_run=false, bootstrap=true` and a temporary
 `NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Delete the secret and revoke the token after that release, then
-configure the trusted publisher for later versions.
+authenticates. Keep the token until `@kasakame/contracts` has also completed its
+first publish, then delete the secret and revoke the token. Configure the
+trusted publisher when the next constants release is within 2 days.
 
 ## Workflow: release-sdk (separate file)
 
@@ -607,6 +610,11 @@ the four artifact folders. Package-specific packaging stays in the package:
 - Publishing goes through `projects/utils/release/publish.ts` (provenance,
   public access, dist-tag, optional tarball, bootstrap token) and
   `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
+- New packages bootstrap with a temporary `NPM_TOKEN`; npm has no trusted
+  publisher until the package exists. Use one token per first-publish batch and
+  keep it until every package in the batch has published. Configure a trusted
+  publisher only when the next release is within 2 days; an unused configuration
+  expires.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.
