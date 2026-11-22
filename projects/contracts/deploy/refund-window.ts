@@ -1,4 +1,4 @@
-import { MAX_REFUND_WINDOW_SECONDS, MIN_REFUND_WINDOW_SECONDS, SECONDS_PER_DAY } from '@kasakame/constants'
+import { MAX_REFUND_WINDOW_SECONDS, MIN_REFUND_WINDOW_SECONDS, SECONDS_PER_DAY } from '@kasakame/constants/source'
 
 /** Default refund window: 730 days, per the spec recommendation. */
 export const DEFAULT_REFUND_WINDOW_SECONDS = BigInt(730 * SECONDS_PER_DAY)

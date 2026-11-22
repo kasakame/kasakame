@@ -1,7 +1,7 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
+import { PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants/source'
 import { specProgramHash } from '@kasakame/utils'
 import fs from 'node:fs'
 import path from 'node:path'
