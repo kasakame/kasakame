@@ -238,6 +238,31 @@ describe('fetchPledges', () => {
     ])
   })
 
+  it('keeps chain order when block indexes decrease across rounds', async () => {
+    const payA = payment('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', BACKER_A, VAULT, 3_000_000n)
+    const callA = pledgeCall('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM', BACKER_A, 100n)
+    const fillers = Array.from({ length: 9 }, (_, index) =>
+      appCall(`FILLER${index.toString()}`, BACKER_B, 100n, [hexToBytes(SELECTOR.claim)]),
+    )
+    const payB = payment('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', BACKER_B, VAULT, 1_000_000n)
+    const callB = pledgeCall('NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN', BACKER_B, 101n)
+    indexerMock.searchForTransactions.mockImplementation(searchMock(new Map([[CAMPAIGN, [[callB], [callA]]]])))
+    indexerMock.lookupBlock.mockImplementation(
+      blockMock(
+        new Map([
+          [100n, [payA, ...fillers, callA]],
+          [101n, [payB, callB]],
+        ]),
+      ),
+    )
+
+    const pledges = await fetchPledges(CAMPAIGN, VAULT)
+    expect(pledges.map((p) => [p.backer, p.round])).toEqual([
+      [BACKER_A, 100n],
+      [BACKER_B, 101n],
+    ])
+  })
+
   it('throws when a call has no id to locate with', async () => {
     const callA = pledgeCall('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM', BACKER_A, 100n)
     const payA = payment('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', BACKER_A, VAULT, 3_000_000n)

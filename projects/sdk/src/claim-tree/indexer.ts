@@ -118,7 +118,7 @@ export async function fetchPledges(campaignId: bigint, vaultAddress: string): Pr
     list.push(call)
     byRound.set(call.confirmedRound, list)
   }
-  const pledges: (PledgeEvent & { blockIndex: number })[] = []
+  const pledges: PledgeEvent[] = []
   const rounds = [...byRound.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
   const withBlocks = await Promise.all(
     rounds.map(async ([round, roundCalls]) => ({
@@ -162,14 +162,11 @@ export async function fetchPledges(campaignId: bigint, vaultAddress: string): Pr
         amount: payment.amount,
         txidHex: bytesToHex(base32ToBytes(payment.id)),
         round,
-        blockIndex: callIndex,
       })
     }
   }
-  // Pledges push in non-decreasing round order, so the comparator only ever sees greater-or-equal left sides.
+  // The rounds and their calls are ordered above; the list is already in chain order.
   return pledges
-    .sort((a, b) => (a.round > b.round ? 1 : a.blockIndex - b.blockIndex))
-    .map(({ backer, amount, txidHex, round }) => ({ backer, amount, txidHex, round }))
 }
 
 /**
