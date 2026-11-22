@@ -26,5 +26,5 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["src", "release", "smoke", "ci"]
+  "include": ["src", "release", "smoke"]
 }
