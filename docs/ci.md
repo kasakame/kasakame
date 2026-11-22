@@ -478,8 +478,8 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   lints, format-checks, type-checks, runs coverage, inspects the packed
   tarball, and dry-runs the publish. Each command is its own step. It uploads
   the tested `dist/`.
-- `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
+  installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
   contracts package version. It gates the publish.
@@ -530,8 +530,8 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   it is unpublished, lints, formats, type-checks, runs coverage, builds,
   inspects the packed tarball, and dry-runs the publish. Each command is its own
   step. It uploads the tested `dist/`.
-- `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/cli.ts`: it packs the tested `dist/`,
+  installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, and runs `kasakame --help`. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
