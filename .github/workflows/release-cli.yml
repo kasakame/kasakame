@@ -127,8 +127,7 @@ jobs:
           path: projects/cli/dist
 
       - name: Smoke-test the packed package
-        run: node scripts/smoke-package.mjs
-        working-directory: projects/cli
+        run: node projects/utils/packaging/pack-smoke.ts projects/cli projects/cli/scripts/packaging/smoke-package.ts
 
   publish:
     name: Publish to npm

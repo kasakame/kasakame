@@ -207,40 +207,11 @@ jobs:
           name: contracts-tarball
           path: ${{ runner.temp }}
 
-      - name: Smoke-test a clean install
+      - name: Smoke-test the packed package
         run: |
           tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$tarball"
-          mkdir -p "$RUNNER_TEMP/consumer"
-          cd "$RUNNER_TEMP/consumer"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund "$tarball"
-          node --input-type=module - <<'EOF'
-          import assert from 'node:assert/strict'
-          import fs from 'node:fs'
-          import path from 'node:path'
-
-          const root = path.resolve('node_modules/@kasakame/contracts')
-          const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-          assert.equal(pkg.name, '@kasakame/contracts')
-          assert.ok(fs.existsSync(path.join(root, 'README.md')), 'missing README')
-          assert.ok(fs.existsSync(path.join(root, 'LICENSE')), 'missing LICENSE')
-          for (const kind of ['arc56', 'arc32', 'teal', 'puya']) {
-            const dir = path.join(root, 'dist', kind)
-            assert.ok(fs.existsSync(dir), `missing dist/${kind}`)
-            assert.ok(fs.readdirSync(dir).length > 0, `empty dist/${kind}`)
-          }
-          const apps = fs.readdirSync(path.join(root, 'dist', 'arc56')).sort()
-          assert.ok(apps.length > 0, 'no ARC-56 applications')
-          const appDir = path.join(root, 'dist', 'arc56', apps[0])
-          const specFile = fs.readdirSync(appDir).sort()[0]
-          const spec = JSON.parse(fs.readFileSync(path.join(appDir, specFile), 'utf8'))
-          assert.ok(spec.name && spec.byteCode?.approval, 'invalid ARC-56 spec')
-          for (const file of fs.readdirSync(root)) {
-            assert.ok(!file.endsWith('.ts'), `source leaked into the package: ${file}`)
-          }
-          console.log('contracts package smoke passed')
-          EOF
+          node projects/utils/packaging/pack-smoke.ts projects/contracts projects/contracts/scripts/packaging/smoke-package.ts --tarball "$tarball"
 
   publish:
     name: Publish to npm

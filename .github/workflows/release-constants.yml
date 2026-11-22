@@ -104,15 +104,7 @@ jobs:
 
       # A clean consumer must import the compiled values from the tarball.
       - name: Smoke-test the packed package
-        run: |
-          tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
-          mkdir "$RUNNER_TEMP/consumer"
-          cd "$RUNNER_TEMP/consumer"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund "$RUNNER_TEMP/$tarball"
-          node --input-type=module -e "import('@kasakame/constants').then((c) => { if (c.ZERO_ROOT_HEX !== '0'.repeat(64)) throw new Error('bad zero root'); if (c.MAX_TREE_SIZE !== 524287n) throw new Error('bad tree cap'); console.log('constants smoke passed') })"
-          node --input-type=module -e "import('node:module').then(({ createRequire }) => { const require = createRequire(import.meta.url); const source = require.resolve('@kasakame/constants/source'); if (!source.endsWith('src/index.ts')) throw new Error('bad source entry: ' + source); console.log('constants source entry resolved') })"
-        working-directory: projects/constants
+        run: node projects/utils/packaging/pack-smoke.ts projects/constants projects/constants/scripts/packaging/smoke-package.ts
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7

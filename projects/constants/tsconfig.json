@@ -19,11 +19,12 @@
     "allowSyntheticDefaultImports": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "rootDir": ".",
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "dist",
     "lib": ["ESNext"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts"]
 }

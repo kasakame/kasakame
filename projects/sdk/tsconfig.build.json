@@ -4,5 +4,5 @@
     "noEmit": false,
     "rootDir": "src"
   },
-  "exclude": ["src/**/*.spec.ts", "src/**/*.vectors.ts", "test/**"]
+  "exclude": ["src/**/*.spec.ts", "src/**/*.vectors.ts", "test/**", "scripts/**"]
 }

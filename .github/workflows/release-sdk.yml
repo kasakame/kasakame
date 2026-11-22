@@ -147,8 +147,9 @@ jobs:
           path: projects/sdk/dist
 
       - name: Smoke-test the packed package
-        run: node scripts/smoke-package.mjs
-        working-directory: projects/sdk
+        env:
+          EXPECTED_SPECS_VERSION: ${{ needs.prep.outputs.contracts }}
+        run: node projects/utils/packaging/pack-smoke.ts projects/sdk projects/sdk/scripts/packaging/smoke-package.ts
 
   publish:
     name: Publish to npm

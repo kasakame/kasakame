@@ -19,7 +19,7 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts', 'scripts/smoke-package.mjs'],
+          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
