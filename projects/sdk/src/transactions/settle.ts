@@ -157,3 +157,63 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
   await composer.send()
   await waitForIndexerCatchUp()
 }
+
+/**
+ * Settle a failed campaign permissionlessly when the creator is gone. The vault reads the campaign's live global
+ * state, so the campaign app must still exist. After this, refunds go straight through the vault.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ */
+export async function settleOpen(appId: bigint, session: WalletSession): Promise<void> {
+  const vaultClient = vaultClientFor(session)
+  await vaultClient.send.settleOpen({
+    args: { app: appId },
+    sender: session.address,
+    appReferences: [appId],
+    boxReferences: vaultBoxRef(appId),
+  })
+  await waitForIndexerCatchUp()
+}
+
+/**
+ * Release a claimed campaign's vault box permissionlessly, recovering its minimum balance to the vault. Requires the
+ * box to be Claimed with no outstanding balance; a missing box is a no-op.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ */
+export async function releaseClaimed(appId: bigint, session: WalletSession): Promise<void> {
+  const vaultClient = vaultClientFor(session)
+  await vaultClient.send.releaseClaimed({
+    args: { app: appId },
+    sender: session.address,
+    appReferences: [appId],
+    boxReferences: vaultBoxRef(appId),
+  })
+  await waitForIndexerCatchUp()
+}
+
+/**
+ * Sweep a settled-failed campaign's residual to the sweep target and release its box once the refund window closes
+ * or the box is fully paid out. Permissionless.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the signer and address.
+ */
+export async function finalize(appId: bigint, session: WalletSession): Promise<void> {
+  const { algorand } = getSdkConfig()
+  const minFee = await minimumFee(algorand)
+  const box = await fetchVaultBox(appId)
+  // The residual payment is the only inner transaction; skip its fee when the box is fully paid out or missing.
+  const extraInners = box !== undefined && box.paidIn > box.paidOut ? 1n : 0n
+  const vaultClient = vaultClientFor(session)
+  await vaultClient.send.finalize({
+    args: { app: appId },
+    sender: session.address,
+    appReferences: [appId],
+    boxReferences: vaultBoxRef(appId),
+    extraFee: microAlgos(extraInners * minFee),
+  })
+  await waitForIndexerCatchUp()
+}
