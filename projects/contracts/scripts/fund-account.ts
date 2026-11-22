@@ -1,5 +1,5 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
-import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
+import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants/source'
 
 /**
  * Fund any address on LocalNet from the dispenser (test accounts start at 0 ALGO).
