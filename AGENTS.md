@@ -343,11 +343,18 @@ the product contract. The pinned values and the AVM limits are in
   - `README.md` for spec-level behavior, the status summary, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
-- **Package READMEs are user-facing.** `projects/constants/README.md`,
-  `projects/sdk/README.md`, and `projects/cli/README.md` are the READMEs npm
-  publishes. Keep them to install, usage, documentation links, and license;
-  repository status, work tracking, and contributor instructions belong in the
-  root README or `docs/`.
+- **Package READMEs are user-facing.** `projects/constants`, `projects/contracts`,
+  `projects/sdk`, and `projects/cli` publish their READMEs to npm. Use the same
+  shape in each: title and one-line description, `## Install` with the Node
+  requirement and peer dependencies, package-specific usage, `## Documentation`
+  links, and a `## License` footer with the same `MIT. See
+  [LICENSE](.../projects/<package>/LICENSE).` wording. Repository status, work
+  tracking, and contributor instructions belong in the root README or `docs/`.
+- **Published package metadata matches.** Each published package declares
+  `author`, `description`, `keywords`, `license`, `repository.directory`,
+  `homepage`, `bugs`, `engines`, `publishConfig.access: public`, and a `files`
+  allowlist; the LICENSE files are identical. The release workflows pack and
+  smoke-test the tarballs.
 
 ## Testing
 

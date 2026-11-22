@@ -12,6 +12,8 @@ repository is the source of truth.
 npm install @kasakame/contracts
 ```
 
+Node.js 24 or newer.
+
 ## Layout
 
 Each artifact family keeps one directory per application:
@@ -42,7 +44,7 @@ The package version follows the contract interface used by the matching SDK
 release. Protocol-breaking changes bump the major version once the interface is
 stable.
 
-## Links
+## Documentation
 
 - [Repository](https://github.com/kasakame/kasakame)
 - [Contracts documentation](https://github.com/kasakame/kasakame/blob/main/docs/campaign.md)
@@ -51,4 +53,4 @@ stable.
 
 ## License
 
-MIT
+MIT. See [LICENSE](https://github.com/kasakame/kasakame/blob/main/projects/contracts/LICENSE).

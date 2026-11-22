@@ -8,16 +8,19 @@ backend, so an exit never depends on our servers.
 
 ## Install
 
-Requires Node.js 24 or newer.
+Node.js 24 or newer.
 
 ```bash
-npm install --global @kasakame/cli
+npm install --global @kasakame/cli @kasakame/constants
 kasakame --help
 ```
 
-Run a one-off with `npx @kasakame/cli --help`.
+Run a one-off with `npx @kasakame/cli --help`. The CLI declares
+`@kasakame/constants@^0.2.0` as a peer dependency.
 
-## Commands
+## Usage
+
+### Commands
 
 | Command            | Description                                       |
 | ------------------ | ------------------------------------------------- |
@@ -31,7 +34,7 @@ Run a one-off with `npx @kasakame/cli --help`.
 | `whoami`           | Show the signer address                           |
 | `logout`           | Disconnect the stored wallet session              |
 
-## Discover pledges and campaigns
+### Discover pledges and campaigns
 
 ```bash
 kasakame pledges
@@ -50,7 +53,7 @@ indexer, then a table. They use the connected wallet session, the mnemonic
 signer, or `--address`, and never open a signing prompt. On LocalNet and custom
 networks, pass `--vault` and `--registry` so discovery can find the campaigns.
 
-## Who can do what
+### Who can do what
 
 Reads are permissionless: `pledges` and `campaigns` only read chain state.
 
@@ -63,7 +66,7 @@ Without `--address`, discovery uses the signer's address and shows the actions
 that signer can run. With `--address`, it is a state-only read-only view: every
 write needs the creator's or the pledge owner's wallet.
 
-## Refund a pledge
+### Refund a pledge
 
 ```bash
 kasakame refund <appId>
@@ -78,7 +81,7 @@ flag. Each pledge needs its own wallet approval, and a failed refund is
 reported while the rest still run. `--dry-run` lists the pledges without
 submitting anything.
 
-## Withdraw a pledge
+### Withdraw a pledge
 
 ```bash
 kasakame withdraw <appId>
@@ -93,7 +96,7 @@ Each pledge needs its own wallet approval, and a failed withdrawal is reported
 while the rest still run. `--dry-run` lists the pledges without submitting
 anything.
 
-## Claim a campaign
+### Claim a campaign
 
 ```bash
 kasakame claim <appId>
@@ -105,7 +108,7 @@ deadline. Only the creator can claim, and only once. Open, failed, and
 already-claimed campaigns are rejected before anything is submitted. `--dry-run`
 prints the plan without submitting.
 
-## Delete a campaign
+### Delete a campaign
 
 ```bash
 kasakame delete <appId>
@@ -119,7 +122,7 @@ before deleting. Deleting a failed campaign is safe: backers keep refunding from
 the vault until the refund window closes. `--dry-run` prints the plan without
 submitting.
 
-## Wallet session
+### Wallet session
 
 ```bash
 kasakame login
@@ -133,7 +136,7 @@ both apps support. The session is stored in
 wallets publish (`https://wc.perawallet.app/config.json`), with a known Pera
 bridge as fallback. No WalletConnect Cloud project or account is needed.
 
-## Networks and signers
+### Networks and signers
 
 Transaction commands default to TestNet with the embedded Registry and
 ClaimsVault app ids. `--vault`/`--registry` override them.
