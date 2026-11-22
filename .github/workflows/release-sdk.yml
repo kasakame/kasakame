@@ -66,7 +66,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         # The script writes version and tag to GITHUB_OUTPUT.
         run: |
-          node projects/utils/packaging/release/validate-version.ts projects/sdk/package.json "$INPUT_VERSION"
+          node projects/utils/release/validate-version.ts projects/sdk/package.json "$INPUT_VERSION"
           contracts=$(node -p "require('./projects/contracts/package.json').version")
           echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
           echo "SDK contracts version: $contracts"
@@ -74,7 +74,7 @@ jobs:
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node projects/utils/packaging/release/assert-unpublished.ts "@kasakame/sdk" "$VERSION"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/sdk" "$VERSION"
 
       # The released contracts package is the only interface input. Do not set
       # SDK_SPECS=local here: a published SDK must not use an unreleased
@@ -149,7 +149,7 @@ jobs:
       - name: Smoke-test the packed package
         env:
           EXPECTED_SPECS_VERSION: ${{ needs.prep.outputs.contracts }}
-        run: node projects/utils/packaging/release/pack-smoke.ts projects/sdk projects/utils/packaging/smoke/sdk.ts
+        run: node projects/utils/release/pack-smoke.ts projects/sdk projects/utils/smoke/sdk.ts
 
   publish:
     name: Publish to npm

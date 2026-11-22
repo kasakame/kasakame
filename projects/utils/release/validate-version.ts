@@ -3,7 +3,7 @@ import process from 'node:process'
 
 const [packagePath, inputVersion] = process.argv.slice(2)
 if (!packagePath || !inputVersion) {
-  console.error('usage: node projects/utils/packaging/release/validate-version.ts <package.json> <version>')
+  console.error('usage: node projects/utils/release/validate-version.ts <package.json> <version>')
   process.exit(2)
 }
 

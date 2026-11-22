@@ -64,12 +64,12 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         # The script writes version and tag to GITHUB_OUTPUT.
-        run: node projects/utils/packaging/release/validate-version.ts projects/cli/package.json "$INPUT_VERSION"
+        run: node projects/utils/release/validate-version.ts projects/cli/package.json "$INPUT_VERSION"
 
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node projects/utils/packaging/release/assert-unpublished.ts "@kasakame/cli" "$VERSION"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/cli" "$VERSION"
 
       - name: Lint
         run: npm run lint
@@ -127,7 +127,7 @@ jobs:
           path: projects/cli/dist
 
       - name: Smoke-test the packed package
-        run: node projects/utils/packaging/release/pack-smoke.ts projects/cli projects/utils/packaging/smoke/cli.ts
+        run: node projects/utils/release/pack-smoke.ts projects/cli projects/utils/smoke/cli.ts
 
   publish:
     name: Publish to npm

@@ -581,7 +581,7 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   version and exports its version as `SPECS_VERSION`.
 - All four release workflows validate the dispatch version against their
   project `package.json` with
-  `projects/utils/packaging/release/validate-version.ts`; it also chooses the
+  `projects/utils/release/validate-version.ts`; it also chooses the
   `next`/`latest` dist-tag.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the

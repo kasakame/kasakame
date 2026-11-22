@@ -20,7 +20,7 @@ for (let index = 0; index < rawArgs.length; index += 1) {
 
 const [packageDirArg, smokeScriptArg] = positional
 if (!packageDirArg || !smokeScriptArg) {
-  console.error('usage: node projects/utils/packaging/release/pack-smoke.ts <package-dir> <smoke-script> [--tarball <path>]')
+  console.error('usage: node projects/utils/release/pack-smoke.ts <package-dir> <smoke-script> [--tarball <path>]')
   process.exit(2)
 }
 

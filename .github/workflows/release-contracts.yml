@@ -82,7 +82,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         # The script writes version and tag to GITHUB_OUTPUT.
         run: |
-          node projects/utils/packaging/release/validate-version.ts projects/contracts/package.json "$INPUT_VERSION"
+          node projects/utils/release/validate-version.ts projects/contracts/package.json "$INPUT_VERSION"
           version=$(node -p "require('./projects/contracts/package.json').version")
           if git ls-remote --exit-code --tags origin "refs/tags/contracts-v$version" >/dev/null 2>&1; then
             echo "tag contracts-v$version already exists" >&2
@@ -93,7 +93,7 @@ jobs:
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node projects/utils/packaging/release/assert-unpublished.ts "@kasakame/contracts" "$VERSION"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/contracts" "$VERSION"
 
       - name: Install contract dependencies
         run: npm ci
@@ -149,6 +149,14 @@ jobs:
           test -f "$RUNNER_TEMP/$tarball"
           echo "packed $tarball"
         working-directory: projects/contracts
+
+      - name: Verify the npm tarball
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/verify-tarball.ts "$tarball" projects/contracts \
+            dist/arc56/ dist/arc32/ dist/teal/ dist/puya/ \
+            --forbid Client --forbid smart_contracts/ --forbid deploy/ --forbid scripts/ --forbid test/ --forbid .ts
 
       # Attach the tarballs only; generated clients and contract source stay out.
       - name: Create the contracts release
@@ -211,7 +219,7 @@ jobs:
         run: |
           tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$tarball"
-          node projects/utils/packaging/release/pack-smoke.ts projects/contracts projects/utils/packaging/smoke/contracts.ts --tarball "$tarball"
+          node projects/utils/release/pack-smoke.ts projects/contracts projects/utils/smoke/contracts.ts --tarball "$tarball"
 
   publish:
     name: Publish to npm
