@@ -62,8 +62,10 @@ export async function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undef
   let raw: Uint8Array
   try {
     raw = (await vaultClient.state.box.campaignBox.value(appId)) as Uint8Array
-  } catch {
-    return undefined
+  } catch (error) {
+    // A missing box is a normal empty read; network, auth, and server errors must propagate.
+    if (error instanceof Error && /box not found/i.test(error.message)) return undefined
+    throw error
   }
   if (raw.length !== VAULT_BOX_BYTES) return undefined
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
