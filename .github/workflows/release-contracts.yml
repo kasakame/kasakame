@@ -129,7 +129,7 @@ jobs:
         working-directory: projects/contracts
 
       # One tarball per artifact kind, each keeping the per-app directories
-      # (campaign/, claimsvault/, factory/, registry/) - consumers download only
+      # (campaign/, claimsvault/, registry/) - consumers download only
       # the kind they need. These tarballs are the audit bundle; the SDK reads
       # the npm package.
       - name: Bundle the artifacts (one tarball per kind)

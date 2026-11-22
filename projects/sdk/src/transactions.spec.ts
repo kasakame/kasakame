@@ -118,7 +118,7 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
 
 vi.mock('./generated/RegistryClient.js', () => ({
   RegistryClient: class {
-    appAddress = 'FACTORYADDRESS'
+    appAddress = 'REGISTRYADDRESS'
     params = {
       unregister: (...args: unknown[]) => paramsUnregisterMock(...args),
     }
