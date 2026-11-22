@@ -580,7 +580,9 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   `projects/contracts/package.json` version. The SDK installs that package
   version and exports its version as `SPECS_VERSION`.
 - All four release workflows validate the dispatch version against their
-  project `package.json` with `.github/scripts/check-release-version.mjs`.
+  project `package.json` with
+  `projects/utils/packaging/validate-version.ts`; it also chooses the
+  `next`/`latest` dist-tag.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.

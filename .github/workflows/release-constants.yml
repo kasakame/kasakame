@@ -67,23 +67,8 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          node .github/scripts/check-release-version.mjs projects/constants/package.json "$INPUT_VERSION"
-          version=$(node -p "require('./projects/constants/package.json').version")
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "package version is not semver: $version" >&2
-            exit 1
-          fi
-          if [[ "$version" == *-* ]]; then
-            tag=next
-          else
-            tag=latest
-          fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-          } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/constants@$version -> $tag"
+        # The script writes version and tag to GITHUB_OUTPUT.
+        run: node projects/utils/packaging/validate-version.ts projects/constants/package.json "$INPUT_VERSION"
 
       - name: Check the version is unpublished
         env:

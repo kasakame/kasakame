@@ -80,27 +80,15 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+        # The script writes version and tag to GITHUB_OUTPUT.
         run: |
-          node .github/scripts/check-release-version.mjs projects/contracts/package.json "$INPUT_VERSION"
+          node projects/utils/packaging/validate-version.ts projects/contracts/package.json "$INPUT_VERSION"
           version=$(node -p "require('./projects/contracts/package.json').version")
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "package version is not semver: $version" >&2
-            exit 1
-          fi
-          if [[ "$version" == *-* ]]; then
-            tag=next
-          else
-            tag=latest
-          fi
           if git ls-remote --exit-code --tags origin "refs/tags/contracts-v$version" >/dev/null 2>&1; then
             echo "tag contracts-v$version already exists" >&2
             exit 1
           fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-          } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/contracts@$version -> $tag (contracts-v$version)"
+          echo "contracts-v$version is free"
 
       - name: Check the version is unpublished
         env:
