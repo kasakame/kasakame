@@ -259,15 +259,69 @@ async function submitWithFreshProof(run: () => Promise<bigint | undefined>): Pro
   }
 }
 
+/** Result of `createCampaign`: the campaign exists, and `registered` is false when the Registry step failed. */
+export interface CreateCampaignResult {
+  appId: bigint
+  appAddress: string
+  /** True when registration landed, or when no Registry is configured. */
+  registered: boolean
+  /** The Registry failure message when `registered` is false. */
+  registerError?: string
+}
+
 /**
- * Deploy a new campaign: create → register with the Registry. Nothing is funded - the v2 escrow never holds funds.
+ * Send the Registry registration group for a campaign. The caller must be the campaign creator; the group is the
+ * registration app call and its refundable deposit payment.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the creator's signer and address.
+ */
+async function sendRegister(appId: bigint, session: WalletSession): Promise<void> {
+  const { algorand } = getSdkConfig()
+  const registryClient = registryClientFor(session)
+  await registryClient.send.register({
+    args: {
+      app: appId,
+      payment: await algorand.createTransaction.payment({
+        sender: session.address,
+        receiver: registryClient.appAddress,
+        amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
+      }),
+    },
+    appReferences: [appId],
+  })
+}
+
+/**
+ * Register an existing campaign with the Registry after a failed create-time registration. Safe to retry: a campaign
+ * that is already registered is treated as success. A no-op when no Registry is configured.
+ *
+ * @param appId Campaign application id.
+ * @param session Wallet session holding the creator's signer and address.
+ */
+export async function registerCampaign(appId: bigint, session: WalletSession): Promise<void> {
+  if (getSdkConfig().registryAppId === 0n) return
+  try {
+    await sendRegister(appId, session)
+  } catch (error) {
+    // A retry can race a registration that landed but whose confirmation was lost; the Registry message is stable.
+    if (!(error instanceof Error) || !/campaign already registered/i.test(error.message)) throw error
+  }
+  await waitForIndexerCatchUp()
+}
+
+/**
+ * Deploy a new campaign: create, then register with the Registry. Nothing is funded - the v2 escrow never holds funds.
+ * Registration is a separate step because it references the app id from the creation round. When it fails, the
+ * campaign still exists and the result carries its id with `registered: false`; `registerCampaign` retries without
+ * recreating it.
  *
  * @param session Wallet session holding the signer and address.
  * @param title Short campaign title (stored on-chain).
  * @param metadataUri URI of the off-chain campaign metadata.
  * @param goalMicroAlgos Funding target in microAlgos.
  * @param deadlineSeconds Deadline as a UNIX timestamp (seconds).
- * @returns The new app id and escrow address.
+ * @returns The new app id, escrow address, and whether registration completed.
  */
 export async function createCampaign(
   session: WalletSession,
@@ -275,7 +329,7 @@ export async function createCampaign(
   metadataUri: string,
   goalMicroAlgos: bigint,
   deadlineSeconds: bigint,
-): Promise<{ appId: bigint; appAddress: string }> {
+): Promise<CreateCampaignResult> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   const campaignFactory = new CampaignFactory({
     algorand,
@@ -295,28 +349,25 @@ export async function createCampaign(
   })
 
   const appId = sendResult.result.appId
+  const appAddress = sendResult.result.appAddress.toString()
 
   // Register with the Registry (when configured) so the browse page treats the campaign as official. First-touch
   // credit verifies registration on-chain, so an unregistered campaign can never take pledges.
+  let registered = true
+  let registerError: string | undefined
   if (registryAppId > 0n) {
-    const registryClient = registryClientFor(session)
-    await registryClient.send.register({
-      args: {
-        app: appId,
-        payment: await algorand.createTransaction.payment({
-          sender: session.address,
-          receiver: registryClient.appAddress,
-          amount: microAlgos(REGISTER_DEPOSIT_MICRO_ALGOS),
-        }),
-      },
-      appReferences: [appId],
-    })
+    try {
+      await sendRegister(appId, session)
+    } catch (error) {
+      registered = false
+      registerError = error instanceof Error ? error.message : String(error)
+    }
   }
 
   // The generated create result doesn't expose the confirmation round, so wait for the indexer to catch up to algod's current tip.
   await waitForIndexerCatchUp()
 
-  return { appId, appAddress: sendResult.result.appAddress.toString() }
+  return { appId, appAddress, registered, ...(registerError === undefined ? {} : { registerError }) }
 }
 
 /**
