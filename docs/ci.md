@@ -574,6 +574,27 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   Everything is regenerated from the contracts package with the pinned
   generator.
 
+### Shared release scripts
+
+`projects/utils/release/` holds the release mechanics used by all four
+workflows:
+
+- `validate-version.ts` - the dispatch version against `package.json`, semver,
+  and the `next`/`latest` dist-tag.
+- `assert-unpublished.ts` - the npm registry check.
+- `pack-smoke.ts` - pack, install in a clean consumer, and run the smoke entry.
+- `verify-tarball.ts` - required and forbidden files plus package metadata.
+- `publish.ts` - provenance, public access, dist-tag, an optional tarball, and
+  dry runs.
+- `verify-published.ts` - poll npm until the version is visible.
+
+The smoke entry points live in `projects/utils/smoke/`: `constants.ts` imports
+the runtime values and the `/source` entry, `sdk.ts` imports the public API and
+checks `SPECS_VERSION`, `cli.ts` runs `kasakame --help`, and `contracts.ts` reads
+the four artifact folders. Package-specific packaging stays in the package:
+`projects/contracts/scripts/{stage-package,check-package}.ts` and
+`projects/sdk/scripts/codegen.ts`.
+
 ### Versions and release order
 
 - `contracts-vX.Y.Z` and `@kasakame/contracts@X.Y.Z` are the
