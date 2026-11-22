@@ -699,10 +699,22 @@ image, publish it once to GHCR and rebuild only when its `Dockerfile` changes.
 ## Dependency updates
 
 [`.github/dependabot.yml`](../.github/dependabot.yml) checks GitHub Actions and
-the five npm projects weekly. Minor and patch updates are grouped per project;
-major updates stay individual for closer review. Dependabot PRs run the normal
-change-filtered lanes, so a dependency update gets the same checks as any other
-change.
+the seven npm projects weekly. One npm entry covers every project, so the
+shared toolchain (lint, format, test, and codegen) updates through
+cross-directory groups: each shared dependency gets one pull request that
+updates every project using it. Project-specific minor and patch updates stay
+grouped per project. Major updates of shared tooling get one pull request per
+dependency across projects; project-specific majors stay individual. The
+default three-day cooldown applies to version updates.
+
+Security updates use one `security-updates` group for patch and minor fixes;
+major security fixes stay individual. The major-version ignores apply to
+security updates too, so a fix that requires one of those majors waits for the
+upgrade tracked in #65.
+
+Dependabot PRs run the normal change-filtered lanes, so a dependency update
+gets the same checks as any other change. A shared update touches several
+projects, so their lanes run together in one pull request.
 
 ## Artifacts - sharing build output between jobs
 

@@ -5,6 +5,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    labels:
+      - dependencies
     groups:
       actions:
         applies-to: version-updates
@@ -14,67 +16,89 @@ updates:
           - minor
           - patch
 
+  # One npm entry covers every project. Shared tooling is grouped by dependency
+  # name across directories, so one pull request updates every project that uses
+  # it; project-specific updates stay grouped per directory.
   - package-ecosystem: npm
-    directory: /projects/contracts
+    directories:
+      - /projects/contracts
+      - /projects/sdk
+      - /projects/frontend
+      - /projects/cli
+      - /projects/backend
+      - /projects/utils
+      - /projects/constants
     schedule:
       interval: weekly
+    labels:
+      - dependencies
+      - javascript
+    open-pull-requests-limit: 10
     groups:
-      contracts:
+      shared-tooling:
+        group-by: dependency-name
+        applies-to: version-updates
+        patterns:
+          - '@algorandfoundation/algokit-client-generator'
+          - '@algorandfoundation/xhd-wallet-api'
+          - '@eslint/js'
+          - '@types/node'
+          - '@vitest/coverage-v8'
+          - eslint
+          - eslint-config-prettier
+          - eslint-plugin-import
+          - eslint-plugin-jsdoc
+          - globals
+          - prettier
+          - prettier-plugin-jsdoc
+          - prettier-plugin-organize-imports
+          - tsx
+          - typescript
+          - typescript-eslint
+          - vitest
+        update-types:
+          - minor
+          - patch
+      shared-tooling-major:
+        group-by: dependency-name
+        applies-to: version-updates
+        patterns:
+          - '@algorandfoundation/algokit-client-generator'
+          - '@algorandfoundation/xhd-wallet-api'
+          - '@eslint/js'
+          - '@types/node'
+          - '@vitest/coverage-v8'
+          - eslint
+          - eslint-config-prettier
+          - eslint-plugin-import
+          - eslint-plugin-jsdoc
+          - globals
+          - prettier
+          - prettier-plugin-jsdoc
+          - prettier-plugin-organize-imports
+          - tsx
+          - typescript
+          - typescript-eslint
+          - vitest
+        update-types:
+          - major
+      project-dependencies:
         applies-to: version-updates
         patterns:
           - '*'
         update-types:
           - minor
           - patch
-    ignore:
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@eslint/js'
-        update-types:
-          - version-update:semver-major
-
-  - package-ecosystem: npm
-    directory: /projects/sdk
-    schedule:
-      interval: weekly
-    groups:
-      sdk:
-        applies-to: version-updates
+      # One pull request for patch and minor security fixes. Major security
+      # fixes stay individual.
+      security-updates:
+        applies-to: security-updates
         patterns:
           - '*'
         update-types:
           - minor
           - patch
-    ignore:
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@eslint/js'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@types/node'
-        update-types:
-          - version-update:semver-major
-
-  - package-ecosystem: npm
-    directory: /projects/frontend
-    schedule:
-      interval: weekly
-    groups:
-      frontend:
-        applies-to: version-updates
-        patterns:
-          - '*'
-        update-types:
-          - minor
-          - patch
+    # Majors are tracked in #65; remove each ignore when its upgrade lands.
     ignore:
       - dependency-name: typescript
         update-types:
@@ -100,60 +124,8 @@ updates:
       - dependency-name: '@types/react-dom'
         update-types:
           - version-update:semver-major
-
-  - package-ecosystem: npm
-    directory: /projects/cli
-    schedule:
-      interval: weekly
-    groups:
-      cli:
-        applies-to: version-updates
-        patterns:
-          - '*'
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@eslint/js'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@types/node'
-        update-types:
-          - version-update:semver-major
-      # xhd-wallet-api pins 0.7.x; upgrade together when it supports 0.8.
+      # xhd-wallet-api pins libsodium-wrappers-sumo 0.7.x; upgrade together.
       - dependency-name: libsodium-wrappers-sumo
         update-types:
           - version-update:semver-minor
           - version-update:semver-patch
-
-  - package-ecosystem: npm
-    directory: /projects/backend
-    schedule:
-      interval: weekly
-    groups:
-      backend:
-        applies-to: version-updates
-        patterns:
-          - '*'
-        update-types:
-          - minor
-          - patch
-    ignore:
-      - dependency-name: typescript
-        update-types:
-          - version-update:semver-major
-      - dependency-name: eslint
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@eslint/js'
-        update-types:
-          - version-update:semver-major
-      - dependency-name: '@types/node'
-        update-types:
-          - version-update:semver-major
