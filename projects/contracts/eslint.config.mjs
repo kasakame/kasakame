@@ -79,6 +79,8 @@ export default defineConfig(
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      // The simulator creates contract instances through `ctx.contract.create`, not `new`.
+      '@typescript-eslint/no-unsafe-class-instance-assignment': 'off',
     },
   },
   prettier,
