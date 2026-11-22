@@ -8,7 +8,7 @@ import path from 'node:path'
  * `dist` is generated, never committed.
  */
 
-const projectDir = path.resolve(import.meta.dirname, '..')
+const projectDir = path.resolve(import.meta.dirname, '../..')
 const artifactsDir = path.join(projectDir, 'smart_contracts', 'artifacts')
 const distDir = path.join(projectDir, 'dist')
 

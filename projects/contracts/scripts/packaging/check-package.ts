@@ -10,12 +10,37 @@ import path from 'node:path'
  * step, so this checks the exact tarball the release workflow publishes.
  */
 
-const projectDir = path.resolve(import.meta.dirname, '..')
-const packageJson = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8'))
+interface PackageManifest {
+  name?: string
+  version?: string
+  description?: string
+  license?: string
+  keywords?: string[]
+  repository?: { directory?: string }
+  homepage?: string
+  bugs?: { url?: string }
+  engines?: { node?: string }
+  publishConfig?: { access?: string }
+  files?: string[]
+  main?: string
+}
 
-for (const field of ['name', 'version', 'description', 'license']) {
-  assert.equal(typeof packageJson[field], 'string', `package.json is missing ${field}`)
-  assert.ok(packageJson[field].length > 0, `package.json ${field} is empty`)
+interface PackFile {
+  path: string
+}
+
+interface PackInfo {
+  name?: string
+  version?: string
+  files?: Array<string | PackFile>
+}
+
+const projectDir = path.resolve(import.meta.dirname, '../..')
+const packageJson = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8')) as PackageManifest
+
+for (const field of ['name', 'version', 'description', 'license'] as const) {
+  const value = packageJson[field]
+  assert.ok(typeof value === 'string' && value.length > 0, `package.json is missing ${field}`)
 }
 assert.equal(packageJson.name, '@kasakame/contracts', 'package name must be @kasakame/contracts')
 assert.ok(Array.isArray(packageJson.keywords) && packageJson.keywords.length > 0, 'package.json is missing keywords')
@@ -28,8 +53,11 @@ assert.deepEqual(packageJson.files, ['dist'], 'files must be ["dist"]')
 assert.equal(packageJson.main, undefined, 'the data package must not declare main')
 
 const packed = execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: projectDir, encoding: 'utf8' })
-const parsed = JSON.parse(packed)
+const parsed = JSON.parse(packed) as PackInfo[] | Record<string, PackInfo>
 const info = Array.isArray(parsed) ? parsed[0] : Object.values(parsed)[0]
+assert.ok(info, 'npm pack returned no package info')
+assert.ok(info.name, 'npm pack returned no package name')
+assert.ok(info.version, 'npm pack returned no package version')
 const files = new Set((info.files ?? []).map((file) => (typeof file === 'string' ? file : file.path)))
 
 for (const required of ['package.json', 'README.md', 'LICENSE']) {

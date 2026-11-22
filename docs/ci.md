@@ -184,7 +184,7 @@ after a failure.
 ## Why the SDK build needs same-run contract artifacts
 
 The SDK's write path imports the generated clients (`src/generated/*`,
-gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
+gitignored), which `scripts/codegen.ts` regenerates from ARC-56 specs with the
 pinned `@algorandfoundation/algokit-client-generator`. By default codegen
 reads the installed `@kasakame/contracts` package
 (`node_modules/@kasakame/contracts/dist/arc56`); `SDK_SPECS=local` reads
@@ -402,7 +402,8 @@ job installs the tarball in a clean consumer and reads an ARC-56 spec. The
 publish job uses npm OIDC trusted publishing with `--provenance`. The first
 release dispatches with `dry_run=false, bootstrap=true` and a temporary
 `NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Delete the secret and revoke the token after the first release.
+authenticates. Keep the token until `@kasakame/constants` has also completed its
+first publish, then delete the secret and revoke the token.
 `dry_run` defaults to true and skips both the GitHub release and the npm
 publish.
 
@@ -417,8 +418,9 @@ TEAL plus source maps for independent recompile-and-verify audits.
 Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-contracts.yml`, and no environment. Enable
-**Allow npm publish**. The first release uses the `bootstrap` input; configure
-the trusted publisher after it, and later releases use OIDC.
+**Allow npm publish**. The first release uses the `bootstrap` input. Configure
+the trusted publisher only when the next contracts release is within 2 days;
+that OIDC release validates it. An unused configuration expires after 2 days.
 
 ## Workflow: release-constants (separate file)
 
@@ -455,8 +457,9 @@ publish** enabled. Release it before the SDK and CLI: both declare it as a peer
 dependency, and their smoke tests install it from the registry. The first
 release dispatches with `dry_run=false, bootstrap=true` and a temporary
 `NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Delete the secret and revoke the token after that release, then
-configure the trusted publisher for later versions.
+authenticates. Keep the token until `@kasakame/contracts` has also completed its
+first publish, then delete the secret and revoke the token. Configure the
+trusted publisher when the next constants release is within 2 days.
 
 ## Workflow: release-sdk (separate file)
 
@@ -478,8 +481,8 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   lints, format-checks, type-checks, runs coverage, inspects the packed
   tarball, and dry-runs the publish. Each command is its own step. It uploads
   the tested `dist/`.
-- `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
+  installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
   contracts package version. It gates the publish.
@@ -530,8 +533,8 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   it is unpublished, lints, formats, type-checks, runs coverage, builds,
   inspects the packed tarball, and dry-runs the publish. Each command is its own
   step. It uploads the tested `dist/`.
-- `smoke` runs `projects/cli/scripts/smoke-package.mjs`: it packs the tested
-  `dist/`, installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/cli.ts`: it packs the tested `dist/`,
+  installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, and runs `kasakame --help`. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
@@ -574,13 +577,44 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   Everything is regenerated from the contracts package with the pinned
   generator.
 
+### Shared release scripts
+
+`projects/utils/release/` holds the release mechanics used by all four
+workflows:
+
+- `validate-version.ts` - the dispatch version against `package.json`, semver,
+  and the `next`/`latest` dist-tag.
+- `assert-unpublished.ts` - the npm registry check.
+- `pack-smoke.ts` - pack, install in a clean consumer, and run the smoke entry.
+- `verify-tarball.ts` - required and forbidden files plus package metadata.
+- `publish.ts` - provenance, public access, dist-tag, an optional tarball, and
+  dry runs.
+- `verify-published.ts` - poll npm until the version is visible.
+
+The smoke entry points live in `projects/utils/smoke/`: `constants.ts` imports
+the runtime values and the `/source` entry, `sdk.ts` imports the public API and
+checks `SPECS_VERSION`, `cli.ts` runs `kasakame --help`, and `contracts.ts` reads
+the four artifact folders. Package-specific packaging stays in the package:
+`projects/contracts/scripts/packaging/{stage-package,check-package}.ts` and
+`projects/sdk/scripts/codegen.ts`.
+
 ### Versions and release order
 
 - `contracts-vX.Y.Z` and `@kasakame/contracts@X.Y.Z` are the
   `projects/contracts/package.json` version. The SDK installs that package
   version and exports its version as `SPECS_VERSION`.
 - All four release workflows validate the dispatch version against their
-  project `package.json` with `.github/scripts/check-release-version.mjs`.
+  project `package.json` with
+  `projects/utils/release/validate-version.ts`; it also chooses the
+  `next`/`latest` dist-tag.
+- Publishing goes through `projects/utils/release/publish.ts` (provenance,
+  public access, dist-tag, optional tarball, bootstrap token) and
+  `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
+- New packages bootstrap with a temporary `NPM_TOKEN`; npm has no trusted
+  publisher until the package exists. Use one token per first-publish batch and
+  keep it until every package in the batch has published. Configure a trusted
+  publisher only when the next release is within 2 days; an unused configuration
+  expires.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.

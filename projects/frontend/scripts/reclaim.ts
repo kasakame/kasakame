@@ -128,7 +128,7 @@ void (async () => {
           await run(`cancelled ${formatAlgo(leaf.amount)} ALGO pledge`, () => cancelPledge(appId, session, leaf))
         }
       }
-    } else if (campaign.status === 'funded' || (campaign.status === 'open' && campaign.raisedMicroAlgos >= campaign.goalMicroAlgos)) {
+    } else if (campaign.status === 'successful' || (campaign.status === 'open' && campaign.raisedMicroAlgos >= campaign.goalMicroAlgos)) {
       if (creatorSession !== undefined) {
         await run('claimed to creator', () => claim(appId, creatorSession))
       } else {
