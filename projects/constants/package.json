@@ -1,13 +1,31 @@
 {
   "name": "@kasakame/constants",
   "version": "0.2.0",
+  "author": {
+    "name": "Alessio Di Domenico",
+    "email": "alessio.661@hotmail.it"
+  },
   "type": "module",
   "description": "Shared protocol, product, fee, and AVM constants for kasakame",
+  "keywords": [
+    "algorand",
+    "algorand-blockchain",
+    "algokit",
+    "avm",
+    "smart-contracts",
+    "constants",
+    "puya",
+    "typescript"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/kasakame/kasakame.git",
     "directory": "projects/constants"
+  },
+  "homepage": "https://github.com/kasakame/kasakame/tree/main/projects/constants#readme",
+  "bugs": {
+    "url": "https://github.com/kasakame/kasakame/issues"
   },
   "exports": {
     ".": {

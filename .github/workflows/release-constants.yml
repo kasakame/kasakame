@@ -10,8 +10,9 @@ name: release-constants
 # --provenance. Configure the trusted publisher for @kasakame/constants as
 # GitHub owner `kasakame`, repository `kasakame`, workflow
 # `release-constants.yml`, with no environment and "Allow npm publish" enabled.
-# The first publish bootstraps the package with a one-time manual `npm publish`:
-# trusted publishing requires an existing npm package.
+# The first publish bootstraps the package with a one-time manual `npm publish`
+# of a throwaway prerelease (never the release version); trusted publishing
+# requires an existing npm package.
 on:
   workflow_dispatch:
     inputs:
@@ -122,6 +123,7 @@ jobs:
           npm init -y >/dev/null
           npm install --no-audit --no-fund "$RUNNER_TEMP/$tarball"
           node --input-type=module -e "import('@kasakame/constants').then((c) => { if (c.ZERO_ROOT_HEX !== '0'.repeat(64)) throw new Error('bad zero root'); if (c.MAX_TREE_SIZE !== 524287n) throw new Error('bad tree cap'); console.log('constants smoke passed') })"
+          node --input-type=module -e "import('node:module').then(({ createRequire }) => { const require = createRequire(import.meta.url); const source = require.resolve('@kasakame/constants/source'); if (!source.endsWith('src/index.ts')) throw new Error('bad source entry: ' + source); console.log('constants source entry resolved') })"
         working-directory: projects/constants
 
       - name: Upload the tested dist

@@ -10,8 +10,9 @@ name: release-contracts
 # --provenance. Configure the trusted publisher for @kasakame/contracts as
 # GitHub owner `kasakame`, repository `kasakame`, workflow
 # `release-contracts.yml`, with no environment and "Allow npm publish" enabled.
-# The first publish bootstraps the package with a one-time manual `npm publish`:
-# trusted publishing requires an existing npm package.
+# The first publish bootstraps the package with a one-time manual `npm publish`
+# of a throwaway prerelease (never the release version); trusted publishing
+# requires an existing npm package.
 on:
   workflow_dispatch:
     inputs:

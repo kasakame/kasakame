@@ -415,8 +415,8 @@ TEAL plus source maps for independent recompile-and-verify audits.
 Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-contracts.yml`, and no environment. Enable
-**Allow npm publish**. The first publish is a one-time manual `npm publish`:
-trusted publishing requires an existing npm package.
+**Allow npm publish**. The first publish is a one-time manual bootstrap of a
+throwaway prerelease: trusted publishing requires an existing npm package.
 
 ## Workflow: release-constants (separate file)
 
@@ -447,8 +447,10 @@ Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 publish** enabled. Release it before the SDK and CLI: both declare it as a peer
 dependency, and their smoke tests install it from the registry. The first
 publish is the one exception to OIDC: npm trusted publishing requires an
-existing package, so bootstrap `0.2.0` with a one-time manual `npm publish`
-(or a granular token), then configure the trusted publisher for later versions.
+existing package, so bootstrap with a throwaway prerelease (for example
+`0.0.0-bootstrap.0` and `npm publish --tag bootstrap`), then configure the
+trusted publisher. Publish `0.2.0` through the workflow so it carries
+provenance; the workflow refuses an already-published version.
 
 ## Workflow: release-sdk (separate file)
 
