@@ -82,7 +82,7 @@ Agent guidance (commands, gotchas, definition of done) is in [`AGENTS.md`](AGENT
 
 ## Status
 
-Live on TestNet. Registry [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the `v0.2.0` release (contracts, specs, SDK, CLI) is pending. Current work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
+Live on TestNet. Registry [`774437557`](https://lora.algokit.io/testnet/application/774437557/), ClaimsVault [`774437570`](https://lora.algokit.io/testnet/application/774437570/). Those IDs are the pre-2026-11 contract version; the `v0.2.0` release (contracts, SDK, CLI) is pending. Current work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
 
 ## License
 
