@@ -93,12 +93,7 @@ jobs:
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if npm view "@kasakame/contracts@$VERSION" version >/dev/null 2>&1; then
-            echo "@kasakame/contracts@$VERSION is already published" >&2
-            exit 1
-          fi
-          echo "@kasakame/contracts@$VERSION is free"
+        run: node projects/utils/packaging/assert-unpublished.ts "@kasakame/contracts" "$VERSION"
 
       - name: Install contract dependencies
         run: npm ci
