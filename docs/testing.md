@@ -546,8 +546,9 @@ write helpers against a live chain.
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The
 fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
-sessions), `campaign.ts` (headers and leaves), `ledger.ts` (balance and
-minimum-balance helpers), and `scale.ts` (tree sizes and timeouts).
+sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
+timeouts); balance and minimum-balance helpers come from
+`@kasakame/utils/testing`.
 
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
 the offset is reset in a `finally`. The suite is excluded from `npm test` and
