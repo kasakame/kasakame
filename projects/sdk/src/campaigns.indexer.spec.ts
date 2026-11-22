@@ -10,7 +10,7 @@ import {
   getCampaign,
   isRegistered,
   listCampaigns,
-} from './campaigns.js'
+} from './campaigns/index.js'
 import { configureSdk } from './chain.js'
 
 const indexerMock = vi.hoisted(() => ({
@@ -24,12 +24,12 @@ const fetchMyLeavesMock = vi.hoisted(() => vi.fn())
 const fetchVaultBoxMock = vi.hoisted(() => vi.fn())
 const registeredValueMock = vi.hoisted(() => vi.fn())
 
-vi.mock('./claim-tree.js', async () => {
-  const actual = await vi.importActual('./claim-tree.js')
+vi.mock('./claim-tree/index.js', async () => {
+  const actual = await vi.importActual('./claim-tree/index.js')
   return { ...actual, fetchMyLeaves: (...args: unknown[]) => fetchMyLeavesMock(...args) }
 })
 
-vi.mock('./transactions.js', () => ({
+vi.mock('./transactions/vault.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 
