@@ -16,15 +16,17 @@ reasoning behind the splits.
 - **Build once, share the output.** The compiled contract artifacts (TEAL +
   ARC specs) are gitignored and regenerable. A contracts, `utils`, or
   `constants` change triggers `compile-contracts`, which compiles them once and
-  uploads `contracts-artifacts`; `build-sdk` and `integration-test` download it
+  uploads `contracts-artifacts`; `build-sdk` and `integration-test-contracts`
+  download it
   instead of recompiling. When
   the SDK or contracts changed, `build-sdk` runs codegen once, compiles the
   package once, and uploads both `sdk-generated` (the generated clients) and
   `sdk-dist` (the compiled package). The SDK verification job downloads
   `sdk-generated` instead of regenerating clients; the frontend and CLI
-  download `sdk-dist` instead of each rebuilding the SDK. A `workspace`-only
-  run skips the producer, so SDK verification regenerates the clients from the
-  pinned release itself. The SDK never copies generated
+  download `sdk-dist` instead of each rebuilding the SDK; the SDK LocalNet
+  integration job also downloads `sdk-generated` so it tests the same clients.
+  A `workspace`-only run skips the producer, so SDK verification regenerates
+  the clients from the pinned release itself. The SDK never copies generated
   clients between projects: it regenerates them from the ARC-56 specs, from the
   downloaded artifacts (`SDK_SPECS=local`) in runs where `compile-contracts`
   produced artifacts and from
@@ -41,17 +43,19 @@ reasoning behind the splits.
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
   compilation and SDK packaging are separate producer jobs only because other
-  jobs consume their artifacts; `integration-test` adds Docker for LocalNet.
-  Keeping those in separate jobs (not separate workflows) keeps feedback fast
-  and failures attributable to the right lane.
+  jobs consume their artifacts; `integration-test-contracts` and
+  `integration-test-sdk` add Docker for LocalNet. Keeping those in separate
+  jobs (not separate workflows) keeps feedback fast and failures attributable
+  to the right lane.
 - **Change detection, not matrices.** One `changes` job runs
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. Each filter is a lane input: contracts,
   SDK, frontend, CLI, backend, `utils`, `constants`, `ci` (workflows/scripts),
   `oracle` (the contract/SDK test oracle), `markdown`, `shell`, and `workspace`.
   Unknown root paths land in `workspace`, which fails open to the verification
-  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
-  run only when the contracts, `utils`, or `constants` changed, and
+  lanes but never sets `contracts`: `compile-contracts` and
+  `integration-test-contracts` run only when the contracts, `utils`, or
+  `constants` changed, and
   `check-contracts` runs for contracts, `utils`, `constants`, the oracle, or
   workspace changes. Markdown, shell, and
   workflow files run only `repo-lint`; docs images, licenses, and inert root
@@ -62,8 +66,8 @@ reasoning behind the splits.
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
   `run_check_backend`, `run_check_utils`, `run_check_constants`,
-  `run_integration`). Every job reads one boolean, so the trigger rules live in
-  one place instead of repeated `if` expressions.
+  `run_contracts_integration`, `run_sdk_integration`). Every job reads one boolean, so the
+  trigger rules live in one place instead of repeated `if` expressions.
   Separate jobs (no matrix) keep the conditional presence and the status-check
   names stable.
 - **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
@@ -107,7 +111,8 @@ flowchart TD
     backend["Check backend<br/>(checks + Postgres)"]
     utils["Check utils<br/>(format/lint/types)"]
     constants["Check constants<br/>(build/format/lint/types)"]
-    integration["LocalNet integration<br/>(contracts, utils, or constants)"]
+    integrationcontracts["Contracts LocalNet integration<br/>(contracts, utils, or constants)"]
+    integrationsdk["SDK LocalNet integration<br/>(SDK, contracts, or constants)"]
     gate["Gate<br/>(single required check)"]
 
     changes --> repo
@@ -120,12 +125,14 @@ flowchart TD
     changes --> backend
     changes --> utils
     changes --> constants
-    changes --> integration
+    changes --> integrationcontracts
+    changes --> integrationsdk
     changes --> gate
     buildc -->|"contracts artifacts"| buildsdk
-    buildc -->|"contracts artifacts"| integration
-    contracts -->|"verification finished"| integration
+    buildc -->|"contracts artifacts"| integrationcontracts
+    contracts -->|"verification finished"| integrationcontracts
     buildsdk -->|"sdk-generated"| sdk
+    buildsdk -->|"sdk-generated"| integrationsdk
     buildsdk -->|"sdk-dist"| frontend
     buildsdk -->|"sdk-dist"| cli
     repo --> gate
@@ -138,7 +145,8 @@ flowchart TD
     backend --> gate
     utils --> gate
     constants --> gate
-    integration --> gate
+    integrationcontracts --> gate
+    integrationsdk --> gate
 ```
 
 ## What each job needs
@@ -156,7 +164,8 @@ flowchart TD
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
 | `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
 | `check-constants` | `constants` changed | ✅ | - | - | - |
-| `integration-test` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `integration-test-contracts` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `integration-test-sdk` | SDK, contracts, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
@@ -252,13 +261,13 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
   and fails on drift. An oracle-only change does not trigger LocalNet, so it
-  runs the offline suites, not `integration-test`.
+  runs the offline suites, not `integration-test-contracts`.
 - `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
 - `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
 - `workspace` - any other non-inert root path outside the seven projects (root
   config, `.prettierrc.json`, a new project). It fails open to the verification
-  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
-  run only when the contracts, `utils`, or `constants` changed. Markdown,
+  lanes but never sets `contracts`: `compile-contracts` and
+  `integration-test-contracts` run only when the contracts, `utils`, or `constants` changed. Markdown,
   shell scripts, docs images, licenses, and inert root files are excluded from
   it.
 - `run_repo_lint` - `ci || shell || markdown`.
@@ -272,7 +281,7 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_backend` - `backend || workspace`.
 - `run_check_utils` - `utils || constants`.
 - `run_check_constants` - `constants`.
-- `run_integration` - `contracts || utils || constants`.
+- `run_contracts_integration` - `contracts || utils || constants`.
 
 Every `run_*` output is true on a manual `workflow_dispatch`.
 
@@ -322,12 +331,17 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 - **`check-utils`** - runs when `run_check_utils` is true (`utils` changed):
   installs the private package, then format, lint, and type-check. It produces
   no artifact and publishes nothing.
-- **`integration-test`** - runs when `run_integration` is true and waits for
+- **`integration-test-contracts`** - runs when
+  `run_contracts_integration` is true and waits for
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
   runs even if contract verification failed, so a lint/test failure still
   reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
   and runs the compiled TEAL against a live algod (files `00`-`07`: the normal,
   scale, boundary, and randomized-sequence suites).
+- **`integration-test-sdk`** - runs when `run_sdk_integration` is true and
+  `build-sdk` succeeded. It installs the SDK dependencies, downloads
+  `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
+  `00`-`04`). It is independent of the contract LocalNet lane.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -375,7 +389,7 @@ inside the limit fails without affecting the other outcome. The SDK and CLI
 LocalNet suites stay with #158 and #118.
 
 The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
-workflow: they run in the `integration-test` job in the PR `build-and-test`
+workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
 workflow, together with files `00`-`04`.
 
 ## Workflow: release-contracts (separate file)
@@ -399,13 +413,8 @@ pre-release status only affects the "Latest" label, not downloads by tag.
 The npm tarball is the tested artifact passed from the prep job to the smoke and
 publish jobs, so `npm publish` publishes exactly the checked bytes. The smoke
 job installs the tarball in a clean consumer and reads an ARC-56 spec. The
-publish job uses npm OIDC trusted publishing with `--provenance`. The first
-release dispatches with `dry_run=false, bootstrap=true` and a temporary
-`NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Keep the token until `@kasakame/constants` has also completed its
-first publish, then delete the secret and revoke the token.
-`dry_run` defaults to true and skips both the GitHub release and the npm
-publish.
+publish job uses npm OIDC trusted publishing with `--provenance`. `dry_run`
+defaults to true and skips both the GitHub release and the npm publish.
 
 The SDK installs `@kasakame/contracts` at the version in
 `projects/contracts/package.json` and regenerates its clients from
@@ -418,9 +427,9 @@ TEAL plus source maps for independent recompile-and-verify audits.
 Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-contracts.yml`, and no environment. Enable
-**Allow npm publish**. The first release uses the `bootstrap` input. Configure
-the trusted publisher only when the next contracts release is within 2 days;
-that OIDC release validates it. An unused configuration expires after 2 days.
+**Allow npm publish**. Configure the trusted publisher before the next
+contracts release; that OIDC release validates it, and an unused configuration
+expires after 2 days.
 
 ## Workflow: release-constants (separate file)
 
@@ -432,9 +441,6 @@ release commit. The dispatch inputs mirror the SDK release:
 - `version`: required, without the `v` prefix; must match the package version.
 - `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
   and the prep publish dry-run, but skips the real publish and registry check.
-- `bootstrap`: defaults to `false`; the first release publishes with the
-  `NPM_TOKEN` secret. Both paths pass `--provenance`; the token only
-  authenticates.
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
@@ -447,19 +453,14 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
   `--provenance`, then polls the registry for the version for up to 10 minutes.
-  The first release sets `bootstrap=true` and authenticates with the temporary
-  `NPM_TOKEN` secret; it still passes `--provenance`.
 
 Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-constants.yml`, no environment, and **Allow npm
 publish** enabled. Release it before the SDK and CLI: both declare it as a peer
-dependency, and their smoke tests install it from the registry. The first
-release dispatches with `dry_run=false, bootstrap=true` and a temporary
-`NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
-authenticates. Keep the token until `@kasakame/contracts` has also completed its
-first publish, then delete the secret and revoke the token. Configure the
-trusted publisher when the next constants release is within 2 days.
+dependency, and their smoke tests install it from the registry. Configure the
+trusted publisher before the next constants release; an unused configuration
+expires after 2 days.
 
 ## Workflow: release-sdk (separate file)
 
@@ -608,13 +609,12 @@ the four artifact folders. Package-specific packaging stays in the package:
   `projects/utils/release/validate-version.ts`; it also chooses the
   `next`/`latest` dist-tag.
 - Publishing goes through `projects/utils/release/publish.ts` (provenance,
-  public access, dist-tag, optional tarball, bootstrap token) and
+  public access, dist-tag, optional tarball) and
   `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
-- New packages bootstrap with a temporary `NPM_TOKEN`; npm has no trusted
-  publisher until the package exists. Use one token per first-publish batch and
-  keep it until every package in the batch has published. Configure a trusted
-  publisher only when the next release is within 2 days; an unused configuration
-  expires.
+- The SDK and CLI still need their first publish. Use a temporary `NPM_TOKEN`
+  for that batch, keep it until both are published, then revoke it. Configure
+  each trusted publisher when its next release is within 2 days; an unused
+  configuration expires.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.
@@ -684,11 +684,12 @@ and caches:
   (`build-sdk` uses the SDK lockfile; the frontend and CLI jobs use their own
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
-- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts` and
-  `integration-test` jobs (and the separate `heavy-tests` workflow). `~/.local`
+- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts`,
+  `integration-test-contracts`, and `integration-test-sdk` jobs (and the separate
+  `heavy-tests` workflow). `~/.local`
   is cached by AlgoKit version, Python version, and runner OS, so a cache hit
   skips the install entirely. The install is fast relative to the Docker
-  container startup that dominates the integration job.
+  container startup that dominates the integration jobs.
 
 The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
@@ -710,11 +711,11 @@ download, so nothing is compiled or built twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
   (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input) and
-  `integration-test`. The separate `heavy-tests` workflow builds its own
+  `integration-test-contracts`. The separate `heavy-tests` workflow builds its own
   artifacts.
 - **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
-  Consumed by SDK verification, which otherwise regenerates them when
-  `build-sdk` was skipped.
+  Consumed by SDK verification and the SDK LocalNet integration job;
+  verification regenerates them when `build-sdk` was skipped.
 - **`sdk-dist`** - `projects/sdk/dist` (compiled package). Consumed by
   `check-frontend` and `check-cli`, which install it as `file:../sdk`.
 

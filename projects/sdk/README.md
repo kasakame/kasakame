@@ -30,8 +30,8 @@ const algorand = AlgorandClient.fromConfig({
 
 configureSdk({
   algorand,
-  registryAppId: 774437557n,
-  vaultAppId: 774437570n,
+  registryAppId: 776939068n,
+  vaultAppId: 776939077n,
 })
 ```
 

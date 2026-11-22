@@ -7,7 +7,7 @@ import {
 } from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CampaignHeader } from './campaigns.js'
+import type { CampaignHeader } from './campaigns/index.js'
 import {
   campaignFromHeader,
   decodeGlobalState,
@@ -16,7 +16,7 @@ import {
   getCampaignStatus,
   isCampaignApp,
   toCampaignViewModel,
-} from './campaigns.js'
+} from './campaigns/index.js'
 
 const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
 const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
@@ -45,7 +45,7 @@ const { registryAppIdMock, searchForApplicationBoxesMock, lookupApplicationsMock
   lookupBlockMock: vi.fn(),
 }))
 
-vi.mock('./transactions.js', () => ({
+vi.mock('./transactions/vault.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 

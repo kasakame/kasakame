@@ -197,6 +197,13 @@ await registryClient.send.register({ args: { app: appId, payment }, appReference
 Creation takes two wallet prompts: registration references the new app id, which exists
 only after the creation round confirms, so the steps cannot share an atomic group.
 
+`createCampaign` returns `{ appId, appAddress, registered }`. When `registered` is
+`false`, the form keeps the app id and offers **Retry registration**, which calls
+`registerCampaign(appId, session)`; the campaign is not recreated. A stale Campaign
+hash cannot be repaired by retrying: delete the pristine campaign with the same
+`[unregister, delete]` group and recreate it with the matching SDK, or register it
+against a Registry with the matching hash.
+
 No funding step exists - the escrow never holds funds.
 
 ### pledge - one atomic group with a fresh frontier
