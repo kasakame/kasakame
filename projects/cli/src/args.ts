@@ -18,8 +18,8 @@ export interface CliOptions {
   dryRun: boolean
 }
 
-const TESTNET_VAULT_APP_ID = 774437570n
-const TESTNET_REGISTRY_APP_ID = 774437557n
+const TESTNET_VAULT_APP_ID = 776939077n
+const TESTNET_REGISTRY_APP_ID = 776939068n
 
 /**
  * Parse and validate the CLI arguments.

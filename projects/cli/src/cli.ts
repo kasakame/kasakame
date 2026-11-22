@@ -19,8 +19,8 @@ Commands:
 
 Options:
   --network <testnet|localnet|custom>  Network (default: testnet)
-  --vault <appId>                      ClaimsVault app id (default: 774437570 on testnet)
-  --registry <appId>                    Registry app id (default: 774437557 on testnet)
+  --vault <appId>                      ClaimsVault app id (default: 776939077 on testnet)
+  --registry <appId>                    Registry app id (default: 776939068 on testnet)
   --signer <wallet|mnemonic>           Signer (default: wallet on testnet, mnemonic otherwise)
   --mnemonic-file <path>               Algo25 (25-word) or Pera Universal Wallet (24-word) phrase file (or KASAKAME_MNEMONIC)
   --address <address>                  Inspect this address, or the account a 24-word mnemonic signs for
