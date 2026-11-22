@@ -283,11 +283,16 @@ function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promis
 function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]>
 function claim(appId: bigint, session: WalletSession): Promise<void>
 function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
+function settleOpen(appId: bigint, session: WalletSession): Promise<void>
+function releaseClaimed(appId: bigint, session: WalletSession): Promise<void>
+function finalize(appId: bigint, session: WalletSession): Promise<void>
 ```
 
 Creation sends `create`, then registers with the Registry in a second group because registration references the app id from the creation round. If registration fails, `createCampaign` returns the app id with `registered: false` and the Registry error in `registerError`; `registerCampaign` retries without recreating the campaign, and treats an already-registered campaign as success. A stale Campaign program hash cannot be repaired by retrying: register against a Registry with the matching hash, or delete the pristine campaign with the same `[unregister, delete]` group and recreate it with the matching SDK. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. The order is load-bearing: the payment must immediately precede `pledge`, the matching `credit` must immediately follow it and be last, and the vault requires that pledge immediately before the credit (both NoOp; no standalone credits/donations). Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. Delete groups `[unregister, delete]` atomically: the Registry requires the delete immediately after unregister, and the campaign requires the unregister immediately before it (both NoOp). An unregistered campaign's unregister no-ops, so the same group cleans up a registration that never landed. Delete settles in O(1) on every path.
 
 `pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
+
+`settleOpen`, `releaseClaimed`, and `finalize` are the permissionless cleanup helpers. `settleOpen` settles a failed campaign whose creator is gone while the campaign app still exists, after which refunds go through the vault. `releaseClaimed` releases a claimed campaign's vault box, recovering its minimum balance; a missing box is a no-op. `finalize` sweeps a settled-failed campaign's residual to the sweep target and releases its box once the refund window closes or the box is fully paid out; it funds the residual payment's inner fee from the vault box.
 
 ## Design decisions
 

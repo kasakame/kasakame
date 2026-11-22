@@ -11,6 +11,7 @@ import {
   deleteCampaign,
   fetchVaultBox,
   fetchVaultConfig,
+  finalize,
   isStaleProofError,
   pledge,
   pledgeGroup,
@@ -18,6 +19,8 @@ import {
   refundGroup,
   refundWindowEndsAt,
   registerCampaign,
+  releaseClaimed,
+  settleOpen,
   vaultAddress,
 } from './transactions/index.js'
 
@@ -28,6 +31,9 @@ const {
   sendClaimMock,
   sendCancelPledgeMock,
   sendDeleteMock,
+  sendFinalizeMock,
+  sendReleaseClaimedMock,
+  sendSettleOpenMock,
   paramsPledgeMock,
   paramsCreditMock,
   paramsCampaignRefundMock,
@@ -56,6 +62,9 @@ const {
   sendClaimMock: vi.fn(),
   sendCancelPledgeMock: vi.fn(),
   sendDeleteMock: vi.fn(),
+  sendFinalizeMock: vi.fn(),
+  sendReleaseClaimedMock: vi.fn(),
+  sendSettleOpenMock: vi.fn(),
   paramsPledgeMock: vi.fn(),
   paramsCreditMock: vi.fn(),
   paramsCampaignRefundMock: vi.fn(),
@@ -106,6 +115,11 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
     params = {
       credit: (...args: unknown[]) => paramsCreditMock(...args),
       refund: (...args: unknown[]) => paramsVaultRefundMock(...args),
+    }
+    send = {
+      settleOpen: sendSettleOpenMock,
+      finalize: sendFinalizeMock,
+      releaseClaimed: sendReleaseClaimedMock,
     }
     state = {
       box: { campaignBox: { value: (...args: unknown[]) => campaignBoxValueMock(...args) } },
@@ -170,6 +184,21 @@ const session = {
 // The real app-account address of the configured vault (app id 2002).
 const VAULT_APP_ADDRESS = algosdk.getApplicationAddress(2002n).toString()
 
+/**
+ * A packed vault box with the given inflow/outflow totals.
+ *
+ * @param paidIn Total inflows in microAlgos.
+ * @param paidOut Total outflows in microAlgos.
+ * @returns The 65-byte vault box.
+ */
+function vaultBox(paidIn: bigint, paidOut: bigint): Uint8Array {
+  const box = new Uint8Array(65)
+  const view = new DataView(box.buffer)
+  view.setBigUint64(0, paidIn)
+  view.setBigUint64(8, paidOut)
+  return box
+}
+
 describe('transaction helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -180,6 +209,7 @@ describe('transaction helpers', () => {
     pathBlobMock.mockReturnValue(new Uint8Array())
     registryAppIdMock.mockReturnValue(1001n)
     getSuggestedParamsMock.mockResolvedValue({ minFee: 1_000n })
+    campaignBoxValueMock.mockResolvedValue(new Uint8Array(65))
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
     paramsCreditMock.mockResolvedValue({ credit: 'params' })
     paramsCampaignRefundMock.mockResolvedValue({ refund: 'params' })
@@ -189,7 +219,16 @@ describe('transaction helpers', () => {
     composerBuildMock.mockResolvedValue({ transactions: [{ txn: 'txn', signer: 'signer' }] })
     composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }] })
     sendCreateMock.mockResolvedValue({ result: { appId: 9n, appAddress: { toString: () => 'ESCROW' } } })
-    for (const mock of [sendRegisterMock, sendUnregisterMock, sendClaimMock, sendCancelPledgeMock, sendDeleteMock]) {
+    for (const mock of [
+      sendRegisterMock,
+      sendUnregisterMock,
+      sendClaimMock,
+      sendCancelPledgeMock,
+      sendDeleteMock,
+      sendSettleOpenMock,
+      sendFinalizeMock,
+      sendReleaseClaimedMock,
+    ]) {
       mock.mockResolvedValue({ confirmation: { confirmedRound: 99n } })
     }
   })
@@ -442,6 +481,66 @@ describe('transaction helpers', () => {
     const call = sendClaimMock.mock.calls[0]?.[0] as { extraFee: unknown; boxReferences: unknown[] }
     expect(call.boxReferences).toHaveLength(1)
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+  })
+
+  it('settleOpen settles a failed campaign permissionlessly', async () => {
+    await settleOpen(9n, session)
+
+    const call = sendSettleOpenMock.mock.calls[0]?.[0] as {
+      args: { app: bigint }
+      sender: string
+      appReferences: unknown[]
+      boxReferences: unknown[]
+    }
+    expect(call.args.app).toEqual(9n)
+    expect(call.sender).toEqual(session.address)
+    expect(call.appReferences).toEqual([9n])
+    expect(call.boxReferences).toHaveLength(1)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('releaseClaimed releases a claimed box permissionlessly', async () => {
+    await releaseClaimed(9n, session)
+
+    const call = sendReleaseClaimedMock.mock.calls[0]?.[0] as { args: { app: bigint }; boxReferences: unknown[] }
+    expect(call.args.app).toEqual(9n)
+    expect(call.boxReferences).toHaveLength(1)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('finalize funds the residual inner payment', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 200n))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(1_000n)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('finalize skips the inner fee when the box is fully paid out', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 500n))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(0n)
+  })
+
+  it('finalize skips the inner fee when the box is missing', async () => {
+    campaignBoxValueMock.mockRejectedValue(new Error('missing'))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(0n)
+  })
+
+  it('surfaces a cleanup rejection without waiting for the indexer', async () => {
+    sendFinalizeMock.mockRejectedValueOnce(new Error('refund window still open'))
+
+    await expect(finalize(9n, session)).rejects.toThrow('refund window still open')
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
   })
 
   it('deleteCampaign settles, closes, and unregisters in one atomic group', async () => {

@@ -246,9 +246,9 @@ SDK use the same tree-shape formulas (see
 | Refund, vault path | vault + inner payment + 0..14 actual OpUp takes (15 funded) | 4,000-17,000 µA | one payout inner; +1,000 per funded take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
 | `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
-| `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
-| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; not exposed yet |
-| `releaseClaimed` | vault only | 1,000 µA | not exposed yet |
+| `settleOpen` | vault only | 1,000 µA | SDK helper; CLI #299 |
+| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; SDK helper, CLI #299 |
+| `releaseClaimed` | vault only | 1,000 µA | SDK helper; CLI #299 |
 | `Registry.register` | deposit + register | 2,000 µA | inside the create flow |
 | `Registry.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
 
