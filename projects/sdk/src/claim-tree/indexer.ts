@@ -28,15 +28,15 @@ export interface BackerLeaf {
   txidHex: string
 }
 
-// Session memo for indexer reads, dropped wholesale by `clearTreeCache` (the frontend calls it around every mutation
-// in `lib/transaction.ts`). One invalidation rule for all replay inputs - blocks are immutable on-chain, but clearing
-// both maps keeps the rule simple and the cost is one re-download per mutation.
+// Session memo for indexer reads, dropped wholesale by `clearTreeCache` (the SDK clears it in pledge, cancelPledge,
+// and refund around proof-carrying submissions). One invalidation rule for all replay inputs - blocks are immutable
+// on-chain, but clearing both maps keeps the rule simple and the cost is one re-download per mutation.
 const appCallCache = new Map<bigint, Promise<algosdk.indexerModels.Transaction[]>>()
 const blockCache = new Map<bigint, Promise<{ transactions?: algosdk.indexerModels.Transaction[] }>>()
 
 /**
- * Drop memoized indexer reads. Call around every local mutation (proof-carrying submissions rebuild from a cleared
- * cache, and post-write reloads refetch) - never on plain reads.
+ * Drop memoized indexer reads. The SDK's write helpers call it around proof-carrying submissions; plain reads reuse
+ * the cache.
  */
 export function clearTreeCache(): void {
   appCallCache.clear()

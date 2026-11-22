@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.1.0`, published as a public npm package. The frontend consumes the registry version; a packed local copy is installed only to test unreleased SDK changes. The escape-hatch CLI consumes the SDK too; see [`cli.md`](cli.md).
+Status: version `0.2.0`, published as a public npm package. The frontend and CLI consume `"@kasakame/sdk": "^0.2.0"` from the registry; a packed local copy is installed only to test unreleased SDK changes. See [`cli.md`](cli.md) for the escape-hatch CLI.
 
 ## Why the SDK exists
 
@@ -12,7 +12,7 @@ Before the SDK, the frontend's `lib/` folder held the chain logic: claim-tree ma
 
 - Location `projects/sdk/`. The AlgoKit workspace discovers `projects/*` entries through their `.algokit.toml`, so the SDK ships a minimal one to take part in `algokit project run` and `bootstrap`.
 - One package. Split only when a consumer needs a subset; today nobody does.
-- Version `0.1.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
+- Version `0.2.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
 - Node.js >= 24, ESM. Entry point is `./dist/index.js` with types in `./dist/index.d.ts`; `files` publishes only `dist/` plus the package metadata and README.
 
 Dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and generated clients), `@noble/hashes` (SHA-512/256, the same function as the AVM opcode), and `algosdk` (indexer and algod access).
@@ -173,7 +173,7 @@ function fetchMyLeaves(campaignId: bigint, address: string): Promise<BackerLeaf[
 function clearTreeCache(): void
 ```
 
-`loadTree` replays pledges in chain order, then nulls spent positions. `fetchMyLeaves` returns the viewer's unspent leaves, which drive refund and cancel buttons and the pledge total. The replay assumes every pledge and spend is a **top-level** block transaction; the contracts enforce that with `Global.callerApplicationId == 0`, so an app-created inner group is rejected rather than silently producing a tree the SDK cannot rebuild.
+`loadTree` replays pledges in chain order, then nulls spent positions. `fetchMyLeaves` returns the viewer's unspent leaves, which drive refund and cancel buttons and the pledge total. The replay assumes every pledge and spend is a **top-level** block transaction; the contracts enforce that with `Global.callerApplicationId == 0`, so an app-created inner group is rejected rather than silently producing a tree the SDK cannot rebuild. The SDK's write helpers clear the replay cache internally; `clearTreeCache` is an escape hatch for an external mutation.
 
 ### Campaign reads (`campaigns/`)
 
@@ -309,20 +309,26 @@ Creation sends `create`, then registers with the Registry in a second group beca
 
 Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk`.
 
-LocalNet integration lives in `test/transactions.integration.test.ts` and is
-excluded from `npm test` and coverage. `npm run test:integration` deploys its own
-Registry + ClaimsVault from the generated clients' ARC-56 bytecode and runs the
-create/cancel, claim/delete, and failed-refund flows. The clients decide which
-contracts are under test: the installed contracts package by default, or the local
-artifacts after `SDK_SPECS=local npm run codegen` (see
-[`testing.md`](testing.md#sdk-localnet-integration)).
+LocalNet integration lives in `test/00-open-campaign.integration.test.ts` through
+`test/04-large-tree.integration.test.ts`, with shared fixtures under `test/utils/`.
+`npm run test:integration` runs the numbered files in path order against a live
+LocalNet; the suite is excluded from `npm test` and coverage. Each file deploys
+its own Registry + ClaimsVault from the generated clients' ARC-56 bytecode and
+runs one lifecycle or scale scenario. The file and tag map is in
+[`testing.md`](testing.md#sdk-localnet-integration). The clients decide which
+contracts are under test: the installed contracts package by default, or the
+local artifacts after `SDK_SPECS=local npm run codegen`.
 
 ## Release info
 
-- Version `0.1.0`, following the contracts' breaking changes while they churn.
-- Public npm package, published as `0.1.0`. The frontend consumes `"@kasakame/sdk": "^0.1.0"` from the registry.
+- Version `0.2.0`, following the contracts' breaking changes while they churn.
+- Public npm package, published as `0.2.0`. The frontend and CLI consume
+  `"@kasakame/sdk": "^0.2.0"` from the registry.
+- Release `@kasakame/contracts` and `@kasakame/constants` first: the SDK builds
+  from the released contracts package and declares constants as a peer
+  dependency.
 - License: MIT (`package.json` SPDX id and a `projects/sdk/LICENSE` copy); the published tarball includes it.
-- Packaging: `files: ["dist"]`, `publishConfig.access: "public"`, `projects/sdk/README.md`, and the MIT `LICENSE`. The manual `release-sdk` workflow takes the package version (checked against `package.json`), defaults to `dry_run=true`, runs codegen, build, lint, format, type-check, coverage, `npm pack --dry-run`, `npm publish --dry-run`, and a tarball install/import smoke test as separate steps, and only publishes with `dry_run=false`; releases authenticate with npm OIDC trusted publishing and pass `--provenance`.
+- Packaging: `files: ["dist"]`, `publishConfig.access: "public"`, `projects/sdk/README.md`, and the MIT `LICENSE`. The manual `release-sdk` workflow takes the package version (checked against `package.json`), defaults to `dry_run=true`, runs codegen, build, lint, format, type-check, coverage, `npm pack --dry-run`, a dry-run publish, and a tarball install/import smoke test as separate steps, and only publishes with `dry_run=false`; releases authenticate with npm OIDC trusted publishing and pass `--provenance`.
 - The registry version is the committed default. To test unreleased contracts/SDK changes, build the SDK (`npm run build` in `projects/sdk`) and install it as a packed local copy (`npm install --no-save --install-links "file:../sdk"` in `projects/frontend`); a plain `npm ci` restores the published package.
 - Codegen: `npm run codegen` (also the `prebuild` hook) reads the installed `@kasakame/contracts` package (`node_modules/@kasakame/contracts/dist/arc56`) and regenerates each `*Client.ts` from its ARC-56 spec with the pinned `@algorandfoundation/algokit-client-generator`, tagged `// @ts-nocheck`. Install the released package with `npm install --no-save --no-package-lock @kasakame/contracts@<version>` (use the version in `projects/contracts/package.json`), or set `SDK_SPECS=local` to use `projects/contracts/smart_contracts/artifacts`; the version comes from the contracts package and is exported as `SPECS_VERSION`.
 - Build: `npm run build` (`tsc` to `dist/`). The default codegen needs `@kasakame/contracts` installed; `SDK_SPECS=local` needs a contracts build instead.
