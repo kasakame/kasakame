@@ -19,8 +19,9 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "rootDir": ".",
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "scripts"]
 }

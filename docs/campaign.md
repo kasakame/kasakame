@@ -2,6 +2,8 @@
 
 This page is the reference for the Campaign app: its state, its methods, and the rules each method enforces. The tree math behind pledges and refunds is in [`claim-tree-protocol.md`](claim-tree-protocol.md); the system around the contract is in [`architecture.md`](architecture.md). Compiled sizes, page counts, MBR, and fee formulas are in [`limits.md`](limits.md).
 
+The numeric bounds and fee coefficients in this reference live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
+
 The chain is the source of truth; the indexer is a read model. Escrow and fee behavior below is verified on LocalNet.
 
 ## Trust model and receipts
@@ -139,7 +141,7 @@ The full behavioral matrix lives in `contract.algo.spec.ts` (100% lines/branches
 
 ## Fees
 
-Measured on LocalNet; each inner transaction costs one extra minimum fee (1,000 µA) via `extraFee`. Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the dynamic SDK extras, is in [`limits.md`](limits.md).
+Measured on LocalNet; each inner transaction costs one current minimum fee via `extraFee` (1,000 µA on LocalNet; the SDK reads `SuggestedParams.minFee`). Amounts are never reduced by fees. The full size/MBR/fee table, including the current create cost and the dynamic SDK extras, is in [`limits.md`](limits.md).
 
 | Call | SDK total | Notes |
 | --- | ---: | --- |

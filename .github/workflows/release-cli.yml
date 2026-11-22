@@ -1,11 +1,11 @@
 name: release-cli
 
 # Manual release of @kasakame/cli. The CLI consumes the published SDK, so this
-# workflow never builds or installs a local copy: `npm ci` installs exactly what
-# users get. Every gate is its own step so a failure and its timing are visible
-# in the run. The dispatch version must match projects/cli/package.json, and
-# dry_run defaults to true; set it to false only for a real release. Release the
-# SDK first.
+# workflow never builds or installs a local copy of it: `npm ci` installs
+# exactly what users get. Every gate is its own step so a failure and its timing
+# are visible in the run. The dispatch version must match
+# projects/cli/package.json, and dry_run defaults to true; set it to false only
+# for a real release. Release @kasakame/constants and the SDK first.
 #
 # Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
 # --provenance. Configure the trusted publisher for @kasakame/cli as GitHub
@@ -54,6 +54,7 @@ jobs:
 
       # The committed dependency is the published SDK. Do not install
       # file:../sdk here: a published CLI must ship against a released SDK.
+
       - name: Install CLI dependencies
         run: npm ci
         working-directory: projects/cli
@@ -62,33 +63,13 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          node .github/scripts/check-release-version.mjs projects/cli/package.json "$INPUT_VERSION"
-          version=$(node -p "require('./projects/cli/package.json').version")
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "package version is not semver: $version" >&2
-            exit 1
-          fi
-          if [[ "$version" == *-* ]]; then
-            tag=next
-          else
-            tag=latest
-          fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-          } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/cli@$version -> $tag"
+        # The script writes version and tag to GITHUB_OUTPUT.
+        run: node projects/utils/release/validate-version.ts projects/cli/package.json "$INPUT_VERSION"
 
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if npm view "@kasakame/cli@$VERSION" version >/dev/null 2>&1; then
-            echo "@kasakame/cli@$VERSION is already published" >&2
-            exit 1
-          fi
-          echo "@kasakame/cli@$VERSION is free"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/cli" "$VERSION"
 
       - name: Lint
         run: npm run lint
@@ -115,8 +96,7 @@ jobs:
         working-directory: projects/cli
 
       - name: Dry-run the publish
-        run: npm publish --dry-run
-        working-directory: projects/cli
+        run: node projects/utils/release/publish.ts projects/cli --tag "${{ steps.version.outputs.tag }}" --dry-run
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7
@@ -146,8 +126,7 @@ jobs:
           path: projects/cli/dist
 
       - name: Smoke-test the packed package
-        run: node scripts/smoke-package.mjs
-        working-directory: projects/cli
+        run: node projects/utils/release/pack-smoke.ts projects/cli projects/utils/smoke/cli.ts
 
   publish:
     name: Publish to npm
@@ -196,8 +175,7 @@ jobs:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/cli@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/cli
+          node projects/utils/release/publish.ts projects/cli --tag "$TAG"
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -208,15 +186,4 @@ jobs:
         env:
           VERSION: ${{ needs.prep.outputs.version }}
         # npm stages a new package ("being processed") before it is visible.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/cli@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/cli@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/cli@$VERSION" version || true
-          echo "@kasakame/cli@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/cli" "$VERSION"

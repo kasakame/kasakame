@@ -1,15 +1,13 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
+import { ACCOUNT_BASE_MICRO_ALGOS, MIN_REFUND_WINDOW_SECONDS, PLATFORM_STORAGE_RESERVE_MICRO_ALGOS } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
 import { accountInfo, minBalanceOf } from '@kasakame/utils/testing'
 import fs from 'node:fs'
 import path from 'node:path'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
-  APP_BASE,
-  DEPLOY_FUNDING,
   REGISTRY_MBR,
   SELECTORS,
-  TEST_VAULT_WINDOW,
   VAULT_MBR,
   deleteCampaign,
   deployCampaign,
@@ -52,11 +50,11 @@ describe('00 deployment and wiring', () => {
       Buffer.from(specProgramHash(stack.specs.vault, 'ClaimsVault.arc56.json')),
     )
     expect(await registry.state.global.getValue('expectedSweepTarget')).toEqual(stack.sweeperAddress)
-    expect(await registry.state.global.getValue('expectedRefundWindow')).toEqual(TEST_VAULT_WINDOW)
+    expect(await registry.state.global.getValue('expectedRefundWindow')).toEqual(BigInt(MIN_REFUND_WINDOW_SECONDS))
 
     expect(await accountInfo(stack.algorand, stack.registry.address)).toEqual({
-      balance: DEPLOY_FUNDING,
-      minBalance: APP_BASE,
+      balance: PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
+      minBalance: ACCOUNT_BASE_MICRO_ALGOS,
     })
     expect(await minBalanceOf(stack.algorand, stack.ownerAddress)).toBeGreaterThanOrEqual(REGISTRY_MBR + VAULT_MBR)
   })
@@ -66,10 +64,10 @@ describe('00 deployment and wiring', () => {
     expect(stack.vault.appId).toBeGreaterThan(0n)
     expect(await vault.state.global.getValue('registry')).toEqual(stack.registry.appId)
     expect(await vault.state.global.getValue('sweepTarget')).toEqual(stack.sweeperAddress)
-    expect(await vault.state.global.getValue('refundWindow')).toEqual(TEST_VAULT_WINDOW)
+    expect(await vault.state.global.getValue('refundWindow')).toEqual(BigInt(MIN_REFUND_WINDOW_SECONDS))
     expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual({
-      balance: DEPLOY_FUNDING,
-      minBalance: APP_BASE,
+      balance: PLATFORM_STORAGE_RESERVE_MICRO_ALGOS,
+      minBalance: ACCOUNT_BASE_MICRO_ALGOS,
     })
   })
 
@@ -78,7 +76,16 @@ describe('00 deployment and wiring', () => {
       path.resolve(__dirname, '../smart_contracts/artifacts/campaign/Campaign.approval.teal'),
       'utf8',
     )
-    for (const selector of [SELECTORS.payBack, SELECTORS.payClaim, SELECTORS.settle, SELECTORS.notifyDelete, SELECTORS.credit]) {
+    for (const selector of [
+      SELECTORS.payBack,
+      SELECTORS.payClaim,
+      SELECTORS.settle,
+      SELECTORS.notifyDelete,
+      SELECTORS.credit,
+      SELECTORS.pledge,
+      SELECTORS.cancelPledge,
+      SELECTORS.refund,
+    ]) {
       expect(campaignApproval).toContain(selector)
     }
 
@@ -88,6 +95,7 @@ describe('00 deployment and wiring', () => {
     )
     expect(vaultApproval).toContain(SELECTORS.isRegistered)
     expect(vaultApproval).toContain(SELECTORS.pledge)
+    expect(vaultApproval).toContain(SELECTORS.vaultRefund)
 
     const registryApproval = fs.readFileSync(
       path.resolve(__dirname, '../smart_contracts/artifacts/registry/Registry.approval.teal'),
@@ -151,7 +159,7 @@ describe('00 deployment and wiring', () => {
 
     const wrongWindow = await deployStack(fixture, {
       bindVault: false,
-      registryWindowSeconds: TEST_VAULT_WINDOW + 1n,
+      registryWindowSeconds: BigInt(MIN_REFUND_WINDOW_SECONDS) + 1n,
     })
     await expect(
       wrongWindow.registry.client.send.call({

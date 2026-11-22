@@ -1,6 +1,13 @@
+import {
+  REGISTRY_BOX_PREFIX,
+  VAULT_BOX_PREFIX,
+  VAULT_BOX_STATUS_CLAIMED_HEX,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
+} from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CampaignHeader } from './campaigns.js'
+import type { CampaignHeader } from './campaigns/index.js'
 import {
   campaignFromHeader,
   decodeGlobalState,
@@ -9,7 +16,11 @@ import {
   getCampaignStatus,
   isCampaignApp,
   toCampaignViewModel,
-} from './campaigns.js'
+} from './campaigns/index.js'
+
+const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
+const VAULT_BOX_STATUS_CLAIMED = Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16)
 
 vi.mock('./chain.js', () => ({
   getSdkConfig: () => ({
@@ -34,7 +45,7 @@ const { registryAppIdMock, searchForApplicationBoxesMock, lookupApplicationsMock
   lookupBlockMock: vi.fn(),
 }))
 
-vi.mock('./transactions.js', () => ({
+vi.mock('./transactions/vault.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 
@@ -76,8 +87,8 @@ function boxName(appId: bigint, prefix: number): Uint8Array {
   return bytes
 }
 
-const REGISTRATION_BOX_PREFIX = 0x72
-const VAULT_BOX_PREFIX = 0x63
+const REGISTRATION_BOX_PREFIX_BYTE = REGISTRY_BOX_PREFIX.charCodeAt(0)
+const VAULT_BOX_PREFIX_BYTE = VAULT_BOX_PREFIX.charCodeAt(0)
 
 const ZERO_ADDRESS = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'
 
@@ -352,7 +363,7 @@ describe('enumerateCampaigns', () => {
 
   it('lists registry-registered campaign ids', async () => {
     registryBoxesValue = {
-      boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }, { name: boxName(42n, REGISTRATION_BOX_PREFIX) }],
+      boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX_BYTE) }, { name: boxName(42n, REGISTRATION_BOX_PREFIX_BYTE) }],
       nextToken: undefined,
     }
     const ids = await enumerateCampaigns()
@@ -363,15 +374,15 @@ describe('enumerateCampaigns', () => {
   })
 
   it('includes vault-boxed campaigns not registered with the registry', async () => {
-    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
-    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX_BYTE) }], nextToken: undefined }
+    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX_BYTE) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n, 9n]))
   })
 
   it('dedupes campaigns present in both the registry and the vault', async () => {
-    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined }
-    vaultBoxesValue = { boxes: [{ name: boxName(7n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    registryBoxesValue = { boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX_BYTE) }], nextToken: undefined }
+    vaultBoxesValue = { boxes: [{ name: boxName(7n, VAULT_BOX_PREFIX_BYTE) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n]))
   })
@@ -384,16 +395,16 @@ describe('enumerateCampaigns', () => {
   it('skips malformed box names from either source', async () => {
     registryBoxesValue = {
       boxes: [
-        { name: boxName(7n, REGISTRATION_BOX_PREFIX) },
-        { name: new Uint8Array([0x72, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
+        { name: boxName(7n, REGISTRATION_BOX_PREFIX_BYTE) },
+        { name: new Uint8Array([REGISTRATION_BOX_PREFIX_BYTE, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
         { name: new Uint8Array([0x00, 0, 0, 0, 0, 0, 0, 0, 7]) }, // 9 bytes: wrong prefix
       ],
       nextToken: undefined,
     }
     vaultBoxesValue = {
       boxes: [
-        { name: boxName(9n, VAULT_BOX_PREFIX) },
-        { name: new Uint8Array([0x63, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
+        { name: boxName(9n, VAULT_BOX_PREFIX_BYTE) },
+        { name: new Uint8Array([VAULT_BOX_PREFIX_BYTE, 0, 0, 0, 0, 0, 0, 0]) }, // 8 bytes: wrong length
       ],
       nextToken: undefined,
     }
@@ -403,7 +414,7 @@ describe('enumerateCampaigns', () => {
 
   it('skips the registry when no registry is configured', async () => {
     registryAppIdMock.mockReturnValue(0n)
-    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined }
+    vaultBoxesValue = { boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX_BYTE) }], nextToken: undefined }
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([9n]))
     expect(searchForApplicationBoxesMock).not.toHaveBeenCalledWith(1001n)
@@ -412,11 +423,11 @@ describe('enumerateCampaigns', () => {
 
   it('paginates both box searches across multiple pages', async () => {
     registryDoMock
-      .mockResolvedValueOnce({ boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX) }], nextToken: 't' })
-      .mockResolvedValueOnce({ boxes: [{ name: boxName(42n, REGISTRATION_BOX_PREFIX) }], nextToken: undefined })
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(7n, REGISTRATION_BOX_PREFIX_BYTE) }], nextToken: 't' })
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(42n, REGISTRATION_BOX_PREFIX_BYTE) }], nextToken: undefined })
     vaultDoMock
       .mockResolvedValueOnce({ boxes: [], nextToken: 'vt' })
-      .mockResolvedValueOnce({ boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX) }], nextToken: undefined })
+      .mockResolvedValueOnce({ boxes: [{ name: boxName(9n, VAULT_BOX_PREFIX_BYTE) }], nextToken: undefined })
     const ids = await enumerateCampaigns()
     expect(ids).toEqual(new Set([7n, 42n, 9n]))
     expect(registryNextTokenMock).toHaveBeenCalledWith('t')
@@ -531,7 +542,7 @@ describe('fetchCampaignHeader', () => {
   })
 
   it('decodes a deleted campaign from its creation transaction and vault box', async () => {
-    const vaultBox = { paidIn: 7_000_000n, paidOut: 1_000_000n, status: 3, settledAt: 1_500n }
+    const vaultBox = { paidIn: 7_000_000n, paidOut: 1_000_000n, status: VAULT_BOX_STATUS_CLAIMED, settledAt: 1_500n }
     lookupApplicationsDoMock.mockResolvedValue({
       application: {
         id: 42n,
@@ -650,7 +661,7 @@ describe('fetchCampaignHeader', () => {
       },
     })
     lookupBlockDoMock.mockResolvedValue({ transactions: [] })
-    fetchVaultBoxMock.mockResolvedValue({ paidIn: 3_000_000n, paidOut: 0n, status: 1, settledAt: 0n })
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 3_000_000n, paidOut: 0n, status: VAULT_BOX_STATUS_OPEN, settledAt: 0n })
 
     const header = await fetchCampaignHeader(42n)
     expect(header).toEqual({
@@ -678,7 +689,7 @@ describe('fetchCampaignHeader', () => {
       },
     })
     lookupBlockDoMock.mockResolvedValue({})
-    fetchVaultBoxMock.mockResolvedValue({ paidIn: 5_000_000n, paidOut: 1_000_000n, status: 2, settledAt: 0n })
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 5_000_000n, paidOut: 1_000_000n, status: VAULT_BOX_STATUS_FAILED, settledAt: 0n })
 
     const header = await fetchCampaignHeader(42n)
     expect(header).toEqual({

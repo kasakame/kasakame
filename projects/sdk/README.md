@@ -9,12 +9,15 @@ The package ships the generated typed clients, so consumers do not need the cont
 ## Install
 
 ```bash
-npm install @kasakame/sdk
+npm install @kasakame/sdk @kasakame/constants
 ```
 
-Node.js 24 or newer, ESM.
+Node.js 24 or newer, ESM. The SDK declares `@kasakame/constants@^0.2.0` as a
+peer dependency.
 
-## Configure once
+## Usage
+
+### Configure once
 
 ```ts
 import { configureSdk } from '@kasakame/sdk'
@@ -27,15 +30,15 @@ const algorand = AlgorandClient.fromConfig({
 
 configureSdk({
   algorand,
-  registryAppId: 774437557n,
-  vaultAppId: 774437570n,
+  registryAppId: 776939068n,
+  vaultAppId: 776939077n,
 })
 ```
 
 Every read and write uses that session. Reads go through the indexer; writes
 build transaction groups for the caller's `WalletSession`.
 
-## Read and write
+### Read and write
 
 ```ts
 import { fetchChainTimestamp, getCampaign, pledge } from '@kasakame/sdk'
@@ -46,9 +49,11 @@ const campaign = await getCampaign(appId, now)
 await pledge(appId, { address, signer }, amountMicroAlgos)
 ```
 
-See the [SDK documentation](https://github.com/kasakame/kasakame/blob/main/docs/sdk.md)
-for the full public API: campaign reads, claim-tree math and replay, pledge and
-refund groups, and the settlement calls.
+## Documentation
+
+- [SDK documentation](https://github.com/kasakame/kasakame/blob/main/docs/sdk.md)
+- [Repository](https://github.com/kasakame/kasakame)
+- [Issues](https://github.com/kasakame/kasakame/issues)
 
 ## License
 

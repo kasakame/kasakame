@@ -1,9 +1,9 @@
 name: release-sdk
 
-# Manual release of @kasakame/sdk. The SDK is regenerated from the pinned
-# specs release, so this workflow never builds the contracts and cannot embed
-# an unreleased interface. Every gate is its own step so a failure and its
-# timing are visible in the run. The dispatch version must match
+# Manual release of @kasakame/sdk. The SDK is regenerated from the released
+# @kasakame/contracts package, so this workflow never builds the contracts and
+# cannot embed an unreleased interface. Every gate is its own step so a failure
+# and its timing are visible in the run. The dispatch version must match
 # projects/sdk/package.json, and dry_run defaults to true; set it to false only
 # for a real release.
 #
@@ -14,7 +14,9 @@ name: release-sdk
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
 # public API before the publish job runs. The frontend is released separately
-# against the published version.
+# against the published version. Release @kasakame/contracts and
+# @kasakame/constants first: the SDK builds from the contracts package and
+# declares constants as a peer dependency.
 on:
   workflow_dispatch:
     inputs:
@@ -42,7 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      specs: ${{ steps.version.outputs.specs }}
+      contracts: ${{ steps.version.outputs.contracts }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -62,40 +64,28 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
+        # The script writes version and tag to GITHUB_OUTPUT.
         run: |
-          node .github/scripts/check-release-version.mjs projects/sdk/package.json "$INPUT_VERSION"
-          version=$(node -p "require('./projects/sdk/package.json').version")
-          specs=$(node -p "require('./projects/sdk/package.json').config.specsVersion")
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "package version is not semver: $version" >&2
-            exit 1
-          fi
-          if [[ "$version" == *-* ]]; then
-            tag=next
-          else
-            tag=latest
-          fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-            echo "specs=$specs"
-          } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/sdk@$version -> $tag (specs $specs)"
+          node projects/utils/release/validate-version.ts projects/sdk/package.json "$INPUT_VERSION"
+          contracts=$(node -p "require('./projects/contracts/package.json').version")
+          echo "contracts=$contracts" >> "$GITHUB_OUTPUT"
+          echo "SDK contracts version: $contracts"
 
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if npm view "@kasakame/sdk@$VERSION" version >/dev/null 2>&1; then
-            echo "@kasakame/sdk@$VERSION is already published" >&2
-            exit 1
-          fi
-          echo "@kasakame/sdk@$VERSION is free"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/sdk" "$VERSION"
 
-      # The pinned specs release is the only interface input. Do not set
+      # The released contracts package is the only interface input. Do not set
       # SDK_SPECS=local here: a published SDK must not use an unreleased
       # contracts checkout.
-      - name: Regenerate clients from pinned specs
+      - name: Install the released contracts package
+        env:
+          CONTRACTS_VERSION: ${{ steps.version.outputs.contracts }}
+        run: npm install --no-save --no-package-lock "@kasakame/contracts@$CONTRACTS_VERSION"
+        working-directory: projects/sdk
+
+      - name: Regenerate clients from the released contracts package
         run: npm run codegen
         working-directory: projects/sdk
 
@@ -126,8 +116,7 @@ jobs:
         working-directory: projects/sdk
 
       - name: Dry-run the publish
-        run: npm publish --dry-run
-        working-directory: projects/sdk
+        run: node projects/utils/release/publish.ts projects/sdk --tag "${{ steps.version.outputs.tag }}" --dry-run
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7
@@ -157,8 +146,9 @@ jobs:
           path: projects/sdk/dist
 
       - name: Smoke-test the packed package
-        run: node scripts/smoke-package.mjs
-        working-directory: projects/sdk
+        env:
+          EXPECTED_SPECS_VERSION: ${{ needs.prep.outputs.contracts }}
+        run: node projects/utils/release/pack-smoke.ts projects/sdk projects/utils/smoke/sdk.ts
 
   publish:
     name: Publish to npm
@@ -208,8 +198,7 @@ jobs:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/sdk
+          node projects/utils/release/publish.ts projects/sdk --tag "$TAG"
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -221,15 +210,4 @@ jobs:
           VERSION: ${{ needs.prep.outputs.version }}
         # npm stages a new package ("being processed") before it is visible;
         # the first publish took ~2.5 minutes. Normal publishes exit immediately.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/sdk@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/sdk@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/sdk@$VERSION" version || true
-          echo "@kasakame/sdk@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/sdk" "$VERSION"

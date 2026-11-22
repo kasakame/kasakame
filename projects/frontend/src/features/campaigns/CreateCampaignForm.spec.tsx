@@ -10,6 +10,7 @@ const CHAIN_NOW = 1_000_000_020n
 const VALID_DEADLINE = CHAIN_NOW + 30n * 86_400n
 
 const createCampaignMock = vi.fn()
+const registerCampaignMock = vi.fn()
 const fetchChainTimestampMock = vi.fn()
 const logErrorMock = vi.fn()
 const signDataMock = vi.fn()
@@ -22,6 +23,7 @@ vi.mock('../../lib/transaction', async () => {
   const actual: { disconnectQuietly: (wallet: unknown) => Promise<void> } = await vi.importActual('../../lib/transaction')
   return {
     createCampaign: (...args: unknown[]) => createCampaignMock(...args),
+    registerCampaign: (...args: unknown[]) => registerCampaignMock(...args),
     disconnectQuietly: actual.disconnectQuietly,
   }
 })
@@ -77,7 +79,7 @@ describe('CreateCampaignForm', () => {
       .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ cid: 'QmCover' }) })
       .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ cid: 'QmMeta' }) })
     vi.stubGlobal('fetch', fetchMock)
-    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: true })
     const onCreated = vi.fn()
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
@@ -108,8 +110,50 @@ describe('CreateCampaignForm', () => {
     expect(signDataMock).toHaveBeenCalledTimes(1)
   })
 
+  it('shows the app id and retries registration when registration fails', async () => {
+    createCampaignMock.mockResolvedValue({
+      appId: 99n,
+      appAddress: 'ESCROW',
+      registered: false,
+      registerError: 'not an official kasakame campaign',
+    })
+    registerCampaignMock.mockResolvedValue(undefined)
+    const onCreated = vi.fn()
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+
+    expect(await screen.findByText(/Campaign created as app #99/)).toBeInTheDocument()
+    expect(onCreated).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Retry registration' }))
+
+    expect(registerCampaignMock).toHaveBeenCalledWith(99n, { address: 'ADDRESS', signer: {} })
+    expect(onCreated).toHaveBeenCalledWith(99n)
+  })
+
+  it('keeps the retry action when registration retry fails', async () => {
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: false })
+    registerCampaignMock.mockRejectedValue(new Error('boom'))
+    const onCreated = vi.fn()
+    const user = userEvent.setup()
+    render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Title/), 'My first novel')
+    await user.type(screen.getByPlaceholderText('e.g. 100'), '10')
+    await user.click(screen.getByRole('button', { name: 'Create' }))
+    await user.click(await screen.findByRole('button', { name: 'Retry registration' }))
+
+    expect(await screen.findByText(/Registration for app #99 still failed/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Retry registration' })).toBeInTheDocument()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
   it('creates a campaign without a cover', async () => {
-    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: true })
     const onCreated = vi.fn()
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
@@ -198,7 +242,7 @@ describe('CreateCampaignForm', () => {
   })
 
   it('accepts a deadline at the picker minimum', async () => {
-    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: true })
     const onCreated = vi.fn()
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={onCreated} onCancel={() => {}} />)
@@ -254,7 +298,7 @@ describe('CreateCampaignForm', () => {
 
   it('uses the default deadline when the chain time failed on load', async () => {
     fetchChainTimestampMock.mockRejectedValueOnce(new Error('offline'))
-    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: true })
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
 
@@ -337,7 +381,7 @@ describe('CreateCampaignForm', () => {
         .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ cid: 'QmCover' }) })
         .mockResolvedValueOnce({ status: 200, json: () => Promise.resolve({ cid: 'QmMeta' }) }),
     )
-    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW' })
+    createCampaignMock.mockResolvedValue({ appId: 99n, appAddress: 'ESCROW', registered: true })
     const user = userEvent.setup()
     render(<CreateCampaignForm onCreated={() => {}} onCancel={() => {}} />)
 

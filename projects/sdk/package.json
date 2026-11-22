@@ -30,9 +30,6 @@
   "bugs": {
     "url": "https://github.com/kasakame/kasakame/issues"
   },
-  "config": {
-    "specsVersion": "0.1.0"
-  },
   "engines": {
     "node": ">=24.0.0",
     "npm": ">=9.0"
@@ -56,10 +53,13 @@
     "@noble/hashes": "^2.4.0",
     "algosdk": "^3.9.0"
   },
+  "peerDependencies": {
+    "@kasakame/constants": "^0.2.0"
+  },
   "scripts": {
-    "prebuild": "node scripts/codegen.mjs",
+    "prebuild": "node scripts/codegen.ts",
     "build": "tsc -p tsconfig.build.json",
-    "codegen": "node scripts/codegen.mjs",
+    "codegen": "node scripts/codegen.ts",
     "check-types": "tsc --noEmit",
     "test": "vitest run --exclude 'test/**'",
     "test:watch": "vitest --exclude 'test/**'",
@@ -73,6 +73,7 @@
   "devDependencies": {
     "@algorandfoundation/algokit-client-generator": "^6.0.1",
     "@eslint/js": "^9.39.5",
+    "@kasakame/constants": "file:../constants",
     "@kasakame/utils": "file:../utils",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^5.0.5",

@@ -13,7 +13,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   - `deploy/` - deploy runner, deployer-account resolution, Registry/Vault deploy configs, and refund-window/sweep-target parsing
   - `scripts/` - demo seed/unseed (`demo/`) and the LocalNet clock/funding helpers
   - `test/` - LocalNet suites (`00-deploy`, `01-single-campaign`, ...), run in path order
-  - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the size-budget fixture
+  - `test/utils/` - contract-only LocalNet fixtures, campaign flows, the reference-oracle wrapper and `oracle.py`, scale knobs, and the compiled-size snapshot
   - `test/formulas.spec.ts`, `test/08-size-budget.spec.ts` - offline pins for the fee formulas, embedded selectors, compiled size, and app MBR
   - `smart_contracts/campaign/contract.algo.ts` - the `Campaign` app
     (`create`, `pledge`, `cancelPledge`, `refund`, `claim`, `delete`); its
@@ -31,6 +31,11 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   production-neutral hash/selector/bytes helpers, `./testing` holds LocalNet
   deploy/ledger helpers. Never published; consumers link it with a `file:`
   dependency. See [`projects/utils/README.md`](projects/utils/README.md).
+- `projects/constants/` - public `@kasakame/constants` protocol, fee, and AVM
+  values. The `.` entry is the compiled package; `./source` is the TypeScript
+  source the contract compiler imports. One `src/index.ts`; `dist` is committed
+  so consumers can install the package without a build step. See
+  [`projects/constants/README.md`](projects/constants/README.md).
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
@@ -55,7 +60,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
 Run from the repo root unless noted.
 
 ```bash
-algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils
+algokit project bootstrap all    # install deps for contracts + frontend + sdk + cli + backend + utils + constants
 algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
@@ -79,6 +84,12 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
 
+cd ../constants
+npm run build                    # tsc emit to dist
+npm run check-types              # tsc --noEmit
+npm run lint                     # ESLint
+npm run format                   # Prettier check
+
 cd ../frontend
 npm run dev:localnet             # Vite with the LocalNet env (published SDK)
 npm run check-types              # tsc --noEmit
@@ -86,8 +97,8 @@ npm run lint                     # ESLint (+ react/react-hooks plugins)
 npm run format                   # Prettier check
 
 cd ../sdk
-npm run build                    # codegen + tsc emit to dist (the published artifact)
-npm run codegen                  # regenerate clients from the pinned specs release
+npm run build                    # codegen + tsc emit to dist (needs @kasakame/contracts; SDK_SPECS=local uses the contracts build)
+npm run codegen                  # regenerate clients from @kasakame/contracts
 npm pack --dry-run               # inspect the published package contents
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
@@ -157,7 +168,7 @@ the product contract. The pinned values and the AVM limits are in
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
   `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
-  job after `npm run build`. Update the fixture and `docs/limits.md` together.
+  job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
   contracts. `raised` and `paidIn` have explicit uint64 overflow guards; there is
@@ -168,10 +179,11 @@ the product contract. The pinned values and the AVM limits are in
   opcodes, and the SDK's zero-headroom fee bound funds the takes so groups never
   underpay. The boundary ladder in the integration suite proves the prelude
   leaves enough ops for the cap; if a contract change breaks that guard,
-  re-measure and lower the cap. `MAX_TREE_SIZE` is duplicated in Campaign,
-  ClaimsVault, Registry, and the SDK and must stay in sync; the cap counts every
-  appended position, including cancelled leaves. The heavy-tests workflow runs
-  the cap-scale suites end to end; never run them locally in a normal change.
+  re-measure and lower the cap. `MAX_TREE_SIZE` lives in
+  `@kasakame/constants`; Campaign, ClaimsVault, Registry, and the SDK import it.
+  The cap counts every appended position, including cancelled leaves. The
+  heavy-tests workflow runs the cap-scale suites end to end; never run them
+  locally in a normal change.
 - **Never silently change the creator cost.** The campaign create cost is a
   product promise; the pinned MBR and fee values live in
   [`docs/limits.md`](docs/limits.md). If a change crosses a page boundary, adds a
@@ -179,7 +191,7 @@ the product contract. The pinned values and the AVM limits are in
   a group shape or fee, stop and call it out in the commit/PR; get explicit
   approval before proceeding.
 - **Any campaign program change changes the Registry `campaignProgramHash`.**
-  Update the deploy script, tests, docs, specs/SDK release, and deploy a new
+  Update the deploy script, tests, docs, contracts/SDK release, and deploy a new
   Registry + Vault bundle. The hash is
   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
   binds the approval/clear split. The Campaign hash, Vault hash, sweep target,
@@ -206,10 +218,26 @@ the product contract. The pinned values and the AVM limits are in
   run `npm run check-types`/`lint`/`format` in the package. Generic LocalNet
   helpers belong in `@kasakame/utils/testing`; contract-only helpers stay in
   `projects/contracts/test/utils`.
+- **Import shared helpers from the shared package.** Use `@kasakame/utils` or
+  `@kasakame/utils/testing` directly. A local `index.ts` exports only that
+  package's own modules; it does not re-export another package. When two
+  packages need the same helper, move it into `projects/utils` and import it
+  from there. Published packages keep their runtime helpers local because
+  `projects/utils` is private and never shipped.
+- **The shared constants package has two entry points.** `@kasakame/constants`
+  is the compiled runtime package; `@kasakame/constants/source` is the
+  TypeScript source for the Puya contract compiler. Contracts import `/source`;
+  SDK, CLI, frontend, and test helpers import the package name. Keep
+  `projects/constants/src/index.ts` a single file with direct `export const`
+  declarations: Puya does not support re-export declarations or `BigInt()` in
+  that source. `dist` is committed: rebuild it with `src` and commit both in the
+  same change; `check-constants` rebuilds and fails when the committed output
+  drifts.
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
-  `projects/sdk`).
+  `projects/sdk`). The one exception is `projects/constants/dist`, which is committed so
+  file-dependency consumers can install the constants package without a build step.
 - **The frontend consumes the published SDK.** `projects/frontend` depends on
   the published `@kasakame/sdk`; check its `package.json` for the current range.
   To test unreleased contracts/SDK changes, build the SDK (`npm run build` in
@@ -220,12 +248,14 @@ the product contract. The pinned values and the AVM limits are in
   runs test the registry package. The CLI (`projects/cli`) consumes the same
   published package and follows the same packed-copy pattern for unreleased SDK
   changes.
-- **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
-  `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
-  over HTTPS by default and regenerates clients with the pinned generator. The version is
-  exported as `SPECS_VERSION`. `SDK_SPECS=local` reads
-  `projects/contracts/smart_contracts/artifacts` instead - contracts-changed CI lanes and
-  local contract work use it. Never copy clients between projects.
+- **The SDK builds against the published contracts package.** The
+  `@kasakame/contracts` version in `projects/contracts/package.json` is installed and
+  codegen reads `node_modules/@kasakame/contracts/dist/arc56`, then regenerates clients
+  with the pinned generator. The version is exported as `SPECS_VERSION`.
+  `SDK_SPECS=local` reads `projects/contracts/smart_contracts/artifacts` instead -
+  contracts-changed CI lanes and local contract work use it. The `release-contracts`
+  workflow publishes the `contracts-vX.Y.Z` GitHub release and the npm package from the
+  same build. Never copy clients between projects.
 - **Never commit secrets.** `.env` files are gitignored; mnemonics/API keys never go in code.
 - **Env files are per network, never a shared `.env`.** Commands name their network
   explicitly (`.env.localnet` / `.env.testnet`; for example, `npm run dev:testnet`
@@ -272,8 +302,9 @@ the product contract. The pinned values and the AVM limits are in
     SDK replay depends on top-level pledges and payments.
   - **Cap-saturated campaigns fail early.** At `n == MAX_TREE_SIZE` with `raised < goal`,
     `Vault.settleOpen` settles before the deadline, and `Campaign.delete` plus
-    `Registry.unregister` treat the campaign as failed-in-fact. The cap is
-    duplicated in Campaign, ClaimsVault, Registry, and the SDK - keep it in sync.
+    `Registry.unregister` treat the campaign as failed-in-fact. The cap lives in
+    `@kasakame/constants` and Campaign, ClaimsVault, Registry, and the SDK import
+    it.
   - **Final-day goal protection.** `Campaign.cancelPledge` rejects a cancel in the final
     24 hours that would drop a campaign at or above its goal below the goal. Cancels
     that keep the goal, and cancels in an already-below-goal campaign, are allowed;
@@ -318,10 +349,18 @@ the product contract. The pinned values and the AVM limits are in
   - `README.md` for spec-level behavior, the status summary, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
-- **Package READMEs are user-facing.** `projects/sdk/README.md` and
-  `projects/cli/README.md` are the READMEs npm publishes. Keep them to install,
-  usage, documentation links, and license; repository status, work tracking, and
-  contributor instructions belong in the root README or `docs/`.
+- **Package READMEs are user-facing.** `projects/constants`, `projects/contracts`,
+  `projects/sdk`, and `projects/cli` publish their READMEs to npm. Use the same
+  shape in each: title and one-line description, `## Install` with the Node
+  requirement and peer dependencies, package-specific usage, `## Documentation`
+  links, and a `## License` footer with the same `MIT. See
+  [LICENSE](.../projects/<package>/LICENSE).` wording. Repository status, work
+  tracking, and contributor instructions belong in the root README or `docs/`.
+- **Published package metadata matches.** Each published package declares
+  `author`, `description`, `keywords`, `license`, `repository.directory`,
+  `homepage`, `bugs`, `engines`, `publishConfig.access: public`, and a `files`
+  allowlist; the LICENSE files are identical. The release workflows pack and
+  smoke-test the tarballs.
 
 ## Testing
 

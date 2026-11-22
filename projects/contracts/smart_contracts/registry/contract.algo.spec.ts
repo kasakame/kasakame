@@ -1,5 +1,14 @@
 import { Bytes, Global, OnCompleteAction, type Account, type Application } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
+import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
+  MAX_REFUND_WINDOW_SECONDS,
+  MAX_TREE_SIZE,
+  MIN_REFUND_WINDOW_SECONDS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+} from '@kasakame/constants'
 import { programHash } from '@kasakame/utils'
 import { beforeEach, describe, expect, test } from 'vitest'
 import { Campaign } from '../campaign/contract.algo'
@@ -13,18 +22,18 @@ import { Registry } from './contract.algo'
  * program, sweep target, and refund window; `register`/`unregister` keep the original registration and cleanup behavior.
  */
 
-const REGISTER_MBR = 18_900
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"
 const FAKE_PROGRAM_HASH = programHash(FAKE_PROGRAM, new Uint8Array())
 const TITLE = Bytes('Test campaign')
 const METADATA_URI = Bytes('ipfs://test')
 const GOAL = 1_000_000
 const DEADLINE = 1_000_000
-const MIN_WINDOW = 30 * 24 * 60 * 60
-const MAX_WINDOW = 10 * 365 * 24 * 60 * 60
-const WINDOW = MIN_WINDOW
-const MAX_TREE_SIZE = 524_287
 const DELETE_SELECTOR = Bytes.fromHex('24378d3c')
+
+// Campaign global-state statuses: 0 = Open, 1 = Failed, 2 = Claimed.
+const CAMPAIGN_OPEN = Number(CAMPAIGN_STATUS_OPEN)
+const CAMPAIGN_FAILED = Number(CAMPAIGN_STATUS_FAILED)
+const CAMPAIGN_CLAIMED = Number(CAMPAIGN_STATUS_CLAIMED)
 
 let nextProbeId = 10_000
 
@@ -49,7 +58,7 @@ describe('Registry', () => {
   function vaultProgramHash(): Uint8Array {
     const registry = ctx.any.application({ applicationId: nextProbeId++ })
     const vault = ctx.contract.create(ClaimsVault)
-    vault.create(registry, ctx.defaultSender, WINDOW)
+    vault.create(registry, ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
     const app = ctx.ledger.getApplicationForContract(vault)
     return programHash(toExternalValue(app.approvalProgram), toExternalValue(app.clearStateProgram))
   }
@@ -67,12 +76,12 @@ describe('Registry', () => {
       Bytes(options.campaignHash ?? FAKE_PROGRAM_HASH),
       Bytes(options.vaultHash ?? vaultProgramHash()),
       options.sweep ?? ctx.defaultSender,
-      options.window ?? WINDOW,
+      options.window ?? MIN_REFUND_WINDOW_SECONDS,
     )
     return registry
   }
 
-  function createVault(registry: Registry, sweep: Account = ctx.defaultSender, window: number = WINDOW): Application {
+  function createVault(registry: Registry, sweep: Account = ctx.defaultSender, window: number = MIN_REFUND_WINDOW_SECONDS): Application {
     const vault = ctx.contract.create(ClaimsVault)
     vault.create(ctx.ledger.getApplicationForContract(registry), sweep, window)
     // The offline ledger keeps an Application-typed global as an ApplicationCls; the AVM stores the app id as uint64.
@@ -107,7 +116,7 @@ describe('Registry', () => {
   function registerAs(registry: Registry, app: Application, sender: Account = ctx.defaultSender): void {
     const address = ctx.ledger.getApplicationForContract(registry).address
     ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender })]).execute(() => {
-      registry.register(app, ctx.any.txn.payment({ sender, receiver: address, amount: REGISTER_MBR }))
+      registry.register(app, ctx.any.txn.payment({ sender, receiver: address, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) }))
     })
   }
 
@@ -163,28 +172,28 @@ describe('Registry', () => {
       expect(Buffer.from(toExternalValue(registry.campaignProgramHash.value))).toEqual(Buffer.from(campaignHash))
       expect(Buffer.from(toExternalValue(registry.vaultProgramHash.value))).toEqual(Buffer.from(vaultHash))
       expect(registry.expectedSweepTarget.value).toEqual(ctx.defaultSender)
-      expect(registry.expectedRefundWindow.value).toEqual(WINDOW)
+      expect(registry.expectedRefundWindow.value).toEqual(MIN_REFUND_WINDOW_SECONDS)
       expect(registry.vault.value).toEqual(0)
     })
 
     test('rejects a campaign program hash of the wrong length', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes('short'), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, WINDOW)
+        registry.create(Bytes('short'), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('campaign program hash must be 32 bytes')
     })
 
     test('rejects a vault program hash of the wrong length', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes('short'), ctx.defaultSender, WINDOW)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes('short'), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('vault program hash must be 32 bytes')
     })
 
     test('rejects a zero sweep target', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), Global.zeroAddress, WINDOW)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), Global.zeroAddress, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('sweep target must not be zero')
     })
 
@@ -192,31 +201,31 @@ describe('Registry', () => {
       const registry = ctx.contract.create(Registry)
       const registryApp = ctx.ledger.getApplicationForContract(registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), registryApp.address, WINDOW)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), registryApp.address, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('sweep target must not be the registry')
     })
 
     test('rejects a refund window below the 30-day minimum', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_WINDOW - 1)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS - 1)
       }).toThrow('refund window too short')
     })
 
     test('accepts a refund window exactly at the 30-day minimum', () => {
-      const registry = createRegistry({ window: MIN_WINDOW })
-      expect(registry.expectedRefundWindow.value).toEqual(MIN_WINDOW)
+      const registry = createRegistry({ window: MIN_REFUND_WINDOW_SECONDS })
+      expect(registry.expectedRefundWindow.value).toEqual(MIN_REFUND_WINDOW_SECONDS)
     })
 
     test('accepts a refund window exactly at the 10-year maximum', () => {
-      const registry = createRegistry({ window: MAX_WINDOW })
-      expect(registry.expectedRefundWindow.value).toEqual(MAX_WINDOW)
+      const registry = createRegistry({ window: MAX_REFUND_WINDOW_SECONDS })
+      expect(registry.expectedRefundWindow.value).toEqual(MAX_REFUND_WINDOW_SECONDS)
     })
 
     test('rejects a refund window above the cap', () => {
       const registry = ctx.contract.create(Registry)
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MAX_WINDOW + 1)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MAX_REFUND_WINDOW_SECONDS + 1)
       }).toThrow('refund window too long')
     })
 
@@ -224,7 +233,7 @@ describe('Registry', () => {
       const registry = ctx.contract.create(Registry)
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
-        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, WINDOW)
+        registry.create(Bytes(FAKE_PROGRAM_HASH), Bytes(FAKE_PROGRAM_HASH), ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS)
       }).toThrow('must be called from the top level')
     })
   })
@@ -265,8 +274,8 @@ describe('Registry', () => {
     })
 
     test('rejects a wrong refund window', () => {
-      const registry = createRegistry({ vaultHash: vaultProgramHash(), window: WINDOW + 1 })
-      const vault = createVault(registry, ctx.defaultSender, WINDOW + 2)
+      const registry = createRegistry({ vaultHash: vaultProgramHash(), window: MIN_REFUND_WINDOW_SECONDS + 1 })
+      const vault = createVault(registry, ctx.defaultSender, MIN_REFUND_WINDOW_SECONDS + 2)
       expect(() => {
         bind(registry, vault)
       }).toThrow('vault refund window mismatch')
@@ -418,7 +427,10 @@ describe('Registry', () => {
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
-          registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: REGISTER_MBR - 1 }))
+          registry.register(
+            app,
+            ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) - 1 }),
+          )
         }).toThrow('registration deposit must be exact')
       })
     })
@@ -431,7 +443,10 @@ describe('Registry', () => {
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
-          registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: REGISTER_MBR + 1 }))
+          registry.register(
+            app,
+            ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) + 1 }),
+          )
         }).toThrow('registration deposit must be exact')
       })
     })
@@ -445,7 +460,7 @@ describe('Registry', () => {
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
-          registry.register(app, ctx.any.txn.payment({ sender: other, receiver: address, amount: REGISTER_MBR }))
+          registry.register(app, ctx.any.txn.payment({ sender: other, receiver: address, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) }))
         }).toThrow('payment must come from the caller')
       })
     })
@@ -457,7 +472,10 @@ describe('Registry', () => {
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
       ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender })]).execute(() => {
         expect(() => {
-          registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: ctx.defaultSender, amount: REGISTER_MBR }))
+          registry.register(
+            app,
+            ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: ctx.defaultSender, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) }),
+          )
         }).toThrow('payment must be made to the registry')
       })
     })
@@ -475,7 +493,7 @@ describe('Registry', () => {
             ctx.any.txn.payment({
               sender: ctx.defaultSender,
               receiver: address,
-              amount: REGISTER_MBR,
+              amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS),
               closeRemainderTo: address,
             }),
           )
@@ -488,7 +506,7 @@ describe('Registry', () => {
             ctx.any.txn.payment({
               sender: ctx.defaultSender,
               receiver: address,
-              amount: REGISTER_MBR,
+              amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS),
               rekeyTo: ctx.any.account(),
             }),
           )
@@ -513,7 +531,7 @@ describe('Registry', () => {
       bind(registry, vault)
       const address = ctx.ledger.getApplicationForContract(registry).address
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
-      const pay = ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: REGISTER_MBR })
+      const pay = ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: address, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) })
       const group = [
         pay,
         ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender }),
@@ -531,7 +549,10 @@ describe('Registry', () => {
       const app = ctx.any.application({ applicationId: 1234, creator: ctx.defaultSender })
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
-        registry.register(app, ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: ctx.defaultSender, amount: REGISTER_MBR }))
+        registry.register(
+          app,
+          ctx.any.txn.payment({ sender: ctx.defaultSender, receiver: ctx.defaultSender, amount: Number(REGISTER_DEPOSIT_MICRO_ALGOS) }),
+        )
       }).toThrow('must be called from the top level')
     })
   })
@@ -539,20 +560,20 @@ describe('Registry', () => {
   describe('unregister', () => {
     test('returns the deposit and removes the registration for a pristine campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
 
       unregisterWithDelete(registry, app)
 
       expect(registry.registered(app.id).exists).toBe(false)
       const payout = ctx.txn.lastGroup.lastItxnGroup().getPaymentInnerTxn()
       expect(payout.receiver).toEqual(ctx.defaultSender)
-      expect(payout.amount).toEqual(REGISTER_MBR)
+      expect(payout.amount).toEqual(Number(REGISTER_DEPOSIT_MICRO_ALGOS))
     })
 
     test('allows an all-cancelled campaign before the deadline', () => {
       ctx.ledger.patchGlobalData({ latestTimestamp: 1_000 })
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 2_000, n: 2 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 2_000, n: 2 })
 
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
@@ -560,14 +581,14 @@ describe('Registry', () => {
 
     test('allows a settled failed campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 1, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_FAILED, raised: 100, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('allows a claimed campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 2, raised: 1000, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_CLAIMED, raised: 1000, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
@@ -575,21 +596,27 @@ describe('Registry', () => {
     test('allows a failed-in-fact campaign', () => {
       ctx.ledger.patchGlobalData({ latestTimestamp: 3_000 })
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 100, goal: 1000, deadline: 2_000 })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('allows a cap-saturated campaign before the deadline', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000, n: MAX_TREE_SIZE })
+      const app = registeredCampaign(registry, {
+        status: CAMPAIGN_OPEN,
+        raised: 100,
+        goal: 1000,
+        deadline: 2_000,
+        n: Number(MAX_TREE_SIZE),
+      })
       unregisterWithDelete(registry, app)
       expect(registry.registered(app.id).exists).toBe(false)
     })
 
     test('rejects a live campaign', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 100, goal: 1000, deadline: 2_000 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 100, goal: 1000, deadline: 2_000 })
       expect(() => {
         unregisterWithDelete(registry, app)
       }).toThrow('campaign is still live')
@@ -605,7 +632,7 @@ describe('Registry', () => {
 
     test('rejects a non-creator', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.account()
       expect(() => {
         ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: other }), deleteCall(app, other)], 0).execute(() => {
@@ -616,7 +643,7 @@ describe('Registry', () => {
 
     test('rejects a registration box owned by another account', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       registry.registered(app.id).value = ctx.any.account()
       expect(() => {
         unregisterWithDelete(registry, app)
@@ -637,7 +664,7 @@ describe('Registry', () => {
 
     test('rejects a delete for another app', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.application({ applicationId: 999 })
       expect(() => {
         ctx.txn
@@ -650,7 +677,7 @@ describe('Registry', () => {
 
     test('rejects a delete from another sender', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const other = ctx.any.account()
       expect(() => {
         ctx.txn
@@ -663,7 +690,7 @@ describe('Registry', () => {
 
     test('rejects a non-delete action', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({ appId: app, sender: ctx.defaultSender, appArgs: [DELETE_SELECTOR] })
       expect(() => {
         ctx.txn.createScope([ctx.any.txn.applicationCall({ appId: registry, sender: ctx.defaultSender }), call], 0).execute(() => {
@@ -674,7 +701,7 @@ describe('Registry', () => {
 
     test('rejects a delete with missing args', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({
         appId: app,
         sender: ctx.defaultSender,
@@ -689,7 +716,7 @@ describe('Registry', () => {
 
     test('rejects a delete with the wrong selector', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       const call = ctx.any.txn.applicationCall({
         appId: app,
         sender: ctx.defaultSender,
@@ -705,7 +732,7 @@ describe('Registry', () => {
 
     test('rejects an inner unregister', () => {
       const registry = createRegistry()
-      const app = registeredCampaign(registry, { status: 0, raised: 0, goal: 1000, deadline: 0 })
+      const app = registeredCampaign(registry, { status: CAMPAIGN_OPEN, raised: 0, goal: 1000, deadline: 0 })
       ctx.ledger.patchGlobalData({ callerApplicationId: 42 })
       expect(() => {
         registry.unregister(app)

@@ -1,10 +1,46 @@
 {
-  "name": "smart_contracts",
-  "version": "0.1.0",
-  "description": "Smart contract deployer",
-  "main": "deploy/index.ts",
+  "name": "@kasakame/contracts",
+  "version": "0.2.0",
+  "author": {
+    "name": "Alessio Di Domenico",
+    "email": "alessio.661@hotmail.it"
+  },
+  "description": "Compiled kasakame contract artifacts: ARC-56, ARC-32, TEAL, and Puya source maps",
+  "keywords": [
+    "algorand",
+    "algorand-blockchain",
+    "algokit",
+    "arc56",
+    "arc32",
+    "teal",
+    "puya",
+    "smart-contracts",
+    "contract-artifacts"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kasakame/kasakame.git",
+    "directory": "projects/contracts"
+  },
+  "homepage": "https://github.com/kasakame/kasakame/tree/main/projects/contracts#readme",
+  "bugs": {
+    "url": "https://github.com/kasakame/kasakame/issues"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=9.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "algokit compile ts smart_contracts --output-source-map --out-dir artifacts && algokit generate client smart_contracts/artifacts --output {app_spec_dir}/{contract_name}Client.ts",
+    "prepack": "node scripts/packaging/stage-package.ts",
+    "test:pack": "node scripts/packaging/check-package.ts",
     "deploy:localnet": "tsx --env-file-if-exists=.env.localnet deploy/index.ts",
     "deploy:localnet:watch": "tsx watch --env-file-if-exists=.env.localnet deploy/index.ts",
     "deploy:testnet": "tsx --env-file-if-exists=.env.testnet deploy/index.ts",
@@ -28,14 +64,8 @@
     "test:cap:failed": "vitest run --no-color test/99-cap-failed.test.ts",
     "test:cap:claimed": "vitest run --no-color test/99-cap-claimed.test.ts"
   },
-  "engines": {
-    "node": ">=24.0.0",
-    "npm": ">=9.0"
-  },
-  "dependencies": {
-    "@algorandfoundation/algorand-typescript": "^1.0.1"
-  },
   "devDependencies": {
+    "@algorandfoundation/algorand-typescript": "^1.0.1",
     "@algorandfoundation/algokit-client-generator": "^6.0.2",
     "@algorandfoundation/algokit-utils": "^9.2.3",
     "@algorandfoundation/algokit-utils-debug": "^1.0.4",
@@ -43,6 +73,7 @@
     "@algorandfoundation/puya-ts": "^1.0.1",
     "@algorandfoundation/xhd-wallet-api": "^1.0.3",
     "@eslint/js": "^9.39.5",
+    "@kasakame/constants": "file:../constants",
     "@kasakame/utils": "file:../utils",
     "@rollup/plugin-typescript": "^12.3.1",
     "@tsconfig/node24": "^24.0.0",

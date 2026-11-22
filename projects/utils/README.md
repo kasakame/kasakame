@@ -2,12 +2,14 @@
 
 Private, repo-only helpers shared by the kasakame projects. Never published.
 
-- `@kasakame/utils` - production-neutral bytes, selector, and program-hash
-  helpers.
+- `@kasakame/utils` - program-hash helpers for the deploy code and tests.
 - `@kasakame/utils/testing` - LocalNet platform deploy, account/ledger reads,
-  time travel, and Node-`assert` checks. Test-only; it imports `algokit-utils`
-  and `algosdk`, but no test runner, so consumers keep Vitest or any other
-  runner.
+  time travel, byte/selector helpers, and Node-`assert` checks. Test-only; it
+  imports `algokit-utils` and `algosdk`, but no test runner, so consumers keep
+  Vitest or any other runner.
+- `release/` and `smoke/` - the release workflow scripts and the per-package
+  smoke entries, run with Node 24 type stripping. They stay out of the packed
+  package (`files: ["src"]`).
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.

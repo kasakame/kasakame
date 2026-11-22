@@ -1,5 +1,7 @@
 # Limits, sizes, storage, and fees
 
+The values below live in [`projects/constants/src/index.ts`](../projects/constants/src/index.ts).
+
 Single source of truth for the AVM/Algorand limits and the current cost of the
 kasakame contracts. Read this before changing any contract code; update it in the
 same change set when a size, storage, group shape, or fee changes.
@@ -29,8 +31,8 @@ not the `.teal` source size. Re-measure after any contract change.
 | Minimum fee | 1,000 µA per txn | `MinTxnFee` |
 | Larger-transaction fee | +1,000 µA per 1,000 B | a 2,267 B transaction needs 3,000 µA; inner txn fees are paid from the group fee pool |
 | Account base MBR | 100,000 µA | app accounts with boxes must hold this; the campaign app account holds 0 |
-| App creation MBR | 100,000 + 50,000 × global bytes + 28,500 × global uints + 100,000 × extra pages | charged to the creator |
-| App opt-in MBR | 100,000 + 50,000 × local bytes + 28,500 × local uints | charged to the opted-in account; not used |
+| App creation MBR | 100,000 + 25,000 × global entries + 25,000 × global bytes + 3,500 × global uints + 100,000 × extra pages | charged to the creator; an entry is one global key/value pair |
+| App opt-in MBR | 100,000 + 25,000 × local entries + 25,000 × local bytes + 3,500 × local uints | charged to the opted-in account; not used |
 | Box MBR | 2,500 + 400 × (name + value) | charged to the app account that owns the box |
 
 Sources: [protocol parameters](https://dev.algorand.co/concepts/protocol/protocol-parameters/),
@@ -86,7 +88,7 @@ one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
 `test/utils/size-budget.fixture.ts` and runs in the `compile-contracts` CI
-job after `npm run build`. A byte, page, or schema change must update the fixture
+job after `npm run build`. A byte, page, or schema change must update the snapshot
 and this table together.
 
 ## Current app MBR and storage
@@ -97,9 +99,9 @@ and this table together.
 | ClaimsVault | 1 byte-slice + 2 uints | 1 | **307,000 µA** | platform/deployer | none |
 | Registry | 3 byte-slices + 2 uints | 0 | **307,000 µA** | platform/deployer | none |
 
-- Campaign app MBR = 100,000 + 4 × 50,000 + 6 × 28,500 + 100,000 × 1 = 571,000.
-- Vault app MBR = 100,000 + 1 × 50,000 + 2 × 28,500 + 100,000 × 1 = 307,000.
-- Registry app MBR = 100,000 + 3 × 50,000 + 2 × 28,500 = 307,000.
+- Campaign app MBR = 100,000 + (4 + 6) × 25,000 + 4 × 25,000 + 6 × 3,500 + 100,000 × 1 = 571,000.
+- Vault app MBR = 100,000 + (1 + 2) × 25,000 + 1 × 25,000 + 2 × 3,500 + 100,000 × 1 = 307,000.
+- Registry app MBR = 100,000 + (3 + 2) × 25,000 + 3 × 25,000 + 2 × 3,500 = 307,000.
 - Campaign app account: **0** (no boxes/assets; never funded).
 - Vault app account: 100,000 base + 32,100 per live/failed campaign box. The
   deploy script funds it with 1 ALGO; after the 100,000 base that is ~28 boxes.
@@ -107,10 +109,10 @@ and this table together.
   script funds it with 1 ALGO; each creator's 18,900 deposit covers that
   campaign's registration box.
 
-The per-slot costs are the protocol's: a global **uint** is 25,000 + 3,500 =
-28,500 µA and a global **byte slice** is 25,000 + 25,000 = 50,000 µA. An earlier
-revision of this page used 25,000/3,500 for byte slices/uints and understated the
-MBR; the values above were measured on LocalNet against the real schemas.
+The per-slot costs are the protocol's: every schema entry is 25,000 µA, a
+byte-slice value adds 25,000 µA, and a uint value adds 3,500 µA. A global uint
+is therefore 28,500 µA and a global byte slice 50,000 µA; the values above were
+measured on LocalNet against the real schemas.
 
 ## Current per-campaign storage
 
@@ -229,22 +231,29 @@ A create followed immediately by delete spends about 3,000 µA (create fees) +
 
 The SDK sizes pledge and spend extras from the claim tree. The contract's
 `ensureBudget` tops the group up in 700-op increments; each increment is one
-inner app call and costs one extra minimum fee (1,000 µA). The contract and SDK
-use the same tree-shape formulas (see [`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
+inner app call and costs one extra minimum fee. The SDK reads
+`SuggestedParams.minFee` at build time and multiplies the fixed inner counts and
+OpUp takes by it; the µA totals below use LocalNet's current 1,000 µA minimum as
+the example. Offline tests and fallbacks use `FEE_MICRO_ALGOS`. The contract and
+SDK use the same tree-shape formulas (see
+[`claim-tree-protocol.md`](claim-tree-protocol.md) §14).
 
 | Action | Transactions | SDK total | Notes |
 | --- | --- | ---: | --- |
-| Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
+| Create + register | create + deposit + register | 3,000 µA | 3,000 µA measured on-chain; no SDK headroom |
 | Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch Registry check headroom); +1,000 per OpUp take |
 | Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 actual OpUp takes (15 funded) | 5,000-18,000 µA | +1,000 per funded take; 5,000 at N=4, 8,000 at N=100 |
 | Refund, vault path | vault + inner payment + 0..14 actual OpUp takes (15 funded) | 4,000-17,000 µA | one payout inner; +1,000 per funded take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
 | `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
-| `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
-| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; not exposed yet |
-| `releaseClaimed` | vault only | 1,000 µA | not exposed yet |
+| `settleOpen` | vault only | 1,000 µA | SDK helper; CLI #299 |
+| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; SDK helper, CLI #299 |
+| `releaseClaimed` | vault only | 1,000 µA | SDK helper; CLI #299 |
 | `Registry.register` | deposit + register | 2,000 µA | inside the create flow |
 | `Registry.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
+
+The SDK LocalNet suite pins the create/register cost, each operation's group
+fee, and the app/box MBR transitions using the runtime `minFee`.
 
 OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
 (the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700
@@ -290,7 +299,7 @@ through `unregister`).
    same change set.
 2. **Do not silently change the creator cost.** The campaign create cost is a
    product promise. A change that adds an extra page (+100,000 µA), adds a
-   global slot (+50,000 µA for a byte slice, +28,500 µA for a uint), adds a box,
+   global slot (+25,000 µA per entry, plus +25,000 µA for a byte slice or +3,500 µA for a uint), adds a box,
    or adds an inner txn to create/register must be called out in the commit/PR
    and explicitly approved. The current cost is ~0.59 ALGO; the 1-page target is
    ~0.49 ALGO. The frontend must disclose the current locked amount at create and

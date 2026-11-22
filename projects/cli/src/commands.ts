@@ -1,3 +1,4 @@
+import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
 import {
   cancelPledge,
   claim,
@@ -473,7 +474,7 @@ function pledges(count: number): string {
 }
 
 function formatAlgo(microAlgos: bigint): string {
-  const fraction = (microAlgos % 1_000_000n).toString().padStart(6, '0').replace(/0+$/, '')
-  const whole = (microAlgos / 1_000_000n).toString()
+  const fraction = (microAlgos % MICRO_ALGOS_PER_ALGO).toString().padStart(6, '0').replace(/0+$/, '')
+  const whole = (microAlgos / MICRO_ALGOS_PER_ALGO).toString()
   return fraction === '' ? whole : `${whole}.${fraction}`
 }

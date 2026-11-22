@@ -23,7 +23,7 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts', 'scripts/reclaim.ts'],
+          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },

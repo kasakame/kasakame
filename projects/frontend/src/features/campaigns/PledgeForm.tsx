@@ -1,3 +1,4 @@
+import { MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import { useWallet } from '@txnlab/use-wallet-react'
 import { useState } from 'react'
 import { classifyError, errorMessage } from '../../lib/errors'
@@ -12,9 +13,6 @@ interface PledgeFormProps {
   /** Called after a successful pledge so the parent can refresh its state. */
   onPledged: () => void
 }
-
-// Keep in sync with Campaign.MIN_PLEDGE_MICROALGOS.
-const MIN_PLEDGE_MICROALGOS = 100_000n
 
 const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
   const { activeAddress, activeWallet, transactionSigner } = useWallet()
@@ -34,7 +32,7 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
     try {
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
       const microAlgos = parseAlgoToMicroAlgos(amount)
-      if (microAlgos < MIN_PLEDGE_MICROALGOS) {
+      if (microAlgos < MIN_PLEDGE_MICRO_ALGOS) {
         setMessage('Minimum pledge is 0.1 ALGO.')
         return
       }

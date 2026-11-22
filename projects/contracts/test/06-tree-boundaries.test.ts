@@ -2,13 +2,18 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import type { AppClient } from '@algorandfoundation/algokit-utils/types/app-client'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
-import { ALGO, FEE, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import {
+  FEE_MICRO_ALGOS,
+  MICRO_ALGOS_PER_ALGO,
+  MIN_REFUND_WINDOW_SECONDS,
+  SECONDS_PER_DAY,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
-  TEST_VAULT_WINDOW,
-  VAULT_BOX_MBR,
   campaignBoxExists,
   campaignState,
   deleteCampaign,
@@ -47,55 +52,59 @@ describe('06 tree boundaries', () => {
   })
 
   test('CON-200 N=16 crosses the first OpUp take and refunds leaf 0', { tags: ['scale', 'happy', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * ALGO })
+    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * MICRO_ALGOS_PER_ALGO })
     const backer = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
 
     const txids: string[] = []
     for (let i = 0; i < 16; i++) {
-      txids.push(await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle))
+      txids.push(
+        await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle),
+      )
     }
 
     const state = await campaignState(campaign.appClient)
     expect(state.n).toEqual(16n)
-    expect(state.raised).toEqual(16n * ALGO)
+    expect(state.raised).toEqual(16n * MICRO_ALGOS_PER_ALGO)
 
-    await advanceTime(fixture, 86_400)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await spendCampaign(
       stack,
       campaign.appClient,
       campaign.appId,
       backer.addr.toString(),
       0,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       at(txids, 0),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
       { expectedTakes: 2 },
     )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(15n * ALGO)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(15n * MICRO_ALGOS_PER_ALGO)
   })
 
   test('CON-201 N=100 refunds the worst-case and an interior leaf', { tags: ['scale', 'happy', 'always'] }, async () => {
-    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * ALGO })
+    const campaign = await createCampaign(fixture, stack, { goal: 1_000n * MICRO_ALGOS_PER_ALGO })
     const backer = await fixture.context.generateAccount({ initialFunds: (200).algo(), suppressLog: true })
 
     const txids: string[] = []
     for (let i = 0; i < 100; i++) {
-      txids.push(await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle))
+      txids.push(
+        await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle),
+      )
     }
 
     const state = await campaignState(campaign.appClient)
     expect(state.n).toEqual(100n)
-    expect(state.raised).toEqual(100n * ALGO)
+    expect(state.raised).toEqual(100n * MICRO_ALGOS_PER_ALGO)
 
-    await advanceTime(fixture, 86_400)
+    await advanceTime(fixture, SECONDS_PER_DAY)
     await spendCampaign(
       stack,
       campaign.appClient,
       campaign.appId,
       backer.addr.toString(),
       0,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       at(txids, 0),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
@@ -107,13 +116,13 @@ describe('06 tree boundaries', () => {
       campaign.appId,
       backer.addr.toString(),
       50,
-      1n * ALGO,
+      1n * MICRO_ALGOS_PER_ALGO,
       at(txids, 50),
       'refund(uint64,uint64,byte[],byte[])void',
       campaign.oracle,
       { expectedTakes: 4 },
     )
-    expect((await campaignState(campaign.appClient)).raised).toEqual(98n * ALGO)
+    expect((await campaignState(campaign.appClient)).raised).toEqual(98n * MICRO_ALGOS_PER_ALGO)
   })
 
   const LADDER = [
@@ -176,7 +185,9 @@ describe('06 tree boundaries', () => {
     async function pledgeTo(target: number): Promise<void> {
       for (let i = currentN; i < target; i++) {
         const backer = at(backers, i % backers.length)
-        txids.push(await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * ALGO, campaign.oracle))
+        txids.push(
+          await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 1n * MICRO_ALGOS_PER_ALGO, campaign.oracle),
+        )
       }
       currentN = target
     }
@@ -190,7 +201,7 @@ describe('06 tree boundaries', () => {
         campaign.appId,
         at(backers, index % backers.length).addr.toString(),
         index,
-        1n * ALGO,
+        1n * MICRO_ALGOS_PER_ALGO,
         at(txids, index),
         'cancelPledge(uint64,uint64,byte[],byte[])void',
         campaign.oracle,
@@ -203,7 +214,7 @@ describe('06 tree boundaries', () => {
       test(`${boundary.id} N=${boundary.n.toString()}`, async () => {
         if (boundary.n === 15) {
           creator = await fixture.context.generateAccount({ initialFunds: (100).algo(), suppressLog: true })
-          const deployed = await deployCampaign(stack, creator.addr.toString(), { goal: 2_000n * ALGO })
+          const deployed = await deployCampaign(stack, creator.addr.toString(), { goal: 2_000n * MICRO_ALGOS_PER_ALGO })
           campaign = { ...deployed, oracle: new ClaimTreeOracle('ladder-') }
           backers = []
           for (let i = 0; i < 5; i++) {
@@ -214,13 +225,13 @@ describe('06 tree boundaries', () => {
         await pledgeTo(boundary.n)
         const before = await campaignState(campaign.appClient)
         expect(before.n).toEqual(BigInt(boundary.n))
-        expect(before.raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
+        expect(before.raised).toEqual(BigInt(boundary.n - refunded) * MICRO_ALGOS_PER_ALGO)
 
         await cancelNext(LADDER_TAKES[boundary.id])
-        expect((await campaignState(campaign.appClient)).raised).toEqual(BigInt(boundary.n - refunded) * ALGO)
+        expect((await campaignState(campaign.appClient)).raised).toEqual(BigInt(boundary.n - refunded) * MICRO_ALGOS_PER_ALGO)
 
         if (boundary.n === 1_024) {
-          await advanceTime(fixture, 86_400)
+          await advanceTime(fixture, SECONDS_PER_DAY)
 
           const refundIndex = nextLeaf
           nextLeaf += 1
@@ -231,7 +242,7 @@ describe('06 tree boundaries', () => {
             campaign.appId,
             at(backers, refundIndex % backers.length).addr.toString(),
             refundIndex,
-            1n * ALGO,
+            1n * MICRO_ALGOS_PER_ALGO,
             at(txids, refundIndex),
             'refund(uint64,uint64,byte[],byte[])void',
             campaign.oracle,
@@ -248,7 +259,7 @@ describe('06 tree boundaries', () => {
             campaign.appId,
             at(backers, vaultIndex % backers.length).addr.toString(),
             vaultIndex,
-            1n * ALGO,
+            1n * MICRO_ALGOS_PER_ALGO,
             at(txids, vaultIndex),
             campaign.oracle,
             { expectedTakes: 4 },
@@ -256,17 +267,19 @@ describe('06 tree boundaries', () => {
 
           const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
           const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
-          await advanceTime(fixture, Number(TEST_VAULT_WINDOW) + 4_000)
+          await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
           await stack.vault.client.send.call({
             method: 'finalize(uint64)void',
             args: [campaign.appId],
             sender: at(backers, 0).addr,
-            extraFee: microAlgos(FEE),
+            extraFee: microAlgos(FEE_MICRO_ALGOS),
             suppressLog: true,
           })
 
-          expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + BigInt(1_024 - refunded) * ALGO)
-          expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR)
+          expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(
+            sweeperBefore + BigInt(1_024 - refunded) * MICRO_ALGOS_PER_ALGO,
+          )
+          expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
           expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
         }
       })

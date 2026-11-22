@@ -1,5 +1,15 @@
-import { selectorOf } from '@kasakame/utils'
-import { FEE } from '@kasakame/utils/testing'
+import {
+  ADDRESS_BYTES,
+  APP_ID_BYTES,
+  BOX_KEY_PREFIX_BYTES,
+  BOX_MBR_BASE_MICRO_ALGOS,
+  BOX_MBR_PER_BYTE_MICRO_ALGOS,
+  FEE_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  VAULT_BOX_BYTES,
+  VAULT_BOX_MBR_MICRO_ALGOS,
+} from '@kasakame/constants'
+import { selectorOf } from '@kasakame/utils/testing'
 import { describe, expect, it } from 'vitest'
 import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './utils/campaign'
 
@@ -9,26 +19,34 @@ import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './utils/camp
  */
 describe('contract LocalNet helpers', () => {
   it('computes pledge OpUp takes from the frontier width', () => {
+    expect(FEE_MICRO_ALGOS).toEqual(1_000n)
     expect(pledgeExtraFee(0)).toEqual(0n)
     expect(pledgeExtraFee(1)).toEqual(0n)
     expect(pledgeExtraFee(2)).toEqual(0n)
-    expect(pledgeExtraFee(3)).toEqual(FEE)
-    expect(pledgeExtraFee(7)).toEqual(2n * FEE)
-    expect(pledgeExtraFee(19)).toEqual(6n * FEE)
+    expect(pledgeExtraFee(3)).toEqual(1_000n)
+    expect(pledgeExtraFee(7)).toEqual(2_000n)
+    expect(pledgeExtraFee(19)).toEqual(6_000n)
   })
 
   it('computes spend OpUp takes from the path shape and payout inners', () => {
     const smallPath = { siblings: [], top: null, lower: ['00'] }
-    expect(spendExtraFee(smallPath, 2)).toEqual(4n * FEE)
-    expect(spendExtraFee(smallPath, 1)).toEqual(3n * FEE)
-    expect(spendFee(smallPath, 2)).toEqual(5n * FEE)
-    expect(spendFee(smallPath, 1)).toEqual(4n * FEE)
+    expect(spendExtraFee(smallPath, 2)).toEqual(4_000n)
+    expect(spendExtraFee(smallPath, 1)).toEqual(3_000n)
+    expect(spendFee(smallPath, 2)).toEqual(5_000n)
+    expect(spendFee(smallPath, 1)).toEqual(4_000n)
 
     // The 2^19 - 1 cap, leaf 0: r = c = 18. The zero-headroom fee funds 15 takes; the group pays for them even
     // though the contract requests 14, so 2 payouts + 15 = 17 fees on the campaign path.
     const capPath = { siblings: Array<string>(18).fill('00'), top: null, lower: Array<string>(18).fill('00') }
-    expect(spendExtraFee(capPath, 2)).toEqual(17n * FEE)
-    expect(spendExtraFee(capPath, 1)).toEqual(16n * FEE)
+    expect(spendExtraFee(capPath, 2)).toEqual(17_000n)
+    expect(spendExtraFee(capPath, 1)).toEqual(16_000n)
+  })
+
+  it('derives the registration deposit and vault box MBR from the ledger inputs', () => {
+    const registerBytes = BOX_KEY_PREFIX_BYTES + APP_ID_BYTES + ADDRESS_BYTES
+    const vaultBytes = BOX_KEY_PREFIX_BYTES + APP_ID_BYTES + VAULT_BOX_BYTES
+    expect(BOX_MBR_BASE_MICRO_ALGOS + BOX_MBR_PER_BYTE_MICRO_ALGOS * BigInt(registerBytes)).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+    expect(BOX_MBR_BASE_MICRO_ALGOS + BOX_MBR_PER_BYTE_MICRO_ALGOS * BigInt(vaultBytes)).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
   })
 
   it('pins the embedded selectors', () => {
@@ -39,6 +57,9 @@ describe('contract LocalNet helpers', () => {
       notifyDelete: '87060e1d',
       credit: '8027a4bb',
       pledge: 'a4030bd2',
+      cancelPledge: '457e292e',
+      refund: '4b1a1d96',
+      vaultRefund: '0fe03dd2',
       delete: '24378d3c',
       isRegistered: '716a3d0e',
     })

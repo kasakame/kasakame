@@ -17,6 +17,28 @@ import {
   op,
   urange,
 } from '@algorandfoundation/algorand-typescript'
+import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
+  FINAL_DAY_SECONDS,
+  LEAF_DOMAIN_HEX,
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_METADATA_URI_BYTES,
+  MAX_PLEDGE_MICRO_ALGOS,
+  MAX_TITLE_BYTES,
+  MAX_TREE_SIZE,
+  MAX_UINT64,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  MIN_GOAL_MICRO_ALGOS,
+  MIN_PLEDGE_MICRO_ALGOS,
+  PLEDGE_BASE_COST,
+  PLEDGE_PEAK_COST,
+  SPEND_BASE_COST,
+  SPEND_ELEMENT_COST,
+  ZERO_ROOT_HEX,
+} from '@kasakame/constants/source'
 
 /**
  * Campaign - a non-custodial crowdfunding campaign with a frontier-Merkle receipt tree (see
@@ -44,55 +66,15 @@ import {
  */
 
 // Status is stored in global state as a uint64.
-// 0 = Open, 1 = Failed, 2 = Claimed.
-const STATUS_OPEN = 0
-const STATUS_FAILED = 1
-const STATUS_CLAIMED = 2
-
-// The AVM caps a global-state entry at 128 bytes including the key.
-const MAX_BYTES_PER_STATE_KEY = 128
-// 'title' is 5 bytes and 'metadataUri' is 11 bytes, so their values are capped at 123 and 117.
-const MAX_TITLE_BYTES = MAX_BYTES_PER_STATE_KEY - 5
-const MAX_METADATA_URI_BYTES = MAX_BYTES_PER_STATE_KEY - 11
-
-// Bound a campaign so its failed-campaign vault box cannot be pinned indefinitely.
-const MAX_DURATION_SECONDS = Uint64(180 * 24 * 60 * 60)
-
-// Give backers a real review and pledge window; reject flash campaigns.
-const MIN_DURATION_SECONDS = Uint64(24 * 60 * 60)
-
-// Kickstarter-style goal protection: in the final 24 hours, a cancellation cannot drop a successful campaign below
-// its goal. A 1-day campaign is entirely inside this window; once its goal is reached, no cancel can drop it.
-const FINAL_DAY_SECONDS = Uint64(24 * 60 * 60)
-
-// Reject dust pledges: ~3x the vault box MBR and 100x the minimum transaction fee.
-const MIN_PLEDGE_MICROALGOS = Uint64(100_000)
-
-// A goal below the minimum pledge can only be met by overfunding with the smallest pledge.
-const MIN_GOAL_MICROALGOS = MIN_PLEDGE_MICROALGOS
-
-// 10 billion ALGO = 10^16 µA, the total ALGO supply. A larger goal can never be reached.
-const MAX_GOAL_MICROALGOS = Uint64(10_000_000_000_000_000n)
-
-// A single pledge cannot exceed the total ALGO supply either.
-const MAX_PLEDGE_MICROALGOS = MAX_GOAL_MICROALGOS
-
-// uint64 maximum, for the explicit cumulative-flow overflow guard.
-const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
-
-// 2^19 - 1: the largest tree whose worst-case refund path (r = c = 18, 36 path elements)
-// fits the 16-inner limit with the measured ~600-op prelude budget: 14 OpUp takes +
-// payBack + payment = 16. The SDK's zero-headroom fee bound funds 15 takes, so the group
-// never underpays. The N=1,023 ladder rung pins the prelude headroom; a larger tree can
-// request a 15th take, over the per-transaction inner limit.
-// Keep in sync with the SDK's MAX_TREE_SIZE.
-const MAX_TREE_SIZE = Uint64(524_287)
+const STATUS_OPEN = Uint64(CAMPAIGN_STATUS_OPEN)
+const STATUS_FAILED = Uint64(CAMPAIGN_STATUS_FAILED)
+const STATUS_CLAIMED = Uint64(CAMPAIGN_STATUS_CLAIMED)
 
 // `H(0x01)` domain prefix for leaves: no 64-byte internal-node preimage can collide with the 73-byte leaf preimage.
-const LEAF_DOMAIN = Bytes.fromHex('01')
+const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
 
-// `Z`, the consumed-leaf marker and the empty-tree root: 32 zero bytes.
-const ZERO_ROOT = Bytes.fromHex('0000000000000000000000000000000000000000000000000000000000000000')
+// `Z`, the consumed-leaf marker and the empty-tree root.
+const ZERO_ROOT = Bytes.fromHex(ZERO_ROOT_HEX)
 
 // ARC-4 method selectors for the ClaimsVault methods this contract invokes as inner app calls (computed from the
 // emitted ARC-56 signatures - see smart_contracts/claimsvault/contract.algo.ts; kept in sync by the integration tests).
@@ -156,14 +138,17 @@ export class Campaign extends Contract {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.applicationId.id === 0, 'must be called on app creation')
     assert(vault.id !== Uint64(0), 'vault required')
+    // The AVM caps a state entry at 128 bytes including the 5-byte `title` and 11-byte `metadataUri` keys.
     assert(title.length > 0, 'title must not be empty')
     assert(title.length <= MAX_TITLE_BYTES, 'title must be 123 bytes or fewer')
     assert(metadataUri.length <= MAX_METADATA_URI_BYTES, 'metadata uri must be 117 bytes or fewer')
-    assert(goal >= MIN_GOAL_MICROALGOS, 'goal below minimum')
-    assert(goal <= MAX_GOAL_MICROALGOS, 'goal too large')
+    // A goal below the minimum pledge can only be met by overfunding; 10^16 µA is the total ALGO supply.
+    assert(goal >= Uint64(MIN_GOAL_MICRO_ALGOS), 'goal below minimum')
+    assert(goal <= Uint64(MAX_GOAL_MICRO_ALGOS), 'goal too large')
+    // At least one day of review; at most 180 days so the failed-campaign box cannot be pinned indefinitely.
     assert(deadline > Global.latestTimestamp, 'deadline must be in the future')
-    assert(deadline >= Global.latestTimestamp + MIN_DURATION_SECONDS, 'deadline must be at least one day out')
-    assert(deadline <= Global.latestTimestamp + MAX_DURATION_SECONDS, 'deadline too far')
+    assert(deadline >= Global.latestTimestamp + Uint64(MIN_CAMPAIGN_DURATION_SECONDS), 'deadline must be at least one day out')
+    assert(deadline <= Global.latestTimestamp + Uint64(MAX_CAMPAIGN_DURATION_SECONDS), 'deadline too far')
 
     this.creator.value = Txn.sender
     this.vault.value = vault
@@ -204,17 +189,19 @@ export class Campaign extends Contract {
     assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(Txn.sender !== this.creator.value, 'creator cannot pledge to their own campaign')
-    assert(payment.amount >= MIN_PLEDGE_MICROALGOS, 'pledge below minimum')
-    assert(payment.amount <= MAX_PLEDGE_MICROALGOS, 'pledge too large')
-    assert(this.raised.value <= MAX_UINT64 - payment.amount, 'raised overflow')
+    // ~3x the vault box MBR and 100x the minimum fee; a pledge cannot exceed the total ALGO supply either.
+    assert(payment.amount >= Uint64(MIN_PLEDGE_MICRO_ALGOS), 'pledge below minimum')
+    assert(payment.amount <= Uint64(MAX_PLEDGE_MICRO_ALGOS), 'pledge too large')
+    assert(this.raised.value <= Uint64(MAX_UINT64) - payment.amount, 'raised overflow')
 
     const n = this.n.value
-    assert(n < MAX_TREE_SIZE, 'campaign reached maximum size')
+    // 2^19 - 1: the largest tree whose worst-case refund path fits the inner-transaction limit.
+    assert(n < Uint64(MAX_TREE_SIZE), 'campaign reached maximum size')
     const p = this.popcount(n)
     assert(frontier.length === p * Uint64(32), 'bad frontier length')
     // 240 per peak covers the hash plus the fold-loop overhead; 400 covers the rest of this
     // method and the following vault credit, which shares the group's opcode budget.
-    ensureBudget(p * Uint64(240) + Uint64(400), OpUpFeeSource.GroupCredit)
+    ensureBudget(p * Uint64(PLEDGE_PEAK_COST) + Uint64(PLEDGE_BASE_COST), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
@@ -271,8 +258,9 @@ export class Campaign extends Contract {
     // In the final day, a cancel cannot flip a successful campaign below its goal. A campaign that is already below
     // its goal is unaffected, as is a cancel that leaves it at or above the goal.
     if (this.raised.value >= this.goal.value) {
+      // Kickstarter-style goal protection: a final-day cancel cannot drop a successful campaign below its goal.
       assert(
-        Global.latestTimestamp + FINAL_DAY_SECONDS < this.deadline.value || amount <= this.raised.value - this.goal.value,
+        Global.latestTimestamp + Uint64(FINAL_DAY_SECONDS) < this.deadline.value || amount <= this.raised.value - this.goal.value,
         'cancel would drop below goal in the final day',
       )
     }
@@ -377,13 +365,14 @@ export class Campaign extends Contract {
     // in fact so the creator does not have to wait for the deadline to recover the app MBR.
     const failedInFact =
       this.status.value === STATUS_OPEN &&
-      (Global.latestTimestamp >= this.deadline.value || this.n.value >= MAX_TREE_SIZE) &&
+      (Global.latestTimestamp >= this.deadline.value || this.n.value >= Uint64(MAX_TREE_SIZE)) &&
       this.raised.value < this.goal.value
     assert(
       this.status.value !== STATUS_OPEN || this.raised.value === Uint64(0) || failedInFact,
       'cannot delete a campaign with live pledges',
     )
 
+    // 2^19 - 1: a cap-saturated campaign that missed its goal is failed in fact.
     if (failedInFact) {
       this.status.value = STATUS_FAILED
     }
@@ -443,7 +432,7 @@ export class Campaign extends Contract {
 
     // Reserve the whole spend from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
     // base budget. The blob length is validated below, and an underfunded group fails atomically.
-    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(250) + Uint64(700), OpUpFeeSource.GroupCredit)
+    ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
     const r = this.pathLen(n, k)

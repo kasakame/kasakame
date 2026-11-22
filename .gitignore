@@ -3,8 +3,10 @@ node_modules/
 .pnp
 .pnp.js
 
-# Build output
+# Build output (the constants package is the exception: consumers pack it at install time)
 dist/
+!projects/constants/dist/
+!projects/constants/dist/**
 build/
 out/
 coverage/
