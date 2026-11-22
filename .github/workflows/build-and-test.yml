@@ -282,7 +282,7 @@ jobs:
       - name: Install the released contracts package
         if: needs.changes.outputs.run_compile_contracts != 'true'
         run: |
-          contracts_version=$(node -p "require('./projects/contracts/package.json').version")
+          contracts_version=$(node -p "require('../contracts/package.json').version")
           npm install --no-save --no-package-lock "@kasakame/contracts@$contracts_version"
         working-directory: projects/sdk
 
@@ -341,7 +341,7 @@ jobs:
       - name: Regenerate clients (no producer run)
         if: needs.build-sdk.result == 'skipped'
         run: |
-          contracts_version=$(node -p "require('./projects/contracts/package.json').version")
+          contracts_version=$(node -p "require('../contracts/package.json').version")
           npm install --no-save --no-package-lock "@kasakame/contracts@$contracts_version"
           npm run codegen
         working-directory: projects/sdk
