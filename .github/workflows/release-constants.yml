@@ -10,9 +10,8 @@ name: release-constants
 # --provenance. Configure the trusted publisher for @kasakame/constants as
 # GitHub owner `kasakame`, repository `kasakame`, workflow
 # `release-constants.yml`, with no environment and "Allow npm publish" enabled.
-# The first publish bootstraps the package with a one-time manual `npm publish`
-# of a throwaway prerelease (never the release version); trusted publishing
-# requires an existing npm package.
+# The first release is a one-time manual npm token publish; trusted publishing
+# requires an existing package. The workflow starts with the next version.
 on:
   workflow_dispatch:
     inputs:
