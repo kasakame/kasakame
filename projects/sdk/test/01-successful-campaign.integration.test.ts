@@ -24,7 +24,7 @@ describe('SDK successful campaign (localnet)', () => {
     const { appId } = await createCampaign(creator, 'SDK successful campaign', 'ipfs://sdk-success', MICRO_ALGOS_PER_ALGO, deadline)
     const creatorAfterCreate = await accountInfo(stack.algorand, creator.address)
     const campaignMbr = creatorAfterCreate.minBalance - creatorBeforeCreate.minBalance
-    expect(creatorBeforeCreate.balance - creatorAfterCreate.balance - campaignMbr - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(3n * stack.minFee)
+    expect(creatorBeforeCreate.balance - creatorAfterCreate.balance - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(3n * stack.minFee)
 
     await pledge(appId, backer, MICRO_ALGOS_PER_ALGO)
     const vaultAfterPledge = await accountInfo(stack.algorand, stack.vaultAddress)
@@ -51,7 +51,7 @@ describe('SDK successful campaign (localnet)', () => {
     expect(creatorAfterDelete.balance - creatorBeforeDelete.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS - 5n * stack.minFee)
     const registryAfterDelete = await accountInfo(stack.algorand, stack.registryAddress)
     const vaultAfterDelete = await accountInfo(stack.algorand, stack.vaultAddress)
-    expect(registryBefore.minBalance - registryAfterDelete.minBalance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+    expect(registryAfterDelete).toEqual(registryBefore)
     expect(vaultAfterDelete.minBalance).toEqual(vaultBefore.minBalance)
 
     expect(await isRegistered(appId)).toBe(false)

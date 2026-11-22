@@ -65,8 +65,7 @@ describe('SDK failed campaign (localnet)', () => {
     expect(creatorBeforeDelete.minBalance - creatorAfterDelete.minBalance).toEqual(campaignMbr)
     expect(creatorAfterDelete.balance - creatorBeforeDelete.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS - 5n * stack.minFee)
     const registryAfterDelete = await accountInfo(stack.algorand, stack.registryAddress)
-    expect(registryBefore.minBalance - registryAfterDelete.minBalance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
-    expect(registryBefore.balance - registryAfterDelete.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+    expect(registryAfterDelete).toEqual(registryBefore)
     expect(await isRegistered(appId)).toBe(false)
     const settled = await fetchVaultBox(appId)
     expect(settled?.status).toEqual(2)
@@ -77,7 +76,7 @@ describe('SDK failed campaign (localnet)', () => {
     expect(deletedHeader.raisedMicroAlgos).toEqual(amountB)
 
     // Vault refund after delete: vault outer + inner payment + the OpUp takes.
-    const leafB = leafAt(await fetchMyLeaves(appId, backerB.address), 0)
+    const leafB = leafAt(await fetchMyLeaves(appId, backerB.address), 1)
     const vaultTakes = refundOpUpIterations(2n, 1n)
     const backerBBefore = await accountInfo(stack.algorand, backerB.address)
     await refund(appId, backerB, leafB)

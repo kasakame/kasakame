@@ -39,7 +39,7 @@ describe('SDK open campaign (localnet)', () => {
     const creatorAfterCreate = await accountInfo(stack.algorand, creator.address)
     const campaignMbr = creatorAfterCreate.minBalance - creatorBefore.minBalance
     expect(campaignMbr).toBeGreaterThan(0n)
-    expect(creatorBefore.balance - creatorAfterCreate.balance - campaignMbr - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(3n * stack.minFee)
+    expect(creatorBefore.balance - creatorAfterCreate.balance - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(3n * stack.minFee)
     const registryAfterCreate = await accountInfo(stack.algorand, stack.registryAddress)
     expect(registryAfterCreate.minBalance - registryBefore.minBalance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
     expect(registryAfterCreate.balance - registryBefore.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
@@ -96,8 +96,7 @@ describe('SDK open campaign (localnet)', () => {
     expect(creatorBeforeDelete.minBalance - creatorAfterDelete.minBalance).toEqual(campaignMbr)
     expect(creatorAfterDelete.balance - creatorBeforeDelete.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS - 5n * stack.minFee)
     const registryAfterDelete = await accountInfo(stack.algorand, stack.registryAddress)
-    expect(registryBefore.minBalance - registryAfterDelete.minBalance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
-    expect(registryBefore.balance - registryAfterDelete.balance).toEqual(REGISTER_DEPOSIT_MICRO_ALGOS)
+    expect(registryAfterDelete).toEqual(registryBefore)
     expect(await isRegistered(appId)).toBe(false)
     await expect(stack.algorand.app.getById(appId)).rejects.toThrow()
 
