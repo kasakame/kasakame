@@ -89,6 +89,15 @@ updates:
         update-types:
           - minor
           - patch
+      # One pull request for patch and minor security fixes. Major security
+      # fixes stay individual.
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
     # Majors are tracked in #65; remove each ignore when its upgrade lands.
     ignore:
       - dependency-name: typescript
