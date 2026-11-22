@@ -7,7 +7,7 @@ import type { BackerLeaf } from '../claim-tree/index.js'
 import { clearTreeCache, loadTree, pathBlobForRefund } from '../claim-tree/index.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, registryClientFor, vaultClientFor } from './clients.js'
-import { submitWithFreshProof } from './errors.js'
+import { isCampaignRoutingError, submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -85,7 +85,14 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
     return result.confirmations[0]?.confirmedRound
   }
 
-  const confirmedRound = await submitWithFreshProof(attempt)
+  let confirmedRound: bigint | undefined
+  try {
+    confirmedRound = await submitWithFreshProof(attempt)
+  } catch (error) {
+    if (!isCampaignRoutingError(error)) throw error
+    // The box settled or the campaign vanished between our read and the send: re-read the box and route once more.
+    confirmedRound = await submitWithFreshProof(attempt)
+  }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
   if (confirmedRound !== undefined) {
