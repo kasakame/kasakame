@@ -2,8 +2,8 @@ import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as ClaimTree from './claim-tree.js'
-import { MAX_TREE_SIZE } from './claim-tree.js'
+import type * as ClaimTree from './claim-tree/index.js'
+import { MAX_TREE_SIZE } from './claim-tree/index.js'
 import {
   cancelPledge,
   claim,
@@ -11,14 +11,18 @@ import {
   deleteCampaign,
   fetchVaultBox,
   fetchVaultConfig,
+  finalize,
   isStaleProofError,
   pledge,
   pledgeGroup,
   refund,
   refundGroup,
   refundWindowEndsAt,
+  registerCampaign,
+  releaseClaimed,
+  settleOpen,
   vaultAddress,
-} from './transactions.js'
+} from './transactions/index.js'
 
 const {
   sendCreateMock,
@@ -27,6 +31,9 @@ const {
   sendClaimMock,
   sendCancelPledgeMock,
   sendDeleteMock,
+  sendFinalizeMock,
+  sendReleaseClaimedMock,
+  sendSettleOpenMock,
   paramsPledgeMock,
   paramsCreditMock,
   paramsCampaignRefundMock,
@@ -55,6 +62,9 @@ const {
   sendClaimMock: vi.fn(),
   sendCancelPledgeMock: vi.fn(),
   sendDeleteMock: vi.fn(),
+  sendFinalizeMock: vi.fn(),
+  sendReleaseClaimedMock: vi.fn(),
+  sendSettleOpenMock: vi.fn(),
   paramsPledgeMock: vi.fn(),
   paramsCreditMock: vi.fn(),
   paramsCampaignRefundMock: vi.fn(),
@@ -106,6 +116,11 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
       credit: (...args: unknown[]) => paramsCreditMock(...args),
       refund: (...args: unknown[]) => paramsVaultRefundMock(...args),
     }
+    send = {
+      settleOpen: sendSettleOpenMock,
+      finalize: sendFinalizeMock,
+      releaseClaimed: sendReleaseClaimedMock,
+    }
     state = {
       box: { campaignBox: { value: (...args: unknown[]) => campaignBoxValueMock(...args) } },
       global: {
@@ -150,7 +165,7 @@ vi.mock('./chain.js', () => ({
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
 }))
 
-vi.mock('./claim-tree.js', async (importOriginal) => {
+vi.mock('./claim-tree/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ClaimTree>()
   return {
     ...actual,
@@ -169,6 +184,23 @@ const session = {
 // The real app-account address of the configured vault (app id 2002).
 const VAULT_APP_ADDRESS = algosdk.getApplicationAddress(2002n).toString()
 
+/**
+ * A packed vault box with the given inflow/outflow totals.
+ *
+ * @param paidIn Total inflows in microAlgos.
+ * @param paidOut Total outflows in microAlgos.
+ * @param status Vault box status byte (1 Open, 2 Failed, 3 Claimed).
+ * @returns The 65-byte vault box.
+ */
+function vaultBox(paidIn: bigint, paidOut: bigint, status = 0): Uint8Array {
+  const box = new Uint8Array(65)
+  const view = new DataView(box.buffer)
+  view.setBigUint64(0, paidIn)
+  view.setBigUint64(8, paidOut)
+  box[56] = status
+  return box
+}
+
 describe('transaction helpers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -179,6 +211,7 @@ describe('transaction helpers', () => {
     pathBlobMock.mockReturnValue(new Uint8Array())
     registryAppIdMock.mockReturnValue(1001n)
     getSuggestedParamsMock.mockResolvedValue({ minFee: 1_000n })
+    campaignBoxValueMock.mockResolvedValue(new Uint8Array(65))
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
     paramsCreditMock.mockResolvedValue({ credit: 'params' })
     paramsCampaignRefundMock.mockResolvedValue({ refund: 'params' })
@@ -188,7 +221,16 @@ describe('transaction helpers', () => {
     composerBuildMock.mockResolvedValue({ transactions: [{ txn: 'txn', signer: 'signer' }] })
     composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }] })
     sendCreateMock.mockResolvedValue({ result: { appId: 9n, appAddress: { toString: () => 'ESCROW' } } })
-    for (const mock of [sendRegisterMock, sendUnregisterMock, sendClaimMock, sendCancelPledgeMock, sendDeleteMock]) {
+    for (const mock of [
+      sendRegisterMock,
+      sendUnregisterMock,
+      sendClaimMock,
+      sendCancelPledgeMock,
+      sendDeleteMock,
+      sendSettleOpenMock,
+      sendFinalizeMock,
+      sendReleaseClaimedMock,
+    ]) {
       mock.mockResolvedValue({ confirmation: { confirmedRound: 99n } })
     }
   })
@@ -198,17 +240,79 @@ describe('transaction helpers', () => {
   })
 
   it('createCampaign runs create then register (nothing funded)', async () => {
-    await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
 
+    expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
+  it('returns the app id when registration fails', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    expect(result).toEqual({
+      appId: 9n,
+      appAddress: 'ESCROW',
+      registered: false,
+      registerError: 'not an official kasakame campaign',
+    })
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('stringifies a non-Error registration failure', async () => {
+    sendRegisterMock.mockRejectedValueOnce('not an official kasakame campaign')
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    expect(result.registered).toBe(false)
+    expect(result.registerError).toBe('not an official kasakame campaign')
+  })
+
+  it('registerCampaign retries registration and tolerates an already-registered campaign', async () => {
+    await registerCampaign(9n, session)
+    expect(sendRegisterMock).toHaveBeenCalledOnce()
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+
+    sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
+    await expect(registerCampaign(9n, session)).resolves.toBeUndefined()
+    expect(sendRegisterMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('registerCampaign surfaces other registration failures', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+
+    await expect(registerCampaign(9n, session)).rejects.toThrow('not an official kasakame campaign')
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+  })
+
+  it('registerCampaign is a no-op when no registry is configured', async () => {
+    registryAppIdMock.mockReturnValue(0n)
+
+    await registerCampaign(9n, session)
+
+    expect(sendRegisterMock).not.toHaveBeenCalled()
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+  })
+
+  it('a campaign whose registration failed can still be deleted', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+
+    await deleteCampaign(result.appId, session)
+
+    expect(paramsUnregisterMock).toHaveBeenCalledOnce()
+    expect(composerAddMock).toHaveBeenCalledTimes(2)
+    expect(composerSendMock).toHaveBeenCalledOnce()
+  })
+
   it('creates without registering when no registry is configured', async () => {
     registryAppIdMock.mockReturnValue(0n)
-    await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
 
+    expect(result.registered).toBe(true)
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).not.toHaveBeenCalled()
   })
@@ -371,6 +475,50 @@ describe('transaction helpers', () => {
     expect(composerSendMock).not.toHaveBeenCalled()
   })
 
+  it('refund retries through the vault when the campaign settles mid-send', async () => {
+    campaignBoxValueMock.mockResolvedValueOnce(vaultBox(500n, 0n, 1)).mockResolvedValueOnce(vaultBox(500n, 0n, 2))
+    composerSendMock
+      .mockRejectedValueOnce(new Error('campaign is not open'))
+      .mockResolvedValueOnce({ confirmations: [{ confirmedRound: 99n }] })
+
+    await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
+    expect(campaignBoxValueMock).toHaveBeenCalledTimes(2)
+    expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+  })
+
+  it('refund retries through the vault when the campaign app disappears mid-send', async () => {
+    campaignBoxValueMock.mockResolvedValueOnce(vaultBox(500n, 0n, 1)).mockResolvedValueOnce(vaultBox(500n, 0n, 2))
+    composerSendMock
+      .mockRejectedValueOnce(new Error('application 123 not found'))
+      .mockResolvedValueOnce({ confirmations: [{ confirmedRound: 99n }] })
+
+    await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
+  })
+
+  it('refund surfaces a second routing failure', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 0n, 1))
+    composerSendMock.mockRejectedValue(new Error('campaign is not open'))
+
+    await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow('campaign is not open')
+    expect(composerSendMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('refund does not retry a non-routing failure', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 0n, 2))
+    composerSendMock.mockRejectedValueOnce(new Error('campaign is not refundable'))
+
+    await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow(
+      'campaign is not refundable',
+    )
+    expect(composerSendMock).toHaveBeenCalledOnce()
+  })
+
   it('claim pays the vault-derived total', async () => {
     await claim(9n, session)
 
@@ -379,6 +527,66 @@ describe('transaction helpers', () => {
     const call = sendClaimMock.mock.calls[0]?.[0] as { extraFee: unknown; boxReferences: unknown[] }
     expect(call.boxReferences).toHaveLength(1)
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+  })
+
+  it('settleOpen settles a failed campaign permissionlessly', async () => {
+    await settleOpen(9n, session)
+
+    const call = sendSettleOpenMock.mock.calls[0]?.[0] as {
+      args: { app: bigint }
+      sender: string
+      appReferences: unknown[]
+      boxReferences: unknown[]
+    }
+    expect(call.args.app).toEqual(9n)
+    expect(call.sender).toEqual(session.address)
+    expect(call.appReferences).toEqual([9n])
+    expect(call.boxReferences).toHaveLength(1)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('releaseClaimed releases a claimed box permissionlessly', async () => {
+    await releaseClaimed(9n, session)
+
+    const call = sendReleaseClaimedMock.mock.calls[0]?.[0] as { args: { app: bigint }; boxReferences: unknown[] }
+    expect(call.args.app).toEqual(9n)
+    expect(call.boxReferences).toHaveLength(1)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('finalize funds the residual inner payment', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 200n))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(1_000n)
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('finalize skips the inner fee when the box is fully paid out', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 500n))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(0n)
+  })
+
+  it('finalize skips the inner fee when the box is missing', async () => {
+    campaignBoxValueMock.mockRejectedValue(new Error('missing'))
+
+    await finalize(9n, session)
+
+    const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
+    expect(call.extraFee.microAlgo).toEqual(0n)
+  })
+
+  it('surfaces a cleanup rejection without waiting for the indexer', async () => {
+    sendFinalizeMock.mockRejectedValueOnce(new Error('refund window still open'))
+
+    await expect(finalize(9n, session)).rejects.toThrow('refund window still open')
+    expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
   })
 
   it('deleteCampaign settles, closes, and unregisters in one atomic group', async () => {

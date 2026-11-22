@@ -1,7 +1,7 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import { AppFactory } from '@algorandfoundation/algokit-utils/types/app-factory'
-import { REGISTER_DEPOSIT_MICRO_ALGOS, SECONDS_PER_DAY } from '@kasakame/constants'
+import { REGISTER_DEPOSIT_MICRO_ALGOS, SECONDS_PER_DAY } from '@kasakame/constants/source'
 import { ABIMethod } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'

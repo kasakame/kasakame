@@ -44,7 +44,8 @@ jobs:
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
       run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
-      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -153,7 +154,7 @@ jobs:
         run: npx --yes markdownlint-cli2@0.23.2
 
   # Compile the contracts once, only when the contracts changed. The artifact
-  # feeds `build-sdk` and `integration-test`.
+  # feeds `build-sdk` and `integration-test-contracts`.
   compile-contracts:
     name: Compile contracts
     needs: changes
@@ -609,10 +610,10 @@ jobs:
   # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
   # same-run contract artifacts; it runs after contract verification even if
   # that verification failed, so one run still reports the integration result.
-  integration-test:
-    name: LocalNet integration
+  integration-test-contracts:
+    name: Contracts LocalNet integration
     needs: [changes, compile-contracts, check-contracts]
-    if: always() && !cancelled() && needs.changes.outputs.run_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
+    if: always() && !cancelled() && needs.changes.outputs.run_contracts_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -658,6 +659,59 @@ jobs:
         run: npm run test:integration
         working-directory: projects/contracts
 
+  # SDK send-path verification reuses the clients `build-sdk` generated from
+  # the same-run contract artifacts (or the released contracts package), so it
+  # does not duplicate codegen. A separate job keeps the contract lane
+  # independent and lets both LocalNet lanes run in parallel.
+  integration-test-sdk:
+    name: SDK LocalNet integration
+    needs: [changes, build-sdk]
+    if: always() && !cancelled() && needs.changes.outputs.run_sdk_integration == 'true' && needs.build-sdk.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/sdk/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: projects/sdk
+
+      - name: Download generated clients
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-generated
+          path: projects/sdk/src/generated
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
+      - name: Install AlgoKit CLI
+        run: bash .github/scripts/install-algokit.sh
+        shell: bash
+
+      - name: Start LocalNet (algod + indexer)
+        run: algokit localnet start
+
+      - name: Run SDK LocalNet integration tests
+        run: npm run test:integration
+        working-directory: projects/sdk
+
   # Single required check: skipped change-detection jobs don't block merges
   # under strict branch protection - only failures and cancellations do.
   gate:
@@ -675,7 +729,8 @@ jobs:
       - check-backend
       - check-utils
       - check-constants
-      - integration-test
+      - integration-test-contracts
+      - integration-test-sdk
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

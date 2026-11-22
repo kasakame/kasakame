@@ -74,9 +74,9 @@ Run it with `npm run test:coverage`. The thresholds live in
 | --- | --- | --- | --- | --- |
 | Offline AVM unit | `**/*.algo.spec.ts`, `deploy/deployer.spec.ts`, `deploy/refund-window.spec.ts`, `test/formulas.spec.ts` | `npm run test` / `npm run test:coverage` | Check contracts | `pull_request`, push to `main`, manual |
 | Contract size budget | `test/08-size-budget.spec.ts` (`CON-300`..`CON-302`) | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
-| Contract LocalNet | `test/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
+| Contract LocalNet | `test/00`-`07` | `npm run test:integration` | `integration-test-contracts` | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| SDK LocalNet | `test/*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today (#158) | LocalNet running |
+| SDK LocalNet | `test/0*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
@@ -529,29 +529,35 @@ Three cases stay offline-only because LocalNet cannot produce the state:
 
 ## SDK LocalNet integration
 
-`projects/sdk/test/transactions.integration.test.ts` closes the client send-path
-gap: it deploys a Registry + ClaimsVault from the ARC-56 bytecode embedded in the
-generated clients, calls `configureSdk`, and drives the SDK write helpers against
-a live chain. Five flows run with fresh campaigns and generated-account signers
-(the last two only when `SDK_SPECS=local` generated clients deploy the fixed
-contracts; the pinned release predates the early budget top-up):
+`projects/sdk/test/` mirrors the contract suite: numbered integration files,
+shared fixtures under `test/utils/`, a path-order sequencer, tags, and `SDK-`
+IDs. Each file deploys a Registry + ClaimsVault from the ARC-56 bytecode
+embedded in the generated clients, calls `configureSdk`, and drives the SDK
+write helpers against a live chain.
 
-1. **create → pledge → cancel → delete** - the open-campaign lifecycle, including
-   the `[pay, campaign.pledge, vault.credit]` group and the backer's withdrawal.
-2. **successful campaign → claim → delete** - the creator payout and the atomic
-   `[unregister, delete]` cleanup.
-3. **failed campaign → refund before delete → delete → refund after delete** -
-   the campaign refund path, then the vault refund path once the app is gone.
-4. **mid-size tree (N=47) → cancel and refund on both paths** - a multi-take
-   proof path through the SDK's fee sizing.
-5. **large tree (N=255) → cancel and refund with a deep path** - 14 path
-   elements, the heaviest shape the contract ladder exercises; it raises the
-   per-test timeout because the SDK re-reads the tree for every pledge.
+| File | Tests | Tags | What it proves |
+| --- | --- | --- | --- |
+| `test/00-open-campaign.integration.test.ts` | `SDK-001` | `smoke`, `happy`, `always` | create → pledge → cancel → delete; the `[pay, campaign.pledge, vault.credit]` group and the backer withdrawal |
+| `test/01-successful-campaign.integration.test.ts` | `SDK-010` | `happy`, `always` | successful campaign → claim → delete; creator payout and `[unregister, delete]` |
+| `test/02-failed-campaign.integration.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
+| `test/03-mid-size-tree.integration.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
+| `test/04-large-tree.integration.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
+
+Each file deploys its own stack, so the files are independent; the path-order
+sequencer and `--no-file-parallelism` keep time travel from overlapping. The
+fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
+sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
+timeouts). The tests import the shared balance, minimum-balance, account-info,
+and time helpers directly from `@kasakame/utils/testing`.
+
+CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
+artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite
+pins the create/register cost, each operation's group fee, and the app/box MBR
+transitions using the runtime `minFee`.
 
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
-the offset is reset in a `finally`, and the suite runs with
-`--no-file-parallelism` because the offset is chain-global. It is excluded from
-`npm test` and coverage.
+the offset is reset in a `finally`. The suite is excluded from `npm test` and
+coverage.
 
 Run it with LocalNet up:
 
@@ -561,8 +567,8 @@ npm run test:integration
 ```
 
 The suite uses the clients currently in `src/generated`, so it tests the
-installed contracts package by default. To exercise the local contracts instead,
-build them and regenerate against the local artifacts first:
+installed contracts package by default. To exercise unreleased contracts
+instead, build them and regenerate against the local artifacts first:
 
 ```bash
 cd projects/contracts && npm run build
@@ -570,9 +576,8 @@ cd ../sdk && SDK_SPECS=local npm run codegen
 npm run test:integration
 ```
 
-The setup adapts to both shapes: the 2026-11 Registry binds the vault, pins the
-vault program hash, and hashes `itob(approval length) ‖ approval ‖ clear`, while
-the pinned release predates all three.
+The fixtures deploy the same Registry + ClaimsVault bundle the generated clients
+were built from.
 
 ## API cheat sheet (learned the hard way)
 
@@ -661,7 +666,7 @@ complements the two layers above rather than replacing them.
 ### Why it's needed
 
 The existing layers share one blind spot: they do not exercise the **SDK
-send path** (`projects/sdk/src/transactions.ts`) against a live chain. The contract
+send path** (`projects/sdk/src/transactions/`) against a live chain. The contract
 integration tests call the low-level client directly (with `extraFee`), so a bug
 in the frontend helpers (for example, `coverAppCallInnerTransactionFees: true`,
 which throws at send time because the typed client doesn't populate the required
@@ -686,7 +691,7 @@ Automating real Pera/Defly wallet popups is brittle and out of scope for a
 first cut. The plan is to inject a **test signer** (a LocalNet-funded mnemonic)
 so the app signs transactions without a real wallet. This reuses the existing
 `WalletSession` shape (`{ address, signer }`) in the SDK
-(`projects/sdk/src/transactions.ts`). The
+(`projects/sdk/src/transactions/`). The
 remaining questions to settle before implementing:
 
 - Whether to run against the `npm run dev:localnet` Vite server or a `vite build` preview

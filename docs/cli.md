@@ -157,9 +157,9 @@ app IDs before it connects to anything.
 
 ## Networks
 
-TestNet is the default. The CLI embeds the pre-0.2.0 deployment this repo publishes:
-Registry `774437557` and ClaimsVault `774437570`. The v0.2.0 ownerless Registry bundle
-replaces these ids; old campaigns stay on the embedded deployment.
+TestNet is the default. The CLI embeds the v0.2.0 ownerless Registry bundle:
+Registry `776939068` and ClaimsVault `776939077`. Campaigns created on the old
+deployment (`774437557` / `774437570`) stay there.
 
 | Network | algod and indexer | Deployment IDs |
 | --- | --- | --- |

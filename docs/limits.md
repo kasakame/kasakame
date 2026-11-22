@@ -240,17 +240,20 @@ SDK use the same tree-shape formulas (see
 
 | Action | Transactions | SDK total | Notes |
 | --- | --- | ---: | --- |
-| Create + register | create + deposit + register | 5,000 µA | 3,000 µA measured on-chain; 2,000 µA headroom |
+| Create + register | create + deposit + register | 3,000 µA | 3,000 µA measured on-chain; no SDK headroom |
 | Pledge | pay + `pledge` + `credit` + 0..6 OpUp takes | 4,000-10,000 µA | 4,000 base (includes the first-touch Registry check headroom); +1,000 per OpUp take |
 | Cancel / refund, campaign path | campaign + inner `payBack` + inner payment + 0..14 actual OpUp takes (15 funded) | 5,000-18,000 µA | +1,000 per funded take; 5,000 at N=4, 8,000 at N=100 |
 | Refund, vault path | vault + inner payment + 0..14 actual OpUp takes (15 funded) | 4,000-17,000 µA | one payout inner; +1,000 per funded take |
 | Claim | campaign + inner `payClaim` + inner payment | 3,000 µA | fixed; no tree-dependent budget |
 | `[unregister, delete]` | unregister + inner deposit + delete + inner settle/notify + escrow close | 5,000 µA | fixed |
-| `settleOpen` | vault only | 1,000 µA | not exposed in the SDK/CLI yet |
-| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; not exposed yet |
-| `releaseClaimed` | vault only | 1,000 µA | not exposed yet |
+| `settleOpen` | vault only | 1,000 µA | SDK helper; CLI #299 |
+| `finalize` | vault + inner payment (if residual) | 2,000 µA | 1,000 µA without residual; SDK helper, CLI #299 |
+| `releaseClaimed` | vault only | 1,000 µA | SDK helper; CLI #299 |
 | `Registry.register` | deposit + register | 2,000 µA | inside the create flow |
 | `Registry.unregister` | unregister + inner deposit | 2,000 µA | inside cleanup |
+
+The SDK LocalNet suite pins the create/register cost, each operation's group
+fee, and the app/box MBR transitions using the runtime `minFee`.
 
 OpUp sizing: one `ensureBudget` iteration submits **one** inner app call
 (the Puya OpUp create-and-delete program), costing 1,000 µA and adding ~700

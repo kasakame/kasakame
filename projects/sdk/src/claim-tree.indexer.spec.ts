@@ -2,7 +2,7 @@ import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { encodeAddress, getApplicationAddress, hexToBytes } from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureSdk } from './chain.js'
-import { clearTreeCache, fetchMyLeaves, fetchPledges, fetchSpends, loadTree, u64be } from './claim-tree.js'
+import { clearTreeCache, fetchMyLeaves, fetchPledges, fetchSpends, loadTree, u64be } from './claim-tree/index.js'
 
 const indexerMock = vi.hoisted(() => ({
   searchForTransactions: vi.fn(),
