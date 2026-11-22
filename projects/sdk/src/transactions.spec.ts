@@ -465,6 +465,14 @@ describe('transaction helpers', () => {
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
   })
 
+  it('refund propagates a non-404 box read error', async () => {
+    campaignBoxValueMock.mockRejectedValue(new Error('timeout'))
+
+    await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow('timeout')
+    expect(paramsCampaignRefundMock).not.toHaveBeenCalled()
+    expect(paramsVaultRefundMock).not.toHaveBeenCalled()
+  })
+
   it('refundGroup returns the built group without sending', async () => {
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
     const transactions = [{ txn: 'txn', signer: 'signer' }]
@@ -574,12 +582,19 @@ describe('transaction helpers', () => {
   })
 
   it('finalize skips the inner fee when the box is missing', async () => {
-    campaignBoxValueMock.mockRejectedValue(new Error('missing'))
+    campaignBoxValueMock.mockRejectedValue(new Error('box not found'))
 
     await finalize(9n, session)
 
     const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
     expect(call.extraFee.microAlgo).toEqual(0n)
+  })
+
+  it('finalize propagates a non-404 box read error', async () => {
+    campaignBoxValueMock.mockRejectedValue(new Error('timeout'))
+
+    await expect(finalize(9n, session)).rejects.toThrow('timeout')
+    expect(sendFinalizeMock).not.toHaveBeenCalled()
   })
 
   it('surfaces a cleanup rejection without waiting for the indexer', async () => {
@@ -609,8 +624,11 @@ describe('transaction helpers', () => {
     campaignBoxValueMock.mockResolvedValue(box)
     await expect(fetchVaultBox(9n)).resolves.toMatchObject({ status: Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16) })
 
-    campaignBoxValueMock.mockRejectedValue(new Error('missing'))
+    campaignBoxValueMock.mockRejectedValue(new Error('box not found'))
     await expect(fetchVaultBox(9n)).resolves.toBeUndefined()
+
+    campaignBoxValueMock.mockRejectedValue(new Error('socket hang up'))
+    await expect(fetchVaultBox(9n)).rejects.toThrow('socket hang up')
 
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(3))
     await expect(fetchVaultBox(9n)).resolves.toBeUndefined()
