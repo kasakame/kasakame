@@ -2,8 +2,8 @@ import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as ClaimTree from './claim-tree.js'
-import { MAX_TREE_SIZE } from './claim-tree.js'
+import type * as ClaimTree from './claim-tree/index.js'
+import { MAX_TREE_SIZE } from './claim-tree/index.js'
 import {
   cancelPledge,
   claim,
@@ -19,7 +19,7 @@ import {
   refundWindowEndsAt,
   registerCampaign,
   vaultAddress,
-} from './transactions.js'
+} from './transactions/index.js'
 
 const {
   sendCreateMock,
@@ -151,7 +151,7 @@ vi.mock('./chain.js', () => ({
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
 }))
 
-vi.mock('./claim-tree.js', async (importOriginal) => {
+vi.mock('./claim-tree/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ClaimTree>()
   return {
     ...actual,
