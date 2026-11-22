@@ -1,5 +1,6 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
+import { advanceTime } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
   cancelPledge,
@@ -11,7 +12,7 @@ import {
   pledge,
   refund,
 } from '../src/index.js'
-import { advanceTime, headerOf, leafAt, MID_TREE_SIZE, session, setupSdkStack } from './utils/index.js'
+import { headerOf, leafAt, MID_TREE_SIZE, session, setupSdkStack } from './utils/index.js'
 
 describe('SDK mid-size tree (localnet)', () => {
   const fixture = algorandFixture()

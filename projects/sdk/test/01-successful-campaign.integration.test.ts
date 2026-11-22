@@ -1,9 +1,9 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
-import { balanceOf } from '@kasakame/utils/testing'
+import { advanceTime, balanceOf } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { claim, createCampaign, deleteCampaign, fetchChainTimestamp, fetchVaultBox, isRegistered, pledge } from '../src/index.js'
-import { advanceTime, headerOf, session, setupSdkStack, type SdkStack } from './utils/index.js'
+import { headerOf, session, setupSdkStack, type SdkStack } from './utils/index.js'
 
 describe('SDK successful campaign (localnet)', () => {
   const fixture = algorandFixture()

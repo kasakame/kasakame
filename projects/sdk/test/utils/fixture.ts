@@ -3,13 +3,11 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import type { AlgorandFixture } from '@algorandfoundation/algokit-utils/types/testing'
 import { MICRO_ALGOS_PER_ALGO, MIN_REFUND_WINDOW_SECONDS } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
-import { advanceTime, deployPlatform } from '@kasakame/utils/testing'
+import { deployPlatform } from '@kasakame/utils/testing'
 import { CampaignFactory } from '../../src/generated/CampaignClient.js'
 import { ClaimsVaultFactory } from '../../src/generated/ClaimsVaultClient.js'
 import { RegistryFactory } from '../../src/generated/RegistryClient.js'
 import { configureSdk, type WalletSession } from '../../src/index.js'
-
-export { advanceTime }
 
 /** The deployed Registry + vault and the SDK session they are configured for. */
 export interface SdkStack {
