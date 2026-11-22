@@ -47,7 +47,7 @@ function fakeAlgorand(): AlgorandClient {
       indexer: indexerMock,
       algod: {
         status: () => ({ do: () => Promise.resolve({ lastRound: 5n }) }),
-        block: () => ({ do: () => Promise.resolve({ block: { header: { timestamp: 1_000n } } }) }),
+        block: () => ({ headerOnly: () => ({ do: () => Promise.resolve({ block: { header: { timestamp: 1_000n } } }) }) }),
       },
     },
   } as unknown as AlgorandClient

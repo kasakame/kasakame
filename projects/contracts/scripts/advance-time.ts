@@ -26,7 +26,7 @@ void (async () => {
   await algorand.send.payment({ sender: dispenser.addr, receiver: dispenser.addr, amount: microAlgos(1000n) })
 
   const status = await algorand.client.algod.status().do()
-  const block = await algorand.client.algod.block(status.lastRound).do()
+  const block = await algorand.client.algod.block(status.lastRound).headerOnly(true).do()
   console.log(
     `round ${String(status.lastRound)} chain time: ${new Date(Number(block.block.header.timestamp) * 1000).toISOString()} (offset ${seconds}s)`,
   )

@@ -11,7 +11,7 @@ function fakeAlgorand(): AlgorandClient {
     client: {
       algod: {
         status: () => ({ do: algodStatus }),
-        block: (round: bigint) => ({ do: () => algodBlock(round) }),
+        block: (round: bigint) => ({ headerOnly: (headerOnly: boolean) => ({ do: () => algodBlock(round, headerOnly) }) }),
       },
       indexer: { makeHealthCheck: () => ({ do: healthCheck }) },
     },
@@ -51,7 +51,7 @@ describe('chain plumbing', () => {
     algodStatus.mockResolvedValue({ lastRound: 42n })
     algodBlock.mockResolvedValue({ block: { header: { timestamp: 123n } } })
     expect(await fetchChainTimestamp()).toEqual(123n)
-    expect(algodBlock).toHaveBeenCalledWith(42n)
+    expect(algodBlock).toHaveBeenCalledWith(42n, true)
   })
 
   it('waits for the indexer to reach the chain tip', async () => {

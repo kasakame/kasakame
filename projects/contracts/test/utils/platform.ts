@@ -193,7 +193,7 @@ export async function deployCampaign(
 ): Promise<{ appClient: AppClient; appId: bigint }> {
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
   const status = await stack.algorand.client.algod.status().do()
-  const block = await stack.algorand.client.algod.block(status.lastRound).do()
+  const block = await stack.algorand.client.algod.block(status.lastRound).headerOnly(true).do()
   const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? SECONDS_PER_DAY)
   const vaultId = options.vaultId ?? stack.vault.appId
   const registry = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
