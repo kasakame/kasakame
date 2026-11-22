@@ -6,12 +6,7 @@ name: release-constants
 # projects/constants/package.json, and dry_run defaults to true; set it to
 # false only for a real release.
 #
-# Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
-# release is a bootstrap: npm requires the package to exist before a trusted
-# publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
-# and a temporary NPM_TOKEN secret. Both paths pass --provenance; the token is
-# only for authentication. Delete the secret and revoke the token after that
-# release.
+# Releases use npm OIDC trusted publishing.
 #
 # Configure the trusted publisher for @kasakame/constants as GitHub owner
 # `kasakame`, repository `kasakame`, workflow `release-constants.yml`, with no
@@ -27,11 +22,6 @@ on:
         description: 'Run all checks but skip publishing'
         required: true
         default: true
-        type: boolean
-      bootstrap:
-        description: 'Publish with NPM_TOKEN (first release only, before trusted publishing)'
-        required: true
-        default: false
         type: boolean
 
 permissions:
@@ -155,27 +145,8 @@ jobs:
             exit 1
           fi
 
-      - name: Require the bootstrap token
-        if: ${{ inputs.bootstrap && !inputs.dry_run }}
-        env:
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "bootstrap=true but the NPM_TOKEN secret is not set" >&2
-            exit 1
-          fi
-
-      - name: Publish with the bootstrap token
-        if: ${{ inputs.bootstrap && !inputs.dry_run }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          TAG: ${{ needs.prep.outputs.tag }}
-        run: |
-          echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token"
-          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
-
       - name: Publish with provenance (OIDC)
-        if: ${{ !inputs.bootstrap && !inputs.dry_run }}
+        if: ${{ !inputs.dry_run }}
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
