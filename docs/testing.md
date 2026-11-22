@@ -560,9 +560,9 @@ cd projects/sdk
 npm run test:integration
 ```
 
-The suite uses the clients currently in `src/generated`, so it tests the pinned
-specs release by default. To exercise the local contracts instead, build them and
-regenerate against the local artifacts first:
+The suite uses the clients currently in `src/generated`, so it tests the
+installed contracts package by default. To exercise the local contracts instead,
+build them and regenerate against the local artifacts first:
 
 ```bash
 cd projects/contracts && npm run build

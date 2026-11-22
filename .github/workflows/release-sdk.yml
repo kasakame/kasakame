@@ -1,9 +1,9 @@
 name: release-sdk
 
-# Manual release of @kasakame/sdk. The SDK is regenerated from the pinned
-# specs release, so this workflow never builds the contracts and cannot embed
-# an unreleased interface. Every gate is its own step so a failure and its
-# timing are visible in the run. The dispatch version must match
+# Manual release of @kasakame/sdk. The SDK is regenerated from the released
+# @kasakame/contracts package, so this workflow never builds the contracts and
+# cannot embed an unreleased interface. Every gate is its own step so a failure
+# and its timing are visible in the run. The dispatch version must match
 # projects/sdk/package.json, and dry_run defaults to true; set it to false only
 # for a real release.
 #
@@ -14,9 +14,9 @@ name: release-sdk
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
 # public API before the publish job runs. The frontend is released separately
-# against the published version. Release @kasakame/constants first: the SDK
-# declares it as a peer dependency, and the smoke test installs it from the
-# registry.
+# against the published version. Release @kasakame/contracts and
+# @kasakame/constants first: the SDK builds from the contracts package and
+# declares constants as a peer dependency.
 on:
   workflow_dispatch:
     inputs:
@@ -44,7 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
-      specs: ${{ steps.version.outputs.specs }}
+      contracts: ${{ steps.version.outputs.contracts }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -67,7 +67,7 @@ jobs:
         run: |
           node .github/scripts/check-release-version.mjs projects/sdk/package.json "$INPUT_VERSION"
           version=$(node -p "require('./projects/sdk/package.json').version")
-          specs=$(node -p "require('./projects/sdk/package.json').config.specsVersion")
+          contracts=$(node -p "require('./projects/contracts/package.json').version")
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "package version is not semver: $version" >&2
             exit 1
@@ -80,9 +80,9 @@ jobs:
           {
             echo "version=$version"
             echo "tag=$tag"
-            echo "specs=$specs"
+            echo "contracts=$contracts"
           } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/sdk@$version -> $tag (specs $specs)"
+          echo "@kasakame/sdk@$version -> $tag (contracts $contracts)"
 
       - name: Check the version is unpublished
         env:
@@ -94,10 +94,16 @@ jobs:
           fi
           echo "@kasakame/sdk@$VERSION is free"
 
-      # The pinned specs release is the only interface input. Do not set
+      # The released contracts package is the only interface input. Do not set
       # SDK_SPECS=local here: a published SDK must not use an unreleased
       # contracts checkout.
-      - name: Regenerate clients from pinned specs
+      - name: Install the released contracts package
+        env:
+          CONTRACTS_VERSION: ${{ steps.version.outputs.contracts }}
+        run: npm install --no-save --no-package-lock "@kasakame/contracts@$CONTRACTS_VERSION"
+        working-directory: projects/sdk
+
+      - name: Regenerate clients from the released contracts package
         run: npm run codegen
         working-directory: projects/sdk
 

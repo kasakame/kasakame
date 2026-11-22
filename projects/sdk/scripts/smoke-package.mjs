@@ -6,11 +6,12 @@ import path from 'node:path'
 
 const sdkDir = path.resolve(import.meta.dirname, '..')
 const sdkPackage = JSON.parse(fs.readFileSync(path.join(sdkDir, 'package.json'), 'utf8'))
+const contractsPackage = JSON.parse(fs.readFileSync(path.join(sdkDir, '..', 'contracts', 'package.json'), 'utf8'))
 const expectedVersion = sdkPackage.version
-const expectedSpecs = sdkPackage.config?.specsVersion
+const expectedSpecs = contractsPackage.version
 
 if (typeof expectedVersion !== 'string' || typeof expectedSpecs !== 'string') {
-  throw new Error('package.json version or config.specsVersion is missing')
+  throw new Error('package.json version or contracts package version is missing')
 }
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'kasakame-sdk-smoke-'))

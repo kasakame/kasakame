@@ -5,7 +5,7 @@ This page describes the GitHub Actions setup: a consolidated
 verification job per project plus repo-wide workflow, shell, and Markdown lint,
 the separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
-[`release-specs`](../.github/workflows/release-specs.yml),
+[`release-contracts`](../.github/workflows/release-contracts.yml),
 [`release-constants`](../.github/workflows/release-constants.yml),
 [`release-sdk`](../.github/workflows/release-sdk.yml), and
 [`release-cli`](../.github/workflows/release-cli.yml) releases - plus the
@@ -159,7 +159,7 @@ flowchart TD
 | `integration-test` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
-| `release-specs` (own workflow) | manual | ✅ | ✅ | - | - |
+| `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-constants` (own workflow) | manual | ✅ | - | - | - |
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
 | `release-cli` (own workflow) | manual | ✅ | - | - | - |
@@ -186,17 +186,17 @@ after a failure.
 The SDK's write path imports the generated clients (`src/generated/*`,
 gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
 pinned `@algorandfoundation/algokit-client-generator`. By default codegen
-downloads the pinned `specs-v<version>` release asset over HTTPS
-(`.../releases/download/specs-v<version>/arc56.tar.gz`), so it needs no `gh`
-login; `SDK_SPECS=local` reads
+reads the installed `@kasakame/contracts` package
+(`node_modules/@kasakame/contracts/dist/arc56`); `SDK_SPECS=local` reads
 `projects/contracts/smart_contracts/artifacts` instead. When
 `compile-contracts` ran `build-sdk` downloads `contracts-artifacts` and runs
 codegen with `SDK_SPECS=local`, so the generated clients, the type-check, the
 tests, and the built SDK all resolve against the change set's contracts;
-otherwise it uses the pinned release. `build-sdk` uploads the generated clients
-as `sdk-generated`, which SDK verification downloads instead of regenerating
-them. Codegen never builds the contracts: local mode fails with instructions if
-the artifacts are absent.
+otherwise it installs `@kasakame/contracts` at the version in
+`projects/contracts/package.json` and uses the released package. `build-sdk`
+uploads the generated clients as `sdk-generated`, which SDK verification
+downloads instead of regenerating them. Codegen never builds the contracts:
+local mode fails with instructions if the artifacts are absent.
 
 ## How the frontend and CLI jobs resolve the SDK
 
@@ -378,30 +378,45 @@ The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in thi
 workflow: they run in the `integration-test` job in the PR `build-and-test`
 workflow, together with files `00`-`04`.
 
-## Workflow: release-specs (separate file)
+## Workflow: release-contracts (separate file)
 
-Implemented at `.github/workflows/release-specs.yml`. Manual (`workflow_dispatch`)
-release of the **contract interface**: it builds the contracts from the
-dispatched commit, runs the offline contract tests, and attaches the compiled
-per-app artifacts to a GitHub Release tagged `specs-v<version>` as one tarball
-per artifact kind - `arc56.tar.gz` (ARC-56 specs), `arc32.tar.gz` (ARC-32
-specs), `teal.tar.gz` (approval/clear TEAL), and `puya.tar.gz` (`*.puya.map`
-source maps) - each keeping the per-app directories. Generated clients are
-never attached. Its own file because it is a release, not a CI gate: it runs
-manually (contracts rarely change) and needs `contents: write` to create the
-release. The version is a dispatch input and must match
-`projects/contracts/package.json`; bump that version in the release commit. The
-specs series is independent of the published npm packages, started at `0.1.0`.
+Implemented at `.github/workflows/release-contracts.yml`. Manual
+(`workflow_dispatch`) release of the **contract artifacts**: it builds the
+contracts from the dispatched commit, runs the offline contract tests and the
+package check, attaches the compiled per-app artifacts to a GitHub Release
+tagged `contracts-v<version>` as one tarball per artifact kind -
+`arc56.tar.gz` (ARC-56 specs), `arc32.tar.gz` (ARC-32 specs), `teal.tar.gz`
+(approval/clear TEAL), and `puya.tar.gz` (`*.puya.map` source maps) - each
+keeping the per-app directories, and publishes the matching
+`@kasakame/contracts` npm package from the same build. Generated clients are
+never attached or published. Its own file because it is a release, not a CI
+gate: it runs manually (contracts rarely change) and needs `contents: write`
+to create the release. The version is a dispatch input and must match
+`projects/contracts/package.json`; bump that version in the release commit.
 `prerelease` defaults on while the interface can still break on TestNet; GitHub
 pre-release status only affects the "Latest" label, not downloads by tag.
 
-The SDK pins `specs-v<version>` in `projects/sdk/package.json`
-(`config.specsVersion`), downloads the public `arc56.tar.gz` asset over HTTPS by
-default, and regenerates its clients from those specs with its own pinned
-generator; `SDK_SPECS=local` uses the contracts project's artifacts for
-contracts, `utils`, or `constants` changes and local contract work. Nothing generated is committed. The other tarballs serve deployers and
-verifiers - the ARC-32 specs for legacy tooling and the TEAL + source maps for
-independent recompile-and-verify audits.
+The npm tarball is the tested artifact passed from the prep job to the smoke and
+publish jobs, so `npm publish` publishes exactly the checked bytes. The smoke
+job installs the tarball in a clean consumer and reads an ARC-56 spec. The
+publish job uses npm OIDC trusted publishing with `--provenance`; the first
+publish needs the one-time manual bootstrap because trusted publishing requires
+an existing npm package. `dry_run` defaults to true and skips both the GitHub
+release and the npm publish.
+
+The SDK installs `@kasakame/contracts` at the version in
+`projects/contracts/package.json` and regenerates its clients from
+`dist/arc56` with its own pinned generator; `SDK_SPECS=local` uses the
+contracts project's artifacts for contracts, `utils`, or `constants` changes
+and local contract work. Nothing generated is committed. The other tarballs
+serve deployers and verifiers: the ARC-32 specs for legacy tooling, and the
+TEAL plus source maps for independent recompile-and-verify audits.
+
+Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
+(package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
+`kasakame`, workflow `release-contracts.yml`, and no environment. Enable
+**Allow npm publish**. The first publish is a one-time manual `npm publish`:
+trusted publishing requires an existing npm package.
 
 ## Workflow: release-constants (separate file)
 
@@ -449,16 +464,17 @@ are:
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` is Node/npm only and never builds the contracts: it validates the
-  input version against `package.json` and that it is unpublished, regenerates
-  clients from the pinned `specs-vX.Y.Z` release, compiles TypeScript, lints,
-  format-checks, type-checks, runs coverage, inspects the packed tarball, and
-  dry-runs the publish. Each command is its own step. It uploads the tested
-  `dist/`.
+  input version against `package.json` and that it is unpublished, installs the
+  released `@kasakame/contracts` at the version in
+  `projects/contracts/package.json`, regenerates clients, compiles TypeScript,
+  lints, format-checks, type-checks, runs coverage, inspects the packed
+  tarball, and dry-runs the publish. Each command is its own step. It uploads
+  the tested `dist/`.
 - `smoke` runs `projects/sdk/scripts/smoke-package.mjs`: it packs the tested
   `dist/`, installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and
   `LICENSE`, imports the public API, and verifies `SPECS_VERSION` against the
-  pin. It gates the publish.
+  contracts package version. It gates the publish.
 - `publish` downloads the tested `dist/`, verifies the package files and
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
@@ -533,42 +549,36 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |
-| ARC-56/ARC-32 specs, TEAL, source maps | GitHub Release | `specs-vX.Y.Z` | One tarball per kind; the audit bundle. |
-| `@kasakame/sdk` | npm | `X.Y.Z` (independent) | The only contract consumer; records the specs version it was built against. |
+| ARC-56/ARC-32 specs, TEAL, source maps | GitHub Release and npm | `contracts-vX.Y.Z` | GitHub is the canonical audit bundle; `@kasakame/contracts` is the install mirror. |
+| `@kasakame/contracts` | npm | `X.Y.Z` | Same build as the GitHub release; the SDK reads its ARC-56 specs. |
+| `@kasakame/sdk` | npm | `X.Y.Z` (independent) | The only contract consumer; records the contracts version it was built against. |
 | `@kasakame/constants` | npm | `X.Y.Z` (independent) | Protocol, fee, and AVM values; the SDK and CLI declare it as a peer dependency. |
 | `@kasakame/cli` | npm | `X.Y.Z` | Depends on the SDK; public indexer only, no backend. |
 | Frontend | static host | deploy | Built against a published SDK for frontend-only changes. |
 | Backend | deploy | - | Optional service; not an npm package. |
 
-- **No specs npm package for now.** GitHub Releases stay canonical for ARC-56,
-  ARC-32, TEAL, and source maps. Raw ARC-56 packages are uncommon, and the SDK
-  ships generated clients, so a second channel adds maintenance without a
-  consumer. The public release asset downloads over HTTPS without `gh` (a
-  private repo would need an authenticated download). Revisit only if the SDK
-  must build with only `npm ci` (no release download), external consumers need
-  spec-only installs, the contracts repo becomes private after a split, or
-  npm-native interface versioning is wanted.
-- **If specs go to npm later**, publish a thin `@kasakame/specs` mirror from
-  the same `release-specs` workflow at the same commit and version, primarily
-  ARC-56; the GitHub release remains the canonical audit bundle. Never
-  hand-maintain two copies.
+- **The npm package is the install channel; the GitHub release is the audit
+  bundle.** `@kasakame/contracts` ships the same ARC-56, ARC-32, TEAL, and source
+  maps from the same commit, with no source or generated clients. The GitHub
+  release stays canonical for independent verification.
 - **Generated artifacts are never committed.** The contracts deployer and the
   SDK are the only client generators; the frontend and CLI consume the SDK.
-  Everything is regenerated from the pinned specs with the pinned generator.
+  Everything is regenerated from the contracts package with the pinned
+  generator.
 
 ### Versions and release order
 
-- `specs-vX.Y.Z` is the `projects/contracts/package.json` version; it is
-  independent of the published npm package versions. The SDK pins the consumed
-  specs version in `package.json` (`config.specsVersion`) and exports it as
-  `SPECS_VERSION`.
+- `contracts-vX.Y.Z` and `@kasakame/contracts@X.Y.Z` are the
+  `projects/contracts/package.json` version. The SDK installs that package
+  version and exports its version as `SPECS_VERSION`.
 - All four release workflows validate the dispatch version against their
   project `package.json` with `.github/scripts/check-release-version.mjs`.
-- Release in order: contracts → specs release → constants → SDK → frontend/CLI.
-  A frontend-only change tests and deploys against the published SDK.
+- Release in order: contracts (GitHub release and npm package) → constants →
+  SDK → frontend/CLI. A frontend-only change tests and deploys against the
+  published SDK.
 - Publish `0.1.0-rc.N` before `0.1.0`. The workflow maps prerelease versions to
-  the `next` dist-tag and finals to `latest`; npm versions and `specs-v*` tags
-  are never reused.
+  the `next` dist-tag and finals to `latest`; npm versions and `contracts-v*`
+  tags are never reused.
 
 ### npm publishing
 
@@ -578,16 +588,16 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   `LICENSE`; `publishConfig.access: "public"` makes the scoped package public.
 - Published packages carry the root MIT `LICENSE` (copy it into each package
   directory) and declare `"license": "MIT"` in `package.json`.
-- `release-constants`, `release-sdk`, and `release-cli` use npm OIDC trusted
-  publishing; every publish passes `--provenance`. Set each package's publishing
-  access to "Require two-factor authentication and disallow tokens" so only the
-  trusted publisher can publish.
-- **Planned hardening:** enable GitHub immutable releases for `specs-v*`,
+- `release-contracts`, `release-constants`, `release-sdk`, and `release-cli` use
+  npm OIDC trusted publishing; every publish passes `--provenance`. Set each
+  package's publishing access to "Require two-factor authentication and disallow
+  tokens" so only the trusted publisher can publish.
+- **Planned hardening:** enable GitHub immutable releases for `contracts-v*`,
   attach a `SHA256SUMS` asset, and verify it in the SDK codegen. Until then, the
   tag is the pin.
-- The SDK must build without the contracts checkout: codegen downloads the
-  pinned release by default. `SDK_SPECS=local` is the explicit override for
-  contracts, `utils`, or `constants` changes and local contract work.
+- The SDK must build without the contracts checkout: codegen reads the installed
+  `@kasakame/contracts` package by default. `SDK_SPECS=local` is the explicit
+  override for contracts, `utils`, or `constants` changes and local contract work.
 
 ### Repository shape
 
@@ -595,9 +605,9 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   layout. The SDK's spec-only build is what makes a split possible.
 - Split only on a trigger: separate access/audit boundaries, divergent release
   cadence, CI cost, external teams, or conflicting deploy pipelines. A split
-  moves contracts to its own repo, releases specs from there, and adds a
-  separate SDK repo that pins those releases; the frontend then pins published
-  SDK versions.
+  moves contracts to its own repo, releases the contracts package and audit
+  bundle from there, and adds a separate SDK repo that pins those releases; the
+  frontend then pins published SDK versions.
 
 ## Testing taxonomy
 

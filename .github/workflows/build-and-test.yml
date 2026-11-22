@@ -197,6 +197,10 @@ jobs:
         run: npm run test:size
         working-directory: projects/contracts
 
+      - name: Check the npm package contents
+        run: npm run test:pack
+        working-directory: projects/contracts
+
       - name: Upload contract artifacts
         uses: actions/upload-artifact@v7
         with:
@@ -275,6 +279,13 @@ jobs:
         run: npm ci
         working-directory: projects/sdk
 
+      - name: Install the released contracts package
+        if: needs.changes.outputs.run_compile_contracts != 'true'
+        run: |
+          contracts_version=$(node -p "require('./projects/contracts/package.json').version")
+          npm install --no-save --no-package-lock "@kasakame/contracts@$contracts_version"
+        working-directory: projects/sdk
+
       - name: Build SDK package (codegen + tsc)
         run: npm run build
         working-directory: projects/sdk
@@ -329,7 +340,10 @@ jobs:
           path: projects/sdk/src/generated
       - name: Regenerate clients (no producer run)
         if: needs.build-sdk.result == 'skipped'
-        run: npm run codegen
+        run: |
+          contracts_version=$(node -p "require('./projects/contracts/package.json').version")
+          npm install --no-save --no-package-lock "@kasakame/contracts@$contracts_version"
+          npm run codegen
         working-directory: projects/sdk
         env:
           SDK_SPECS: release

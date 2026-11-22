@@ -1,0 +1,316 @@
+name: release-contracts
+
+# Manual release of the contract artifacts. Builds the contracts from the
+# dispatched commit, attaches the compiled artifacts to a GitHub Release tagged
+# `contracts-v<version>` as one tarball per kind (arc56, arc32, teal, puya), and
+# publishes the matching @kasakame/contracts npm package from the same build.
+# The dispatch version must match projects/contracts/package.json.
+#
+# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
+# --provenance. Configure the trusted publisher for @kasakame/contracts as
+# GitHub owner `kasakame`, repository `kasakame`, workflow
+# `release-contracts.yml`, with no environment and "Allow npm publish" enabled.
+# The first publish bootstraps the package with a one-time manual `npm publish`:
+# trusted publishing requires an existing npm package.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Contracts version, without the contracts-v prefix (e.g. 0.2.0); must match projects/contracts/package.json'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark the GitHub release as prerelease (the interface can still break on TestNet)'
+        required: true
+        default: true
+        type: boolean
+      dry_run:
+        description: 'Run all checks but skip the GitHub release and npm publish'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-contracts
+  cancel-in-progress: false
+
+jobs:
+  prep:
+    name: Prepare and verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/contracts/package-lock.json
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install AlgoKit CLI
+        run: bash .github/scripts/install-algokit.sh
+        shell: bash
+
+      # Fail before building if the version is malformed or the tag is taken.
+      - name: Validate version and choose dist-tag
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          node .github/scripts/check-release-version.mjs projects/contracts/package.json "$INPUT_VERSION"
+          version=$(node -p "require('./projects/contracts/package.json').version")
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "package version is not semver: $version" >&2
+            exit 1
+          fi
+          if [[ "$version" == *-* ]]; then
+            tag=next
+          else
+            tag=latest
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/contracts-v$version" >/dev/null 2>&1; then
+            echo "tag contracts-v$version already exists" >&2
+            exit 1
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+          echo "@kasakame/contracts@$version -> $tag (contracts-v$version)"
+
+      - name: Check the version is unpublished
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if npm view "@kasakame/contracts@$VERSION" version >/dev/null 2>&1; then
+            echo "@kasakame/contracts@$VERSION is already published" >&2
+            exit 1
+          fi
+          echo "@kasakame/contracts@$VERSION is free"
+
+      - name: Install contract dependencies
+        run: npm ci
+        working-directory: projects/contracts
+
+      - name: Compile contracts (TEAL + specs + clients)
+        run: npm run build
+        working-directory: projects/contracts
+
+      # Main's CI already gates merges; this is the release-time sanity run.
+      - name: Run the offline contract tests
+        run: npm run test
+        working-directory: projects/contracts
+
+      - name: Check contract size budget
+        run: npm run test:size
+        working-directory: projects/contracts
+
+      - name: Check the npm package contents and metadata
+        run: npm run test:pack
+        working-directory: projects/contracts
+
+      - name: Check formatting
+        run: npm run format
+        working-directory: projects/contracts
+
+      - name: Lint
+        run: npm run lint
+        working-directory: projects/contracts
+
+      - name: Type-check
+        run: npm run check-types
+        working-directory: projects/contracts
+
+      # One tarball per artifact kind, each keeping the per-app directories
+      # (campaign/, claimsvault/, factory/, registry/) - consumers download only
+      # the kind they need, and arc56.tar.gz is the interface the SDK uses.
+      - name: Bundle the artifacts (one tarball per kind)
+        run: |
+          cd projects/contracts/smart_contracts/artifacts
+          for kind in 'arc56:*.arc56.json' 'arc32:*.arc32.json' 'teal:*.teal' 'puya:*.puya.map'; do
+            name="${kind%%:*}"
+            mapfile -t files < <(find . -type f -name "${kind#*:}" | sort)
+            tar -czf "$RUNNER_TEMP/$name.tar.gz" "${files[@]}"
+          done
+
+      # The tarball is the tested artifact handed to the smoke and publish jobs,
+      # so the published package is exactly the one verified here.
+      - name: Pack the npm package
+        run: |
+          tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
+          test -f "$RUNNER_TEMP/$tarball"
+          echo "packed $tarball"
+        working-directory: projects/contracts
+
+      # Attach the tarballs only; generated clients and contract source stay out.
+      - name: Create the contracts release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          prerelease_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(--prerelease)
+          fi
+          notes="Commit: $GITHUB_SHA
+
+          This release includes:
+
+          - ARC-56 specs
+          - ARC-32 specs
+          - compiled approval/clear TEAL
+          - Puya source maps
+
+          The npm mirror is @kasakame/contracts@$VERSION.
+          "
+
+          gh release create "contracts-v$VERSION" "$RUNNER_TEMP"/*.tar.gz \
+            --target "$GITHUB_SHA" \
+            --title "contracts-v$VERSION" \
+            --notes "$notes" \
+            "${prerelease_flag[@]}"
+
+      - name: Upload the tested tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: contracts-tarball
+          path: ${{ runner.temp }}/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Smoke-test the packed package
+    runs-on: ubuntu-latest
+    needs: prep
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Download the tested tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-tarball
+          path: ${{ runner.temp }}
+
+      - name: Smoke-test a clean install
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          mkdir -p "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund "$tarball"
+          node --input-type=module - <<'EOF'
+          import assert from 'node:assert/strict'
+          import fs from 'node:fs'
+          import path from 'node:path'
+
+          const root = path.resolve('node_modules/@kasakame/contracts')
+          const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+          assert.equal(pkg.name, '@kasakame/contracts')
+          assert.ok(fs.existsSync(path.join(root, 'README.md')), 'missing README')
+          assert.ok(fs.existsSync(path.join(root, 'LICENSE')), 'missing LICENSE')
+          for (const kind of ['arc56', 'arc32', 'teal', 'puya']) {
+            const dir = path.join(root, 'dist', kind)
+            assert.ok(fs.existsSync(dir), `missing dist/${kind}`)
+            assert.ok(fs.readdirSync(dir).length > 0, `empty dist/${kind}`)
+          }
+          const apps = fs.readdirSync(path.join(root, 'dist', 'arc56')).sort()
+          assert.ok(apps.length > 0, 'no ARC-56 applications')
+          const appDir = path.join(root, 'dist', 'arc56', apps[0])
+          const specFile = fs.readdirSync(appDir).sort()[0]
+          const spec = JSON.parse(fs.readFileSync(path.join(appDir, specFile), 'utf8'))
+          assert.ok(spec.name && spec.byteCode?.approval, 'invalid ARC-56 spec')
+          for (const file of fs.readdirSync(root)) {
+            assert.ok(!file.endsWith('.ts'), `source leaked into the package: ${file}`)
+          }
+          console.log('contracts package smoke passed')
+          EOF
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: [prep, smoke]
+    permissions:
+      contents: read
+      # OIDC authenticates the publish and signs provenance.
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Download the tested tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-tarball
+          path: ${{ runner.temp }}
+
+      - name: Verify the checked-out version
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        run: |
+          version=$(node -p "require('./projects/contracts/package.json').version")
+          if [[ "$version" != "$VERSION" ]]; then
+            echo "checked-out version $version does not match prep $VERSION" >&2
+            exit 1
+          fi
+
+      - name: Publish with provenance (OIDC)
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          echo "publishing @kasakame/contracts@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using OIDC"
+          npm publish "$tarball" --provenance --access public --tag "$TAG" --ignore-scripts
+
+      - name: Skip publish (dry run)
+        if: ${{ inputs.dry_run }}
+        run: echo "dry_run=true; package verified but not published"
+
+      - name: Verify the published version
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ needs.prep.outputs.version }}
+        # npm stages a new package ("being processed") before it is visible.
+        run: |
+          for attempt in {1..40}; do
+            if npm view "@kasakame/contracts@$VERSION" version >/dev/null 2>&1; then
+              echo "@kasakame/contracts@$VERSION is visible (attempt $attempt/40)"
+              exit 0
+            fi
+            echo "not visible yet (attempt $attempt/40); waiting"
+            sleep 15
+          done
+          npm view "@kasakame/contracts@$VERSION" version || true
+          echo "@kasakame/contracts@$VERSION did not appear in the registry after 10 minutes" >&2
+          exit 1
