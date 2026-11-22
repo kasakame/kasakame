@@ -222,7 +222,8 @@ the product contract. The pinned values and the AVM limits are in
   `@kasakame/utils/testing` directly. A local `index.ts` exports only that
   package's own modules; it does not re-export another package. When two
   packages need the same helper, move it into `projects/utils` and import it
-  from there.
+  from there. Published packages keep their runtime helpers local because
+  `projects/utils` is private and never shipped.
 - **The shared constants package has two entry points.** `@kasakame/constants`
   is the compiled runtime package; `@kasakame/constants/source` is the
   TypeScript source for the Puya contract compiler. Contracts import `/source`;
