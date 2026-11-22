@@ -44,7 +44,7 @@ jobs:
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
       run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
-      run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
       run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
@@ -154,7 +154,7 @@ jobs:
         run: npx --yes markdownlint-cli2@0.23.2
 
   # Compile the contracts once, only when the contracts changed. The artifact
-  # feeds `build-sdk` and `integration-test`.
+  # feeds `build-sdk` and `integration-test-contracts`.
   compile-contracts:
     name: Compile contracts
     needs: changes
@@ -610,10 +610,10 @@ jobs:
   # Deploy + exercise the compiled TEAL on a live LocalNet. Reuses the
   # same-run contract artifacts; it runs after contract verification even if
   # that verification failed, so one run still reports the integration result.
-  integration-test:
-    name: LocalNet integration
+  integration-test-contracts:
+    name: Contracts LocalNet integration
     needs: [changes, compile-contracts, check-contracts]
-    if: always() && !cancelled() && needs.changes.outputs.run_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
+    if: always() && !cancelled() && needs.changes.outputs.run_contracts_integration == 'true' && needs.compile-contracts.result == 'success' && needs.check-contracts.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -729,7 +729,7 @@ jobs:
       - check-backend
       - check-utils
       - check-constants
-      - integration-test
+      - integration-test-contracts
       - integration-test-sdk
     runs-on: ubuntu-latest
     timeout-minutes: 5

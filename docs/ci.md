@@ -16,7 +16,8 @@ reasoning behind the splits.
 - **Build once, share the output.** The compiled contract artifacts (TEAL +
   ARC specs) are gitignored and regenerable. A contracts, `utils`, or
   `constants` change triggers `compile-contracts`, which compiles them once and
-  uploads `contracts-artifacts`; `build-sdk` and `integration-test` download it
+  uploads `contracts-artifacts`; `build-sdk` and `integration-test-contracts`
+  download it
   instead of recompiling. When
   the SDK or contracts changed, `build-sdk` runs codegen once, compiles the
   package once, and uploads both `sdk-generated` (the generated clients) and
@@ -42,17 +43,19 @@ reasoning behind the splits.
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
   compilation and SDK packaging are separate producer jobs only because other
-  jobs consume their artifacts; `integration-test` and `integration-test-sdk`
-  add Docker for LocalNet. Keeping those in separate jobs (not separate
-  workflows) keeps feedback fast and failures attributable to the right lane.
+  jobs consume their artifacts; `integration-test-contracts` and
+  `integration-test-sdk` add Docker for LocalNet. Keeping those in separate
+  jobs (not separate workflows) keeps feedback fast and failures attributable
+  to the right lane.
 - **Change detection, not matrices.** One `changes` job runs
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. Each filter is a lane input: contracts,
   SDK, frontend, CLI, backend, `utils`, `constants`, `ci` (workflows/scripts),
   `oracle` (the contract/SDK test oracle), `markdown`, `shell`, and `workspace`.
   Unknown root paths land in `workspace`, which fails open to the verification
-  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
-  run only when the contracts, `utils`, or `constants` changed, and
+  lanes but never sets `contracts`: `compile-contracts` and
+  `integration-test-contracts` run only when the contracts, `utils`, or
+  `constants` changed, and
   `check-contracts` runs for contracts, `utils`, `constants`, the oracle, or
   workspace changes. Markdown, shell, and
   workflow files run only `repo-lint`; docs images, licenses, and inert root
@@ -63,7 +66,7 @@ reasoning behind the splits.
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
   `run_check_backend`, `run_check_utils`, `run_check_constants`,
-  `run_integration`, `run_sdk_integration`). Every job reads one boolean, so the
+  `run_contracts_integration`, `run_sdk_integration`). Every job reads one boolean, so the
   trigger rules live in one place instead of repeated `if` expressions.
   Separate jobs (no matrix) keep the conditional presence and the status-check
   names stable.
@@ -108,7 +111,7 @@ flowchart TD
     backend["Check backend<br/>(checks + Postgres)"]
     utils["Check utils<br/>(format/lint/types)"]
     constants["Check constants<br/>(build/format/lint/types)"]
-    integration["LocalNet integration<br/>(contracts, utils, or constants)"]
+    integrationcontracts["Contracts LocalNet integration<br/>(contracts, utils, or constants)"]
     integrationsdk["SDK LocalNet integration<br/>(SDK, contracts, or constants)"]
     gate["Gate<br/>(single required check)"]
 
@@ -122,12 +125,12 @@ flowchart TD
     changes --> backend
     changes --> utils
     changes --> constants
-    changes --> integration
+    changes --> integrationcontracts
     changes --> integrationsdk
     changes --> gate
     buildc -->|"contracts artifacts"| buildsdk
-    buildc -->|"contracts artifacts"| integration
-    contracts -->|"verification finished"| integration
+    buildc -->|"contracts artifacts"| integrationcontracts
+    contracts -->|"verification finished"| integrationcontracts
     buildsdk -->|"sdk-generated"| sdk
     buildsdk -->|"sdk-generated"| integrationsdk
     buildsdk -->|"sdk-dist"| frontend
@@ -142,7 +145,7 @@ flowchart TD
     backend --> gate
     utils --> gate
     constants --> gate
-    integration --> gate
+    integrationcontracts --> gate
     integrationsdk --> gate
 ```
 
@@ -161,7 +164,7 @@ flowchart TD
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
 | `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
 | `check-constants` | `constants` changed | ✅ | - | - | - |
-| `integration-test` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `integration-test-contracts` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
@@ -258,13 +261,13 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `oracle` - `docs/claim-tree-protocol-reference.py`, the contract/SDK test
   oracle. `check-sdk` also regenerates the committed claim-tree vectors from it
   and fails on drift. An oracle-only change does not trigger LocalNet, so it
-  runs the offline suites, not `integration-test`.
+  runs the offline suites, not `integration-test-contracts`.
 - `markdown` - `**/*.md` and `.markdownlint-cli2.jsonc`.
 - `shell` - tracked shell scripts: `**/*.sh` and `**/*.bash`.
 - `workspace` - any other non-inert root path outside the seven projects (root
   config, `.prettierrc.json`, a new project). It fails open to the verification
-  lanes but never sets `contracts`: `compile-contracts` and `integration-test`
-  run only when the contracts, `utils`, or `constants` changed. Markdown,
+  lanes but never sets `contracts`: `compile-contracts` and
+  `integration-test-contracts` run only when the contracts, `utils`, or `constants` changed. Markdown,
   shell scripts, docs images, licenses, and inert root files are excluded from
   it.
 - `run_repo_lint` - `ci || shell || markdown`.
@@ -278,7 +281,7 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_backend` - `backend || workspace`.
 - `run_check_utils` - `utils || constants`.
 - `run_check_constants` - `constants`.
-- `run_integration` - `contracts || utils || constants`.
+- `run_contracts_integration` - `contracts || utils || constants`.
 
 Every `run_*` output is true on a manual `workflow_dispatch`.
 
@@ -328,7 +331,8 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 - **`check-utils`** - runs when `run_check_utils` is true (`utils` changed):
   installs the private package, then format, lint, and type-check. It produces
   no artifact and publishes nothing.
-- **`integration-test`** - runs when `run_integration` is true and waits for
+- **`integration-test-contracts`** - runs when
+  `run_contracts_integration` is true and waits for
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
   runs even if contract verification failed, so a lint/test failure still
   reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
@@ -385,7 +389,7 @@ inside the limit fails without affecting the other outcome. The SDK and CLI
 LocalNet suites stay with #158 and #118.
 
 The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
-workflow: they run in the `integration-test` job in the PR `build-and-test`
+workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
 workflow, together with files `00`-`04`.
 
 ## Workflow: release-contracts (separate file)
@@ -681,7 +685,7 @@ and caches:
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
 - **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts`,
-  `integration-test`, and `integration-test-sdk` jobs (and the separate
+  `integration-test-contracts`, and `integration-test-sdk` jobs (and the separate
   `heavy-tests` workflow). `~/.local`
   is cached by AlgoKit version, Python version, and runner OS, so a cache hit
   skips the install entirely. The install is fast relative to the Docker
@@ -707,7 +711,7 @@ download, so nothing is compiled or built twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
   (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input) and
-  `integration-test`. The separate `heavy-tests` workflow builds its own
+  `integration-test-contracts`. The separate `heavy-tests` workflow builds its own
   artifacts.
 - **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
   Consumed by SDK verification and the SDK LocalNet integration job;
