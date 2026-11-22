@@ -274,7 +274,7 @@ jobs:
           tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$tarball"
           echo "publishing @kasakame/contracts@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using the bootstrap token"
-          npm publish "$tarball" --provenance --access public --tag "$TAG" --ignore-scripts
+          node projects/utils/release/publish.ts projects/contracts --tag "$TAG" --tarball "$tarball" --ignore-scripts
 
       - name: Publish with provenance (OIDC)
         if: ${{ !inputs.bootstrap && !inputs.dry_run }}
@@ -284,7 +284,7 @@ jobs:
           tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$tarball"
           echo "publishing @kasakame/contracts@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using OIDC"
-          npm publish "$tarball" --provenance --access public --tag "$TAG" --ignore-scripts
+          node projects/utils/release/publish.ts projects/contracts --tag "$TAG" --tarball "$tarball" --ignore-scripts
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -295,15 +295,4 @@ jobs:
         env:
           VERSION: ${{ needs.prep.outputs.version }}
         # npm stages a new package ("being processed") before it is visible.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/contracts@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/contracts@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/contracts@$VERSION" version || true
-          echo "@kasakame/contracts@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/contracts" "$VERSION"

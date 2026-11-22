@@ -184,7 +184,7 @@ after a failure.
 ## Why the SDK build needs same-run contract artifacts
 
 The SDK's write path imports the generated clients (`src/generated/*`,
-gitignored), which `scripts/codegen.mjs` regenerates from ARC-56 specs with the
+gitignored), which `scripts/codegen.ts` regenerates from ARC-56 specs with the
 pinned `@algorandfoundation/algokit-client-generator`. By default codegen
 reads the installed `@kasakame/contracts` package
 (`node_modules/@kasakame/contracts/dist/arc56`); `SDK_SPECS=local` reads
@@ -583,6 +583,9 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
   project `package.json` with
   `projects/utils/release/validate-version.ts`; it also chooses the
   `next`/`latest` dist-tag.
+- Publishing goes through `projects/utils/release/publish.ts` (provenance,
+  public access, dist-tag, optional tarball, bootstrap token) and
+  `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.

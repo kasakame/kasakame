@@ -99,8 +99,7 @@ jobs:
         working-directory: projects/constants
 
       - name: Dry-run the publish
-        run: npm publish --dry-run
-        working-directory: projects/constants
+        run: node projects/utils/release/publish.ts projects/constants --tag "${{ steps.version.outputs.tag }}" --dry-run
 
       # A clean consumer must import the compiled values from the tarball.
       - name: Smoke-test the packed package
@@ -173,8 +172,7 @@ jobs:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/constants
+          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
 
       - name: Publish with provenance (OIDC)
         if: ${{ !inputs.bootstrap && !inputs.dry_run }}
@@ -182,8 +180,7 @@ jobs:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/constants
+          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -193,16 +190,4 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ needs.prep.outputs.version }}
-        # npm stages a new package ("being processed") before it is visible.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/constants@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/constants@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/constants@$VERSION" version || true
-          echo "@kasakame/constants@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/constants" "$VERSION"

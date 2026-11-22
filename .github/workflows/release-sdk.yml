@@ -116,8 +116,7 @@ jobs:
         working-directory: projects/sdk
 
       - name: Dry-run the publish
-        run: npm publish --dry-run
-        working-directory: projects/sdk
+        run: node projects/utils/release/publish.ts projects/sdk --tag "${{ steps.version.outputs.tag }}" --dry-run
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7
@@ -199,8 +198,7 @@ jobs:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/sdk@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/sdk
+          node projects/utils/release/publish.ts projects/sdk --tag "$TAG"
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -212,15 +210,4 @@ jobs:
           VERSION: ${{ needs.prep.outputs.version }}
         # npm stages a new package ("being processed") before it is visible;
         # the first publish took ~2.5 minutes. Normal publishes exit immediately.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/sdk@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/sdk@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/sdk@$VERSION" version || true
-          echo "@kasakame/sdk@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/sdk" "$VERSION"
