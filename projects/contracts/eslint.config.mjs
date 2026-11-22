@@ -8,7 +8,7 @@ import tseslint from 'typescript-eslint'
 
 export default defineConfig(
   {
-    ignores: ['node_modules/', 'dist/', 'coverage/', 'smart_contracts/artifacts/', '.algokit/'],
+    ignores: ['node_modules/', 'dist/', 'coverage/', 'smart_contracts/artifacts/', '.algokit/', 'scripts/*.mjs'],
   },
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
@@ -19,17 +19,7 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: [
-            'eslint.config.mjs',
-            'vitest.config.mts',
-            'vitest.setup.ts',
-            'scripts/advance-time.ts',
-            'scripts/fund-account.ts',
-            'scripts/demo/seed.ts',
-            'scripts/demo/unseed.ts',
-            'scripts/demo/state.ts',
-            'scripts/demo/campaigns.ts',
-          ],
+          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.mts', 'vitest.setup.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },

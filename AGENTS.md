@@ -97,8 +97,8 @@ npm run lint                     # ESLint (+ react/react-hooks plugins)
 npm run format                   # Prettier check
 
 cd ../sdk
-npm run build                    # codegen + tsc emit to dist (the published artifact)
-npm run codegen                  # regenerate clients from the pinned specs release
+npm run build                    # codegen + tsc emit to dist (needs @kasakame/contracts; SDK_SPECS=local uses the contracts build)
+npm run codegen                  # regenerate clients from @kasakame/contracts
 npm pack --dry-run               # inspect the published package contents
 npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
@@ -191,7 +191,7 @@ the product contract. The pinned values and the AVM limits are in
   a group shape or fee, stop and call it out in the commit/PR; get explicit
   approval before proceeding.
 - **Any campaign program change changes the Registry `campaignProgramHash`.**
-  Update the deploy script, tests, docs, specs/SDK release, and deploy a new
+  Update the deploy script, tests, docs, contracts/SDK release, and deploy a new
   Registry + Vault bundle. The hash is
   `sha256(itob(approval.length) ‖ approval ‖ clear)`; the 8-byte length prefix
   binds the approval/clear split. The Campaign hash, Vault hash, sweep target,
@@ -242,12 +242,14 @@ the product contract. The pinned values and the AVM limits are in
   runs test the registry package. The CLI (`projects/cli`) consumes the same
   published package and follows the same packed-copy pattern for unreleased SDK
   changes.
-- **The SDK builds against the pinned specs release.** The `specs-vX.Y.Z` version is in
-  `projects/sdk/package.json` under `config.specsVersion`; codegen downloads `arc56.tar.gz`
-  over HTTPS by default and regenerates clients with the pinned generator. The version is
-  exported as `SPECS_VERSION`. `SDK_SPECS=local` reads
-  `projects/contracts/smart_contracts/artifacts` instead - contracts-changed CI lanes and
-  local contract work use it. Never copy clients between projects.
+- **The SDK builds against the published contracts package.** The
+  `@kasakame/contracts` version in `projects/contracts/package.json` is installed and
+  codegen reads `node_modules/@kasakame/contracts/dist/arc56`, then regenerates clients
+  with the pinned generator. The version is exported as `SPECS_VERSION`.
+  `SDK_SPECS=local` reads `projects/contracts/smart_contracts/artifacts` instead -
+  contracts-changed CI lanes and local contract work use it. The `release-contracts`
+  workflow publishes the `contracts-vX.Y.Z` GitHub release and the npm package from the
+  same build. Never copy clients between projects.
 - **Never commit secrets.** `.env` files are gitignored; mnemonics/API keys never go in code.
 - **Env files are per network, never a shared `.env`.** Commands name their network
   explicitly (`.env.localnet` / `.env.testnet`; for example, `npm run dev:testnet`
@@ -341,11 +343,18 @@ the product contract. The pinned values and the AVM limits are in
   - `README.md` for spec-level behavior, the status summary, and getting-started steps
   - `AGENTS.md` (this file) for commands, conventions, and agent-facing guidance
   If the change doesn't affect these, no doc update is needed.
-- **Package READMEs are user-facing.** `projects/constants/README.md`,
-  `projects/sdk/README.md`, and `projects/cli/README.md` are the READMEs npm
-  publishes. Keep them to install, usage, documentation links, and license;
-  repository status, work tracking, and contributor instructions belong in the
-  root README or `docs/`.
+- **Package READMEs are user-facing.** `projects/constants`, `projects/contracts`,
+  `projects/sdk`, and `projects/cli` publish their READMEs to npm. Use the same
+  shape in each: title and one-line description, `## Install` with the Node
+  requirement and peer dependencies, package-specific usage, `## Documentation`
+  links, and a `## License` footer with the same `MIT. See
+  [LICENSE](.../projects/<package>/LICENSE).` wording. Repository status, work
+  tracking, and contributor instructions belong in the root README or `docs/`.
+- **Published package metadata matches.** Each published package declares
+  `author`, `description`, `keywords`, `license`, `repository.directory`,
+  `homepage`, `bugs`, `engines`, `publishConfig.access: public`, and a `files`
+  allowlist; the LICENSE files are identical. The release workflows pack and
+  smoke-test the tarballs.
 
 ## Testing
 

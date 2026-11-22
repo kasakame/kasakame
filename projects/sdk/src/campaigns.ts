@@ -1,9 +1,21 @@
+import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
+  REGISTRY_BOX_PREFIX,
+  VAULT_BOX_PREFIX,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
+} from '@kasakame/constants'
 import type algosdk from 'algosdk'
 import { encodeAddress } from 'algosdk'
 import { fetchChainTimestamp, getSdkConfig } from './chain.js'
 import { fetchMyLeaves, u64beDecode } from './claim-tree.js'
 import { RegistryClient } from './generated/RegistryClient.js'
 import { fetchVaultBox } from './transactions.js'
+
+const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 /**
  * Campaign read model: maps indexer responses into a `CampaignViewModel` a UI can render. The contract is the source
@@ -70,9 +82,8 @@ export interface CampaignHeader {
 }
 
 // Box name prefixes: a single byte plus an 8-byte big-endian campaign app id.
-// Registry registration box: 'r' + app id. Vault per-campaign box: 'c' + app id.
-const REGISTRATION_BOX_PREFIX = 0x72
-const VAULT_BOX_PREFIX = 0x63
+const REGISTRATION_BOX_PREFIX_BYTE = REGISTRY_BOX_PREFIX.charCodeAt(0)
+const VAULT_BOX_PREFIX_BYTE = VAULT_BOX_PREFIX.charCodeAt(0)
 
 /**
  * Decode a box name carrying an 8-byte big-endian app id after a single-byte prefix.
@@ -202,6 +213,19 @@ export function isCampaignApp(app: algosdk.indexerModels.Application): boolean {
 }
 
 /**
+ * Map a raw campaign status to its display word.
+ *
+ * @param status Raw on-chain status.
+ * @returns The display status.
+ */
+function campaignStatusFromRaw(status: bigint | undefined): 'open' | 'failed' | 'claimed' {
+  if (status === CAMPAIGN_STATUS_OPEN) return 'open'
+  if (status === CAMPAIGN_STATUS_FAILED) return 'failed'
+  if (status === CAMPAIGN_STATUS_CLAIMED) return 'claimed'
+  return 'open'
+}
+
+/**
  * Map an indexer `Application` to a `CampaignViewModel`.
  *
  * @param app Indexer application to map.
@@ -218,7 +242,7 @@ export function toCampaignViewModel(
   const goal = state.goal ?? 0n
   const raised = state.raised ?? 0n
   const deadline = state.deadline ?? 0n
-  const chainStatus = state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open'
+  const chainStatus = campaignStatusFromRaw(state.status)
 
   const viewModel: CampaignViewModel = {
     id: app.id,
@@ -280,7 +304,7 @@ export async function fetchRegisteredCampaignIds(registryId: bigint): Promise<Se
     const response = await query.do()
     for (const box of response.boxes) {
       // Box name: 'r' (1 byte) + the campaign app id (8 bytes, big-endian).
-      const id = decodeBoxAppId(box.name, REGISTRATION_BOX_PREFIX)
+      const id = decodeBoxAppId(box.name, REGISTRATION_BOX_PREFIX_BYTE)
       if (id !== undefined) registered.add(id)
     }
     nextToken = response.nextToken
@@ -326,7 +350,7 @@ async function fetchVaultCampaignIds(vaultId: bigint): Promise<Set<bigint>> {
     const response = await query.do()
     for (const box of response.boxes) {
       // Box name: 'c' (1 byte) + the campaign app id (8 bytes, big-endian).
-      const id = decodeBoxAppId(box.name, VAULT_BOX_PREFIX)
+      const id = decodeBoxAppId(box.name, VAULT_BOX_PREFIX_BYTE)
       if (id !== undefined) vaulted.add(id)
     }
     nextToken = response.nextToken
@@ -534,7 +558,7 @@ async function headerFromApplication(application: algosdk.indexerModels.Applicat
     goalMicroAlgos = state.goal ?? 0n
     deadlineSeconds = state.deadline ?? 0n
     raisedMicroAlgos = state.raised ?? 0n
-    status = state.status === 0n ? 'open' : state.status === 1n ? 'failed' : state.status === 2n ? 'claimed' : 'open'
+    status = campaignStatusFromRaw(state.status)
   } else {
     const createdAtRound = application.createdAtRound
     if (createdAtRound !== undefined) {
@@ -554,7 +578,7 @@ async function headerFromApplication(application: algosdk.indexerModels.Applicat
     const box = await fetchVaultBox(application.id)
     if (box !== undefined) {
       raisedMicroAlgos = box.paidIn - box.paidOut
-      status = box.status === 1 ? 'open' : box.status === 2 ? 'failed' : 'claimed'
+      status = box.status === VAULT_BOX_STATUS_OPEN ? 'open' : box.status === VAULT_BOX_STATUS_FAILED ? 'failed' : 'claimed'
     }
   }
 

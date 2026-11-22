@@ -2,10 +2,14 @@ import type { Account, Application, bytes } from '@algorandfoundation/algorand-t
 import { Bytes, OnCompleteAction, Uint64 } from '@algorandfoundation/algorand-typescript'
 import { TestExecutionContext, toExternalValue } from '@algorandfoundation/algorand-typescript-testing'
 import {
+  CAMPAIGN_STATUS_CLAIMED,
+  CAMPAIGN_STATUS_FAILED,
+  CAMPAIGN_STATUS_OPEN,
   MAX_CAMPAIGN_DURATION_SECONDS,
   MAX_GOAL_MICRO_ALGOS,
   MAX_PLEDGE_MICRO_ALGOS,
   MAX_TREE_SIZE,
+  MAX_UINT64,
   MIN_CAMPAIGN_DURATION_SECONDS,
   MIN_GOAL_MICRO_ALGOS,
   MIN_PLEDGE_MICRO_ALGOS,
@@ -31,7 +35,9 @@ import { Campaign } from './contract.algo'
  */
 
 const GOAL = 10_000_000
-const MAX_UINT64 = 18_446_744_073_709_551_615n
+const STATUS_OPEN = Number(CAMPAIGN_STATUS_OPEN)
+const STATUS_FAILED = Number(CAMPAIGN_STATUS_FAILED)
+const STATUS_CLAIMED = Number(CAMPAIGN_STATUS_CLAIMED)
 const CREATION_TIME = 1_000
 const DEADLINE = CREATION_TIME + MIN_CAMPAIGN_DURATION_SECONDS
 const TITLE = Bytes('My first novel')
@@ -195,7 +201,7 @@ describe('Campaign', () => {
       expect(contract.goal.value).toEqual(GOAL)
       expect(contract.deadline.value).toEqual(DEADLINE)
       expect(contract.raised.value).toEqual(0)
-      expect(contract.status.value).toEqual(0)
+      expect(contract.status.value).toEqual(STATUS_OPEN)
       expect(rootHex(contract)).toEqual(ZERO_ROOT_HEX)
       expect(contract.n.value).toEqual(0)
     })
@@ -495,7 +501,7 @@ describe('Campaign', () => {
 
     test('rejects a failed campaign', () => {
       const contract = createCampaign()
-      contract.status.value = 1
+      contract.status.value = STATUS_FAILED
       const backer = ctx.any.account()
       ctx.txn
         .createScope([
@@ -785,7 +791,7 @@ describe('Campaign', () => {
 
     test('rejects cancellation on a non-open campaign', () => {
       const contract = createCampaign()
-      contract.status.value = 1
+      contract.status.value = STATUS_FAILED
       expect(() => {
         contract.cancelPledge(0, 100, Bytes(Buffer.alloc(32)), Bytes(new Uint8Array()))
       }).toThrow('campaign is not open')
@@ -944,7 +950,7 @@ describe('Campaign', () => {
 
     test('rejects a refund on a claimed campaign', () => {
       const contract = createCampaign()
-      contract.status.value = 2
+      contract.status.value = STATUS_CLAIMED
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       expect(() => {
         contract.refund(0, 100, Bytes(Buffer.alloc(32)), Bytes(new Uint8Array()))
@@ -962,7 +968,7 @@ describe('Campaign', () => {
 
       // k=2: r=0 with a higher peak (exercises hasTop); k=1,0: r=1, c=1. The oracle advances after every null.
       spendAs(contract, backerA, 2, 1_000_000, txidA2, 'refund')
-      expect(contract.status.value).toEqual(1)
+      expect(contract.status.value).toEqual(STATUS_FAILED)
       spendAs(contract, backerB, 1, 2_000_000, txidB, 'refund')
       spendAs(contract, backerA, 0, 1_000_000, txidA1, 'refund')
       expect(contract.raised.value).toEqual(0)
@@ -1038,7 +1044,7 @@ describe('Campaign', () => {
     test('rejects a second claim', () => {
       const contract = createCampaign(Number(MIN_GOAL_MICRO_ALGOS), DEADLINE)
       contract.raised.value = Uint64(MIN_GOAL_MICRO_ALGOS)
-      contract.status.value = 2
+      contract.status.value = STATUS_CLAIMED
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       expect(() => {
         contract.claim()
@@ -1053,7 +1059,7 @@ describe('Campaign', () => {
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       contract.claim()
 
-      expect(contract.status.value).toEqual(2)
+      expect(contract.status.value).toEqual(STATUS_CLAIMED)
       expect(firstInnerSelector()).toEqual('f8c4e0cb')
     })
   })
@@ -1174,7 +1180,7 @@ describe('Campaign', () => {
         contract.delete()
       })
 
-      expect(contract.status.value).toEqual(1)
+      expect(contract.status.value).toEqual(STATUS_FAILED)
       expect(firstInnerSelector()).toEqual('09200848')
     })
 
@@ -1186,7 +1192,7 @@ describe('Campaign', () => {
         contract.delete()
       })
 
-      expect(contract.status.value).toEqual(1)
+      expect(contract.status.value).toEqual(STATUS_FAILED)
       expect(firstInnerSelector()).toEqual('09200848')
     })
 
@@ -1216,7 +1222,7 @@ describe('Campaign', () => {
     test('notifies the vault on a claimed campaign', () => {
       const contract = createCampaign(Number(MIN_GOAL_MICRO_ALGOS), DEADLINE)
       contract.raised.value = Uint64(MIN_GOAL_MICRO_ALGOS)
-      contract.status.value = 2
+      contract.status.value = STATUS_CLAIMED
       ctx.ledger.patchGlobalData({ latestTimestamp: DEADLINE })
       deleteScope(contract, ctx.defaultSender).execute(() => {
         contract.delete()
@@ -1234,7 +1240,7 @@ describe('Campaign', () => {
         contract.delete()
       })
 
-      expect(contract.status.value).toEqual(1)
+      expect(contract.status.value).toEqual(STATUS_FAILED)
       expect(firstInnerSelector()).toEqual('09200848')
     })
 

@@ -6,12 +6,16 @@ name: release-constants
 # projects/constants/package.json, and dry_run defaults to true; set it to
 # false only for a real release.
 #
-# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
-# --provenance. Configure the trusted publisher for @kasakame/constants as
-# GitHub owner `kasakame`, repository `kasakame`, workflow
-# `release-constants.yml`, with no environment and "Allow npm publish" enabled.
-# The first publish bootstraps the package with a one-time manual `npm publish`:
-# trusted publishing requires an existing npm package.
+# Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
+# release is a bootstrap: npm requires the package to exist before a trusted
+# publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
+# and a temporary NPM_TOKEN secret. Both paths pass --provenance; the token is
+# only for authentication. Delete the secret and revoke the token after that
+# release.
+#
+# Configure the trusted publisher for @kasakame/constants as GitHub owner
+# `kasakame`, repository `kasakame`, workflow `release-constants.yml`, with no
+# environment and "Allow npm publish" enabled.
 on:
   workflow_dispatch:
     inputs:
@@ -23,6 +27,11 @@ on:
         description: 'Run all checks but skip publishing'
         required: true
         default: true
+        type: boolean
+      bootstrap:
+        description: 'Publish with NPM_TOKEN (first release only, before trusted publishing)'
+        required: true
+        default: false
         type: boolean
 
 permissions:
@@ -58,33 +67,13 @@ jobs:
         id: version
         env:
           INPUT_VERSION: ${{ inputs.version }}
-        run: |
-          node .github/scripts/check-release-version.mjs projects/constants/package.json "$INPUT_VERSION"
-          version=$(node -p "require('./projects/constants/package.json').version")
-          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "package version is not semver: $version" >&2
-            exit 1
-          fi
-          if [[ "$version" == *-* ]]; then
-            tag=next
-          else
-            tag=latest
-          fi
-          {
-            echo "version=$version"
-            echo "tag=$tag"
-          } >> "$GITHUB_OUTPUT"
-          echo "@kasakame/constants@$version -> $tag"
+        # The script writes version and tag to GITHUB_OUTPUT.
+        run: node projects/utils/release/validate-version.ts projects/constants/package.json "$INPUT_VERSION"
 
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if npm view "@kasakame/constants@$VERSION" version >/dev/null 2>&1; then
-            echo "@kasakame/constants@$VERSION is already published" >&2
-            exit 1
-          fi
-          echo "@kasakame/constants@$VERSION is free"
+        run: node projects/utils/release/assert-unpublished.ts "@kasakame/constants" "$VERSION"
 
       - name: Build
         run: npm run build
@@ -110,19 +99,11 @@ jobs:
         working-directory: projects/constants
 
       - name: Dry-run the publish
-        run: npm publish --dry-run
-        working-directory: projects/constants
+        run: node projects/utils/release/publish.ts projects/constants --tag "${{ steps.version.outputs.tag }}" --dry-run
 
       # A clean consumer must import the compiled values from the tarball.
       - name: Smoke-test the packed package
-        run: |
-          tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
-          mkdir "$RUNNER_TEMP/consumer"
-          cd "$RUNNER_TEMP/consumer"
-          npm init -y >/dev/null
-          npm install --no-audit --no-fund "$RUNNER_TEMP/$tarball"
-          node --input-type=module -e "import('@kasakame/constants').then((c) => { if (c.ZERO_ROOT_HEX !== '0'.repeat(64)) throw new Error('bad zero root'); if (c.MAX_TREE_SIZE !== 524287n) throw new Error('bad tree cap'); console.log('constants smoke passed') })"
-        working-directory: projects/constants
+        run: node projects/utils/release/pack-smoke.ts projects/constants projects/utils/smoke/constants.ts
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7
@@ -138,7 +119,7 @@ jobs:
     needs: prep
     permissions:
       contents: read
-      # OIDC authenticates the publish and signs provenance.
+      # OIDC authenticates normal releases and signs provenance on both paths.
       id-token: write
     steps:
       - name: Check out repository
@@ -174,14 +155,32 @@ jobs:
             exit 1
           fi
 
+      - name: Require the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "bootstrap=true but the NPM_TOKEN secret is not set" >&2
+            exit 1
+          fi
+
+      - name: Publish with the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using the bootstrap token"
+          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
+
       - name: Publish with provenance (OIDC)
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.bootstrap && !inputs.dry_run }}
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
           echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          npm publish --provenance --access public --tag "$TAG"
-        working-directory: projects/constants
+          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}
@@ -191,16 +190,4 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ needs.prep.outputs.version }}
-        # npm stages a new package ("being processed") before it is visible.
-        run: |
-          for attempt in {1..40}; do
-            if npm view "@kasakame/constants@$VERSION" version >/dev/null 2>&1; then
-              echo "@kasakame/constants@$VERSION is visible (attempt $attempt/40)"
-              exit 0
-            fi
-            echo "not visible yet (attempt $attempt/40); waiting"
-            sleep 15
-          done
-          npm view "@kasakame/constants@$VERSION" version || true
-          echo "@kasakame/constants@$VERSION did not appear in the registry after 10 minutes" >&2
-          exit 1
+        run: node projects/utils/release/verify-published.ts "@kasakame/constants" "$VERSION"

@@ -19,11 +19,24 @@ import {
   urange,
 } from '@algorandfoundation/algorand-typescript'
 import {
+  CAMPAIGN_STATUS_CLAIMED,
+  LEAF_DOMAIN_HEX,
   MAX_REFUND_WINDOW_SECONDS,
   MAX_TREE_SIZE,
+  MAX_UINT64,
   MIN_REFUND_WINDOW_SECONDS,
   SPEND_BASE_COST,
   SPEND_ELEMENT_COST,
+  VAULT_BOX_BYTES,
+  VAULT_BOX_N_OFFSET,
+  VAULT_BOX_PAID_IN_OFFSET,
+  VAULT_BOX_PAID_OUT_OFFSET,
+  VAULT_BOX_ROOT_OFFSET,
+  VAULT_BOX_SETTLED_AT_OFFSET,
+  VAULT_BOX_STATUS_CLAIMED_HEX,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OFFSET,
+  VAULT_BOX_STATUS_OPEN_HEX,
 } from '@kasakame/constants/source'
 
 /**
@@ -50,11 +63,14 @@ import {
  */
 
 // Vault box statuses (1 byte in the packed box): 1 = Open, 2 = Failed, 3 = Claimed.
-const BOX_OPEN = Bytes.fromHex('01')
-const BOX_FAILED = Bytes.fromHex('02')
-const BOX_CLAIMED = Bytes.fromHex('03')
+const BOX_OPEN = Bytes.fromHex(VAULT_BOX_STATUS_OPEN_HEX)
+const BOX_FAILED = Bytes.fromHex(VAULT_BOX_STATUS_FAILED_HEX)
+const BOX_CLAIMED = Bytes.fromHex(VAULT_BOX_STATUS_CLAIMED_HEX)
 
-// Packed vault box layout (65 bytes): paidIn[0:8] ‖ paidOut[8:16] ‖ root[16:48] ‖ n[48:56] ‖ status[56:57] ‖ settledAt[57:65].
+// `H(0x01)` leaf domain prefix, shared with Campaign.
+const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
+
+// Packed vault box layout: paidIn ‖ paidOut ‖ root ‖ n ‖ status ‖ settledAt, with the offsets in @kasakame/constants.
 
 // ARC-4 method selector for the Registry's `isRegistered(uint64)bool` readonly method (the Registry is unchanged by the
 // claim-tree rewrite, so this selector is unchanged - verified on-chain via an inner call before a campaign's first box
@@ -67,9 +83,6 @@ const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 // ARC-4 selector for Campaign.pledge(pay,byte[])void. The credit must be the transaction immediately after it, so every
 // vault inflow is tied to a backer leaf (kept in sync by the integration tests).
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
-
-// uint64 maximum, for the explicit paidIn overflow guard.
-const MAX_UINT64 = Uint64(18_446_744_073_709_551_615n)
 
 export class ClaimsVault extends Contract {
   /**
@@ -151,7 +164,7 @@ export class ClaimsVault extends Contract {
 
     const existing = this.campaignBox(app.id).get({ default: Bytes() })
     if (existing.length !== Uint64(0)) {
-      assert(existing.slice(56, 57) === BOX_OPEN, 'campaign is not open')
+      assert(existing.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
     }
 
     // Independent payment verification: the pledge requires the payment immediately before it, so the committed payment
@@ -171,15 +184,15 @@ export class ClaimsVault extends Contract {
       /* v8 ignore next - see checkRegistration; covered on LocalNet. */
       this.createBox(app.id, amount)
     } else {
-      const paidIn: uint64 = op.btoi(existing.slice(0, 8))
-      assert(paidIn <= MAX_UINT64 - amount, 'paidIn overflow')
+      const paidIn: uint64 = op.btoi(existing.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET))
+      assert(paidIn <= Uint64(MAX_UINT64) - amount, 'paidIn overflow')
       this.campaignBox(app.id).value = this.packBox(
         paidIn + amount,
-        op.btoi(existing.slice(8, 16)),
-        existing.slice(16, 48),
-        op.btoi(existing.slice(48, 56)),
+        op.btoi(existing.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET)),
+        existing.slice(VAULT_BOX_ROOT_OFFSET, VAULT_BOX_N_OFFSET),
+        op.btoi(existing.slice(VAULT_BOX_N_OFFSET, VAULT_BOX_STATUS_OFFSET)),
         BOX_OPEN,
-        op.btoi(existing.slice(57, 65)),
+        op.btoi(existing.slice(VAULT_BOX_SETTLED_AT_OFFSET, VAULT_BOX_BYTES)),
       )
     }
   }
@@ -229,18 +242,18 @@ export class ClaimsVault extends Contract {
     assert(amount > Uint64(0), 'nothing to pay back')
 
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_OPEN, 'campaign is not open')
-    const paidIn: uint64 = op.btoi(box.slice(0, 8))
-    const paidOut: uint64 = op.btoi(box.slice(8, 16))
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
+    const paidIn: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET))
+    const paidOut: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET))
     assert(amount <= paidIn - paidOut, 'insufficient campaign balance')
 
     this.campaignBox(app.id).value = this.packBox(
       paidIn,
       paidOut + amount,
-      box.slice(16, 48),
-      op.btoi(box.slice(48, 56)),
+      box.slice(VAULT_BOX_ROOT_OFFSET, VAULT_BOX_N_OFFSET),
+      op.btoi(box.slice(VAULT_BOX_N_OFFSET, VAULT_BOX_STATUS_OFFSET)),
       BOX_OPEN,
-      op.btoi(box.slice(57, 65)),
+      op.btoi(box.slice(VAULT_BOX_SETTLED_AT_OFFSET, VAULT_BOX_BYTES)),
     )
 
     itxn
@@ -265,19 +278,19 @@ export class ClaimsVault extends Contract {
     this.assertCampaignCaller(app)
 
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_OPEN, 'campaign is not open')
-    const paidIn: uint64 = op.btoi(box.slice(0, 8))
-    const paidOut: uint64 = op.btoi(box.slice(8, 16))
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
+    const paidIn: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET))
+    const paidOut: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET))
     const payout: uint64 = paidIn - paidOut
     assert(payout > Uint64(0), 'nothing to claim')
 
     this.campaignBox(app.id).value = this.packBox(
       paidIn,
       paidOut + payout,
-      box.slice(16, 48),
-      op.btoi(box.slice(48, 56)),
+      box.slice(VAULT_BOX_ROOT_OFFSET, VAULT_BOX_N_OFFSET),
+      op.btoi(box.slice(VAULT_BOX_N_OFFSET, VAULT_BOX_STATUS_OFFSET)),
       BOX_CLAIMED,
-      op.btoi(box.slice(57, 65)),
+      op.btoi(box.slice(VAULT_BOX_SETTLED_AT_OFFSET, VAULT_BOX_BYTES)),
     )
 
     itxn
@@ -310,13 +323,13 @@ export class ClaimsVault extends Contract {
     assert(root.length === Uint64(32), 'bad root length')
 
     const box = this.readBox(app.id)
-    const status = box.slice(56, 57)
+    const status = box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET)
     if (status === BOX_OPEN) {
       // 2^19 - 1: a cap-saturated campaign that missed its goal is failed in fact.
       assert(n <= Uint64(MAX_TREE_SIZE), 'n above maximum')
       this.campaignBox(app.id).value = this.packBox(
-        op.btoi(box.slice(0, 8)),
-        op.btoi(box.slice(8, 16)),
+        op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET)),
+        op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET)),
         root,
         n,
         BOX_FAILED,
@@ -338,7 +351,7 @@ export class ClaimsVault extends Contract {
   settleOpen(app: Application): void {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_OPEN, 'campaign is not open')
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
 
     // The campaign app still exists here, so its global state is readable (this is never attempted after deletion).
     /* v8 ignore start - every created campaign writes all seven globals, so the missing-key branches are defensive only;
@@ -357,16 +370,16 @@ export class ClaimsVault extends Contract {
     /* v8 ignore stop */
     assert(vaultState[0] === Global.currentApplicationId.id, 'campaign vault mismatch')
     assert(rootState[0].length === Uint64(32), 'bad root length')
-    assert(statusState[0] <= Uint64(2), 'invalid campaign status')
-    assert(statusState[0] !== Uint64(2), 'campaign already claimed')
+    assert(statusState[0] <= Uint64(CAMPAIGN_STATUS_CLAIMED), 'invalid campaign status')
+    assert(statusState[0] !== Uint64(CAMPAIGN_STATUS_CLAIMED), 'campaign already claimed')
     // 2^19 - 1: settle a cap-saturated campaign before its deadline.
     assert(nState[0] <= Uint64(MAX_TREE_SIZE), 'n above maximum')
     assert(Global.latestTimestamp >= deadlineState[0] || nState[0] >= Uint64(MAX_TREE_SIZE), 'deadline has not passed')
     assert(raisedState[0] < goalState[0], 'goal was reached')
 
     this.campaignBox(app.id).value = this.packBox(
-      op.btoi(box.slice(0, 8)),
-      op.btoi(box.slice(8, 16)),
+      op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET)),
+      op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET)),
       rootState[0],
       nState[0],
       BOX_FAILED,
@@ -394,11 +407,11 @@ export class ClaimsVault extends Contract {
     assert(txid.length === Uint64(32), 'bad txid length')
 
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_FAILED, 'campaign is not refundable')
-    const paidIn: uint64 = op.btoi(box.slice(0, 8))
-    const paidOut: uint64 = op.btoi(box.slice(8, 16))
-    const n: uint64 = op.btoi(box.slice(48, 56))
-    const settledAt: uint64 = op.btoi(box.slice(57, 65))
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_FAILED, 'campaign is not refundable')
+    const paidIn: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET))
+    const paidOut: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET))
+    const n: uint64 = op.btoi(box.slice(VAULT_BOX_N_OFFSET, VAULT_BOX_STATUS_OFFSET))
+    const settledAt: uint64 = op.btoi(box.slice(VAULT_BOX_SETTLED_AT_OFFSET, VAULT_BOX_BYTES))
     assert(Global.latestTimestamp <= settledAt + this.refundWindow.value, 'refund window closed')
     assert(k < n, 'unknown position')
 
@@ -416,10 +429,13 @@ export class ClaimsVault extends Contract {
     }
     assert(path.length === h * Uint64(32), 'bad path length')
 
-    const leaf = op.sha512_256(Bytes.fromHex('01').concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
+    const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(amount)).concat(txid))
     /* v8 ignore next - a SHA-512/256 preimage of zero is infeasible; defensive null-marker check. */
     assert(leaf !== this.zeroRoot(), 'leaf must not be zero')
-    assert(this.combineBlob(leaf, k, path, r, c, hasTop) === box.slice(16, 48), 'proof does not match root')
+    assert(
+      this.combineBlob(leaf, k, path, r, c, hasTop) === box.slice(VAULT_BOX_ROOT_OFFSET, VAULT_BOX_N_OFFSET),
+      'proof does not match root',
+    )
     assert(amount <= paidIn - paidOut, 'insufficient campaign balance')
 
     this.campaignBox(app.id).value = this.packBox(
@@ -483,8 +499,12 @@ export class ClaimsVault extends Contract {
    */
   private deleteClaimedBox(app: Application): void {
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_CLAIMED, 'campaign not claimed')
-    assert(op.btoi(box.slice(0, 8)) === op.btoi(box.slice(8, 16)), 'campaign balance outstanding')
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_CLAIMED, 'campaign not claimed')
+    assert(
+      op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET)) ===
+        op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET)),
+      'campaign balance outstanding',
+    )
 
     this.campaignBox(app.id).delete()
   }
@@ -503,10 +523,10 @@ export class ClaimsVault extends Contract {
   finalize(app: Application): void {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     const box = this.readBox(app.id)
-    assert(box.slice(56, 57) === BOX_FAILED, 'campaign is not failed')
-    const settledAt: uint64 = op.btoi(box.slice(57, 65))
-    const paidIn: uint64 = op.btoi(box.slice(0, 8))
-    const paidOut: uint64 = op.btoi(box.slice(8, 16))
+    assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_FAILED, 'campaign is not failed')
+    const settledAt: uint64 = op.btoi(box.slice(VAULT_BOX_SETTLED_AT_OFFSET, VAULT_BOX_BYTES))
+    const paidIn: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_IN_OFFSET, VAULT_BOX_PAID_OUT_OFFSET))
+    const paidOut: uint64 = op.btoi(box.slice(VAULT_BOX_PAID_OUT_OFFSET, VAULT_BOX_ROOT_OFFSET))
     assert(paidIn === paidOut || Global.latestTimestamp >= settledAt + this.refundWindow.value, 'refund window still open')
 
     const residual: uint64 = paidIn - paidOut

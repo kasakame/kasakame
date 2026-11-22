@@ -19,6 +19,7 @@
     "allowSyntheticDefaultImports": true,
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "rootDir": ".",
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noEmit": true,

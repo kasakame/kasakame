@@ -1,3 +1,4 @@
+import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import { useWallet } from '@txnlab/use-wallet-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchChainTimestamp } from '../../lib/algorand'
@@ -23,6 +24,8 @@ import { getWalletManager } from '../../lib/wallets'
 import CampaignImage from './CampaignImage'
 import PledgeForm from './PledgeForm'
 import { useCampaignMetadata } from './useCampaignMetadata'
+
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 interface CampaignDetailProps {
   appId: bigint
@@ -91,7 +94,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
 
   const readWindow = useCallback(async () => {
     const box = await fetchVaultBox(appId).catch(() => undefined)
-    if (box === undefined || box.status !== 2 || box.settledAt <= 0n) return null
+    if (box === undefined || box.status !== VAULT_BOX_STATUS_FAILED || box.settledAt <= 0n) return null
     const config = await fetchVaultConfig().catch(() => undefined)
     if (config === undefined) return null
     return { endsAt: refundWindowEndsAt(box.settledAt, config.window), sweepTarget: config.sweepTarget }

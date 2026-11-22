@@ -30,8 +30,8 @@ import {
  * generated clients, configure the SDK against them, and drive every write helper end to end. The contract suites prove the
  * compiled TEAL; this suite proves the SDK's group assembly, fee headroom, signer wiring, and indexer waits on a live chain.
  *
- * Requires `algokit localnet start`. The generated clients decide which contract release is under test: the pinned specs
- * release by default, or the local artifacts after `SDK_SPECS=local npm run codegen` (see docs/testing.md).
+ * Requires `algokit localnet start`. The generated clients decide which contract release is under test: the installed
+ * `@kasakame/contracts` package by default, or the local artifacts after `SDK_SPECS=local npm run codegen` (see docs/testing.md).
  */
 
 describe('SDK send path (localnet)', () => {

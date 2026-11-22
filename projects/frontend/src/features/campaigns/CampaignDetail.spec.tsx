@@ -1,3 +1,4 @@
+import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,6 +7,8 @@ import { clearCachedCampaigns, setCachedCampaigns } from '../../lib/campaign'
 import CampaignDetail from './CampaignDetail'
 
 const getCampaignMock = vi.fn()
+
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 vi.mock('../../lib/campaign', async () => {
   const actual = await vi.importActual('../../lib/campaign')
@@ -159,7 +162,7 @@ describe('CampaignDetail', () => {
 
   it('shows the refund window banner for settled failed campaigns', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed'))
-    fetchVaultBoxMock.mockResolvedValue({ status: 2, settledAt: 100n })
+    fetchVaultBoxMock.mockResolvedValue({ status: VAULT_BOX_STATUS_FAILED, settledAt: 100n })
     fetchVaultConfigMock.mockResolvedValue({ window: 200n, sweepTarget: 'TARGET' })
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -249,7 +252,7 @@ describe('CampaignDetail', () => {
 
   it('hides the refund window banner when the config lookup fails', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed'))
-    fetchVaultBoxMock.mockResolvedValue({ status: 2, settledAt: 100n })
+    fetchVaultBoxMock.mockResolvedValue({ status: VAULT_BOX_STATUS_FAILED, settledAt: 100n })
     fetchVaultConfigMock.mockRejectedValue(new Error('offline'))
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -424,7 +427,7 @@ describe('CampaignDetail', () => {
   it('shows the refund window banner on settled campaigns', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed', { myPledgeMicroAlgos: 1_000_000n }))
     fetchMyLeavesMock.mockResolvedValue([{ position: 0, amount: 1_000_000n, txidHex: 'aa' }])
-    fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: 2, settledAt: 5_000n })
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: VAULT_BOX_STATUS_FAILED, settledAt: 5_000n })
     fetchVaultConfigMock.mockResolvedValue({ window: 3_600n, sweepTarget: 'SWEEP' })
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -445,7 +448,7 @@ describe('CampaignDetail', () => {
       deleted: true,
     } satisfies CampaignViewModel)
     fetchMyLeavesMock.mockResolvedValue([{ position: 3, amount: 1_000_000n, txidHex: 'aa' }])
-    fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: 2, settledAt: 5_000n })
+    fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: VAULT_BOX_STATUS_FAILED, settledAt: 5_000n })
     fetchVaultConfigMock.mockResolvedValue({ window: 3_600n, sweepTarget: 'SWEEP' })
     refundMock.mockResolvedValue(undefined)
     const user = userEvent.setup()

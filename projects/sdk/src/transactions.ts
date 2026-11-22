@@ -1,11 +1,20 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import {
+  APP_ID_BYTES,
   CLAIM_EXTRA_INNERS,
   CREDIT_EXTRA_INNERS,
   DELETE_EXTRA_INNERS,
   REGISTER_DEPOSIT_MICRO_ALGOS,
+  REGISTRY_BOX_PREFIX,
   UNREGISTER_EXTRA_INNERS,
+  VAULT_BOX_BYTES,
+  VAULT_BOX_PAID_IN_OFFSET,
+  VAULT_BOX_PAID_OUT_OFFSET,
+  VAULT_BOX_PREFIX,
+  VAULT_BOX_SETTLED_AT_OFFSET,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OFFSET,
 } from '@kasakame/constants'
 import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getApplicationAddress, hexToBytes } from 'algosdk'
@@ -72,6 +81,8 @@ export function isStaleProofError(error: unknown): boolean {
 }
 
 type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
+
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 // Fee headroom per call: the outer call covers its inners via fee pooling, so every extra inner transaction costs one
 // more current minimum fee. The counts are group-shape facts; the price comes from SuggestedParams.minFee at runtime.
@@ -142,12 +153,12 @@ function registryClientFor(session: WalletSession): RegistryClient {
  */
 function vaultBoxRef(appId: bigint): { appId: bigint; name: Uint8Array }[] {
   let remaining = appId
-  const appIdBytes = new Uint8Array(8)
-  for (let i = 7; i >= 0; i--) {
+  const appIdBytes = new Uint8Array(APP_ID_BYTES)
+  for (let i = APP_ID_BYTES - 1; i >= 0; i--) {
     appIdBytes[i] = Number(remaining & 0xffn)
     remaining >>= 8n
   }
-  return [{ appId: getSdkConfig().vaultAppId, name: new Uint8Array([0x63, ...appIdBytes]) }]
+  return [{ appId: getSdkConfig().vaultAppId, name: new Uint8Array([VAULT_BOX_PREFIX.charCodeAt(0), ...appIdBytes]) }]
 }
 
 /**
@@ -159,12 +170,12 @@ function vaultBoxRef(appId: bigint): { appId: bigint; name: Uint8Array }[] {
  */
 function registrationBox(appId: bigint): { appId: bigint; name: Uint8Array }[] {
   let remaining = appId
-  const appIdBytes = new Uint8Array(8)
-  for (let i = 7; i >= 0; i--) {
+  const appIdBytes = new Uint8Array(APP_ID_BYTES)
+  for (let i = APP_ID_BYTES - 1; i >= 0; i--) {
     appIdBytes[i] = Number(remaining & 0xffn)
     remaining >>= 8n
   }
-  return [{ appId: getSdkConfig().registryAppId, name: new Uint8Array([0x72, ...appIdBytes]) }]
+  return [{ appId: getSdkConfig().registryAppId, name: new Uint8Array([REGISTRY_BOX_PREFIX.charCodeAt(0), ...appIdBytes]) }]
 }
 
 /**
@@ -191,15 +202,15 @@ export async function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undef
   } catch {
     return undefined
   }
-  if (raw.length !== 65) return undefined
+  if (raw.length !== VAULT_BOX_BYTES) return undefined
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
   return {
-    paidIn: view.getBigUint64(0),
-    paidOut: view.getBigUint64(8),
-    // The length check above guarantees byte 56 exists; the fallback satisfies noUncheckedIndexedAccess.
+    paidIn: view.getBigUint64(VAULT_BOX_PAID_IN_OFFSET),
+    paidOut: view.getBigUint64(VAULT_BOX_PAID_OUT_OFFSET),
+    // The length check above guarantees the status byte exists; the fallback satisfies noUncheckedIndexedAccess.
     /* v8 ignore next */
-    status: raw[56] ?? 0,
-    settledAt: view.getBigUint64(57),
+    status: raw[VAULT_BOX_STATUS_OFFSET] ?? 0,
+    settledAt: view.getBigUint64(VAULT_BOX_SETTLED_AT_OFFSET),
   }
 }
 
@@ -507,7 +518,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
   const txid = hexToBytes(leaf.txidHex)
   const composer = algorand.send.newGroup()
   const box = await fetchVaultBox(appId)
-  if (box !== undefined && box.status === 2) {
+  if (box !== undefined && box.status === VAULT_BOX_STATUS_FAILED) {
     const vaultClient = vaultClientFor(session)
     composer.addAppCallMethodCall(
       await vaultClient.params.refund({
