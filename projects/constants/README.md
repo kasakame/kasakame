@@ -2,6 +2,28 @@
 
 Public, dependency-free constants shared by the kasakame contracts, SDK, CLI, and frontend.
 
+## Install
+
+```bash
+npm install @kasakame/constants
+```
+
+Node.js 24 or newer, ESM.
+
+## Usage
+
+Runtime consumers import the compiled package:
+
+```ts
+import { MAX_TREE_SIZE, ZERO_ROOT_HEX } from '@kasakame/constants'
+```
+
+Contracts import the source entry so Puya inlines the values at compile time:
+
+```ts
+import { MAX_TREE_SIZE } from '@kasakame/constants/source'
+```
+
 The package has two entry points for one source file:
 
 - `@kasakame/constants` loads the compiled JavaScript and declarations from `dist`.
@@ -46,11 +68,13 @@ the compiled package. Values use `bigint` for 64-bit on-chain amounts and caps
 seconds, page sizes, and OpUp coefficients. Contracts convert at the AVM
 boundary with `Uint64(...)`.
 
-## Commands
+## Documentation
 
-```bash
-npm run build
-npm run check-types
-npm run lint
-npm run format
-```
+- [Repository](https://github.com/kasakame/kasakame)
+- [Protocol documentation](https://github.com/kasakame/kasakame/blob/main/docs/claim-tree-protocol.md)
+- [Limits and sizes](https://github.com/kasakame/kasakame/blob/main/docs/limits.md)
+- [Issues](https://github.com/kasakame/kasakame/issues)
+
+## License
+
+MIT. See [LICENSE](https://github.com/kasakame/kasakame/blob/main/projects/constants/LICENSE).

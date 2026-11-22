@@ -6,12 +6,16 @@ name: release-contracts
 # publishes the matching @kasakame/contracts npm package from the same build.
 # The dispatch version must match projects/contracts/package.json.
 #
-# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
-# --provenance. Configure the trusted publisher for @kasakame/contracts as
-# GitHub owner `kasakame`, repository `kasakame`, workflow
-# `release-contracts.yml`, with no environment and "Allow npm publish" enabled.
-# The first publish bootstraps the package with a one-time manual `npm publish`:
-# trusted publishing requires an existing npm package.
+# Normal releases use npm OIDC trusted publishing (no NPM_TOKEN). The first
+# release is a bootstrap: npm requires the package to exist before a trusted
+# publisher can be configured, so dispatch with dry_run=false, bootstrap=true,
+# and a temporary NPM_TOKEN secret. Both paths pass --provenance; the token is
+# only for authentication. Delete the secret and revoke the token after that
+# release.
+#
+# Configure the trusted publisher for @kasakame/contracts as GitHub owner
+# `kasakame`, repository `kasakame`, workflow `release-contracts.yml`, with no
+# environment and "Allow npm publish" enabled.
 on:
   workflow_dispatch:
     inputs:
@@ -28,6 +32,11 @@ on:
         description: 'Run all checks but skip the GitHub release and npm publish'
         required: true
         default: true
+        type: boolean
+      bootstrap:
+        description: 'Publish with NPM_TOKEN (first release only, before trusted publishing)'
+        required: true
+        default: false
         type: boolean
 
 permissions:
@@ -256,7 +265,7 @@ jobs:
     needs: [prep, smoke]
     permissions:
       contents: read
-      # OIDC authenticates the publish and signs provenance.
+      # OIDC authenticates normal releases and signs provenance on both paths.
       id-token: write
     steps:
       - name: Check out repository
@@ -284,8 +293,29 @@ jobs:
             exit 1
           fi
 
+      - name: Require the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "bootstrap=true but the NPM_TOKEN secret is not set" >&2
+            exit 1
+          fi
+
+      - name: Publish with the bootstrap token
+        if: ${{ inputs.bootstrap && !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: ${{ needs.prep.outputs.tag }}
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          echo "publishing @kasakame/contracts@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using the bootstrap token"
+          npm publish "$tarball" --provenance --access public --tag "$TAG" --ignore-scripts
+
       - name: Publish with provenance (OIDC)
-        if: ${{ !inputs.dry_run }}
+        if: ${{ !inputs.bootstrap && !inputs.dry_run }}
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |

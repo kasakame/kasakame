@@ -399,10 +399,12 @@ pre-release status only affects the "Latest" label, not downloads by tag.
 The npm tarball is the tested artifact passed from the prep job to the smoke and
 publish jobs, so `npm publish` publishes exactly the checked bytes. The smoke
 job installs the tarball in a clean consumer and reads an ARC-56 spec. The
-publish job uses npm OIDC trusted publishing with `--provenance`; the first
-publish needs the one-time manual bootstrap because trusted publishing requires
-an existing npm package. `dry_run` defaults to true and skips both the GitHub
-release and the npm publish.
+publish job uses npm OIDC trusted publishing with `--provenance`. The first
+release dispatches with `dry_run=false, bootstrap=true` and a temporary
+`NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
+authenticates. Delete the secret and revoke the token after the first release.
+`dry_run` defaults to true and skips both the GitHub release and the npm
+publish.
 
 The SDK installs `@kasakame/contracts` at the version in
 `projects/contracts/package.json` and regenerates its clients from
@@ -415,8 +417,8 @@ TEAL plus source maps for independent recompile-and-verify audits.
 Configure the trusted publisher for `@kasakame/contracts` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-contracts.yml`, and no environment. Enable
-**Allow npm publish**. The first publish is a one-time manual `npm publish`:
-trusted publishing requires an existing npm package.
+**Allow npm publish**. The first release uses the `bootstrap` input; configure
+the trusted publisher after it, and later releases use OIDC.
 
 ## Workflow: release-constants (separate file)
 
@@ -428,6 +430,9 @@ release commit. The dispatch inputs mirror the SDK release:
 - `version`: required, without the `v` prefix; must match the package version.
 - `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
   and the prep publish dry-run, but skips the real publish and registry check.
+- `bootstrap`: defaults to `false`; the first release publishes with the
+  `NPM_TOKEN` secret. Both paths pass `--provenance`; the token only
+  authenticates.
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
@@ -440,15 +445,18 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   version, and, when `dry_run=false`, publishes with the `next`/`latest`
   dist-tag through npm OIDC trusted publishing (`id-token: write`) with
   `--provenance`, then polls the registry for the version for up to 10 minutes.
+  The first release sets `bootstrap=true` and authenticates with the temporary
+  `NPM_TOKEN` secret; it still passes `--provenance`.
 
 Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
 `kasakame`, workflow `release-constants.yml`, no environment, and **Allow npm
 publish** enabled. Release it before the SDK and CLI: both declare it as a peer
 dependency, and their smoke tests install it from the registry. The first
-publish is the one exception to OIDC: npm trusted publishing requires an
-existing package, so bootstrap `0.2.0` with a one-time manual `npm publish`
-(or a granular token), then configure the trusted publisher for later versions.
+release dispatches with `dry_run=false, bootstrap=true` and a temporary
+`NPM_TOKEN` secret; both paths pass `--provenance`, and the token only
+authenticates. Delete the secret and revoke the token after that release, then
+configure the trusted publisher for later versions.
 
 ## Workflow: release-sdk (separate file)
 
