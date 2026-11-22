@@ -22,9 +22,10 @@ reasoning behind the splits.
   package once, and uploads both `sdk-generated` (the generated clients) and
   `sdk-dist` (the compiled package). The SDK verification job downloads
   `sdk-generated` instead of regenerating clients; the frontend and CLI
-  download `sdk-dist` instead of each rebuilding the SDK. A `workspace`-only
-  run skips the producer, so SDK verification regenerates the clients from the
-  pinned release itself. The SDK never copies generated
+  download `sdk-dist` instead of each rebuilding the SDK; the SDK LocalNet
+  integration job also downloads `sdk-generated` so it tests the same clients.
+  A `workspace`-only run skips the producer, so SDK verification regenerates
+  the clients from the pinned release itself. The SDK never copies generated
   clients between projects: it regenerates them from the ARC-56 specs, from the
   downloaded artifacts (`SDK_SPECS=local`) in runs where `compile-contracts`
   produced artifacts and from
@@ -41,9 +42,9 @@ reasoning behind the splits.
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
   compilation and SDK packaging are separate producer jobs only because other
-  jobs consume their artifacts; `integration-test` adds Docker for LocalNet.
-  Keeping those in separate jobs (not separate workflows) keeps feedback fast
-  and failures attributable to the right lane.
+  jobs consume their artifacts; `integration-test` and `integration-test-sdk`
+  add Docker for LocalNet. Keeping those in separate jobs (not separate
+  workflows) keeps feedback fast and failures attributable to the right lane.
 - **Change detection, not matrices.** One `changes` job runs
   [`dorny/paths-filter`](https://github.com/dorny/paths-filter) and decides
   what every other job runs against. Each filter is a lane input: contracts,
@@ -62,8 +63,8 @@ reasoning behind the splits.
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
   `run_check_backend`, `run_check_utils`, `run_check_constants`,
-  `run_integration`). Every job reads one boolean, so the trigger rules live in
-  one place instead of repeated `if` expressions.
+  `run_integration`, `run_sdk_integration`). Every job reads one boolean, so the
+  trigger rules live in one place instead of repeated `if` expressions.
   Separate jobs (no matrix) keep the conditional presence and the status-check
   names stable.
 - **The frontend and CLI resolve the SDK by what changed.** A frontend-only,
@@ -108,6 +109,7 @@ flowchart TD
     utils["Check utils<br/>(format/lint/types)"]
     constants["Check constants<br/>(build/format/lint/types)"]
     integration["LocalNet integration<br/>(contracts, utils, or constants)"]
+    integrationsdk["SDK LocalNet integration<br/>(SDK, contracts, or constants)"]
     gate["Gate<br/>(single required check)"]
 
     changes --> repo
@@ -121,11 +123,13 @@ flowchart TD
     changes --> utils
     changes --> constants
     changes --> integration
+    changes --> integrationsdk
     changes --> gate
     buildc -->|"contracts artifacts"| buildsdk
     buildc -->|"contracts artifacts"| integration
     contracts -->|"verification finished"| integration
     buildsdk -->|"sdk-generated"| sdk
+    buildsdk -->|"sdk-generated"| integrationsdk
     buildsdk -->|"sdk-dist"| frontend
     buildsdk -->|"sdk-dist"| cli
     repo --> gate
@@ -139,6 +143,7 @@ flowchart TD
     utils --> gate
     constants --> gate
     integration --> gate
+    integrationsdk --> gate
 ```
 
 ## What each job needs
@@ -157,6 +162,7 @@ flowchart TD
 | `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
 | `check-constants` | `constants` changed | ✅ | - | - | - |
 | `integration-test` | contracts, `utils`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
+| `integration-test-sdk` | SDK, contracts, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
@@ -328,6 +334,10 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   reports the LocalNet result: downloads `contracts-artifacts`, starts LocalNet,
   and runs the compiled TEAL against a live algod (files `00`-`07`: the normal,
   scale, boundary, and randomized-sequence suites).
+- **`integration-test-sdk`** - runs when `run_sdk_integration` is true and
+  `build-sdk` succeeded. It installs the SDK dependencies, downloads
+  `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
+  `00`-`04`). It is independent of the contract LocalNet lane.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -670,11 +680,12 @@ and caches:
   (`build-sdk` uses the SDK lockfile; the frontend and CLI jobs use their own
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
-- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts` and
-  `integration-test` jobs (and the separate `heavy-tests` workflow). `~/.local`
+- **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts`,
+  `integration-test`, and `integration-test-sdk` jobs (and the separate
+  `heavy-tests` workflow). `~/.local`
   is cached by AlgoKit version, Python version, and runner OS, so a cache hit
   skips the install entirely. The install is fast relative to the Docker
-  container startup that dominates the integration job.
+  container startup that dominates the integration jobs.
 
 The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
@@ -699,8 +710,8 @@ download, so nothing is compiled or built twice:
   `integration-test`. The separate `heavy-tests` workflow builds its own
   artifacts.
 - **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
-  Consumed by SDK verification, which otherwise regenerates them when
-  `build-sdk` was skipped.
+  Consumed by SDK verification and the SDK LocalNet integration job;
+  verification regenerates them when `build-sdk` was skipped.
 - **`sdk-dist`** - `projects/sdk/dist` (compiled package). Consumed by
   `check-frontend` and `check-cli`, which install it as `file:../sdk`.
 

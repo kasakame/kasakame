@@ -76,7 +76,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Contract size budget | `test/08-size-budget.spec.ts` (`CON-300`..`CON-302`) | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet | `test/00`-`07` | `npm run test:integration` | LocalNet integration | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| SDK LocalNet | `test/0*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | manual today; CI wiring in #302 | LocalNet running |
+| SDK LocalNet | `test/0*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
@@ -549,6 +549,9 @@ fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
 sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
 timeouts). The tests import the shared balance, minimum-balance, account-info,
 and time helpers directly from `@kasakame/utils/testing`.
+
+CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
+artifact from `build-sdk` so it tests the same clients as `check-sdk`.
 
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
 the offset is reset in a `finally`. The suite is excluded from `npm test` and

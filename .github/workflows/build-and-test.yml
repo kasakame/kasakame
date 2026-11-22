@@ -45,6 +45,7 @@ jobs:
       run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
       run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
       run_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -658,6 +659,59 @@ jobs:
         run: npm run test:integration
         working-directory: projects/contracts
 
+  # SDK send-path verification reuses the clients `build-sdk` generated from
+  # the same-run contract artifacts (or the released contracts package), so it
+  # does not duplicate codegen. A separate job keeps the contract lane
+  # independent and lets both LocalNet lanes run in parallel.
+  integration-test-sdk:
+    name: SDK LocalNet integration
+    needs: [changes, build-sdk]
+    if: always() && !cancelled() && needs.changes.outputs.run_sdk_integration == 'true' && needs.build-sdk.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/sdk/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: projects/sdk
+
+      - name: Download generated clients
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-generated
+          path: projects/sdk/src/generated
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
+      - name: Install AlgoKit CLI
+        run: bash .github/scripts/install-algokit.sh
+        shell: bash
+
+      - name: Start LocalNet (algod + indexer)
+        run: algokit localnet start
+
+      - name: Run SDK LocalNet integration tests
+        run: npm run test:integration
+        working-directory: projects/sdk
+
   # Single required check: skipped change-detection jobs don't block merges
   # under strict branch protection - only failures and cancellations do.
   gate:
@@ -676,6 +730,7 @@ jobs:
       - check-utils
       - check-constants
       - integration-test
+      - integration-test-sdk
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
