@@ -549,7 +549,7 @@ order is in the [v0.2.0 release](https://github.com/kasakame/kasakame/issues/83)
 
 | Artifact | Canonical channel | Version | Notes |
 | --- | --- | --- | --- |
-| ARC-56/ARC-32 specs, TEAL, source maps | GitHub Release and npm | `contracts-vX.Y.Z` | GitHub is the canonical audit bundle; `@kasakame/contracts` is the install mirror. |
+| ARC-56/ARC-32 specs, TEAL, source maps | GitHub Release and npm | `contracts-vX.Y.Z` | GitHub holds the audit tarballs; `@kasakame/contracts` is the npm package. |
 | `@kasakame/contracts` | npm | `X.Y.Z` | Same build as the GitHub release; the SDK reads its ARC-56 specs. |
 | `@kasakame/sdk` | npm | `X.Y.Z` (independent) | The only contract consumer; records the contracts version it was built against. |
 | `@kasakame/constants` | npm | `X.Y.Z` (independent) | Protocol, fee, and AVM values; the SDK and CLI declare it as a peer dependency. |

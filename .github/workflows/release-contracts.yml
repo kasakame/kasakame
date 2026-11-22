@@ -138,7 +138,8 @@ jobs:
 
       # One tarball per artifact kind, each keeping the per-app directories
       # (campaign/, claimsvault/, factory/, registry/) - consumers download only
-      # the kind they need, and arc56.tar.gz is the interface the SDK uses.
+      # the kind they need. These tarballs are the audit bundle; the SDK reads
+      # the npm package.
       - name: Bundle the artifacts (one tarball per kind)
         run: |
           cd projects/contracts/smart_contracts/artifacts
@@ -178,7 +179,7 @@ jobs:
           - compiled approval/clear TEAL
           - Puya source maps
 
-          The npm mirror is @kasakame/contracts@$VERSION.
+          The npm package is @kasakame/contracts@$VERSION.
           "
 
           gh release create "contracts-v$VERSION" "$RUNNER_TEMP"/*.tar.gz \

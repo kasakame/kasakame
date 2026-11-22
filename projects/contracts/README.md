@@ -4,8 +4,7 @@ Compiled contract artifacts for the kasakame crowdfunding protocol: ARC-56 and
 ARC-32 application specs, approval and clear TEAL, and Puya source maps.
 
 The artifacts are generated from the kasakame contracts repository. That
-repository is the source of truth; this package is the npm mirror of the
-`contracts-v<version>` GitHub release, built from the same commit.
+repository is the source of truth.
 
 ## Install
 
@@ -39,9 +38,9 @@ The package contains no contract source, no deployer, and no generated clients.
 
 ## Versioning
 
-The package version matches the `contracts-v<version>` GitHub release and the
-contract interface used by the matching SDK release. Protocol-breaking changes
-bump the major version once the interface is stable.
+The package version follows the contract interface used by the matching SDK
+release. Protocol-breaking changes bump the major version once the interface is
+stable.
 
 ## Links
 
