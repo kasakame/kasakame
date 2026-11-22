@@ -551,7 +551,9 @@ timeouts). The tests import the shared balance, minimum-balance, account-info,
 and time helpers directly from `@kasakame/utils/testing`.
 
 CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
-artifact from `build-sdk` so it tests the same clients as `check-sdk`.
+artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite
+pins the create/register cost, each operation's group fee, and the app/box MBR
+transitions using the runtime `minFee`.
 
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
 the offset is reset in a `finally`. The suite is excluded from `npm test` and

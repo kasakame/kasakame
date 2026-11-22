@@ -17,8 +17,12 @@ export interface SdkStack {
   minFee: bigint
   /** The deployed Registry application id. */
   registryAppId: bigint
+  /** The deployed Registry application account address. */
+  registryAddress: string
   /** The deployed ClaimsVault application id. */
   vaultAppId: bigint
+  /** The deployed ClaimsVault application account address. */
+  vaultAddress: string
 }
 
 /**
@@ -51,7 +55,14 @@ export async function setupSdkStack(fixture: AlgorandFixture): Promise<SdkStack>
   })
 
   configureSdk({ algorand, registryAppId: registry.appId, vaultAppId: vault.appId })
-  return { algorand, minFee, registryAppId: registry.appId, vaultAppId: vault.appId }
+  return {
+    algorand,
+    minFee,
+    registryAppId: registry.appId,
+    registryAddress: registry.address,
+    vaultAppId: vault.appId,
+    vaultAddress: vault.address,
+  }
 }
 
 /**
