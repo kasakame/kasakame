@@ -10,7 +10,7 @@ npm install @kasakame/constants
 
 Node.js 24 or newer, ESM.
 
-## Use
+## Usage
 
 Runtime consumers import the compiled package:
 
@@ -68,14 +68,12 @@ the compiled package. Values use `bigint` for 64-bit on-chain amounts and caps
 seconds, page sizes, and OpUp coefficients. Contracts convert at the AVM
 boundary with `Uint64(...)`.
 
-## Commands
+## Documentation
 
-```bash
-npm run build
-npm run check-types
-npm run lint
-npm run format
-```
+- [Repository](https://github.com/kasakame/kasakame)
+- [Protocol documentation](https://github.com/kasakame/kasakame/blob/main/docs/claim-tree-protocol.md)
+- [Limits and sizes](https://github.com/kasakame/kasakame/blob/main/docs/limits.md)
+- [Issues](https://github.com/kasakame/kasakame/issues)
 
 ## License
 
