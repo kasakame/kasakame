@@ -8,8 +8,8 @@ describe('parseCliOptions', () => {
       appId: 123n,
       network: 'testnet',
       signer: 'wallet',
-      vaultAppId: 776939077n,
-      registryAppId: 776939068n,
+      vaultAppId: 774437570n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -52,8 +52,8 @@ describe('parseCliOptions', () => {
       appId: 1n,
       network: 'testnet',
       signer: 'wallet',
-      vaultAppId: 776939077n,
-      registryAppId: 776939068n,
+      vaultAppId: 774437570n,
+      registryAppId: 774437557n,
       all: true,
       dryRun: false,
     })
@@ -121,8 +121,8 @@ describe('parseCliOptions', () => {
       command: 'pledges',
       network: 'testnet',
       signer: 'wallet',
-      vaultAppId: 776939077n,
-      registryAppId: 776939068n,
+      vaultAppId: 774437570n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -133,8 +133,8 @@ describe('parseCliOptions', () => {
       address: 'ADDRESS',
       network: 'testnet',
       signer: 'wallet',
-      vaultAppId: 776939077n,
-      registryAppId: 776939068n,
+      vaultAppId: 774437570n,
+      registryAppId: 774437557n,
       dryRun: false,
     })
   })
@@ -204,8 +204,8 @@ describe('parseCliOptions', () => {
       appId: 7n,
       network: 'testnet',
       signer: 'wallet',
-      vaultAppId: 776939077n,
-      registryAppId: 776939068n,
+      vaultAppId: 774437570n,
+      registryAppId: 774437557n,
       dryRun: true,
     })
   })
