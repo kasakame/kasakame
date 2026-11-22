@@ -189,13 +189,15 @@ const VAULT_APP_ADDRESS = algosdk.getApplicationAddress(2002n).toString()
  *
  * @param paidIn Total inflows in microAlgos.
  * @param paidOut Total outflows in microAlgos.
+ * @param status Vault box status byte (1 Open, 2 Failed, 3 Claimed).
  * @returns The 65-byte vault box.
  */
-function vaultBox(paidIn: bigint, paidOut: bigint): Uint8Array {
+function vaultBox(paidIn: bigint, paidOut: bigint, status = 0): Uint8Array {
   const box = new Uint8Array(65)
   const view = new DataView(box.buffer)
   view.setBigUint64(0, paidIn)
   view.setBigUint64(8, paidOut)
+  box[56] = status
   return box
 }
 
@@ -471,6 +473,50 @@ describe('transaction helpers', () => {
     await expect(refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).resolves.toBe(transactions)
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
     expect(composerSendMock).not.toHaveBeenCalled()
+  })
+
+  it('refund retries through the vault when the campaign settles mid-send', async () => {
+    campaignBoxValueMock.mockResolvedValueOnce(vaultBox(500n, 0n, 1)).mockResolvedValueOnce(vaultBox(500n, 0n, 2))
+    composerSendMock
+      .mockRejectedValueOnce(new Error('campaign is not open'))
+      .mockResolvedValueOnce({ confirmations: [{ confirmedRound: 99n }] })
+
+    await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
+    expect(campaignBoxValueMock).toHaveBeenCalledTimes(2)
+    expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+  })
+
+  it('refund retries through the vault when the campaign app disappears mid-send', async () => {
+    campaignBoxValueMock.mockResolvedValueOnce(vaultBox(500n, 0n, 1)).mockResolvedValueOnce(vaultBox(500n, 0n, 2))
+    composerSendMock
+      .mockRejectedValueOnce(new Error('application 123 not found'))
+      .mockResolvedValueOnce({ confirmations: [{ confirmedRound: 99n }] })
+
+    await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+
+    expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
+    expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
+  })
+
+  it('refund surfaces a second routing failure', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 0n, 1))
+    composerSendMock.mockRejectedValue(new Error('campaign is not open'))
+
+    await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow('campaign is not open')
+    expect(composerSendMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('refund does not retry a non-routing failure', async () => {
+    campaignBoxValueMock.mockResolvedValue(vaultBox(500n, 0n, 2))
+    composerSendMock.mockRejectedValueOnce(new Error('campaign is not refundable'))
+
+    await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow(
+      'campaign is not refundable',
+    )
+    expect(composerSendMock).toHaveBeenCalledOnce()
   })
 
   it('claim pays the vault-derived total', async () => {
