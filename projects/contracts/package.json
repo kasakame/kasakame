@@ -39,8 +39,8 @@
   },
   "scripts": {
     "build": "algokit compile ts smart_contracts --output-source-map --out-dir artifacts && algokit generate client smart_contracts/artifacts --output {app_spec_dir}/{contract_name}Client.ts",
-    "prepack": "node scripts/stage-package.ts",
-    "test:pack": "node scripts/check-package.ts",
+    "prepack": "node scripts/packaging/stage-package.ts",
+    "test:pack": "node scripts/packaging/check-package.ts",
     "deploy:localnet": "tsx --env-file-if-exists=.env.localnet deploy/index.ts",
     "deploy:localnet:watch": "tsx watch --env-file-if-exists=.env.localnet deploy/index.ts",
     "deploy:testnet": "tsx --env-file-if-exists=.env.testnet deploy/index.ts",

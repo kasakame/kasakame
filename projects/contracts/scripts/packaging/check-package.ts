@@ -35,7 +35,7 @@ interface PackInfo {
   files?: Array<string | PackFile>
 }
 
-const projectDir = path.resolve(import.meta.dirname, '..')
+const projectDir = path.resolve(import.meta.dirname, '../..')
 const packageJson = JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf8')) as PackageManifest
 
 for (const field of ['name', 'version', 'description', 'license'] as const) {

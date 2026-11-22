@@ -592,7 +592,7 @@ The smoke entry points live in `projects/utils/smoke/`: `constants.ts` imports
 the runtime values and the `/source` entry, `sdk.ts` imports the public API and
 checks `SPECS_VERSION`, `cli.ts` runs `kasakame --help`, and `contracts.ts` reads
 the four artifact folders. Package-specific packaging stays in the package:
-`projects/contracts/scripts/{stage-package,check-package}.ts` and
+`projects/contracts/scripts/packaging/{stage-package,check-package}.ts` and
 `projects/sdk/scripts/codegen.ts`.
 
 ### Versions and release order
