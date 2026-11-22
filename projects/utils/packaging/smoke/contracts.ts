@@ -15,6 +15,9 @@ assert.ok(app, 'no ARC-56 applications')
 const appDir = path.join(root, 'dist', 'arc56', app)
 const [specFile] = fs.readdirSync(appDir).sort()
 assert.ok(specFile, `no ARC-56 spec in ${appDir}`)
-const spec = JSON.parse(fs.readFileSync(path.join(appDir, specFile), 'utf8')) as { name?: unknown; byteCode?: { approval?: unknown } }
+const spec = JSON.parse(fs.readFileSync(path.join(appDir, specFile), 'utf8')) as {
+  name?: unknown
+  byteCode?: { approval?: unknown }
+}
 assert.ok(spec.name && spec.byteCode?.approval, 'invalid ARC-56 spec')
 console.log('contracts package smoke passed')

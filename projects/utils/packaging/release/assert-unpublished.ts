@@ -3,7 +3,7 @@ import process from 'node:process'
 
 const [packageName, version] = process.argv.slice(2)
 if (!packageName || !version) {
-  console.error('usage: node projects/utils/packaging/assert-unpublished.ts <package> <version>')
+  console.error('usage: node projects/utils/packaging/release/assert-unpublished.ts <package> <version>')
   process.exit(2)
 }
 

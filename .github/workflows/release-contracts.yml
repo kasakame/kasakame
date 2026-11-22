@@ -82,7 +82,7 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
         # The script writes version and tag to GITHUB_OUTPUT.
         run: |
-          node projects/utils/packaging/validate-version.ts projects/contracts/package.json "$INPUT_VERSION"
+          node projects/utils/packaging/release/validate-version.ts projects/contracts/package.json "$INPUT_VERSION"
           version=$(node -p "require('./projects/contracts/package.json').version")
           if git ls-remote --exit-code --tags origin "refs/tags/contracts-v$version" >/dev/null 2>&1; then
             echo "tag contracts-v$version already exists" >&2
@@ -93,7 +93,7 @@ jobs:
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node projects/utils/packaging/assert-unpublished.ts "@kasakame/contracts" "$VERSION"
+        run: node projects/utils/packaging/release/assert-unpublished.ts "@kasakame/contracts" "$VERSION"
 
       - name: Install contract dependencies
         run: npm ci
@@ -211,7 +211,7 @@ jobs:
         run: |
           tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
           test -n "$tarball"
-          node projects/utils/packaging/pack-smoke.ts projects/contracts projects/contracts/scripts/packaging/smoke-package.ts --tarball "$tarball"
+          node projects/utils/packaging/release/pack-smoke.ts projects/contracts projects/utils/packaging/smoke/contracts.ts --tarball "$tarball"
 
   publish:
     name: Publish to npm

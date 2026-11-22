@@ -68,12 +68,12 @@ jobs:
         env:
           INPUT_VERSION: ${{ inputs.version }}
         # The script writes version and tag to GITHUB_OUTPUT.
-        run: node projects/utils/packaging/validate-version.ts projects/constants/package.json "$INPUT_VERSION"
+        run: node projects/utils/packaging/release/validate-version.ts projects/constants/package.json "$INPUT_VERSION"
 
       - name: Check the version is unpublished
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: node projects/utils/packaging/assert-unpublished.ts "@kasakame/constants" "$VERSION"
+        run: node projects/utils/packaging/release/assert-unpublished.ts "@kasakame/constants" "$VERSION"
 
       - name: Build
         run: npm run build
@@ -104,7 +104,7 @@ jobs:
 
       # A clean consumer must import the compiled values from the tarball.
       - name: Smoke-test the packed package
-        run: node projects/utils/packaging/pack-smoke.ts projects/constants projects/constants/scripts/packaging/smoke-package.ts
+        run: node projects/utils/packaging/release/pack-smoke.ts projects/constants projects/utils/packaging/smoke/constants.ts
 
       - name: Upload the tested dist
         uses: actions/upload-artifact@v7
