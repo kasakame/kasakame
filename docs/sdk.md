@@ -153,7 +153,12 @@ function concatHashes(parts: Uint8Array[]): Uint8Array
 function frontierForPledge(state: TreeState): Uint8Array
 function pathBlobForRefund(state: TreeState, k: number): Uint8Array
 function base32ToBytes(input: string): Uint8Array
+const MAX_TREE_SIZE: bigint
+function pledgeOpUpIterations(n: bigint): number
+function refundOpUpIterations(n: bigint, k: bigint): number
 ```
+
+`MAX_TREE_SIZE` is the shared tree cap; the OpUp helpers return the 700-op top-ups a pledge or spend funds at the current tree size.
 
 Replay over the configured indexer:
 
