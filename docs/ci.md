@@ -470,8 +470,9 @@ release of `@kasakame/sdk`; no reviewer gate (single developer). The version is
 are:
 
 - `version`: required, without the `v` prefix; must match the package version.
-- `dry_run`: defaults to `true`; runs the gate, smoke test, package inspection,
-  and the prep publish dry-run, but skips the real publish and registry check.
+- `dry_run`: defaults to `true`; runs the gate, integration suite, smoke test,
+  package inspection, and the prep publish dry-run, but skips the real publish
+  and registry check.
 
 Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
@@ -481,7 +482,10 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   `projects/contracts/package.json`, regenerates clients, compiles TypeScript,
   lints, format-checks, type-checks, runs coverage, inspects the packed
   tarball, and dry-runs the publish. Each command is its own step. It uploads
-  the tested `dist/`.
+  the tested `dist/` and the generated clients.
+- `integration` starts LocalNet, downloads the prep-generated clients and the
+  tested `dist/`, checks the dist imports, and runs `npm run test:integration`.
+  It gates the publish.
 - `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
   installs the tarball into a clean consumer (npm pulls the
   `@kasakame/constants` peer dependency from the registry), checks the version and

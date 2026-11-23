@@ -13,10 +13,11 @@ name: release-sdk
 # environment and "Allow npm publish" enabled.
 #
 # A smoke job installs the packed tarball in a clean consumer and imports the
-# public API before the publish job runs. The frontend is released separately
-# against the published version. Release @kasakame/contracts and
-# @kasakame/constants first: the SDK builds from the contracts package and
-# declares constants as a peer dependency.
+# public API before the publish job runs. An integration job starts LocalNet and
+# runs the SDK suite against the prep-generated clients and tested dist. The
+# frontend is released separately against the published version. Release
+# @kasakame/contracts and @kasakame/constants first: the SDK builds from the
+# contracts package and declares constants as a peer dependency.
 on:
   workflow_dispatch:
     inputs:
@@ -126,6 +127,72 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: Upload the generated clients
+        uses: actions/upload-artifact@v7
+        with:
+          name: sdk-generated
+          path: projects/sdk/src/generated
+          if-no-files-found: error
+          retention-days: 7
+
+  integration:
+    name: SDK LocalNet integration
+    runs-on: ubuntu-latest
+    needs: prep
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/sdk/package-lock.json
+
+      - name: Install SDK dependencies
+        run: npm ci
+        working-directory: projects/sdk
+
+      - name: Download generated clients
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-generated
+          path: projects/sdk/src/generated
+
+      - name: Download the tested dist
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+
+      - name: Verify the tested dist loads
+        run: node -e "import('./dist/index.js').then((sdk) => { if (typeof sdk.configureSdk !== 'function') process.exit(1) })"
+        working-directory: projects/sdk
+
+      - name: Set up Python (for AlgoKit CLI)
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache AlgoKit CLI
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
+      - name: Install AlgoKit CLI
+        run: bash .github/scripts/install-algokit.sh
+        shell: bash
+
+      - name: Start LocalNet (algod + indexer)
+        run: algokit localnet start
+
+      - name: Run SDK LocalNet integration tests
+        run: npm run test:integration
+        working-directory: projects/sdk
+
   smoke:
     name: Smoke-test the packed package
     runs-on: ubuntu-latest
@@ -153,7 +220,7 @@ jobs:
   publish:
     name: Publish to npm
     runs-on: ubuntu-latest
-    needs: [prep, smoke]
+    needs: [prep, smoke, integration]
     permissions:
       contents: read
       # OIDC authenticates the publish and signs provenance.

@@ -555,6 +555,10 @@ artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite
 pins the create/register cost, each operation's group fee, and the app/box MBR
 transitions using the runtime `minFee`.
 
+The `release-sdk` workflow also runs the suite in an `integration` job before
+publishing, using the clients generated from the released contracts package and
+the tested `dist`. A failed run stops the publish.
+
 Deadlines are chain-relative and fast-forwarded with the dev-mode block offset;
 the offset is reset in a `finally`. The suite is excluded from `npm test` and
 coverage.
