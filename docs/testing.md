@@ -543,6 +543,7 @@ write helpers against a live chain.
 | `test/03-mid-size-tree.integration.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
 | `test/04-large-tree.integration.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
 | `test/05-permissionless-cleanup.integration.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
+| `test/06-create-recovery.integration.test.ts` | `SDK-060`/`SDK-061` | `happy`, `bad`, `always` | unbound Registry returns `registered: false`, binding then retrying `registerCampaign` (including an idempotent retry), cleanup returning the deposit and app MBR, and a mismatched program hash failing before app creation |
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The
