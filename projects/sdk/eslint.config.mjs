@@ -44,20 +44,16 @@ export default defineConfig(
       ...jsdoc.configs['flat/recommended-typescript-error'].rules,
       'jsdoc/require-jsdoc': ['error', { publicOnly: true }],
       'jsdoc/require-returns': ['error', { publicOnly: true }],
-      // Match prettier-plugin-jsdoc, which puts one blank line between the
-      // description and the first tag.
+      // Match prettier-plugin-jsdoc, which puts one blank line between the description and the first tag.
       'jsdoc/tag-lines': ['error', 'never', { startLines: 1 }],
     },
   },
-  // Import rules: duplicates and named-default safety. Ordering is handled by
-  // `prettier-plugin-organize-imports` so the two tools never disagree.
+  // Import rules: duplicates and named-default safety; ordering is handled by `prettier-plugin-organize-imports` so the two tools never disagree.
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
     plugins: { import: importPlugin },
     rules: {
-      // Resolution-based rules are skipped: `tsc --noEmit` already validates module
-      // resolution, and the default `eslint-import-resolver-node` cannot read
-      // `exports`-only packages.
+      // Resolution-based rules are skipped: `tsc --noEmit` already validates module resolution, and the default node resolver cannot read `exports`-only packages.
       'import/no-duplicates': 'error',
       'import/no-named-as-default': 'error',
       'import/no-named-as-default-member': 'error',
@@ -72,8 +68,7 @@ export default defineConfig(
       },
     },
     rules: {
-      // Vitest mocks return `any`; relaxing these here keeps test files from
-      // fighting the type-checker over mock factories.
+      // Vitest mocks return `any`; relaxing these here keeps test files from fighting the type-checker over mock factories.
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

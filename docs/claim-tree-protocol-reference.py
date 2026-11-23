@@ -37,11 +37,7 @@ def leaf(backer: bytes, amount: int, txid: bytes) -> bytes:
     return H(b"\x01" + backer + amount.to_bytes(8, "big") + txid)
 
 
-# --------------------------------------------------------------------------
-# Canonical left-filled binary tree over positions 0..N-1 (spec §3).
-# Node (l, i) covers [i*2^l, (i+1)*2^l); it exists iff (i+1)*2^l <= N.
-# --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
+# Canonical left-filled binary tree (spec §3): node (l, i) covers [i*2^l, (i+1)*2^l) and exists iff (i+1)*2^l <= N.
 
 
 def build_nodes(leaves):
@@ -160,9 +156,7 @@ def null(k, leaves):
     return new_leaves, new_root, calls
 
 
-# --------------------------------------------------------------------------
 # Property tests
-# --------------------------------------------------------------------------
 
 random.seed(20260915)
 

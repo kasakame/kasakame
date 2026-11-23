@@ -39,10 +39,7 @@ function at<T>(items: T[], index: number): T {
 }
 
 /**
- * 03 - multiple actors and campaigns.
- *
- * Ten campaigns by ten creators, five backers on one campaign, one backer on several, and a creator backing another
- * campaign. The chain then drains one campaign and verifies the other campaigns and the vault pool are untouched.
+ * 03 - multiple actors and campaigns: ten creators, shared backers, and isolation of the vault pool.
  */
 describe('03 multiple actors and campaigns', () => {
   const fixture = algorandFixture()

@@ -1,16 +1,6 @@
 name: release-constants
 
-# Manual release of @kasakame/constants. Release it before @kasakame/sdk and
-# @kasakame/cli: both declare it as a peer dependency, and their smoke tests
-# install it from the registry. The dispatch version must match
-# projects/constants/package.json, and dry_run defaults to true; set it to
-# false only for a real release.
-#
-# Releases use npm OIDC trusted publishing.
-#
-# Configure the trusted publisher for @kasakame/constants as GitHub owner
-# `kasakame`, repository `kasakame`, workflow `release-constants.yml`, with no
-# environment and "Allow npm publish" enabled.
+# Manual release of @kasakame/constants (first: the SDK and CLI peer-depend on it); version must match package.json, and publishing uses npm OIDC trusted publishing (see docs/ci.md).
 on:
   workflow_dispatch:
     inputs:

@@ -16,8 +16,7 @@ function bytesToBase64(bytes: Uint8Array): string {
 }
 
 /**
- * Minimal SIWA request carrying the challenge nonce (plain stringify: the backend hashes the exact bytes it
- * receives, so canonical form only matters for real wallets).
+ * Minimal SIWA request carrying the challenge nonce; plain stringify suffices because the backend hashes the received bytes.
  *
  * @param nonce Challenge nonce from `createChallenge`.
  * @param address Signer address.
@@ -310,8 +309,7 @@ describe('wallet-signature auth', () => {
 })
 
 /**
- * Build a signed login payment for the transaction proof path (plain object assembly: the backend checks the
- * exact bytes it receives, so canonical form only matters for real wallets).
+ * Build a signed login payment for the transaction proof path; plain object assembly suffices because the backend checks the received bytes.
  *
  * @param nonce Challenge nonce from `createChallenge`.
  * @param address Signer address (sender and receiver).

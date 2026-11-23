@@ -4,13 +4,7 @@ import algosdk from 'algosdk'
 import { appIdFromEnv, getAlgodConfigFromViteEnvironment, getIndexerConfigFromViteEnvironment } from '../utils/network/getAlgoClientConfigs'
 
 /**
- * Shared service singletons: one `AlgorandClient` (algod) and one indexer client, both configured from the Vite environment.
- *
- * The indexer is the read model (campaign lists, global state, boxes); the `AlgorandClient` drives writes (create/pledge/claim/refund)
- * through the generated `CampaignClient`.
- *
- * Construction performs no network I/O - it only builds the client objects - so this is safe at module load. Tests provide the `VITE_*`
- * values via the Vitest `env` config (see `vitest.config.ts`).
+ * Shared service singletons: one `AlgorandClient` (writes) and one indexer (reads), configured from the Vite environment; construction does no network I/O, so this is safe at module load.
  */
 
 const algodConfig = getAlgodConfigFromViteEnvironment()
@@ -37,8 +31,7 @@ export const algorand = AlgorandClient.fromConfig({
   },
 })
 
-// Hand the session to the SDK at startup. Chain plumbing (timestamp, indexer waiters) is re-exported below; replay
-// and the campaign reads consume the same session as they migrate (see docs/sdk.md).
+// Hand the session to the SDK at startup; chain plumbing (timestamp, indexer waiters) is re-exported below and replay/campaign reads use the same session.
 configureSdk({
   algorand,
   registryAppId: appIdFromEnv('VITE_REGISTRY_APP_ID'),

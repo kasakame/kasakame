@@ -75,6 +75,12 @@ documents the rules and the reasoning behind them.
   repo-root `.prettierrc.json`. It inserts one blank line between the description and
   the first tag, which `jsdoc/tag-lines` is configured to match (`startLines: 1`), so
   `npm run format` and `npm run lint` agree.
+- **Comments carry one line of prose.** Consecutive `//`/`#` comments and block
+  comments stay on one line; JSDoc `@param`/`@returns` tags may stack. Run
+  `node projects/utils/scripts/check-comments.ts` from the repo root, or
+  `npm run check:comments` in `projects/utils`; `--report` prints the per-area
+  baseline. Generated output and commented-out config assignments (`# KEY=`)
+  are skipped.
 - **Markdown is linted too.** Run `npx --yes markdownlint-cli2@0.23.2` (from the repo
   root) to lint every `*.md` file; add `--fix` to autofix. Rules, globs, and ignores
   all live in a single `.markdownlint-cli2.jsonc`, shared with the VS Code extension.

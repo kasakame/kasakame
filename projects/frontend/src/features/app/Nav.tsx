@@ -21,8 +21,7 @@ const Nav = ({ onNavigateHome, onNavigateProfile, onNavigatePledges, onNavigateP
   const menuRef = useRef<HTMLDivElement>(null)
   const prevActiveAddress = useRef(activeAddress)
 
-  // Revalidate the wallet bridge when the tab becomes visible again: a silently dead bridge keeps
-  // activeAddress set, so without this the nav looks connected until the next failed send.
+  // Revalidate the wallet bridge when the tab becomes visible: a silently dead bridge keeps activeAddress set, so the nav looks connected until the next failed send.
   useEffect(() => {
     const revalidate = () => {
       if (document.visibilityState !== 'visible') return

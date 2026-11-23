@@ -30,8 +30,7 @@ function decodeKey(keyBytes: Uint8Array): string {
 }
 
 /**
- * Extract the contract's global state from an indexer `Application` into a plain object. Unknown keys are ignored so other apps are safely
- * filtered out.
+ * Extract the contract's global state from an indexer `Application`; unknown keys are ignored so other apps are safely filtered out.
  *
  * @param app Indexer application with the campaign's global state.
  * @returns Decoded global-state values.
@@ -116,11 +115,7 @@ function readU16BE(bytes: Uint8Array, offset: number): number {
 }
 
 /**
- * Decode the ARC-56 tuple arguments of the Campaign `create` method call, selector already stripped:
- * `vault: uint64, title: byte[], metadataUri: byte[], goal: uint64, deadline: uint64`.
- *
- * `uint64` arguments (vault, goal, deadline) are 8 raw big-endian bytes; `byte[]` arguments carry a
- * 2-byte length prefix.
+ * Decode the ARC-56 tuple arguments of the Campaign `create` method call (selector stripped): `vault: uint64, title: byte[], metadataUri: byte[], goal: uint64, deadline: uint64` - uint64s are 8 raw big-endian bytes, byte[]s carry a 2-byte length prefix.
  *
  * @param args Application call args with the 4-byte method selector already removed.
  * @returns The decoded title, metadata URI, goal and deadline.

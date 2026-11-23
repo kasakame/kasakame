@@ -39,10 +39,7 @@ interface CampaignFixture {
   oracle: ClaimTreeOracle
 }
 
-/**
- * A test-only inner caller. App args: campaign app id, amount, vault address. It creates the inner
- * `[pay, Campaign.pledge]` group, which is rejected by the top-level guard before any leaf is appended.
- */
+/** A test-only inner caller whose inner `[pay, Campaign.pledge]` group is rejected by the top-level guard. */
 const INNER_CALLER_TEAL = `#pragma version 11
 txn ApplicationID
 bnz main
@@ -194,8 +191,7 @@ async function buildPledgeGroup(
   if (options.with !== false) {
     for (let i = 0; i < count; i++) {
       const target = options.appId ?? stack.vault.appId
-      // Repeated credits must differ, or algod rejects the group as a duplicate transaction before the vault's
-      // final-transaction guard can run. The first credit still exercises that guard.
+      // Repeated credits must differ or algod rejects the group as duplicates before the vault's final-txn guard runs.
       const creditAmount = (options.amount ?? payment.amount) + (i === 0 ? 0n : 1n)
       const creditParams = {
         appId: target,

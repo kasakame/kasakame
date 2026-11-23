@@ -13,9 +13,7 @@ import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
 
 /**
- * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` (payment immediately
- * before the pledge, matching credit immediately after it and last) with a freshly rebuilt frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
- * first attempts, each of which costs the user an approval plus burned fees).
+ * Build the pledge group without sending it: atomic `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier, after the indexer catches up since lag costs the user an approval plus burned fees.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -67,8 +65,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
 }
 
 /**
- * Build the pledge group without sending it. The transactions come back unsigned with the session signer attached, so
- * an external signer can inspect or replace it before submitting; `pledge` is the build-and-send wrapper.
+ * Build the pledge group without sending it; transactions come back unsigned with the session signer attached, and `pledge` is the build-and-send wrapper.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -80,8 +77,7 @@ export async function pledgeGroup(appId: bigint, session: WalletSession, amountM
 }
 
 /**
- * Pledge ALGO: build the group with `pledgeGroup` and send it. Retries once when a concurrent pledge moved the
- * frontier under us.
+ * Pledge ALGO: build the group with `pledgeGroup` and send it, retrying once when a concurrent pledge moved the frontier.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -101,9 +97,7 @@ export async function pledge(appId: bigint, session: WalletSession, amountMicroA
 }
 
 /**
- * Withdraw one pledge before the deadline (backer, while the campaign is still open). Waits for the indexer to
- * catch up before rebuilding the path (see pledge), then retries once when a concurrent spend moved the root
- * under us.
+ * Withdraw one pledge before the deadline (backer, while the campaign is open), waiting for the indexer and retrying once when a concurrent spend moved the root.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -111,8 +105,7 @@ export async function pledge(appId: bigint, session: WalletSession, amountMicroA
  */
 export async function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void> {
   const { algorand, vaultAppId } = getSdkConfig()
-  // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check),
-  // so register globally like pledge/delete do - otherwise this always throws "No signer found".
+  // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check), so register globally like pledge/delete.
   algorand.account.setSigner(session.address, session.signer)
   const minFee = await minimumFee(algorand)
   const attempt = async (): Promise<bigint | undefined> => {

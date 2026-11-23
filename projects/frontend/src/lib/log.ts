@@ -1,6 +1,5 @@
 /**
- * Log an action failure for debugging. Console output never leaves the browser, so this is safe for addresses and
- * error details - and it beats diagnosing from screenshots.
+ * Log an action failure for debugging; console output never leaves the browser, so addresses and error details are safe to include.
  *
  * @param context The action that failed (pledge, create, claim, ...).
  * @param error The caught failure.

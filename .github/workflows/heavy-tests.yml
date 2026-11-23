@@ -73,8 +73,7 @@ jobs:
       - name: Start LocalNet (algod only)
         run: |
           algokit localnet start
-          # The cap suites read algod only; stopping the indexer pipeline keeps its
-          # database from consuming the runner disk during the multi-hour run.
+          # The cap suites read algod only; stopping the indexer pipeline keeps its database from consuming the runner disk during the multi-hour run.
           docker stop algokit_sandbox_indexer algokit_sandbox_conduit algokit_sandbox_postgres
 
       - name: Run cap-scale failed-campaign suite
@@ -125,8 +124,7 @@ jobs:
       - name: Start LocalNet (algod only)
         run: |
           algokit localnet start
-          # The cap suites read algod only; stopping the indexer pipeline keeps its
-          # database from consuming the runner disk during the multi-hour run.
+          # The cap suites read algod only; stopping the indexer pipeline keeps its database from consuming the runner disk during the multi-hour run.
           docker stop algokit_sandbox_indexer algokit_sandbox_conduit algokit_sandbox_postgres
 
       - name: Run cap-scale claimed-campaign suite

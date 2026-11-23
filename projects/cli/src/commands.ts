@@ -21,10 +21,7 @@ import { openCliSession } from './session.js'
 import { whoami } from './walletconnect.js'
 
 /**
- * Refund every live pledge from a failed campaign, one wallet approval per pledge.
- *
- * Open and successful campaigns are rejected before the wallet is touched. A failed refund is reported and the
- * remaining pledges are still attempted; the command exits non-zero when any refund failed.
+ * Refund every live pledge from a failed campaign, one wallet approval per pledge; every failed refund is reported and the rest still run.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -43,11 +40,7 @@ export async function runRefund(options: CliOptions): Promise<number> {
 }
 
 /**
- * Withdraw every live pledge of an open campaign, one wallet approval per pledge.
- *
- * Campaigns that already failed or succeeded are rejected before the wallet is touched. With several live pledges,
- * `--pledge` picks one and `--all` withdraws every one; a failed withdrawal is reported and the remaining pledges are
- * still attempted.
+ * Withdraw every live pledge of an open campaign, one wallet approval per pledge; `--pledge` picks one and `--all` takes every one.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -66,10 +59,7 @@ export async function runWithdraw(options: CliOptions): Promise<number> {
 }
 
 /**
- * Claim a successful campaign for its creator.
- *
- * Open, failed, and already-claimed campaigns are rejected before the wallet is touched; a connected wallet that
- * did not create the campaign is rejected before anything is submitted.
+ * Claim a successful campaign for its creator; a wallet that did not create it is rejected before anything is submitted.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -109,10 +99,7 @@ export async function runClaim(options: CliOptions): Promise<number> {
 }
 
 /**
- * Delete a campaign for its creator.
- *
- * Campaigns that still hold live pledges while open, and funded campaigns that are not claimed yet, are rejected
- * before the wallet is touched. Backers of a failed campaign keep refunding from the vault after the deletion.
+ * Delete a campaign for its creator; backers of a failed campaign keep refunding from the vault after the deletion.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -157,8 +144,6 @@ export async function runDelete(options: CliOptions): Promise<number> {
 
 /**
  * List the address's live pledges and the action each campaign allows now.
- *
- * Read-only: no signing session and no relay connection are opened.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -222,8 +207,6 @@ async function pledgeRows(entries: CampaignEntry[], address: string, readOnly: b
 
 /**
  * List the campaigns the address created and the action each one allows now.
- *
- * Read-only: no signing session and no relay connection are opened.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.

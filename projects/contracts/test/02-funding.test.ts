@@ -35,10 +35,7 @@ interface CampaignFixture {
 }
 
 /**
- * 02 - funding outcomes.
- *
- * Failed campaign: refund before and after delete, reject early finalize, sweep the residual after the window.
- * Successful campaign: claim and delete. The standalone tests repeat each workflow so they can run alone.
+ * 02 - funding outcomes: failed refunds and sweep, successful claim and delete; standalone tests can run alone.
  */
 describe('02 funding outcomes', () => {
   const fixture = algorandFixture()

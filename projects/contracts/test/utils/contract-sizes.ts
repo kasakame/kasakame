@@ -1,8 +1,4 @@
-/**
- * Pinned compiled sizes, schemas, and app MBR per contract.
- *
- * Update this fixture and `docs/limits.md` together when a contract changes.
- */
+/** Pinned compiled sizes, schemas, and app MBR per contract; update with `docs/limits.md` in the same change. */
 export const CONTRACT_SIZES = {
   campaign: {
     contract: 'Campaign',

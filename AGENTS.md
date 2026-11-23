@@ -65,6 +65,7 @@ algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
 git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck  # ShellCheck all tracked shell scripts
+node projects/utils/scripts/check-comments.ts  # one-line prose rule (--report for the baseline)
 
 cd projects/contracts
 npm run build                    # compile contracts + generate typed clients
@@ -233,6 +234,11 @@ the product contract. The pinned values and the AVM limits are in
   that source. `dist` is committed: rebuild it with `src` and commit both in the
   same change; `check-constants` rebuilds and fails when the committed output
   drifts.
+- **Comments carry one line of prose.** Consecutive `//`/`#` comments and block
+  comments stay on one line; JSDoc `@param`/`@returns` tags may stack. Run
+  `node projects/utils/scripts/check-comments.ts` (or `npm run check:comments` in
+  `projects/utils`); `--report` prints the per-area baseline. Generated output
+  and commented-out config assignments (`# KEY=`) are skipped.
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in

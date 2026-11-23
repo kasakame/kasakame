@@ -21,8 +21,7 @@ const ConnectWallet = ({ openModal, onHide, onShow }: ConnectWalletInterface) =>
   const [connectError, setConnectError] = useState<string | null>(null)
 
   const isKmd = (wallet: Wallet) => wallet.id === KMD_WALLET_ID
-  // Only Exodus is extension-gated (window.algorand); Pera/Defly also support mobile flows, so their failures
-  // surface through the connect error below instead of a pre-check.
+  // Only Exodus is extension-gated (window.algorand); Pera/Defly also support mobile, so their failures surface through the connect error below.
   const isAvailable = (wallet: Wallet) =>
     wallet.id !== EXODUS_WALLET_ID ||
     (typeof window !== 'undefined' && (window as unknown as { algorand?: unknown }).algorand !== undefined)
@@ -62,9 +61,7 @@ const ConnectWallet = ({ openModal, onHide, onShow }: ConnectWalletInterface) =>
                       const accounts = await wallet.connect()
                       const [account] = accounts
                       if (account !== undefined && account.address !== '') {
-                        // Pre-warm the backend session so later uploads skip their sign-in popup.
-                        // Silent: anything failing here falls back to signing on demand. ARC-60 only on
-                        // purpose: the transaction fallback would pop the wallet right after connecting.
+                        // Pre-warm the backend session so later uploads skip their sign-in popup; failures stay silent (sign on demand), ARC-60 only so no wallet popup follows the connect.
                         void ensureSession({
                           baseUrl: backendUrl(),
                           address: account.address,
@@ -110,9 +107,7 @@ const ConnectWallet = ({ openModal, onHide, onShow }: ConnectWalletInterface) =>
                   if (activeWallet) {
                     await activeWallet.disconnect()
                   } else {
-                    // Required for logout/cleanup of inactive providers
-                    // For instance, when you login to localnet wallet and switch network
-                    // to testnet/mainnet or vice verse.
+                    // Required for logout/cleanup of inactive providers, e.g. logging into the LocalNet wallet then switching network.
                     localStorage.removeItem('@txnlab/use-wallet:v5')
                     window.location.reload()
                   }

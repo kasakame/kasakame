@@ -1,6 +1,4 @@
-// ARC-4 selectors of the methods the SDK replays from indexer history and routes on.
-// `selectors.spec.ts` recomputes them from the generated clients' ARC-56 specs, so a
-// signature change fails the SDK lane instead of silently breaking tree reconstruction.
+// ARC-4 selectors of the methods the SDK replays from indexer history and routes on; `selectors.spec.ts` recomputes them from the generated clients' ARC-56 specs.
 
 /** Campaign `pledge(pay,byte[])void` selector. */
 export const SELECTOR_PLEDGE = 'a4030bd2'

@@ -6,8 +6,7 @@ import { SPECS_VERSION } from './index.js'
 const require = createRequire(import.meta.url)
 const contractsPackage = require('../../contracts/package.json') as { version: string }
 
-// The public runtime surface. Adding, removing, or renaming an export requires an explicit update here and in
-// docs/sdk.md; type-only exports do not appear at runtime.
+// The public runtime surface: adding, removing, or renaming an export requires an explicit update here and in docs/sdk.md.
 const PUBLIC_EXPORTS = [
   'MAX_TREE_SIZE',
   'SPECS_VERSION',

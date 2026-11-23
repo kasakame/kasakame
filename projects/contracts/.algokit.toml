@@ -15,8 +15,7 @@ name = 'contracts'
 artifacts = 'smart_contracts/artifacts'
 
 [project.deploy]
-# Every supported network maps to an explicit, mode-named script; the general
-# command doubles as the `localnet` mapping.
+# Every supported network maps to an explicit script; the general command is the `localnet` mapping.
 command = "npm run deploy:localnet"
 
 [project.deploy.testnet]

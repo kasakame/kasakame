@@ -2,10 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * Stage the compiled contract artifacts into the npm package layout.
- *
- * Runs on `prepack`; the repository build output stays the source of truth and
- * `dist` is generated, never committed.
+ * Stage the compiled artifacts into the npm package layout on `prepack`; `dist` is generated, never committed.
  */
 
 const projectDir = path.resolve(import.meta.dirname, '../..')

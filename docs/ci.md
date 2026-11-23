@@ -2,7 +2,8 @@
 
 This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
-verification job per project plus repo-wide workflow, shell, and Markdown lint,
+verification job per project plus repo-wide workflow, shell, Markdown, and
+comment lint,
 the separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-contracts`](../.github/workflows/release-contracts.yml),
@@ -58,8 +59,8 @@ reasoning behind the splits.
   `constants` changed, and
   `check-contracts` runs for contracts, `utils_core`, `constants`, the oracle, or
   workspace changes. Markdown, shell, and
-  workflow files run only `repo-lint`; docs images, licenses, and inert root
-  files run no lane.
+  workflow files run `repo-lint`; `comment-lint` runs on every change. Docs
+  images, licenses, and inert root files run no project lane.
   `.prettierrc.json` is part of `workspace`, so formatting-config changes are
   not a special filter.
 - **The trigger policy is centralized.** `changes` publishes derived `run_*`
@@ -101,6 +102,7 @@ reasoning behind the splits.
 ```mermaid
 flowchart TD
     changes["Detect changes<br/>(changed paths)"]
+    comments["Lint comments<br/>(one-line prose rule)"]
     repo["Lint repo<br/>(workflows / shell / markdown)"]
     buildc["Compile contracts<br/>(TEAL + specs + clients)"]
     contracts["Check contracts<br/>(format/lint/types/tests)"]
@@ -116,6 +118,7 @@ flowchart TD
     gate["Gate<br/>(single required check)"]
 
     changes --> repo
+    comments --> gate
     changes --> buildc
     changes --> contracts
     changes --> buildsdk
@@ -154,6 +157,7 @@ flowchart TD
 | Job | Runs when | Node.js | AlgoKit CLI | Docker | Artifacts it consumes |
 | --- | --- | --- | --- | --- | --- |
 | `changes` | always | - | - | - | - |
+| `comment-lint` | always | ✅ | - | - | - |
 | `repo-lint` | `ci`, `shell`, or `markdown` changed | ✅ | - | ✅ (actionlint image) | - |
 | `compile-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | - | - (produces `contracts-artifacts`) |
 | `check-contracts` | contracts, `utils_core`, `constants`, `oracle`, or `workspace` changed | ✅ | - | - | - |
@@ -173,9 +177,10 @@ flowchart TD
 | `release-sdk` (own workflow) | manual | ✅ | - | - | - |
 | `release-cli` (own workflow) | manual | ✅ | - | - | - |
 
-Key point: **format/lint/type-check, unit-test, markdown, and shell lint need no
-AlgoKit install**. `eslint`, `prettier`, `tsc`, `vitest`, `markdownlint-cli2`, and
-`shellcheck` are standalone tools; `actionlint` is the one repo-lint step that
+Key point: **format/lint/type-check, unit-test, markdown, shell, and comment
+lint need no AlgoKit install**. `eslint`, `prettier`, `tsc`, `vitest`,
+`markdownlint-cli2`, and `shellcheck` are standalone tools; the comment check
+runs on Node's TypeScript stripping. `actionlint` is the one repo-lint step that
 uses a container. The contracts verification job does not build anything: the
 offline contract suite runs the contract source directly, and only
 `compile-contracts` compiles. `build-sdk` runs codegen against the same-run
@@ -239,7 +244,7 @@ release.
 
 ## Workflow: build-and-test
 
-Implemented at `.github/workflows/build-and-test.yml`. Eleven jobs. `changes`
+Implemented at `.github/workflows/build-and-test.yml`. Fifteen jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
 on the branch (`github.ref` as the base on pushes). Manual dispatch skips
@@ -292,6 +297,10 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 
 - **`changes`** - checkout with `fetch-depth: 0`, the paths-filter action, and
   the outputs; no Node setup, seconds of work.
+- **`comment-lint`** - runs on every change with Node 24 type stripping and no
+  install. Runs the scanner self-test, then fails when a tracked source or
+  config file carries more than one line of comment prose; JSDoc
+  `@param`/`@returns` tags may stack.
 - **`repo-lint`** - runs when `run_repo_lint` is true. Runs
   actionlint in the `rhysd/actionlint:1.7.12` container (which bundles
   ShellCheck for workflow `run:` blocks), the runner's preinstalled ShellCheck
@@ -704,7 +713,8 @@ and caches:
 
 The Docker images in CI are **prebuilt**: `rhysd/actionlint:1.7.12` for
 `repo-lint`, the Postgres service (backend job), and the algod/indexer
-sandbox (integration job). If runner install time ever justifies a custom CI
+sandbox (integration job). `comment-lint` needs only Node's TypeScript
+stripping and no image or install. If runner install time ever justifies a custom CI
 image, publish it once to GHCR and rebuild only when its `Dockerfile` changes.
 
 ## Dependency updates

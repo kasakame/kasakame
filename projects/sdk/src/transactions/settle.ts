@@ -12,9 +12,7 @@ import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
 
 /**
- * Build the refund group without sending it. Routes by the vault box (fresh from algod): an `Open`/missing box goes
- * through the campaign, a `Failed` box goes straight to `vault.refund` (covers post-settle and post-delete). Waits
- * for the indexer to catch up before rebuilding the path (see buildPledgeGroup).
+ * Build the refund group without sending it, routing by the fresh vault box: `Open`/missing goes through the campaign, `Failed` goes straight to `vault.refund` (covers post-settle and post-delete).
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -58,8 +56,7 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
 }
 
 /**
- * Build the refund group without sending it - unsigned transactions with the session signer attached, for external
- * signing or inspection. `refund` is the build-and-send wrapper.
+ * Build the refund group without sending it - unsigned transactions with the session signer attached; `refund` is the build-and-send wrapper.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -71,8 +68,7 @@ export async function refundGroup(appId: bigint, session: WalletSession, leaf: B
 }
 
 /**
- * Refund one pledge after a failed campaign: build the group with `refundGroup` and send it. Retries once when a
- * concurrent spend moved the root under us.
+ * Refund one pledge after a failed campaign: build the group with `refundGroup` and send it, retrying once when a concurrent spend moved the root.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -126,10 +122,7 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
 }
 
 /**
- * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow to the creator,
- * and unregisters from the Registry (returning the registration deposit). One atomic group (one wallet approval):
- * unregister runs first so every app reference resolves while the campaign app still exists, and the Registry requires
- * its `delete()` to be the immediately following transaction. Atomicity makes the order irrelevant to the outcome.
+ * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow, and unregisters from the Registry in one atomic group - unregister runs first so app references resolve while the campaign exists.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -166,8 +159,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
 }
 
 /**
- * Settle a failed campaign permissionlessly when the creator is gone. The vault reads the campaign's live global
- * state, so the campaign app must still exist. After this, refunds go straight through the vault.
+ * Settle a failed campaign permissionlessly when the creator is gone; the vault reads the campaign's live global state, so the app must still exist.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -184,8 +176,7 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
 }
 
 /**
- * Release a claimed campaign's vault box permissionlessly, recovering its minimum balance to the vault. Requires the
- * box to be Claimed with no outstanding balance; a missing box is a no-op.
+ * Release a claimed campaign's vault box permissionlessly, recovering its minimum balance to the vault; requires a Claimed box with no outstanding balance, and a missing box is a no-op.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -202,8 +193,7 @@ export async function releaseClaimed(appId: bigint, session: WalletSession): Pro
 }
 
 /**
- * Sweep a settled-failed campaign's residual to the sweep target and release its box once the refund window closes
- * or the box is fully paid out. Permissionless.
+ * Sweep a settled-failed campaign's residual to the sweep target and release its box once the refund window closes or the box is fully paid out; permissionless.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.

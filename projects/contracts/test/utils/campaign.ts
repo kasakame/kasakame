@@ -60,9 +60,7 @@ export function pledgeExtraFee(peaks: number): bigint {
 }
 
 /**
- * Extra fee for a spend: the payout inners plus one fee per OpUp take, sizing from the early path-length upper bound
- * with no assumed pre-top-up headroom. That may overpay one take but never underfunds; fee minimality belongs to the
- * SDK.
+ * Extra fee for a spend: payout inners plus OpUp takes sized from the path-length bound, never underfunding.
  *
  * @param path The oracle path for the leaf.
  * @param payoutInners 2 on the campaign path (`payBack` + payment), 1 on the vault path.
@@ -116,8 +114,7 @@ export async function pledge(
     amount: microAlgos(amount),
   })
   const composer = stack.algorand.send.newGroup()
-  // The payment object is referenced by the pledge call, which pulls it into the group ahead of the call.
-  // (Do NOT also pass it via addTransaction - the composer does not dedupe and the group would carry it twice.)
+  // Passing `pay` as a method arg pulls it into the group; never also addTransaction it (the composer does not dedupe).
   composer.addAppCallMethodCall({
     appId,
     method: ABIMethod.fromSignature('pledge(pay,byte[])void'),
@@ -170,9 +167,7 @@ interface PendingInnerTxn {
 }
 
 /**
- * Count the OpUp takes from a simulated group. The last top-level call is the campaign or vault spend; its direct inner
- * transactions are the OpUp app creates plus one payout call (`payBack` or the vault payment), so `length - 1` is the
- * take count. The simulator returns the same inners as the send and does not mutate state.
+ * Counts OpUp takes from a simulated group as the last call's inners minus the payout; the simulator does not mutate state.
  *
  * @param composer The built spend group.
  * @returns The OpUp take count.

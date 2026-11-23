@@ -14,8 +14,7 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 export function buildApp() {
   const app = Fastify({ logger: true })
 
-  // Browsers call the API cross-origin (frontend :5173 -> backend :3001). Auth rides on Bearer headers, not
-  // cookies, so a wildcard origin is sufficient - no credentials mode involved.
+  // Cross-origin browser calls with Bearer auth (no cookies), so a wildcard origin is safe.
   app.addHook('onSend', async (_request, reply, payload) => {
     reply.header('access-control-allow-origin', '*')
     reply.header('access-control-allow-methods', 'GET, POST, OPTIONS')
@@ -116,8 +115,7 @@ export function buildApp() {
     done(null, body)
   })
 
-  // Authenticated: pinning spends the platform's Pinata quota.
-  // The image/* parser above only runs when that content-type is present, so the Headers generic holds at runtime.
+  // Authenticated (Pinata quota); the image/* parser above only runs for that content type, so the Headers generic holds.
   app.post<{ Body: Uint8Array<ArrayBuffer>; Headers: { 'content-type': string }; Querystring: { filename?: unknown } }>(
     '/uploads',
     { preHandler: authenticate, bodyLimit: MAX_UPLOAD_BYTES },

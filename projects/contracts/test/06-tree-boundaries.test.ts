@@ -141,10 +141,7 @@ describe('06 tree boundaries', () => {
     { id: 'CON-222', n: 1_024 },
   ] as const
 
-  // Pinned LocalNet measurements: the OpUp takes the contract requests at each boundary. The spend helper funds the
-  // zero-headroom upper bound, so the paid fee can be higher; these counts catch a contract requesting one more take.
-  // CON-221 (N=1,023, k=11, h=18) is also the prelude guard: 7 takes proves at least 487 ops survive the ABI router and
-  // guards, above the ~260 the 2^19-1 cap needs for 14 takes + 2 payouts = 16 inner txns.
+  // Pinned OpUp-take counts per boundary; the helper funds the zero-headroom bound, and CON-221's 7 takes is the prelude guard.
   const LADDER_TAKES: Record<string, number> = {
     'CON-210': 3,
     'CON-211': 2,

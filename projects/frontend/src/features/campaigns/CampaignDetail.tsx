@@ -121,8 +121,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
     }
   }, [readCore, readLeaves, readWindow, applyLeaves])
 
-  // Post-action refresh: raised, status, and leaves only. Metadata, window, and timestamp cannot change under an
-  // action, so they are left alone - and the old UI stays visible throughout (no spinner).
+  // Post-action refresh: raised, status, and leaves only; metadata, window, and timestamp cannot change, and the old UI stays visible (no spinner).
   const refreshSpend = useCallback(async () => {
     try {
       const [{ now, result }, leafResult] = await Promise.all([readCore(), readLeaves()])
@@ -202,8 +201,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
     setBusyAction(key)
     setMessage(null)
     try {
-      // Fail fast on a dead bridge instead of sending into it: the throw below classifies as a
-      // dead session, so the handling underneath stays the single path for both cases.
+      // Fail fast on a dead bridge instead of sending into it: the throw below classifies as a dead session, keeping one handling path.
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
       await action()
       setMessage(success)
@@ -212,8 +210,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
       logError('transaction', error)
       const kind = classifyError(error)
       if (kind === 'session') {
-        // Every action button here requires a connected wallet, so activeWallet is always set - and
-        // disconnectQuietly tolerates null anyway.
+        // Every action button here requires a connected wallet, so activeWallet is set - and disconnectQuietly tolerates null anyway.
         void disconnectQuietly(activeWallet)
         setMessage('Wallet session expired. Connect your wallet again to continue.')
       } else {

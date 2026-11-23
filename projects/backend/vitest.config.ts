@@ -4,13 +4,11 @@ export default defineConfig({
   test: {
     environment: 'node',
     globalSetup: ['./vitest.global-setup.ts'],
-    // Spec files share one throwaway database and clean it with blanket
-    // DELETEs, so concurrent files can wipe each other's in-flight rows.
+    // Shared throwaway DB cleaned with blanket DELETEs: concurrent files would wipe each other's rows.
     fileParallelism: false,
     coverage: {
       provider: 'v8',
-      // App modules only: the listen entry (like the frontend's main) and the
-      // manually-exercised ops scripts in scripts/ are not counted.
+      // App modules only: the listen entry and manually-run scripts/ are not counted.
       include: ['src/app.ts', 'src/auth.ts', 'src/db.ts', 'src/uploads.ts'],
       thresholds: {
         lines: 100,

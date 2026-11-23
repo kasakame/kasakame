@@ -108,10 +108,7 @@ async function createVault(
 }
 
 /**
- * Deploy the Registry, fund it, deploy the ClaimsVault, and bind it.
- *
- * The Registry fixes the campaign/vault hashes, sweep target, and refund window at `create`; the vault records the
- * Registry id and is bound once. Both app accounts are funded so they can hold their boxes.
+ * Deploy and fund the Registry, then deploy the ClaimsVault and bind it once; both app accounts need funding to hold their boxes.
  *
  * @param algorand The LocalNet client.
  * @param options Deployment options.

@@ -76,9 +76,7 @@ export interface DeployStackOptions {
 }
 
 /**
- * Deploy a Registry, fund it, deploy + bind the official vault, and assert the deployment ledger.
- *
- * Starts a fresh fixture scope, so each call is isolated from earlier tests.
+ * Deploy a Registry, fund it, deploy + bind the vault, and assert the ledger in a fresh fixture scope.
  *
  * @param fixture The Algorand fixture.
  * @param options Deployment options.
