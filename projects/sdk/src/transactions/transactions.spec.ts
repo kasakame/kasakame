@@ -253,7 +253,7 @@ describe('transaction helpers', () => {
     paramsVaultRefundMock.mockResolvedValue({ refund: 'params' })
     paramsUnregisterMock.mockResolvedValue({ unregister: 'params' })
     paymentMock.mockResolvedValue({ payment: 'pay-txn' })
-    composerBuildMock.mockResolvedValue({ transactions: [{ txn: 'txn', signer: 'signer' }] })
+    composerBuildMock.mockResolvedValue({ transactions: [{ txn: { group: new Uint8Array(32) }, signer: 'signer' }] })
     composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }] })
     sendCreateMock.mockResolvedValue({ result: { appId: 9n, appAddress: { toString: () => 'ESCROW' } } })
     for (const mock of [
@@ -487,11 +487,13 @@ describe('transaction helpers', () => {
     expect(composerSendMock).toHaveBeenCalledTimes(2)
   })
 
-  it('pledgeGroup returns the built group without sending', async () => {
-    const transactions = [{ txn: 'txn', signer: 'signer' }]
+  it('pledgeGroup returns the built transactions without a group id and without sending', async () => {
+    const transactions = [{ txn: { group: new Uint8Array(32) }, signer: 'signer' }]
     composerBuildMock.mockResolvedValue({ transactions })
 
-    await expect(pledgeGroup(9n, session, 1_000_000n)).resolves.toBe(transactions)
+    const group = await pledgeGroup(9n, session, 1_000_000n)
+    expect(group).toBe(transactions)
+    expect(transactions[0]?.txn.group).toBeUndefined()
     expect(composerAddMock).toHaveBeenCalledTimes(2)
     expect(composerBuildMock).toHaveBeenCalledOnce()
     expect(composerSendMock).not.toHaveBeenCalled()
@@ -604,12 +606,14 @@ describe('transaction helpers', () => {
     expect(paramsVaultRefundMock).not.toHaveBeenCalled()
   })
 
-  it('refundGroup returns the built group without sending', async () => {
+  it('refundGroup returns the built transactions without a group id and without sending', async () => {
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
-    const transactions = [{ txn: 'txn', signer: 'signer' }]
+    const transactions = [{ txn: { group: new Uint8Array(32) }, signer: 'signer' }]
     composerBuildMock.mockResolvedValue({ transactions })
 
-    await expect(refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).resolves.toBe(transactions)
+    const group = await refundGroup(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
+    expect(group).toBe(transactions)
+    expect(transactions[0]?.txn.group).toBeUndefined()
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
     expect(composerSendMock).not.toHaveBeenCalled()
   })

@@ -7,7 +7,7 @@ import type { BackerLeaf } from '../claim-tree/index.js'
 import { MAX_TREE_SIZE, clearTreeCache, frontierForPledge, loadTree, pathBlobForRefund, pledgeOpUpIterations } from '../claim-tree/index.js'
 import { registrationBox } from './campaign.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
-import { campaignClientFor, vaultClientFor } from './clients.js'
+import { campaignClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import { submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
@@ -73,7 +73,8 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
  * @returns The unsigned group.
  */
 export async function pledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionWithSigner[]> {
-  return (await buildPledgeGroup(appId, session, amountMicroAlgos)).build().then((built) => built.transactions)
+  const composer = await buildPledgeGroup(appId, session, amountMicroAlgos)
+  return withoutGroupId((await composer.build()).transactions)
 }
 
 /**
