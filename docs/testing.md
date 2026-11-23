@@ -241,7 +241,7 @@ class as it does not extend Contract or BaseContract".
 
 `npm run test:size` reads the built ARC-56 bytecode and asserts the pinned
 approval/clear/total bytes, extra pages, page capacity, global schema, and app
-MBR in `test/utils/size-budget.fixture.ts`. The checks live in
+MBR in `test/utils/contract-sizes.ts`. The checks live in
 `test/08-size-budget.spec.ts`. They run in the
 `compile-contracts` CI job after `npm run build`; update the snapshot and
 [`limits.md`](limits.md) together when a contract changes. It is excluded from
@@ -339,12 +339,12 @@ on the vault, released by `notifyDelete`/`releaseClaimed`/`finalize`), and the
 registration deposit (18,900 µA, returned by `unregister` in the
 `[unregister, delete]` group). Rejected transactions are asserted to move
 **nothing** (atomic failure charges no fee). The expected app MBRs come from
-`size-budget.fixture.ts`, so a schema or page change fails until the snapshot and
+`contract-sizes.ts`, so a schema or page change fails until the snapshot and
 `docs/limits.md` are updated.
 
 **Contract sizes.** `npm run test:size` reads the built ARC-56 bytecode and pins
 the approval/clear bytes, page count, schema, and app MBR in
-`test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+`test/utils/contract-sizes.ts`; it runs in the `compile-contracts` CI
 job after `npm run build`. See [`limits.md`](limits.md) for the current values.
 
 **Differential tree assertions.** Pledge/cancel/refund tests drive the Python

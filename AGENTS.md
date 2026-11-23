@@ -167,7 +167,7 @@ the product contract. The pinned values and the AVM limits are in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+  `test/utils/contract-sizes.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
