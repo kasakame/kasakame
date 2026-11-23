@@ -53,7 +53,7 @@ const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
 
 // Packed vault box layout: paidIn ‖ paidOut ‖ root ‖ n ‖ status ‖ settledAt, with the offsets in @kasakame/constants.
 
-// ARC-4 selector for the Registry's `isRegistered(uint64)bool` readonly method; checked via inner call before a campaign's first box so an unregistered campaign cannot park the vault's minimum balance.
+// ARC-4 selector for Registry.isRegistered(uint64)bool; checked before a campaign's first box so an unregistered campaign cannot park the vault's MBR.
 const REGISTRY_IS_REGISTERED_SELECTOR = Bytes.fromHex('716a3d0e')
 
 // The ARC-4 bool return of the Registry's `isRegistered`: the return-value prefix (0x151f7c75) followed by 0x80 (true).
@@ -102,7 +102,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Record one pledge payment into a campaign's box: the group must be `[Payment, Campaign.pledge, Vault.credit]` (both NoOp), which ties every inflow to a backer leaf and stops one payment backing several credits.
+   * Record one pledge payment into a campaign's box: the NoOp group must be [Payment, Campaign.pledge, Vault.credit], tying every inflow to a backer leaf and one payment to one credit.
    *
    * @param app The campaign application.
    * @param amount The pledged amount, in microAlgos.

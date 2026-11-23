@@ -9,7 +9,7 @@ const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
 const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 /**
- * Build a campaign header from an indexer application: global state for live campaigns, history for deleted ones (creation txn decoded from its round, total recovered from the vault box, status best-effort).
+ * Build a campaign header from an indexer application: global state for live campaigns, history for deleted ones (creation txn, recovered total, best-effort status).
  *
  * @param application Indexer application, live or deleted.
  * @returns The campaign header.

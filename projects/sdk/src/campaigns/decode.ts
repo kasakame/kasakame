@@ -115,7 +115,7 @@ function readU16BE(bytes: Uint8Array, offset: number): number {
 }
 
 /**
- * Decode the ARC-56 tuple arguments of the Campaign `create` method call (selector stripped): `vault: uint64, title: byte[], metadataUri: byte[], goal: uint64, deadline: uint64` - uint64s are 8 raw big-endian bytes, byte[]s carry a 2-byte length prefix.
+ * Decode the ARC-56 tuple args of Campaign.create (selector stripped): vault, title, metadataUri, goal, deadline; uint64s are 8 big-endian bytes, byte[]s carry a 2-byte length prefix.
  *
  * @param args Application call args with the 4-byte method selector already removed.
  * @returns The decoded title, metadata URI, goal and deadline.

@@ -1,4 +1,4 @@
-// Mint a throwaway session token for manual API testing (no wallet needed): export $(node --env-file=.env scripts/mint-token.mjs), then curl http://localhost:3001/me -H "Authorization: Bearer $TOKEN".
+// Mint a throwaway session token for manual API testing (no wallet needed): export $(node --env-file=.env scripts/mint-token.mjs), then curl /me with the bearer token.
 import algosdk from 'algosdk'
 import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'

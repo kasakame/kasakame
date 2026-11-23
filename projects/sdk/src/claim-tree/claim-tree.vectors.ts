@@ -1,5 +1,5 @@
 /**
- * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with `python3 scripts/generate-claimtree-vectors.py` (from projects/sdk); each step drives docs/claim-tree-protocol-reference.py through a fixed pledge/null scenario.
+ * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with python3 scripts/generate-claimtree-vectors.py.
  */
 export interface ClaimTreeVectorExpect {
   n: number

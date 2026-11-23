@@ -5,7 +5,7 @@
 export * from '@kasakame/sdk'
 
 /**
- * Best-effort disconnect to clear a dead wallet session so reconnecting is one click; never throws, so callers must fire-and-forget (`void disconnectQuietly(...)`) - a hanging disconnect would stall the UI.
+ * Best-effort disconnect to clear a dead wallet session so reconnecting is one click; it never throws, so callers fire-and-forget with void disconnectQuietly(...).
  *
  * @param activeWallet The active wallet from useWallet, if any.
  */

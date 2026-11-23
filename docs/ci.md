@@ -299,8 +299,8 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   the outputs; no Node setup, seconds of work.
 - **`comment-lint`** - runs on every change with Node 24 type stripping and no
   install. Runs the scanner self-test, then fails when a tracked source or
-  config file carries more than one line of comment prose; JSDoc
-  `@param`/`@returns` tags may stack.
+  config file carries more than one line of comment prose or a line over 200
+  characters; JSDoc `@param`/`@returns` tags may stack.
 - **`repo-lint`** - runs when `run_repo_lint` is true. Runs
   actionlint in the `rhysd/actionlint:1.7.12` container (which bundles
   ShellCheck for workflow `run:` blocks), the runner's preinstalled ShellCheck

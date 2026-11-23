@@ -9,7 +9,7 @@ export interface LivenessManager {
 }
 
 /**
- * Recheck a connected wallet's bridge before trusting it: `activeAddress` and `isConnected` are store-derived, so a silently dead bridge still looks connected, and every adapter's `resumeSession()` revalidates silently (clearing the store via `onDisconnect()` on failure).
+ * Recheck a connected wallet's bridge before trusting it: activeAddress and isConnected are store-derived, so a dead bridge looks connected until resumeSession() revalidates.
  *
  * @param manager The shared wallet manager.
  * @param wallet The active react wallet, if any.

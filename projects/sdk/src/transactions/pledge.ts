@@ -13,7 +13,7 @@ import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
 
 /**
- * Build the pledge group without sending it: atomic `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier, after the indexer catches up since lag costs the user an approval plus burned fees.
+ * Build the pledge group without sending it: atomic [pay, campaign.pledge, vault.credit] with a freshly rebuilt frontier, after the indexer catches up; lag costs an approval plus fees.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.

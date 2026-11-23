@@ -130,13 +130,7 @@ def main() -> None:
     }
     header = (
         "/**\n"
-        " * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with:\n"
-        " * `python3 scripts/generate-claimtree-vectors.py` (from projects/sdk).\n"
-        " *\n"
-        " * Each step drives docs/claim-tree-protocol-reference.py through a fixed pledge/null scenario. `backerAddress`\n"
-        " * is the Algorand address of `backerPubkey` (checksum-validated by the spec); amounts/raised are decimal strings\n"
-        " * so they survive JSON without precision loss. `frontier` is the pre-append frontier the pledge call takes;\n"
-        " * `path` is the pre-null path the refund call takes.\n"
+        " * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with python3 scripts/generate-claimtree-vectors.py.\n"
         " */\n"
         "export interface ClaimTreeVectorExpect {\n"
         "  n: number\n"

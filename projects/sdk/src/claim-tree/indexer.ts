@@ -94,7 +94,7 @@ async function searchAppCalls(appId: bigint): Promise<algosdk.indexerModels.Tran
 }
 
 /**
- * Fetch confirmed pledge calls for a campaign, oldest first; each pledge pairs with the nearest preceding payment from the caller to the vault in its block, and a missing payment throws rather than corrupt positions.
+ * Fetch confirmed pledge calls for a campaign, oldest first; each pairs with the nearest preceding caller payment to the vault, and a missing payment throws.
  *
  * @param campaignId Campaign application id.
  * @param vaultAddress Vault app address (the payment receiver).

@@ -25,7 +25,7 @@ import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Campaign } from './contract.algo'
 
 /**
- * Behavioral tests for the Campaign contract (claim-tree design) against the offline AVM emulation, differential against the Python oracle; vault inner calls run on LocalNet (`test/02-funding`, `test/04-bad-paths`).
+ * Behavioral tests for the Campaign contract (claim-tree design) against the offline AVM emulation and the Python oracle; vault inner calls run on LocalNet.
  */
 
 const GOAL = 10_000_000

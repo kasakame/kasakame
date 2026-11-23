@@ -114,7 +114,7 @@ export class Registry extends Contract {
   }
 
   /**
-   * Register a newly created Campaign app: the caller must be its creator and pays a refundable deposit, and the app's programs and `vault` global must match the official bundle. It must be the group's final transaction so one payment backs one registration.
+   * Register a Campaign app: creator only, refundable deposit, programs and vault matching the official bundle, and final in the group so one payment backs one registration.
    *
    * @param app The deployed Campaign application (its approval + clear-state programs and vault are verified).
    * @param payment Payment from the caller to the Registry account, covering the registration deposit.
@@ -146,7 +146,7 @@ export class Registry extends Contract {
   }
 
   /**
-   * Unregister a campaign and recover the deposit (creator only): the campaign must be settled, pristine, or failed in fact, and its `delete()` must be the very next transaction so delisting and deletion are atomic.
+   * Unregister and recover the deposit (creator only): the campaign must be settled, pristine, or failed in fact, and delete() must follow immediately so both are atomic.
    *
    * @param app The Campaign application.
    */

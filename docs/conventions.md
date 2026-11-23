@@ -75,8 +75,10 @@ documents the rules and the reasoning behind them.
   repo-root `.prettierrc.json`. It inserts one blank line between the description and
   the first tag, which `jsdoc/tag-lines` is configured to match (`startLines: 1`), so
   `npm run format` and `npm run lint` agree.
-- **Comments carry one line of prose.** Consecutive `//`/`#` comments and block
-  comments stay on one line; JSDoc `@param`/`@returns` tags may stack. Run
+- **Comments carry one line of prose.** One line is enough. If it needs two,
+  reconsider whether it is needed at all. Consecutive `//`/`#` comments and
+  block comments stay on one line and at most 200 characters; JSDoc
+  `@param`/`@returns` tags may stack. Run
   `node projects/utils/scripts/check-comments.ts` from the repo root, or
   `npm run check:comments` in `projects/utils`; `--report` prints the per-area
   baseline. Generated output and commented-out config assignments (`# KEY=`)

@@ -12,13 +12,17 @@ interface CommentBlock {
   line: number
   lines: number
   text: string
+  proseViolation: boolean
   violation: boolean
+  longLine: number | null
+  longLength: number
 }
 
 interface FileStats {
   commentLines: number
   files: number
   lines: number
+  longLines: number
   multiBlocks: number
   multiLines: number
   violations: number
@@ -43,6 +47,7 @@ const TEMPLATE = /\.template$/i
 const LINE_DIRECTIVE = /^\/\/\s*(?:eslint|prettier|@ts-|#\s*sourceMappingURL|comment-lint-ignore)/i
 const HASH_DIRECTIVE = /^#\s*(?:shellcheck|actionlint|yaml-language-server|renovate:|prettier-ignore|comment-lint-ignore|noqa)/i
 const HASH_CONFIG = /^#\s*[A-Z][A-Z0-9_]*\s*=/
+const MAX_COMMENT_LENGTH = 200
 
 function isSlash(file: string): boolean {
   return SLASH.test(file)
@@ -80,6 +85,19 @@ function jsdocDescriptionLines(raw: string[]): number {
   return firstTag === -1 ? lines.length : firstTag
 }
 
+function widestLine(raw: string[], startLine: number): { line: number | null; length: number } {
+  let line: number | null = null
+  let length = 0
+  for (let index = 0; index < raw.length; index += 1) {
+    const size = (raw[index] ?? '').length
+    if (size > length && size > MAX_COMMENT_LENGTH) {
+      line = startLine + index
+      length = size
+    }
+  }
+  return { line, length }
+}
+
 function scanSlash(source: string): CommentBlock[] {
   const lines = source.split('\n')
   const blocks: CommentBlock[] = []
@@ -90,19 +108,27 @@ function scanSlash(source: string): CommentBlock[] {
     if (trimmed.startsWith('//')) {
       const start = index
       const parts: string[] = []
+      const rawParts: string[] = []
       while (index < lines.length) {
-        const next = (lines[index] ?? '').trimStart()
+        const full = lines[index] ?? ''
+        const next = full.trimStart()
         if (!next.startsWith('//')) break
         parts.push(next)
+        rawParts.push(full)
         index += 1
       }
       const prose = parts.filter((part) => !LINE_DIRECTIVE.test(part))
+      const proseViolation = prose.length > 1
+      const widest = widestLine(rawParts, start + 1)
       blocks.push({
         kind: 'line',
         line: start + 1,
         lines: parts.length,
         text: parts[0] ?? '',
-        violation: prose.length > 1,
+        proseViolation,
+        violation: proseViolation || widest.line !== null,
+        longLine: widest.line,
+        longLength: widest.length,
       })
       continue
     }
@@ -121,12 +147,17 @@ function scanSlash(source: string): CommentBlock[] {
         }
       }
       const isSingleLine = raw.length === 1
+      const proseViolation = isJsdoc ? jsdocDescriptionLines(raw) > 1 : !isSingleLine
+      const widest = widestLine(raw, start + 1)
       blocks.push({
         kind: isJsdoc ? 'jsdoc' : 'block',
         line: start + 1,
         lines: raw.length,
         text: raw[0]?.trimStart() ?? '',
-        violation: isJsdoc ? jsdocDescriptionLines(raw) > 1 : !isSingleLine,
+        proseViolation,
+        violation: proseViolation || widest.line !== null,
+        longLine: widest.line,
+        longLength: widest.length,
       })
       continue
     }
@@ -144,19 +175,27 @@ function scanHash(source: string): CommentBlock[] {
     if (trimmed.startsWith('#') && !trimmed.startsWith('#!')) {
       const start = index
       const parts: string[] = []
+      const rawParts: string[] = []
       while (index < lines.length) {
-        const next = (lines[index] ?? '').trimStart()
+        const full = lines[index] ?? ''
+        const next = full.trimStart()
         if (!next.startsWith('#') || next.startsWith('#!')) break
         parts.push(next)
+        rawParts.push(full)
         index += 1
       }
       const prose = parts.filter((part) => !HASH_DIRECTIVE.test(part) && !HASH_CONFIG.test(part))
+      const proseViolation = prose.length > 1
+      const widest = widestLine(rawParts, start + 1)
       blocks.push({
         kind: 'hash',
         line: start + 1,
         lines: parts.length,
         text: parts[0] ?? '',
-        violation: prose.length > 1,
+        proseViolation,
+        violation: proseViolation || widest.line !== null,
+        longLine: widest.line,
+        longLength: widest.length,
       })
       continue
     }
@@ -171,8 +210,20 @@ function scanDelimited(source: string, pattern: RegExp, kind: BlockKind): Commen
     const start = match.index
     const text = match[0]
     const line = source.slice(0, start).split('\n').length
-    const lines = text.split('\n').length
-    blocks.push({ kind, line, lines, text, violation: lines > 1 })
+    const raw = text.split('\n')
+    const lines = raw.length
+    const proseViolation = lines > 1
+    const widest = widestLine(raw, line)
+    blocks.push({
+      kind,
+      line,
+      lines,
+      text,
+      proseViolation,
+      violation: proseViolation || widest.line !== null,
+      longLine: widest.line,
+      longLength: widest.length,
+    })
   }
   return blocks
 }
@@ -192,7 +243,7 @@ function areaOf(file: string): string {
 }
 
 function formatTable(rows: Map<string, FileStats>): void {
-  const header = ['area', 'files', 'lines', 'comment', 'share', 'blocks>1', 'lines', 'violations']
+  const header = ['area', 'files', 'lines', 'comment', 'share', 'blocks>1', 'lines', 'long', 'violations']
   const table = [...rows.entries()]
     .sort((a, b) => b[1].lines - a[1].lines)
     .map(([area, stats]) => [
@@ -203,6 +254,7 @@ function formatTable(rows: Map<string, FileStats>): void {
       `${((100 * stats.commentLines) / Math.max(stats.lines, 1)).toFixed(1)}%`,
       String(stats.multiBlocks),
       String(stats.multiLines),
+      String(stats.longLines),
       String(stats.violations),
     ])
   const widths = header.map((cell, column) => Math.max(cell.length, ...table.map((row) => (row[column] ?? '').length)))
@@ -226,6 +278,9 @@ function selfTestRun(): void {
     ['x.template', '# optional accounts:\n# A_MNEMONIC=\n# B_MNEMONIC=\n', 0],
     ['x.css', '/*\n one\n two\n */\n', 1],
     ['x.html', '<!--\n one\n two\n -->\n', 1],
+    ['x.ts', `// ${'a'.repeat(197)}\nexport const a = 1\n`, 0],
+    ['x.ts', `// ${'a'.repeat(198)}\nexport const a = 1\n`, 1],
+    ['x.ts', `/**\n * one\n *\n * @param a ${'a'.repeat(190)}\n */\nexport function f(a: number): number {\n  return a\n}\n`, 1],
   ]
   for (const [file, source, expected] of cases) {
     const actual = scanSource(file, source).filter((block) => block.violation).length
@@ -251,6 +306,7 @@ function main(): void {
       commentLines: 0,
       files: 0,
       lines: 0,
+      longLines: 0,
       multiBlocks: 0,
       multiLines: 0,
       violations: 0,
@@ -263,6 +319,7 @@ function main(): void {
         entry.multiBlocks += 1
         entry.multiLines += block.lines
       }
+      if (block.longLine !== null) entry.longLines += 1
       if (block.violation) {
         entry.violations += 1
         violations.push({ file, block })
@@ -279,10 +336,15 @@ function main(): void {
     return
   }
   for (const { file, block } of violations) {
+    const reasons: string[] = []
+    if (block.proseViolation) reasons.push(`${String(block.lines)} lines`)
+    if (block.longLine !== null) reasons.push(`${String(block.longLength)} chars`)
     const text = block.text.length > 100 ? `${block.text.slice(0, 97)}...` : block.text
-    console.log(`${file}:${String(block.line)}  ${String(block.lines)} lines  ${text}`)
+    console.log(`${file}:${String(block.longLine ?? block.line)}  ${reasons.join(', ')}  ${text}`)
   }
-  console.error(`\ncomment-lint: ${String(violations.length)} multi-line comments; keep prose to one line`)
+  console.error(
+    `\ncomment-lint: ${String(violations.length)} comment violations; keep prose to one line and ${String(MAX_COMMENT_LENGTH)} characters`,
+  )
   process.exitCode = 1
 }
 

@@ -9,7 +9,7 @@ import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } fr
 let cachedManager: WalletManager | undefined
 
 /**
- * The shared wallet manager, created once on first use; constructing it during render would reset wallet state, and reading config here keeps missing-env failures inside the render tree and this module side-effect-free.
+ * The shared wallet manager, created once on first use; constructing it during render would reset wallet state, and reading config here keeps missing-env failures in the render tree.
  *
  * @returns The shared WalletManager instance.
  */

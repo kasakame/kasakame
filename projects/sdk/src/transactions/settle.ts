@@ -122,7 +122,7 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
 }
 
 /**
- * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow, and unregisters from the Registry in one atomic group - unregister runs first so app references resolve while the campaign exists.
+ * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow, and unregisters from the Registry in one atomic group, unregister first.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
