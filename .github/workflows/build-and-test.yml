@@ -28,6 +28,7 @@ jobs:
       cli: ${{ steps.filter.outputs.cli }}
       backend: ${{ steps.filter.outputs.backend }}
       utils: ${{ steps.filter.outputs.utils }}
+      utils_core: ${{ steps.filter.outputs.utils_core }}
       constants: ${{ steps.filter.outputs.constants }}
       ci: ${{ steps.filter.outputs.ci }}
       oracle: ${{ steps.filter.outputs.oracle }}
@@ -35,17 +36,17 @@ jobs:
       shell: ${{ steps.filter.outputs.shell }}
       workspace: ${{ steps.filter.outputs.workspace }}
       run_repo_lint: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.ci == 'true' || steps.filter.outputs.shell == 'true' || steps.filter.outputs.markdown == 'true' }}
-      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
-      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' }}
-      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_compile_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_check_contracts: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_build_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_check_sdk: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.oracle == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
       run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
-      run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
-      run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -89,6 +90,10 @@ jobs:
               - 'projects/utils/**'
               - '!**/*.md'
               - '!**/LICENSE'
+            utils_core:
+              - 'projects/utils/package.json'
+              - 'projects/utils/program-hash.ts'
+              - 'projects/utils/testing/**'
             constants:
               - 'projects/constants/**'
               - '!**/*.md'
