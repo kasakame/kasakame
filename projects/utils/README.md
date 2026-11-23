@@ -9,7 +9,7 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
   Vitest or any other runner.
 - `release/` and `smoke/` - the release workflow scripts and the per-package
   smoke entries, run with Node 24 type stripping. They stay out of the packed
-  package (`files: ["src"]`).
+  package (`files` lists only `program-hash.ts` and `testing/`).
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.
