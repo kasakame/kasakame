@@ -1,6 +1,16 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
-import { APP_ID_BYTES, REGISTER_DEPOSIT_MICRO_ALGOS, REGISTRY_BOX_PREFIX } from '@kasakame/constants'
-import { getSdkConfig, waitForIndexerCatchUp } from '../chain.js'
+import {
+  APP_ID_BYTES,
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_METADATA_URI_BYTES,
+  MAX_TITLE_BYTES,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  MIN_GOAL_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  REGISTRY_BOX_PREFIX,
+} from '@kasakame/constants'
+import { fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp } from '../chain.js'
 import { CampaignFactory } from '../generated/CampaignClient.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
@@ -94,6 +104,24 @@ export async function createCampaign(
   deadlineSeconds: bigint,
 ): Promise<CreateCampaignResult> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  const titleBytes = new TextEncoder().encode(title)
+  if (titleBytes.length === 0) throw new Error('title is required')
+  if (titleBytes.length > MAX_TITLE_BYTES) {
+    throw new Error(`title must be at most ${String(MAX_TITLE_BYTES)} bytes`)
+  }
+  const metadataUriBytes = new TextEncoder().encode(metadataUri)
+  if (metadataUriBytes.length > MAX_METADATA_URI_BYTES) {
+    throw new Error(`metadata URI must be at most ${String(MAX_METADATA_URI_BYTES)} bytes`)
+  }
+  if (goalMicroAlgos < MIN_GOAL_MICRO_ALGOS || goalMicroAlgos > MAX_GOAL_MICRO_ALGOS) {
+    throw new Error(`goal must be between ${String(MIN_GOAL_MICRO_ALGOS)} and ${String(MAX_GOAL_MICRO_ALGOS)} microAlgos`)
+  }
+  const now = await fetchChainTimestamp()
+  const earliestDeadline = now + BigInt(MIN_CAMPAIGN_DURATION_SECONDS)
+  const latestDeadline = now + BigInt(MAX_CAMPAIGN_DURATION_SECONDS)
+  if (deadlineSeconds < earliestDeadline || deadlineSeconds > latestDeadline) {
+    throw new Error(`deadline must be between ${String(earliestDeadline)} and ${String(latestDeadline)} (chain time ${String(now)})`)
+  }
   const campaignFactory = new CampaignFactory({
     algorand,
     defaultSender: session.address,
@@ -103,8 +131,8 @@ export async function createCampaign(
   const sendResult = await campaignFactory.send.create.create({
     args: {
       vault: vaultAppId,
-      title: new TextEncoder().encode(title),
-      metadataUri: new TextEncoder().encode(metadataUri),
+      title: titleBytes,
+      metadataUri: metadataUriBytes,
       goal: goalMicroAlgos,
       deadline: deadlineSeconds,
     },

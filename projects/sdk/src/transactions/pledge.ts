@@ -1,5 +1,5 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
-import { CREDIT_EXTRA_INNERS } from '@kasakame/constants'
+import { CREDIT_EXTRA_INNERS, MAX_PLEDGE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import type { TransactionWithSigner } from 'algosdk'
 import { hexToBytes } from 'algosdk'
 import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from '../chain.js'
@@ -24,6 +24,9 @@ import { vaultAddress, vaultBoxRef } from './vault.js'
  */
 async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  if (amountMicroAlgos < MIN_PLEDGE_MICRO_ALGOS || amountMicroAlgos > MAX_PLEDGE_MICRO_ALGOS) {
+    throw new Error(`pledge amount must be between ${String(MIN_PLEDGE_MICRO_ALGOS)} and ${String(MAX_PLEDGE_MICRO_ALGOS)} microAlgos`)
+  }
   const minFee = await minimumFee(algorand)
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)

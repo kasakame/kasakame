@@ -294,6 +294,8 @@ Creation sends `create`, then registers with the Registry in a second group beca
 
 `pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 
+The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
+
 `settleOpen`, `releaseClaimed`, and `finalize` are the permissionless cleanup helpers. `settleOpen` settles a failed campaign whose creator is gone while the campaign app still exists, after which refunds go through the vault. `releaseClaimed` releases a claimed campaign's vault box, recovering its minimum balance; a missing box is a no-op. `finalize` sweeps a settled-failed campaign's residual to the sweep target and releases its box once the refund window closes or the box is fully paid out; it funds the residual payment's inner fee from the vault box.
 
 ## Design decisions
