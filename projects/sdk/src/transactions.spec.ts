@@ -1,4 +1,14 @@
-import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
+import {
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_METADATA_URI_BYTES,
+  MAX_PLEDGE_MICRO_ALGOS,
+  MAX_TITLE_BYTES,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  MIN_GOAL_MICRO_ALGOS,
+  MIN_PLEDGE_MICRO_ALGOS,
+  VAULT_BOX_STATUS_FAILED_HEX,
+} from '@kasakame/constants'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -49,6 +59,7 @@ const {
   sweepTargetMock,
   waitForIndexerRoundMock,
   waitForIndexerCatchUpMock,
+  fetchChainTimestampMock,
   loadTreeMock,
   clearTreeCacheMock,
   frontierMock,
@@ -80,6 +91,7 @@ const {
   sweepTargetMock: vi.fn(),
   waitForIndexerRoundMock: vi.fn(),
   waitForIndexerCatchUpMock: vi.fn(),
+  fetchChainTimestampMock: vi.fn(),
   loadTreeMock: vi.fn(),
   clearTreeCacheMock: vi.fn(),
   frontierMock: vi.fn(),
@@ -163,6 +175,7 @@ vi.mock('./chain.js', () => ({
   }),
   waitForIndexerRound: (...args: unknown[]) => waitForIndexerRoundMock(...args),
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
+  fetchChainTimestamp: (...args: unknown[]) => fetchChainTimestampMock(...args),
 }))
 
 vi.mock('./claim-tree/index.js', async (importOriginal) => {
@@ -206,6 +219,7 @@ describe('transaction helpers', () => {
     vi.clearAllMocks()
     waitForIndexerRoundMock.mockResolvedValue(undefined)
     waitForIndexerCatchUpMock.mockResolvedValue(undefined)
+    fetchChainTimestampMock.mockResolvedValue(0n)
     loadTreeMock.mockResolvedValue({ leaves: Array.from({ length: 4 }, () => new Uint8Array(32)), raised: 0n })
     frontierMock.mockReturnValue(new Uint8Array())
     pathBlobMock.mockReturnValue(new Uint8Array())
@@ -240,7 +254,7 @@ describe('transaction helpers', () => {
   })
 
   it('createCampaign runs create then register (nothing funded)', async () => {
-    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
     expect(sendCreateMock).toHaveBeenCalledOnce()
@@ -251,7 +265,7 @@ describe('transaction helpers', () => {
   it('returns the app id when registration fails', async () => {
     sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
 
-    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     expect(result).toEqual({
       appId: 9n,
@@ -265,7 +279,7 @@ describe('transaction helpers', () => {
   it('stringifies a non-Error registration failure', async () => {
     sendRegisterMock.mockRejectedValueOnce('not an official kasakame campaign')
 
-    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     expect(result.registered).toBe(false)
     expect(result.registerError).toBe('not an official kasakame campaign')
@@ -299,7 +313,7 @@ describe('transaction helpers', () => {
 
   it('a campaign whose registration failed can still be deleted', async () => {
     sendRegisterMock.mockRejectedValueOnce(new Error('not an official kasakame campaign'))
-    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     await deleteCampaign(result.appId, session)
 
@@ -310,11 +324,40 @@ describe('transaction helpers', () => {
 
   it('creates without registering when no registry is configured', async () => {
     registryAppIdMock.mockReturnValue(0n)
-    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, 2_000n)
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     expect(result.registered).toBe(true)
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).not.toHaveBeenCalled()
+  })
+
+  it('createCampaign rejects inputs outside the contract bounds', async () => {
+    fetchChainTimestampMock.mockResolvedValue(1_000n)
+    const minDeadline = 1_000n + BigInt(MIN_CAMPAIGN_DURATION_SECONDS)
+    const maxDeadline = 1_000n + BigInt(MAX_CAMPAIGN_DURATION_SECONDS)
+    const cases: [string, string, bigint, bigint, RegExp][] = [
+      ['', 'ipfs://meta', MIN_GOAL_MICRO_ALGOS, minDeadline, /title is required/],
+      ['a'.repeat(MAX_TITLE_BYTES + 1), 'ipfs://meta', MIN_GOAL_MICRO_ALGOS, minDeadline, /title must be at most/],
+      ['Title', 'a'.repeat(MAX_METADATA_URI_BYTES + 1), MIN_GOAL_MICRO_ALGOS, minDeadline, /metadata URI must be at most/],
+      ['Title', 'ipfs://meta', MIN_GOAL_MICRO_ALGOS - 1n, minDeadline, /goal must be between/],
+      ['Title', 'ipfs://meta', MAX_GOAL_MICRO_ALGOS + 1n, minDeadline, /goal must be between/],
+      ['Title', 'ipfs://meta', MIN_GOAL_MICRO_ALGOS, minDeadline - 1n, /deadline must be between/],
+      ['Title', 'ipfs://meta', MIN_GOAL_MICRO_ALGOS, maxDeadline + 1n, /deadline must be between/],
+    ]
+    for (const [title, uri, goal, deadline, error] of cases) {
+      await expect(createCampaign(session, title, uri, goal, deadline)).rejects.toThrow(error)
+    }
+    expect(sendCreateMock).not.toHaveBeenCalled()
+    expect(paymentMock).not.toHaveBeenCalled()
+  })
+
+  it('createCampaign accepts the inclusive contract bounds', async () => {
+    fetchChainTimestampMock.mockResolvedValue(1_000n)
+    const title = 'a'.repeat(MAX_TITLE_BYTES)
+    const uri = 'a'.repeat(MAX_METADATA_URI_BYTES)
+    await createCampaign(session, title, uri, MIN_GOAL_MICRO_ALGOS, 1_000n + BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
+    await createCampaign(session, title, uri, MAX_GOAL_MICRO_ALGOS, 1_000n + BigInt(MAX_CAMPAIGN_DURATION_SECONDS))
+    expect(sendCreateMock).toHaveBeenCalledTimes(2)
   })
 
   it('deletes without unregistering when no registry is configured', async () => {
@@ -354,6 +397,20 @@ describe('transaction helpers', () => {
     expect(composerSendMock).toHaveBeenCalledOnce()
     // Once before building proofs (fresh tree on the first attempt), once after for UI refresh.
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('pledge rejects amounts outside the contract bounds before building', async () => {
+    await expect(pledge(9n, session, MIN_PLEDGE_MICRO_ALGOS - 1n)).rejects.toThrow(/pledge amount must be between/)
+    await expect(pledge(9n, session, MAX_PLEDGE_MICRO_ALGOS + 1n)).rejects.toThrow(/pledge amount must be between/)
+    expect(loadTreeMock).not.toHaveBeenCalled()
+    expect(paramsPledgeMock).not.toHaveBeenCalled()
+    expect(paymentMock).not.toHaveBeenCalled()
+  })
+
+  it('pledge accepts the inclusive amount bounds', async () => {
+    await pledge(9n, session, MIN_PLEDGE_MICRO_ALGOS)
+    await pledge(9n, session, MAX_PLEDGE_MICRO_ALGOS)
+    expect(composerSendMock).toHaveBeenCalledTimes(2)
   })
 
   it('pledgeGroup returns the built group without sending', async () => {
