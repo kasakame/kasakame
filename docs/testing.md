@@ -542,6 +542,7 @@ write helpers against a live chain.
 | `test/02-failed-campaign.integration.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
 | `test/03-mid-size-tree.integration.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
 | `test/04-large-tree.integration.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
+| `test/05-permissionless-cleanup.integration.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The
