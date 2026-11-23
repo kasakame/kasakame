@@ -13,9 +13,9 @@ import { programHash } from '@kasakame/utils'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type * as ClaimTree from './claim-tree/index.js'
-import { MAX_TREE_SIZE } from './claim-tree/index.js'
-import { SPECS_VERSION } from './index.js'
+import type * as ClaimTree from '../claim-tree/index.js'
+import { MAX_TREE_SIZE } from '../claim-tree/index.js'
+import { SPECS_VERSION } from '../index.js'
 import {
   cancelPledge,
   claim,
@@ -35,7 +35,7 @@ import {
   settleOpen,
   vaultAddress,
   verifyDeployment,
-} from './transactions/index.js'
+} from './index.js'
 
 const {
   sendCreateMock,
@@ -110,7 +110,7 @@ const appSpecMock: { name: string; byteCode?: { approval: string; clear: string 
   byteCode: { approval: 'AA==', clear: 'AQ==' },
 }))
 
-vi.mock('./generated/CampaignClient.js', () => ({
+vi.mock('../generated/CampaignClient.js', () => ({
   APP_SPEC: appSpecMock,
   CampaignClient: class {
     appAddress = 'ESCROWADDRESS'
@@ -132,7 +132,7 @@ vi.mock('./generated/CampaignClient.js', () => ({
   },
 }))
 
-vi.mock('./generated/ClaimsVaultClient.js', () => ({
+vi.mock('../generated/ClaimsVaultClient.js', () => ({
   ClaimsVaultClient: class {
     appAddress = 'VAULTADDRESS'
     params = {
@@ -154,7 +154,7 @@ vi.mock('./generated/ClaimsVaultClient.js', () => ({
   },
 }))
 
-vi.mock('./generated/RegistryClient.js', () => ({
+vi.mock('../generated/RegistryClient.js', () => ({
   RegistryClient: class {
     appAddress = 'REGISTRYADDRESS'
     params = {
@@ -175,7 +175,7 @@ vi.mock('./generated/RegistryClient.js', () => ({
   },
 }))
 
-vi.mock('./chain.js', () => ({
+vi.mock('../chain.js', () => ({
   getSdkConfig: () => ({
     algorand: {
       createTransaction: { payment: paymentMock },
@@ -197,7 +197,7 @@ vi.mock('./chain.js', () => ({
   fetchChainTimestamp: (...args: unknown[]) => fetchChainTimestampMock(...args),
 }))
 
-vi.mock('./claim-tree/index.js', async (importOriginal) => {
+vi.mock('../claim-tree/index.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ClaimTree>()
   return {
     ...actual,

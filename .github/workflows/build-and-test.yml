@@ -368,8 +368,8 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           python3 scripts/generate-claimtree-vectors.py
-          npx prettier --write src/claim-tree.vectors.ts
-          git diff --exit-code -- src/claim-tree.vectors.ts
+          npx prettier --write src/claim-tree/claim-tree.vectors.ts
+          git diff --exit-code -- src/claim-tree/claim-tree.vectors.ts
         working-directory: projects/sdk
 
   # Frontend verification and production-bundle gate. Frontend-only and

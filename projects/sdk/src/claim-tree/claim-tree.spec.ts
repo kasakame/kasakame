@@ -110,7 +110,7 @@ describe('fee sizing', () => {
   })
 
   it('uses the shared contract budget constants', () => {
-    const contracts = fileURLToPath(new URL('../../contracts/smart_contracts', import.meta.url))
+    const contracts = fileURLToPath(new URL('../../../contracts/smart_contracts', import.meta.url))
     const campaign = fs.readFileSync(path.join(contracts, 'campaign/contract.algo.ts'), 'utf8')
     const vault = fs.readFileSync(path.join(contracts, 'claimsvault/contract.algo.ts'), 'utf8')
     const registry = fs.readFileSync(path.join(contracts, 'registry/contract.algo.ts'), 'utf8')

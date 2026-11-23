@@ -2,6 +2,7 @@ import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { REGISTRY_BOX_PREFIX, VAULT_BOX_STATUS_CLAIMED_HEX } from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { configureSdk } from '../chain.js'
 import {
   clearCachedCampaigns,
   fetchMyPledge,
@@ -10,8 +11,7 @@ import {
   getCampaign,
   isRegistered,
   listCampaigns,
-} from './campaigns/index.js'
-import { configureSdk } from './chain.js'
+} from './index.js'
 
 const indexerMock = vi.hoisted(() => ({
   lookupApplications: vi.fn(),
@@ -24,16 +24,16 @@ const fetchMyLeavesMock = vi.hoisted(() => vi.fn())
 const fetchVaultBoxMock = vi.hoisted(() => vi.fn())
 const registeredValueMock = vi.hoisted(() => vi.fn())
 
-vi.mock('./claim-tree/index.js', async () => {
-  const actual = await vi.importActual('./claim-tree/index.js')
+vi.mock('../claim-tree/index.js', async () => {
+  const actual = await vi.importActual('../claim-tree/index.js')
   return { ...actual, fetchMyLeaves: (...args: unknown[]) => fetchMyLeavesMock(...args) }
 })
 
-vi.mock('./transactions/vault.js', () => ({
+vi.mock('../transactions/vault.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
 }))
 
-vi.mock('./generated/RegistryClient.js', () => ({
+vi.mock('../generated/RegistryClient.js', () => ({
   RegistryClient: class {
     state = { box: { registered: { value: (...args: unknown[]) => registeredValueMock(...args) } } }
   },
