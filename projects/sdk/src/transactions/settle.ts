@@ -6,7 +6,7 @@ import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from '../cha
 import type { BackerLeaf } from '../claim-tree/index.js'
 import { clearTreeCache, loadTree, pathBlobForRefund } from '../claim-tree/index.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
-import { campaignClientFor, registryClientFor, vaultClientFor } from './clients.js'
+import { campaignClientFor, registryClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import { isCampaignRoutingError, submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
@@ -64,7 +64,8 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
  * @returns The unsigned group.
  */
 export async function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]> {
-  return (await buildRefundGroup(appId, session, leaf)).build().then((built) => built.transactions)
+  const composer = await buildRefundGroup(appId, session, leaf)
+  return withoutGroupId((await composer.build()).transactions)
 }
 
 /**

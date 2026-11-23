@@ -300,7 +300,7 @@ Creation sends `create`, then registers with the Registry in a second group beca
 
 `fetchVaultBox` returns `undefined` only when the box is missing. Network, auth, and server errors propagate, so a failed read cannot misroute a refund or underfund `finalize`.
 
-`pledgeGroup` and `refundGroup` return the built, unsigned group with the session signer attached - an escape hatch for external signers or inspection that never submits. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
+`pledgeGroup` and `refundGroup` return the built, unsigned transactions with the session signer attached and no group id, so an external signer can add them to a fresh composer; they never submit. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 
 The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
 
