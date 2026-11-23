@@ -1,8 +1,8 @@
 import type { Arc56Contract } from '@algorandfoundation/algokit-utils/types/app-arc56'
 import algosdk from 'algosdk'
 import { describe, expect, it } from 'vitest'
-import { APP_SPEC as campaignSpec } from './generated/CampaignClient.js'
-import { APP_SPEC as vaultSpec } from './generated/ClaimsVaultClient.js'
+import { APP_SPEC as campaignSpec } from '../generated/CampaignClient.js'
+import { APP_SPEC as vaultSpec } from '../generated/ClaimsVaultClient.js'
 import { SELECTOR_CANCEL, SELECTOR_PLEDGE, SELECTOR_REFUND, SELECTOR_VAULT_REFUND } from './selectors.js'
 
 /**

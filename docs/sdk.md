@@ -73,7 +73,7 @@ The barrel file `src/index.ts` exports everything below. Generated clients live 
 
 The three modules are folders, one concern per file. `src/index.ts` re-exports the same public names, so imports from `@kasakame/sdk` are unchanged.
 
-- `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `index.ts` (barrel).
+- `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `selectors.ts` (replayed ARC-4 selectors), `claim-tree.vectors.ts` (committed differential vectors), `index.ts` (barrel).
 - `src/campaigns/` - `decode.ts` (global state, box names, create args), `view.ts` (status and view model), `header.ts` (live and deleted headers), `read.ts` (indexer reads, enumeration, list cache), `index.ts` (barrel).
 - `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (stale-proof detection and retry), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
 
@@ -321,7 +321,7 @@ The SDK preflights the contract's title, metadata URI, goal, deadline, and pledg
 
 ## Conventions
 
-Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) moving with their modules. Commit scope `sdk`.
+Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) in each module folder; `chain` and the public barrel keep their specs at the `src/` root. Commit scope `sdk`.
 
 LocalNet integration lives in `test/00-open-campaign.integration.test.ts` through
 `test/04-large-tree.integration.test.ts`, with shared fixtures under `test/utils/`.
