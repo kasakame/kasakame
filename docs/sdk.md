@@ -75,7 +75,7 @@ The three modules are folders, one concern per file. `src/index.ts` re-exports t
 
 - `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `index.ts` (barrel).
 - `src/campaigns/` - `decode.ts` (global state, box names, create args), `view.ts` (status and view model), `header.ts` (live and deleted headers), `read.ts` (indexer reads, enumeration, list cache), `index.ts` (barrel).
-- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (stale-proof detection and retry), `campaign.ts` (create and register), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
+- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (stale-proof detection and retry), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
 
 ### Specs version
 
@@ -272,6 +272,7 @@ function createCampaign(
   deadlineSeconds: bigint,
 ): Promise<CreateCampaignResult>
 function registerCampaign(appId: bigint, session: WalletSession): Promise<void>
+function verifyDeployment(): Promise<void>
 function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void>
 function pledgeGroup(
   appId: bigint,
@@ -287,6 +288,8 @@ function settleOpen(appId: bigint, session: WalletSession): Promise<void>
 function releaseClaimed(appId: bigint, session: WalletSession): Promise<void>
 function finalize(appId: bigint, session: WalletSession): Promise<void>
 ```
+
+The Registry fixes the Campaign program hash at `create`, so an SDK built from another contracts bundle would create a campaign that `register` rejects. `verifyDeployment` compares the hash embedded in the generated Campaign spec (`sha256(itob(approval.length) ‖ approval ‖ clear)`) with the Registry's `campaignProgramHash`; `createCampaign` runs it before building `create`, and callers can also run it at startup. A mismatch throws before any transaction, naming the Registry hash and the contracts version (`SPECS_VERSION`); a Registry read failure throws too, and no Registry configured is a no-op.
 
 Creation sends `create`, then registers with the Registry in a second group because registration references the app id from the creation round. If registration fails, `createCampaign` returns the app id with `registered: false` and the Registry error in `registerError`; `registerCampaign` retries without recreating the campaign, and treats an already-registered campaign as success. A stale Campaign program hash cannot be repaired by retrying: register against a Registry with the matching hash, or delete the pristine campaign with the same `[unregister, delete]` group and recreate it with the matching SDK. Pledges are one atomic group `[pay, campaign.pledge, vault.credit]` with a freshly rebuilt frontier and one stale-proof retry. The order is load-bearing: the payment must immediately precede `pledge`, the matching `credit` must immediately follow it and be last, and the vault requires that pledge immediately before the credit (both NoOp; no standalone credits/donations). Refunds route by vault box state: an open box goes through the campaign, a failed box goes straight to `vault.refund`. If the box settles or the campaign app disappears between the read and the send, the SDK re-reads the box and retries the route once; `campaign is not refundable` is a real state failure, not a routing retry. Delete groups `[unregister, delete]` atomically: the Registry requires the delete immediately after unregister, and the campaign requires the unregister immediately before it (both NoOp). An unregistered campaign's unregister no-ops, so the same group cleans up a registration that never landed. Delete settles in O(1) on every path.
 
