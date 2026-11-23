@@ -5,11 +5,12 @@
   "type": "module",
   "description": "Private shared repo and test helpers for kasakame",
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing/index.ts"
+    ".": "./program-hash.ts",
+    "./testing": "./testing/index.ts"
   },
   "files": [
-    "src"
+    "program-hash.ts",
+    "testing"
   ],
   "scripts": {
     "check-types": "tsc --noEmit",

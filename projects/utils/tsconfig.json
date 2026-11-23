@@ -26,5 +26,5 @@
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["src", "release", "smoke"]
+  "include": ["program-hash.ts", "testing", "release", "smoke"]
 }
