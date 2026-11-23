@@ -9,11 +9,13 @@ import {
   MIN_PLEDGE_MICRO_ALGOS,
   VAULT_BOX_STATUS_FAILED_HEX,
 } from '@kasakame/constants'
+import { programHash } from '@kasakame/utils'
 import type { TransactionSigner } from 'algosdk'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type * as ClaimTree from './claim-tree/index.js'
 import { MAX_TREE_SIZE } from './claim-tree/index.js'
+import { SPECS_VERSION } from './index.js'
 import {
   cancelPledge,
   claim,
@@ -32,6 +34,7 @@ import {
   releaseClaimed,
   settleOpen,
   vaultAddress,
+  verifyDeployment,
 } from './transactions/index.js'
 
 const {
@@ -66,6 +69,7 @@ const {
   pathBlobMock,
   registryAppIdMock,
   getSuggestedParamsMock,
+  campaignProgramHashMock,
 } = vi.hoisted(() => ({
   sendCreateMock: vi.fn(),
   sendRegisterMock: vi.fn(),
@@ -98,9 +102,16 @@ const {
   pathBlobMock: vi.fn(),
   registryAppIdMock: vi.fn(),
   getSuggestedParamsMock: vi.fn(),
+  campaignProgramHashMock: vi.fn(),
+}))
+
+const appSpecMock: { name: string; byteCode?: { approval: string; clear: string } } = vi.hoisted(() => ({
+  name: 'Campaign',
+  byteCode: { approval: 'AA==', clear: 'AQ==' },
 }))
 
 vi.mock('./generated/CampaignClient.js', () => ({
+  APP_SPEC: appSpecMock,
   CampaignClient: class {
     appAddress = 'ESCROWADDRESS'
     params = {
@@ -152,6 +163,14 @@ vi.mock('./generated/RegistryClient.js', () => ({
     send = {
       register: sendRegisterMock,
       unregister: sendUnregisterMock,
+    }
+    state = {
+      global: {
+        campaignProgramHash: () =>
+          Promise.resolve(campaignProgramHashMock()).then((value: Uint8Array | undefined) => ({
+            asByteArray: () => value,
+          })),
+      },
     }
   },
 }))
@@ -224,6 +243,8 @@ describe('transaction helpers', () => {
     frontierMock.mockReturnValue(new Uint8Array())
     pathBlobMock.mockReturnValue(new Uint8Array())
     registryAppIdMock.mockReturnValue(1001n)
+    campaignProgramHashMock.mockReturnValue(programHash(new Uint8Array([0]), new Uint8Array([1])))
+    appSpecMock.byteCode = { approval: 'AA==', clear: 'AQ==' }
     getSuggestedParamsMock.mockResolvedValue({ minFee: 1_000n })
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(65))
     paramsPledgeMock.mockResolvedValue({ pledge: 'params' })
@@ -329,6 +350,59 @@ describe('transaction helpers', () => {
     expect(result.registered).toBe(true)
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).not.toHaveBeenCalled()
+  })
+
+  it('createCampaign rejects a mismatched bundle before building create', async () => {
+    campaignProgramHashMock.mockReturnValue(new Uint8Array(32).fill(7))
+
+    await expect(createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))).rejects.toThrow(
+      /expects Campaign program hash/,
+    )
+    expect(sendCreateMock).not.toHaveBeenCalled()
+    expect(paymentMock).not.toHaveBeenCalled()
+  })
+
+  it('verifyDeployment accepts a Registry with the matching Campaign hash', async () => {
+    await expect(verifyDeployment()).resolves.toBeUndefined()
+  })
+
+  it('verifyDeployment rejects a Registry with another Campaign hash', async () => {
+    campaignProgramHashMock.mockReturnValue(new Uint8Array(32).fill(7))
+
+    await expect(verifyDeployment()).rejects.toThrow(
+      `the Registry expects Campaign program hash ${'07'.repeat(32)}, but this SDK ships contracts ${SPECS_VERSION}`,
+    )
+  })
+
+  it('verifyDeployment treats a missing Registry hash as a mismatch', async () => {
+    campaignProgramHashMock.mockReturnValue(undefined)
+
+    await expect(verifyDeployment()).rejects.toThrow(/Campaign program hash missing/)
+  })
+
+  it('verifyDeployment wraps Registry read failures', async () => {
+    campaignProgramHashMock.mockRejectedValueOnce(new Error('registry unreachable'))
+
+    await expect(verifyDeployment()).rejects.toThrow('could not read the Registry campaign program hash: registry unreachable')
+  })
+
+  it('verifyDeployment stringifies a non-Error Registry failure', async () => {
+    campaignProgramHashMock.mockRejectedValueOnce('offline')
+
+    await expect(verifyDeployment()).rejects.toThrow('could not read the Registry campaign program hash: offline')
+  })
+
+  it('verifyDeployment rejects a spec without bytecode', async () => {
+    delete appSpecMock.byteCode
+
+    await expect(verifyDeployment()).rejects.toThrow(/no byteCode/)
+  })
+
+  it('verifyDeployment no-ops without a Registry', async () => {
+    registryAppIdMock.mockReturnValue(0n)
+
+    await expect(verifyDeployment()).resolves.toBeUndefined()
+    expect(campaignProgramHashMock).not.toHaveBeenCalled()
   })
 
   it('createCampaign rejects inputs outside the contract bounds', async () => {

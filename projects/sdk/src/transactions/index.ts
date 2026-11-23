@@ -16,7 +16,7 @@
  * - There are no assets anywhere: no opt-ins, no balances, no close-outs.
  */
 
-export { createCampaign, registerCampaign } from './campaign.js'
+export { createCampaign, registerCampaign, verifyDeployment } from './campaign.js'
 export type { CreateCampaignResult } from './campaign.js'
 export type { WalletSession } from './clients.js'
 export { isStaleProofError } from './errors.js'

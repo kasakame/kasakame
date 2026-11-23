@@ -10,8 +10,13 @@ import {
   REGISTER_DEPOSIT_MICRO_ALGOS,
   REGISTRY_BOX_PREFIX,
 } from '@kasakame/constants'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { base64ToBytes, bytesToHex } from 'algosdk'
 import { fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp } from '../chain.js'
-import { CampaignFactory } from '../generated/CampaignClient.js'
+import { u64be } from '../claim-tree/tree.js'
+import { APP_SPEC, CampaignFactory } from '../generated/CampaignClient.js'
+import { RegistryClient } from '../generated/RegistryClient.js'
+import { SPECS_VERSION } from '../generated/specs-version.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
 
@@ -84,6 +89,52 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
 }
 
 /**
+ * Hash the Campaign bytecode embedded in the generated spec: `sha256(itob(approval.length) ‖ approval ‖ clear)`.
+ *
+ * @returns The 32-byte program hash the Registry verifies at `register`.
+ */
+function campaignProgramHash(): Uint8Array {
+  const byteCode = APP_SPEC.byteCode
+  if (byteCode === undefined) throw new Error('Campaign spec has no byteCode; run codegen first')
+  const approval = base64ToBytes(byteCode.approval)
+  const clear = base64ToBytes(byteCode.clear)
+  const preimage = new Uint8Array(8 + approval.length + clear.length)
+  preimage.set(u64be(BigInt(approval.length)), 0)
+  preimage.set(approval, 8)
+  preimage.set(clear, 8 + approval.length)
+  return sha256(preimage)
+}
+
+/**
+ * Verify that the configured Registry expects this SDK's Campaign program hash.
+ *
+ * A Registry fixes the Campaign program hash at `create`. An SDK built from another contracts bundle would create a
+ * campaign that `register` rejects, leaving an orphan and a spent approval. `createCampaign` runs this check before
+ * building `create`; callers can also run it at startup. No-op when no Registry is configured.
+ *
+ * @throws {Error} When the Registry expects another bundle, or its hash cannot be read.
+ */
+export async function verifyDeployment(): Promise<void> {
+  const { algorand, registryAppId } = getSdkConfig()
+  if (registryAppId === 0n) return
+  let registryHash: Uint8Array | undefined
+  try {
+    const registry = new RegistryClient({ algorand, appId: registryAppId })
+    registryHash = (await registry.state.global.campaignProgramHash()).asByteArray()
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`could not read the Registry campaign program hash: ${message}`)
+  }
+  const expectedHash = campaignProgramHash()
+  if (registryHash === undefined || bytesToHex(registryHash) !== bytesToHex(expectedHash)) {
+    const registryHex = registryHash === undefined ? 'missing' : bytesToHex(registryHash)
+    throw new Error(
+      `the Registry expects Campaign program hash ${registryHex}, but this SDK ships contracts ${SPECS_VERSION} (${bytesToHex(expectedHash)})`,
+    )
+  }
+}
+
+/**
  * Deploy a new campaign: create, then register with the Registry. Nothing is funded - the v2 escrow never holds funds.
  * Registration is a separate step because it references the app id from the creation round. When it fails, the
  * campaign still exists and the result carries its id with `registered: false`; `registerCampaign` retries without
@@ -122,6 +173,7 @@ export async function createCampaign(
   if (deadlineSeconds < earliestDeadline || deadlineSeconds > latestDeadline) {
     throw new Error(`deadline must be between ${String(earliestDeadline)} and ${String(latestDeadline)} (chain time ${String(now)})`)
   }
+  await verifyDeployment()
   const campaignFactory = new CampaignFactory({
     algorand,
     defaultSender: session.address,
