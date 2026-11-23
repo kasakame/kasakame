@@ -29,8 +29,7 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
     setLoading(true)
     setError(null)
 
-    // Deleted campaigns no longer appear in the Registry; the registry + vault-box enumeration finds them.
-    // Only the ones still holding backer refunds are worth rendering.
+    // Deleted campaigns leave the Registry; the registry + vault-box enumeration finds them, keeping only those still holding refunds.
     const loadDeleted = async (liveCampaigns: CampaignViewModel[], now: bigint) => {
       try {
         const all = await enumerateCampaigns()
@@ -47,9 +46,7 @@ const CampaignList = ({ onSelectCampaign }: CampaignListProps) => {
       }
     }
 
-    // Fast pass without the viewer: cards render from global state alone (~0.2s for the whole list).
-    // Pledge totals need a full history replay each, so they stream in afterwards without blocking.
-    // A cached base list paints instantly with no spinner; the refresh below replaces it either way.
+    // Fast pass without the viewer (~0.2s from global state); pledge totals stream in after a full history replay, and a cached list paints instantly with no spinner.
     const cached = getCachedCampaigns()
     if (cached) {
       setNowSeconds(cached.nowSeconds)

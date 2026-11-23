@@ -1,17 +1,7 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 
 /**
- * Move the LocalNet chain clock forward (devmode block-offset timestamp) and mine a block at the new time.
- *
- * LocalNet only - never run against TestNet/MainNet. Used to expire campaign
- * deadlines (or refund windows) while testing the UI by hand.
- *
- * Usage: `SECONDS=<offset> npm run localnet:advance`
- *
- * `SECONDS` replaces the current offset (it does not add to it); `SECONDS=0`
- * resets the clock to real time. The offset persists on the sandbox until
- * changed - new blocks keep the shifted time, so campaigns created afterwards
- * use it as their baseline. Prints the resulting chain time.
+ * Moves the LocalNet clock by `SECONDS` (replaces the current offset; 0 resets) and mines a block; LocalNet only.
  */
 void (async () => {
   const seconds = process.env.SECONDS

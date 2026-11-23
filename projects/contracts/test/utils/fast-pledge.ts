@@ -10,14 +10,7 @@ import type { ContractStack } from './platform'
 import { campaignState, registrationBoxRef, vaultBoxRef } from './state'
 
 /**
- * Fast test-only pledge/spend helpers for the cap-scale suites (#220).
- *
- * The shared LocalNet helpers spawn the Python oracle and read account/box state on every pledge. At 524,287
- * positions that is both O(N^2) and tens of hours. This module keeps the frontier and the full leaf tree in memory,
- * builds the exact `[pay, campaign.pledge, vault.credit]` group without per-pledge ledger reads, and computes the
- * refund paths locally.
- *
- * Not a production client and not part of the `00`-`07` suites.
+ * Fast cap-scale pledge/spend helpers (#220): an in-memory tree and exact groups, with no per-pledge ledger reads.
  */
 
 const Z = new Uint8Array(32)

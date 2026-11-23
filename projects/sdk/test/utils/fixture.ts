@@ -26,8 +26,7 @@ export interface SdkStack {
 }
 
 /**
- * Start a fresh fixture scope, deploy the Registry + ClaimsVault from the generated clients' ARC-56 bytecode, and
- * configure the SDK against them.
+ * Start a fresh fixture scope, deploy the Registry + ClaimsVault from the generated clients' ARC-56 bytecode, and configure the SDK against them.
  *
  * @param fixture The Algorand fixture.
  * @returns The configured stack.

@@ -48,10 +48,7 @@ function integerFromEnv(name: string, fallback: number, minimum: number): number
 }
 
 /**
- * The active scale config for a lane. Every field can be overridden with
- * `KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
- * `KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, or
- * `KASAKAME_SEED_COUNT`.
+ * The active scale config for a lane; every field is overridable through the `KASAKAME_*` env vars.
  *
  * @param lane The preset to start from.
  * @returns The resolved config.

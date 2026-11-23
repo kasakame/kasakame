@@ -1,16 +1,6 @@
 name: release-contracts
 
-# Manual release of the contract artifacts. Builds the contracts from the
-# dispatched commit, attaches the compiled artifacts to a GitHub Release tagged
-# `contracts-v<version>` as one tarball per kind (arc56, arc32, teal, puya), and
-# publishes the matching @kasakame/contracts npm package from the same build.
-# The dispatch version must match projects/contracts/package.json.
-#
-# Releases use npm OIDC trusted publishing.
-#
-# Configure the trusted publisher for @kasakame/contracts as GitHub owner
-# `kasakame`, repository `kasakame`, workflow `release-contracts.yml`, with no
-# environment and "Allow npm publish" enabled.
+# Manual release of the contract artifacts: one tarball per kind (arc56, arc32, teal, puya) on the contracts-v<version> release plus the npm package; version must match package.json (see docs/ci.md).
 on:
   workflow_dispatch:
     inputs:
@@ -118,10 +108,7 @@ jobs:
         run: npm run check-types
         working-directory: projects/contracts
 
-      # One tarball per artifact kind, each keeping the per-app directories
-      # (campaign/, claimsvault/, registry/) - consumers download only
-      # the kind they need. These tarballs are the audit bundle; the SDK reads
-      # the npm package.
+      # One tarball per artifact kind, keeping the per-app directories; these tarballs are the audit bundle.
       - name: Bundle the artifacts (one tarball per kind)
         run: |
           cd projects/contracts/smart_contracts/artifacts
@@ -131,8 +118,7 @@ jobs:
             tar -czf "$RUNNER_TEMP/$name.tar.gz" "${files[@]}"
           done
 
-      # The tarball is the tested artifact handed to the smoke and publish jobs,
-      # so the published package is exactly the one verified here.
+      # The tarball is the tested artifact handed to the smoke and publish jobs, so the published package is exactly the one verified here.
       - name: Pack the npm package
         run: |
           tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)

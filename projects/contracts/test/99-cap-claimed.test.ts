@@ -17,12 +17,7 @@ import { campaignBox, campaignBoxExists, campaignState, claimCampaign, deleteCam
 import { FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
- * 99 - cap-scale successful campaign (#220): the full 2^19 - 1 tree, then claim and delete.
- *
- * The claim path is fixed-size (one vault inner call + one payment), so this suite proves the high-popcount pledge
- * path, the vault's paidIn/paidOut accounting at 52,428.7 ALGO, and the MBR return on cleanup.
- *
- * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
+ * 99 - cap-scale successful campaign (#220): fill the full 2^19 - 1 tree, then claim and delete (heavy-tests only).
  */
 
 const GOAL = 50_000n * MICRO_ALGOS_PER_ALGO // below the 52,428.7 ALGO principal

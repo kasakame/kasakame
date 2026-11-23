@@ -1,23 +1,8 @@
 /**
- * Off-chain campaign metadata (ARC-3-style JSON).
- *
- * The on-chain `metadataUri` is capped at 128 bytes, so it is always a short
- * pointer (an `ipfs://` URI or an `https://` URL) to a JSON blob shaped like
- * this - never the JSON itself:
- *
- * ```json
- * { "name": "My first novel", "description": "…", "image": "ipfs://…", "category": "books" }
- * ```
- *
- * All fields are optional; a blob with none of them is treated as absent. The
- * `image` may itself be an `ipfs://` URI (resolved through the gateway below)
- * or a plain `https://` URL. As a convenience, `metadataUri` may also point
- * straight at an image file instead of a JSON blob (see `resolveImageSrc`).
+ * Off-chain campaign metadata (ARC-3-style JSON) pointed to by the 128-byte on-chain `metadataUri`; every field is optional and `image` may itself be an `ipfs://` URI.
  */
 
-// Public gateway for `ipfs://` URIs. Currently the demo Pinata dedicated gateway: the public
-// gateway.pinata.cloud does not serve all of our pins, and the Shipyard-maintained ipfs.io gateway wound down in
-// September 2026. A dedicated gateway or backend-pinned URLs belong here once the catalog backend exists.
+// Public gateway for `ipfs://` URIs: the demo Pinata dedicated gateway, since public gateway.pinata.cloud misses our pins and ipfs.io shut down in September 2026.
 const IPFS_GATEWAY = 'https://green-cooperative-koi-991.mypinata.cloud/ipfs/'
 
 export interface CampaignMetadata {
@@ -67,8 +52,7 @@ export function parseCampaignMetadata(json: unknown): CampaignMetadata | null {
 }
 
 /**
- * Fetch and parse the metadata blob; null on blank/unresolvable URIs and any failure. When the pointer serves raw
- * image bytes instead of JSON, returns them as `{ image }` so extensionless CIDs still render.
+ * Fetch and parse the metadata blob; null on blank/unresolvable URIs and any failure, while raw image bytes become a synthetic `{ image }`.
  *
  * @param uri The `metadataUri` pointer.
  * @returns The parsed metadata, a synthetic `{ image }` for raw image bytes, or null when unavailable.
@@ -88,8 +72,7 @@ export async function fetchCampaignMetadata(uri: string): Promise<CampaignMetada
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i
 
 /**
- * Best-effort image URL for a `metadataUri`: the blob's `image` field, or the URI itself when it points straight at an
- * image file. Null when unknown.
+ * Best-effort image URL for a `metadataUri`: the blob's `image` field, or the URI itself when it points straight at an image file.
  *
  * @param metadataUri The `metadataUri` pointer.
  * @param metadata The fetched blob, if any.
@@ -104,9 +87,7 @@ export function resolveImageSrc(metadataUri: string, metadata: CampaignMetadata 
 const MIN_CID_LENGTH = 32
 
 /**
- * Whether a URI is worth a network round-trip. `ipfs://` pointers whose first path segment is far shorter than any
- * real CID (e.g. the seed script's `ipfs://seed/<name>` placeholders) can never resolve, so skip them silently instead
- * of spamming the console with gateway 400s. `https://` URLs always go through - only the fetch can judge those.
+ * Whether a URI is worth a network round-trip: `ipfs://` pointers whose first segment is far shorter than any real CID (e.g. seed placeholders) can never resolve, so skip them silently.
  *
  * @param uri The `metadataUri` pointer.
  * @returns True when a fetch might succeed.

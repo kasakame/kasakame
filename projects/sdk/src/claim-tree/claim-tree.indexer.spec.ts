@@ -117,8 +117,7 @@ beforeEach(() => {
 
 describe('fetchPledges', () => {
   it('pairs each pledge with its group payment across rounds, in chain order', async () => {
-    // Block 100 exercises every scan-skip branch before the match: wrong sender, app call (no payment fields),
-    // wrong receiver, zero amount, and a full match without id.
+    // Block 100 exercises every scan-skip branch before the match: wrong sender, app call, wrong receiver, zero amount, and a full match without id.
     const decoySender = payment('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', BACKER_B, VAULT, 9n)
     const decoyApp = appCall('TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT', BACKER_A, 100n, [hexToBytes(SELECTOR.claim)])
     const decoyReceiver = {
@@ -165,9 +164,7 @@ describe('fetchPledges', () => {
     indexerMock.lookupBlock.mockImplementation(
       blockMock(
         new Map([
-          // Scan skips (examined backwards from callA): id-less full match, zero amount, wrong receiver, app call
-          // without payment fields, wrong sender - then the real payment. (On-chain groups are contiguous; the
-          // interleaving here only exercises the skip branches.)
+          // Scan skips backwards from callA: id-less match, zero amount, wrong receiver, app call, wrong sender - the interleaving only exercises the skip branches.
           [100n, [payA, decoySender, decoyApp, decoyReceiver, decoyZero, decoyNoId, callA, payB, callB]],
           [101n, [payC, callC]],
           [102n, [payD, callD]],

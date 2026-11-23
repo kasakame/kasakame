@@ -7,11 +7,7 @@ export interface CompiledProgram {
 }
 
 /**
- * The official program hash: `sha256(itob(approval.length) ‖ approval ‖ clear)`.
- *
- * The 8-byte length prefix binds the approval/clear split; without it, moving bytes between the two programs leaves the
- * concatenation - and therefore the hash - unchanged. `Registry.register` verifies this exact formula, so every producer
- * and verifier must share this helper.
+ * The official program hash: `sha256(itob(approval.length) ‖ approval ‖ clear)`; the length prefix binds the split, and `Registry.register` verifies this exact formula.
  *
  * @param approval The approval program bytes.
  * @param clear The clear-state program bytes.

@@ -13,9 +13,7 @@ const FALLBACK_SRC = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
 )}`
 
 /**
- * Campaign cover from the metadata blob. Always renders the same element so
- * cards keep a consistent height, falling back to a placeholder when the
- * image is missing or broken.
+ * Campaign cover from the metadata blob; always the same element so cards keep a consistent height, falling back to a placeholder.
  *
  * @param root0 Component props.
  * @param root0.metadataUri On-chain metadata pointer.

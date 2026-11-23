@@ -1,8 +1,4 @@
-// Mint a throwaway session token for manual API testing (no wallet needed).
-//
-// Usage (from projects/backend):
-//   export $(node --env-file=.env scripts/mint-token.mjs)
-//   curl http://localhost:3001/me -H "Authorization: Bearer $TOKEN"
+// Mint a throwaway session token for manual API testing (no wallet needed): export $(node --env-file=.env scripts/mint-token.mjs), then curl /me with the bearer token.
 import algosdk from 'algosdk'
 import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'
@@ -27,8 +23,7 @@ function bytesToBase64(bytes) {
 const account = algosdk.generateAccount()
 const address = account.addr.toString()
 const challenge = await post('/auth/challenge', { address })
-// SIWA request carrying the challenge nonce; the wallet would canonify it, but the backend hashes the exact bytes
-// it receives, so plain JSON is enough here.
+// Plain JSON suffices: unlike a wallet, the backend hashes the exact bytes it receives rather than a canonified form.
 const domain = process.env.APP_DOMAIN ?? 'localhost'
 const uri = process.env.APP_URI ?? 'http://localhost:5173'
 const data = JSON.stringify({

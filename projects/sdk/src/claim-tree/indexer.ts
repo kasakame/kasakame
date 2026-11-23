@@ -28,15 +28,12 @@ export interface BackerLeaf {
   txidHex: string
 }
 
-// Session memo for indexer reads, dropped wholesale by `clearTreeCache` (the SDK clears it in pledge, cancelPledge,
-// and refund around proof-carrying submissions). One invalidation rule for all replay inputs - blocks are immutable
-// on-chain, but clearing both maps keeps the rule simple and the cost is one re-download per mutation.
+// Session memo for indexer reads, cleared wholesale by `clearTreeCache` around proof-carrying submissions; one invalidation rule keeps the cost to one re-download per mutation.
 const appCallCache = new Map<bigint, Promise<algosdk.indexerModels.Transaction[]>>()
 const blockCache = new Map<bigint, Promise<{ transactions?: algosdk.indexerModels.Transaction[] }>>()
 
 /**
- * Drop memoized indexer reads. The SDK's write helpers call it around proof-carrying submissions; plain reads reuse
- * the cache.
+ * Drop memoized indexer reads; the SDK's write helpers call it around proof-carrying submissions, plain reads reuse the cache.
  */
 export function clearTreeCache(): void {
   appCallCache.clear()
@@ -44,8 +41,7 @@ export function clearTreeCache(): void {
 }
 
 /**
- * Memoized fetch: duplicate and repeat reads (detail reloads, list-to-detail navigation) reuse one download.
- * Rejections are never cached - only resolved values stick, so a transient failure retries naturally.
+ * Memoized fetch so duplicate and repeat reads reuse one download; only resolved values stick, so a transient failure retries naturally.
  *
  * @param cache Memo map keyed by id.
  * @param key Cache key.
@@ -98,11 +94,7 @@ async function searchAppCalls(appId: bigint): Promise<algosdk.indexerModels.Tran
 }
 
 /**
- * Fetch confirmed pledge calls for a campaign, oldest first.
- *
- * Each pledge is paired with its group payment by scanning the confirmed block backwards from the pledge call for the
- * nearest payment from the caller to the vault. Groups are atomic (same block, contiguous), so the nearest match is
- * the pledge's payment; a missing payment throws rather than corrupt positions.
+ * Fetch confirmed pledge calls for a campaign, oldest first; each pairs with the nearest preceding caller payment to the vault, and a missing payment throws.
  *
  * @param campaignId Campaign application id.
  * @param vaultAddress Vault app address (the payment receiver).
@@ -136,8 +128,7 @@ export async function fetchPledges(campaignId: bigint, vaultAddress: string): Pr
     const ordered = [...roundCalls].sort((a, b) => (positionOf.get(a.id ?? '') ?? 0) - (positionOf.get(b.id ?? '') ?? 0))
     for (const call of ordered) {
       const callIndex = positionOf.get(call.id ?? '')
-      // A confirmed call is always in its round's block; absence means a torn indexer read - fail loudly rather
-      // than shift every later position.
+      // A confirmed call is always in its round's block; absence means a torn indexer read - fail loudly rather than shift later positions.
       if (callIndex === undefined) {
         throw new Error(`pledge call ${call.id ?? 'unknown'} not found in its round block`)
       }
@@ -165,13 +156,11 @@ export async function fetchPledges(campaignId: bigint, vaultAddress: string): Pr
       })
     }
   }
-  // The rounds and their calls are ordered above; the list is already in chain order.
   return pledges
 }
 
 /**
- * Fetch confirmed spends (campaign cancels/refunds plus vault refunds for this campaign). Only positions matter for
- * replay - amounts and proofs are caller-supplied at spend time - so no block reads are needed.
+ * Fetch confirmed spends (campaign cancels/refunds plus vault refunds); only positions matter for replay, so no block reads are needed.
  *
  * @param campaignId Campaign application id.
  * @param vaultId Vault application id.
@@ -223,8 +212,7 @@ export async function loadTree(campaignId: bigint, vaultId: bigint, vaultAddress
 }
 
 /**
- * The viewer's live leaves: pledge positions they own whose leaf is not yet nulled. Drives per-leaf refund/cancel
- * buttons and the pledge total (the sum replaces a per-backer balance read).
+ * The viewer's live leaves: pledge positions they own whose leaf is not yet nulled, driving per-leaf refund/cancel buttons and the pledge total.
  *
  * @param campaignId Campaign application id.
  * @param address Viewer address.

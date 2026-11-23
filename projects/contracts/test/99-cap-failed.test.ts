@@ -20,14 +20,7 @@ import { campaignBox, campaignBoxExists, campaignState, deleteCampaign, deployCa
 import { FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
- * 99 - cap-scale failed campaign (#220, #229): the full 2^19 - 1 tree, then the cap-saturation escape and refund path.
- *
- * Pledges use the fast in-memory helper; the contract still checks every frontier root, so the tree math is verified
- * on-chain at every position. The suite covers the rejected append at the cap, the early `settleOpen` + Registry-backed
- * delete before the deadline, the worst-case vault refund (leaf 0: r = c = 18, 36 path elements), two top-fold
- * refunds, the nulled-sibling and top-only vault refunds, and the residual sweep after the refund window.
- *
- * Runs in the separate `heavy-tests` workflow (~5 h), never in the PR gate.
+ * 99 - cap-scale failed campaign (#220, #229): full 2^19 - 1 tree, cap-saturation settle, and every refund shape (heavy-tests only).
  */
 
 const GOAL = 60_000n * MICRO_ALGOS_PER_ALGO // above the 52,428.7 ALGO principal
@@ -83,8 +76,7 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
   await expect(fastPledge(stack, campaign.appId, backerAddr, MIN_PLEDGE_MICRO_ALGOS, tree)).rejects.toThrow(/campaign reached maximum size/)
   expect((await campaignState(campaign.appClient)).raised).toEqual(run.principal)
 
-  // A full tree that has not reached its goal can never succeed. Settle it early, before the deadline, then delete
-  // through the Registry: the cap-saturated campaign is failed-in-fact on both sides.
+  // A full tree below goal can never succeed: settle early, then delete through the Registry (failed-in-fact).
   console.log('cap reached: settling early')
   await stack.vault.client.send.call({
     method: 'settleOpen(uint64)void',
@@ -107,8 +99,7 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
   await deleteCampaign(stack, campaign.appId, creatorAddr)
   expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(true)
 
-  // Vault refunds after the early settlement. Leaf 0 is the worst case (r = c = 18, 36 path elements); the others
-  // cover the top fold, the nulled sibling, and the top-only path.
+  // Vault refunds after early settlement: leaf 0 is worst (r = c = 18); then top fold, nulled sibling, top-only.
   let spendFees = 0n
   console.log('refunding leaf 0 (worst case, h=36) through the vault')
   const worst = await fastVaultSpend(stack, campaign.appId, backerAddr, tree, 0, MIN_PLEDGE_MICRO_ALGOS)

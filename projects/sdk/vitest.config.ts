@@ -3,12 +3,7 @@ import type { TestSpecification } from 'vitest/node'
 import { BaseSequencer } from 'vitest/node'
 
 /**
- * Run test files in deterministic path order.
- *
- * Vitest's default sequencer runs the largest files first, and failed/longer files first when it has a results cache.
- * The SDK LocalNet suites are numbered `00`-`04`, so path order keeps the CI log readable and reproducible. The files
- * are independent: each deploys its own stack, and `--no-file-parallelism` keeps their chain-global time travel from
- * overlapping.
+ * Run test files in deterministic path order: Vitest's default runs largest and failed-first, while the numbered SDK LocalNet suites stay readable and reproducible in path order.
  */
 class PathOrderSequencer extends BaseSequencer {
   /**
@@ -40,8 +35,7 @@ export default defineConfig({
     testTimeout: 120_000,
     coverage: {
       provider: 'v8',
-      // The SDK is utils: same 100% gate as the frontend. Genuinely unreachable defensive
-      // branches carry `/* v8 ignore next */` with a reason instead of theater tests.
+      // The SDK is utils: same 100% gate as the frontend; unreachable defensive branches carry `/* v8 ignore next */` with a reason instead of theater tests.
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.spec.ts', 'src/generated/**', 'test/**'],
       reporter: ['text', 'json-summary'],

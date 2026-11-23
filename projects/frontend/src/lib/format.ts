@@ -1,10 +1,7 @@
 import { MICRO_ALGOS_PER_ALGO, SECONDS_PER_DAY } from '@kasakame/constants'
 
 /**
- * Formatting helpers for amounts and deadlines.
- *
- * On-chain values are always microAlgos (`bigint`) and deadlines are UNIX seconds (`bigint`). These helpers keep that conversion in one
- * place.
+ * Formatting helpers for amounts and deadlines: on-chain values are microAlgos (`bigint`), deadlines UNIX seconds (`bigint`).
  */
 
 /**

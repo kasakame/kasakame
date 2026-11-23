@@ -1,23 +1,6 @@
 name: release-sdk
 
-# Manual release of @kasakame/sdk. The SDK is regenerated from the released
-# @kasakame/contracts package, so this workflow never builds the contracts and
-# cannot embed an unreleased interface. Every gate is its own step so a failure
-# and its timing are visible in the run. The dispatch version must match
-# projects/sdk/package.json, and dry_run defaults to true; set it to false only
-# for a real release.
-#
-# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
-# --provenance. Configure the trusted publisher for @kasakame/sdk as GitHub
-# owner `kasakame`, repository `kasakame`, workflow `release-sdk.yml`, with no
-# environment and "Allow npm publish" enabled.
-#
-# A smoke job installs the packed tarball in a clean consumer and imports the
-# public API before the publish job runs. An integration job starts LocalNet and
-# runs the SDK suite against the prep-generated clients and tested dist. The
-# frontend is released separately against the published version. Release
-# @kasakame/contracts and @kasakame/constants first: the SDK builds from the
-# contracts package and declares constants as a peer dependency.
+# Manual release of @kasakame/sdk from the released @kasakame/contracts package (release contracts and constants first); version must match package.json (see docs/ci.md).
 on:
   workflow_dispatch:
     inputs:
@@ -77,9 +60,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: node projects/utils/release/assert-unpublished.ts "@kasakame/sdk" "$VERSION"
 
-      # The released contracts package is the only interface input. Do not set
-      # SDK_SPECS=local here: a published SDK must not use an unreleased
-      # contracts checkout.
+      # The released contracts package is the only interface input; never set SDK_SPECS=local here, since a published SDK must not use an unreleased checkout.
       - name: Install the released contracts package
         env:
           CONTRACTS_VERSION: ${{ steps.version.outputs.contracts }}
@@ -90,8 +71,7 @@ jobs:
         run: npm run codegen
         working-directory: projects/sdk
 
-      # Codegen already ran in the previous step; skip the prebuild hook so
-      # this step is only the TypeScript emit.
+      # Codegen already ran in the previous step, so --ignore-scripts skips the prebuild hook and this step is only the TypeScript emit.
       - name: Compile TypeScript
         run: npm run build --ignore-scripts
         working-directory: projects/sdk
@@ -275,6 +255,5 @@ jobs:
         if: ${{ !inputs.dry_run }}
         env:
           VERSION: ${{ needs.prep.outputs.version }}
-        # npm stages a new package ("being processed") before it is visible;
-        # the first publish took ~2.5 minutes. Normal publishes exit immediately.
+        # npm stages a new package ("being processed") before it is visible; the first publish took ~2.5 minutes, and normal publishes exit immediately.
         run: node projects/utils/release/verify-published.ts "@kasakame/sdk" "$VERSION"

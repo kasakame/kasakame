@@ -9,8 +9,7 @@ interface Deployer {
   deploy: () => Promise<unknown>
 }
 
-// Uncomment the traceAll option to enable auto generation of AVM Debugger compliant sourceMap and simulation trace file for all AVM calls.
-// Learn more about using AlgoKit AVM Debugger to debug your TEAL source codes and inspect various kinds of Algorand transactions in atomic groups -> https://github.com/algorandfoundation/algokit-avm-vscode-Debugger
+// Uncomment `traceAll` to generate AVM Debugger source maps and traces: https://github.com/algorandfoundation/algokit-avm-vscode-Debugger
 
 Config.configure({
   logger: consoleLogger,
@@ -19,10 +18,7 @@ Config.configure({
 })
 registerDebugEventHandlers()
 
-/**
- * Platform deployers, in order. The Registry fixes the Campaign/Vault hashes, the sweep target, and the refund window;
- * the vault records the Registry id and then binds to it.
- */
+/** Platform deployers, in order: the Registry fixes the hashes/sweep target/window, then the vault records and binds. */
 const DEPLOYERS: readonly Deployer[] = [
   { name: 'registry', deploy: deployRegistry },
   { name: 'claimsvault', deploy: deployVault },

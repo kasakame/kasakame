@@ -67,8 +67,7 @@ describe('SDK open campaign (localnet)', () => {
     expect(await fetchMyLeaves(appId, backer.address)).toEqual([])
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(0n)
 
-    // Later pledge: no first-touch Registry check, so the on-chain minimum is 3 txns. The SDK still funds 4;
-    // the extra min fee is the documented headroom.
+    // Later pledge: no first-touch Registry check, so the on-chain minimum is 3 txns; the SDK still funds 4 (documented headroom).
     const laterAmount = MICRO_ALGOS_PER_ALGO
     const backerBeforeLater = await accountInfo(stack.algorand, backer.address)
     await pledge(appId, backer, laterAmount)

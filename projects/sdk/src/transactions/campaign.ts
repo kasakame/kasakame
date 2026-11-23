@@ -31,8 +31,7 @@ export interface CreateCampaignResult {
 }
 
 /**
- * The Registry's registration box for a campaign (prefix 'r' + 8-byte big-endian app id) - the inner `isRegistered`
- * check needs it.
+ * The Registry's registration box for a campaign (prefix 'r' + 8-byte big-endian app id), needed by the inner `isRegistered` check.
  *
  * @param appId The campaign application id.
  * @returns Box references for the Registry app.
@@ -48,8 +47,7 @@ export function registrationBox(appId: bigint): { appId: bigint; name: Uint8Arra
 }
 
 /**
- * Send the Registry registration group for a campaign. The caller must be the campaign creator; the group is the
- * registration app call and its refundable deposit payment.
+ * Send the Registry registration group for a campaign - the registration app call plus its refundable deposit payment; the caller must be the campaign creator.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
@@ -71,8 +69,7 @@ async function sendRegister(appId: bigint, session: WalletSession): Promise<void
 }
 
 /**
- * Register an existing campaign with the Registry after a failed create-time registration. Safe to retry: a campaign
- * that is already registered is treated as success. A no-op when no Registry is configured.
+ * Register an existing campaign with the Registry after a failed create-time registration; safe to retry, and a no-op when no Registry is configured.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
@@ -106,11 +103,7 @@ function campaignProgramHash(): Uint8Array {
 }
 
 /**
- * Verify that the configured Registry expects this SDK's Campaign program hash.
- *
- * A Registry fixes the Campaign program hash at `create`. An SDK built from another contracts bundle would create a
- * campaign that `register` rejects, leaving an orphan and a spent approval. `createCampaign` runs this check before
- * building `create`; callers can also run it at startup. No-op when no Registry is configured.
+ * Verify that the configured Registry expects this SDK's Campaign program hash; a mismatch would create a campaign that `register` rejects. No-op when no Registry is configured.
  *
  * @throws {Error} When the Registry expects another bundle, or its hash cannot be read.
  */
@@ -135,10 +128,7 @@ export async function verifyDeployment(): Promise<void> {
 }
 
 /**
- * Deploy a new campaign: create, then register with the Registry. Nothing is funded - the v2 escrow never holds funds.
- * Registration is a separate step because it references the app id from the creation round. When it fails, the
- * campaign still exists and the result carries its id with `registered: false`; `registerCampaign` retries without
- * recreating it.
+ * Deploy a new campaign: create, then register with the Registry; nothing is funded. When registration fails the campaign still exists with `registered: false`, and `registerCampaign` retries it.
  *
  * @param session Wallet session holding the signer and address.
  * @param title Short campaign title (stored on-chain).
@@ -194,8 +184,7 @@ export async function createCampaign(
   const appId = sendResult.result.appId
   const appAddress = sendResult.result.appAddress.toString()
 
-  // Register with the Registry (when configured) so the browse page treats the campaign as official. First-touch
-  // credit verifies registration on-chain, so an unregistered campaign can never take pledges.
+  // Register with the Registry (when configured) so the browse page treats the campaign as official; first-touch credit verifies registration on-chain.
   let registered = true
   let registerError: string | undefined
   if (registryAppId > 0n) {

@@ -1,12 +1,5 @@
 /**
- * Error taxonomy for wallet and chain failures. Probes that expect absence (vault boxes, leaves, balances,
- * metadata) keep swallowing with a comment; everything the user triggers goes through here so failures get a
- * category, a log line, and a message instead of silence.
- *
- * Detection is message matching (verified against the installed sources - see the patterns below):
- * - Stale proofs are contract assert strings (protocol knowledge the CLI needs too) and detected by the SDK.
- * - Pera/Defly/Exodus failures: plain `Error`s with vendor vocabulary (adapter packages bundle the vendor SDKs);
- *   matched here, `unknown` fallback stays sane when vendors reword.
+ * Error taxonomy for wallet and chain failures, detected by matching vendor and contract messages (verified against the installed sources).
  */
 
 import { isStaleProofError } from '@kasakame/sdk'
@@ -18,8 +11,7 @@ export type FailedAction = 'pledge' | 'create' | 'transaction'
 const SESSION_PATTERN = /not initialized correctly|session expired|no session|has disconnected|disconnected|no signer found/i
 const MAX_SIZE_PATTERN = /maximum size|no longer accept pledges/i
 const REJECTION_PATTERN = /\breject|\bdenied|dismissed|cancelled by user|\bcancelled\b/i
-// Connect-flow dismissals (verified against the installed vendor bundles): closing the wallet popup
-// rejects `connect()` with one of these instead of connecting.
+// Connect-flow dismissals (verified against the vendor bundles): closing the wallet popup rejects `connect()` with one of these.
 const DISMISSAL_PATTERN = /closed by user|cancelled by user|modal_closed/i
 
 /**
@@ -38,8 +30,7 @@ export function classifyError(error: unknown): ErrorKind {
 }
 
 /**
- * Whether a signing failure means the wallet session is dead (resumed state with no live bridge). The fix is
- * always the same: disconnect and reconnect the wallet.
+ * Whether a signing failure means the wallet session is dead (resumed state with no live bridge); the fix is always disconnect and reconnect.
  *
  * @param error The failure from a wallet signing call.
  * @returns True when the user should reconnect instead of retrying.
@@ -49,8 +40,7 @@ export function isSessionError(error: unknown): boolean {
 }
 
 /**
- * Whether a connect-flow failure is just the user closing the wallet popup.
- * A dismissal is not an error: callers reopen the menu quietly instead of printing a message.
+ * Whether a connect-flow failure is just the user closing the wallet popup, which callers treat as a quiet no-op.
  *
  * @param error The failure from a wallet `connect()` call.
  * @returns True when no error message should be shown.

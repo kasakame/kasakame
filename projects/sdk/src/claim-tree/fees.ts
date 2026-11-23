@@ -12,12 +12,7 @@ import {
 import { pathShape } from './proof.js'
 
 /**
- * Public SDK re-export of the shared cap; import it from `@kasakame/constants` outside the SDK.
- *
- * Maximum campaign tree size (2^19 - 1 = 524,287). Must match `Campaign.MAX_TREE_SIZE`: at the worst-case refund
- * path (r = c = 18, 36 elements) the zero-headroom fee bound funds 15 OpUp takes, while the measured ~600-op prelude
- * makes the contract request 14, so 14 + two payout inners = 16 inner transactions. The extra funded take is never
- * requested.
+ * Maximum campaign tree size (2^19 - 1); must match `Campaign.MAX_TREE_SIZE` - the zero-headroom fee bound funds the worst-case OpUp takes with one spare.
  */
 export { MAX_TREE_SIZE } from '@kasakame/constants'
 

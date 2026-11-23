@@ -53,8 +53,7 @@ const { fetchVaultBoxMock } = vi.hoisted(() => ({
   fetchVaultBoxMock: vi.fn(),
 }))
 
-// Indexer `searchForApplicationBoxes` returns a limit/nextToken/do chain, mocked per app id:
-// 1001n => registry registration boxes, 2002n => vault per-campaign boxes.
+// Indexer `searchForApplicationBoxes` returns a limit/nextToken/do chain, mocked per app id: 1001n => registry boxes, 2002n => vault boxes.
 let registryBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
 let vaultBoxesValue: { boxes: { name: Uint8Array }[]; nextToken: string | undefined }
 const registryLimitMock = vi.fn(() => registryChain)

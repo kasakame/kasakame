@@ -14,8 +14,7 @@ export const CAMPAIGNS_LOCALNET: ReadonlyArray<SeedCampaign> = [
   { creator: 'dave', goalAlgo: 5, days: 1, pledgeAlgo: 0 },
 ]
 
-// Faucet-friendly amounts for shared networks (one backer needs ~1.6 ALGO total; two creators need ~0.7 ALGO
-// each for the creation MBR + registration deposit + fees).
+// Faucet-friendly amounts for shared networks (one backer needs ~1.6 ALGO; a creator ~0.7 ALGO for MBR, deposit, and fees).
 export const CAMPAIGNS_TESTNET: ReadonlyArray<SeedCampaign> = [
   { creator: 'alice', goalAlgo: 2, days: 1, pledgeAlgo: 0.5 },
   { creator: 'carol', goalAlgo: 5, days: 1, pledgeAlgo: 1 },

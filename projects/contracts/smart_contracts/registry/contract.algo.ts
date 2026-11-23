@@ -27,19 +27,7 @@ import {
 } from '@kasakame/constants/source'
 
 /**
- * Registry - the canonical, ownerless on-chain registry for kasakame campaigns.
- *
- * The Registry is **not** a shared escrow: every campaign keeps its own application account and its own funds. Its only job is
- * authenticity and registration - it verifies that a new `Campaign` app runs the official kasakame approval **and clear-state**
- * programs (by SHA-256 hash) and records `app id → creator`, so clients can tell official campaigns apart from arbitrary copies.
- *
- * The campaign and vault program hashes, the vault sweep target, and the vault refund window are fixed at `create`. There is no owner,
- * no timelock, and no post-deployment configuration. `bindVault`, `register`, and `unregister` are top-level only; `isRegistered` stays
- * inner-callable because the vault calls it during first-touch `credit`.
- *
- * Registration costs a small, refundable deposit (the registration box's minimum balance, ~0.019 ALGO), paid to the Registry account and
- * returned by `unregister()` in the same atomic group as the campaign's `delete()`. The Registry takes no part in pledging, refunding, or
- * cleanup - it is never a bottleneck and never performs per-backer operations.
+ * Registry - the canonical, ownerless on-chain registry for kasakame campaigns: it verifies the official program hashes and records `app id → creator` (see docs/claim-tree-protocol.md).
  */
 
 // Campaign status values (see campaign/contract.algo.ts): 0 = Open, 1 = Failed, 2 = Claimed.
@@ -70,10 +58,7 @@ export class Registry extends Contract {
   registered = BoxMap<uint64, Account>({ keyPrefix: REGISTRY_BOX_PREFIX })
 
   /**
-   * Deploy the Registry with the immutable platform bundle.
-   *
-   * The hashes are SHA-256 digests of `itob(approval.length) ‖ approval ‖ clear`, exactly what `register` and `bindVault` verify.
-   * Passing them as arguments keeps the same Registry bytecode usable for different Campaign/Vault bundles.
+   * Deploy the Registry with the immutable platform bundle: hashes of `itob(approval.length) ‖ approval ‖ clear`, the same form `register` and `bindVault` verify.
    *
    * @param campaignProgramHash SHA-256 of the official Campaign approval + clear-state programs.
    * @param vaultProgramHash SHA-256 of the official ClaimsVault approval + clear-state programs.
@@ -100,11 +85,7 @@ export class Registry extends Contract {
   }
 
   /**
-   * Bind the official ClaimsVault, permissionlessly and once.
-   *
-   * The vault is deployed after the Registry because its `create` records the Registry id. This call verifies the back-pointer,
-   * the vault's sweep target and refund window, and its approval + clear-state program hash. A clone with the same program and
-   * the same configuration behaves identically and cannot steal funds; the deployer should bind its intended vault immediately.
+   * Bind the official ClaimsVault, permissionlessly and once; the vault is deployed after the Registry because its `create` records the Registry id.
    *
    * @param vault The official ClaimsVault application.
    */
@@ -133,16 +114,7 @@ export class Registry extends Contract {
   }
 
   /**
-   * Register a newly created Campaign app.
-   *
-   * Anyone may call, but only the campaign's creator can register it: the calling application's approval and clear-state programs
-   * must hash to the official `campaignProgramHash`, its `vault` global must be the official `vault`, and its creator must be the
-   * caller. The caller pays a refundable deposit covering the registration box's minimum balance; `unregister()` returns it when
-   * the campaign is deleted.
-   *
-   * `register` must be the final transaction in the group. A payment can only appear once in one group, so this makes each
-   * registration consume a distinct deposit: without it one payment could register several campaigns and drain the Registry's
-   * minimum-balance buffer through repeated `unregister()` calls.
+   * Register a Campaign app: creator only, refundable deposit, programs and vault matching the official bundle, and final in the group so one payment backs one registration.
    *
    * @param app The deployed Campaign application (its approval + clear-state programs and vault are verified).
    * @param payment Payment from the caller to the Registry account, covering the registration deposit.
@@ -161,8 +133,7 @@ export class Registry extends Contract {
     assert(payment.closeRemainderTo === Global.zeroAddress, 'payment must not close')
     assert(payment.rekeyTo === Global.zeroAddress, 'payment must not rekey')
     assert(!this.registered(app.id).exists, 'campaign already registered')
-    // Length-prefix the approval program so the hash binds the exact approval/clear split: `sha256(approval ‖ clear)`
-    // alone is ambiguous, because moving bytes between the two programs leaves the concatenation unchanged.
+    // Length-prefix the approval program so the hash binds the exact approval/clear split: `sha256(approval ‖ clear)` alone is ambiguous.
     assert(
       op.sha256(op.itob(app.approvalProgram.length).concat(app.approvalProgram).concat(app.clearStateProgram)) ===
         this.campaignProgramHash.value,
@@ -175,18 +146,7 @@ export class Registry extends Contract {
   }
 
   /**
-   * Unregister a campaign and recover the registration deposit.
-   *
-   * Only the campaign creator may call. For a registered campaign the registration box is deleted (freeing its minimum
-   * balance on the Registry account) and the deposit is paid back to the creator. The campaign app must still exist and be
-   * settled (`Failed` or `Claimed`), pristine (`Open` with `raised == 0`), or failed-in-fact (`Open`, deadline passed,
-   * `raised < goal`, or the tree cap reached with the goal missed). A live campaign with pledges cannot delist itself. An
-   * unregistered campaign (for example, one whose registration never landed) is a no-op: the same cleanup group can delete it
-   * without a deposit.
-   *
-   * Delisting and deletion are one atomic operation: the campaign's `delete()` must be the immediately following transaction,
-   * from the same creator, with the `DeleteApplication` action. This lets zero-pledge and all-cancelled campaigns clean up
-   * immediately while guaranteeing that no unregistered campaign can remain live to take pledges.
+   * Unregister and recover the deposit (creator only): the campaign must be settled, pristine, or failed in fact, and delete() must follow immediately so both are atomic.
    *
    * @param app The Campaign application.
    */
@@ -214,8 +174,7 @@ export class Registry extends Contract {
       assert(settled || pristine || failedInFact, 'campaign is still live')
     }
 
-    // The campaign's delete must be the very next transaction, so delisting and deletion are atomic. This also shapes the
-    // no-op case: an unregistered campaign can only be cleaned up by the same [unregister, delete] group.
+    // The campaign's delete must be the very next transaction, so delisting and deletion are atomic; this also shapes the unregistered no-op case.
     const deleteIndex: uint64 = Txn.groupIndex + Uint64(1)
     assert(deleteIndex < Global.groupSize, 'delete must follow unregister')
     assert(gtxn.Transaction(deleteIndex).type === TransactionType.ApplicationCall, 'delete must follow unregister')

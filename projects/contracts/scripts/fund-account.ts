@@ -2,11 +2,7 @@ import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants/source'
 
 /**
- * Fund any address on LocalNet from the dispenser (test accounts start at 0 ALGO).
- *
- * LocalNet only - never run against TestNet/MainNet.
- *
- * Usage: `ADDRESS=<addr> [ALGO=<amount>] npm run localnet:fund`
+ * Fund any address on LocalNet from the dispenser (test accounts start at 0 ALGO); LocalNet only.
  */
 void (async () => {
   const address = process.env.ADDRESS
