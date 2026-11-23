@@ -9,11 +9,14 @@ The package ships the generated typed clients, so consumers do not need the cont
 ## Install
 
 ```bash
-npm install @kasakame/sdk @kasakame/constants
+npm install @kasakame/sdk @kasakame/constants @algorandfoundation/algokit-utils
 ```
 
-Node.js 24 or newer, ESM. The SDK declares `@kasakame/constants@^0.2.0` as a
-peer dependency.
+Node.js 24 or newer, ESM. The SDK declares
+`@kasakame/constants@^0.2.0` and `@algorandfoundation/algokit-utils@^9.0.0` as
+peer dependencies; install them alongside the SDK. `algokit-utils` stays a peer
+because the SDK uses the `AlgorandClient` you pass to `configureSdk`, and a
+second copy can mismatch types and runtime classes.
 
 ## Usage
 
