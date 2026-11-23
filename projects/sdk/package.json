@@ -64,6 +64,7 @@
     "test": "vitest run --exclude 'test/**'",
     "test:watch": "vitest --exclude 'test/**'",
     "test:integration": "vitest run --no-file-parallelism test",
+    "test:integration:logs": "KASAKAME_TEST_LOG=debug npm run test:integration",
     "test:coverage": "vitest run --coverage --exclude 'test/**'",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

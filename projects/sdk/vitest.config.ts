@@ -18,6 +18,7 @@ class PathOrderSequencer extends BaseSequencer {
 // https://vitest.dev/config/
 export default defineConfig({
   test: {
+    setupFiles: 'vitest.setup.ts',
     environment: 'node',
     globals: true,
     passWithNoTests: true,

@@ -14,7 +14,7 @@ import {
   spendCampaign,
   type ContractStack,
 } from './utils'
-import { backersPerCampaign, describeScale, scaleConfig } from './utils/scale'
+import { backersPerCampaign, scaleConfig } from './utils/scale'
 
 interface CampaignFixture {
   appClient: AppClient
@@ -42,7 +42,6 @@ describe('05 many actors and campaigns', () => {
     `CON-202 ${scale.campaigns.toString()} campaigns by ${scale.creators.toString()} creators with ${backersPerCampaign(scale).toString()} backers each`,
     { tags: ['scale', 'happy', 'always'] },
     async () => {
-      console.log(describeScale(scale))
       expect(scale.campaigns).toBeGreaterThanOrEqual(2)
 
       const perCampaign = backersPerCampaign(scale)
