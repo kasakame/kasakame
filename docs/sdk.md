@@ -15,7 +15,7 @@ Before the SDK, the frontend's `lib/` folder held the chain logic: claim-tree ma
 - Version `0.2.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
 - Node.js >= 24, ESM. Entry point is `./dist/index.js` with types in `./dist/index.d.ts`; `files` publishes only `dist/` plus the package metadata and README.
 
-Dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and generated clients), `@noble/hashes` (SHA-512/256, the same function as the AVM opcode), and `algosdk` (indexer and algod access).
+Peer dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and the generated clients' runtime) and `@kasakame/constants`. Direct dependencies: `@noble/hashes` (SHA-512/256, the same function as the AVM opcode) and `algosdk` (indexer and algod access). The SDK receives the consumer's `AlgorandClient`, so `algokit-utils` is a peer; one copy keeps the class and type instances consistent.
 
 ## How to consume it
 
@@ -300,6 +300,10 @@ Creation sends `create`, then registers with the Registry in a second group beca
 
 - **One explicit setup call instead of singletons.** An SDK cannot depend on Vite or React, so you call `configureSdk` once at startup. The frontend passes its `AlgorandClient`; the CLI builds one from flags or env.
 - **Structural, framework-free types.** `WalletSession` uses algosdk's `TransactionSigner` with no wallet dependency. Indexer and algod access go through the configured `AlgorandClient`.
+- **Host-provided classes are peers.** `@algorandfoundation/algokit-utils` and
+  `@kasakame/constants` are peer dependencies. The consumer creates the
+  `AlgorandClient`; a second copy could mismatch types or runtime classes. The
+  generated clients resolve the same peer.
 - **Released interfaces are the default inputs.** The SDK builds against the installed `@kasakame/contracts` package: `scripts/codegen.ts` reads `node_modules/@kasakame/contracts/dist/arc56` and regenerates clients with its own pinned generator. `SDK_SPECS=local` reads `projects/contracts/smart_contracts/artifacts` and is the explicit override inside a change set that modifies the contracts. The published SDK ships the generated clients; building locally needs the released package installed (or `SDK_SPECS=local` after a contracts build).
 - **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` stays gitignored; specs are read from the package (or locally) and never committed. The SDK regenerates clients from specs and tags them `// @ts-nocheck` (they do not pass the strict compiler). Clients never travel between packages.
 - **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and disconnect handling stay in the frontend. The stale-proof retry policy moves to the SDK because the CLI needs it; the error-to-message mapping stays in the frontend.

@@ -20,6 +20,8 @@ if (typeof specsVersion !== 'string') {
 for (const name of ['configureSdk', 'getCampaign', 'pledgeGroup', 'refundGroup'] as const) {
   assert.equal(typeof sdk[name], 'function', `missing function export: ${name}`)
 }
+const algokitUtils = (await import('@algorandfoundation/algokit-utils')) as { AlgorandClient?: unknown }
+assert.equal(typeof algokitUtils.AlgorandClient, 'function', 'missing peer: @algorandfoundation/algokit-utils')
 const expectedSpecs = process.env.EXPECTED_SPECS_VERSION
 assert.ok(expectedSpecs, 'EXPECTED_SPECS_VERSION is not set')
 assert.equal(specsVersion, expectedSpecs, `SPECS_VERSION ${specsVersion} does not match ${expectedSpecs}`)

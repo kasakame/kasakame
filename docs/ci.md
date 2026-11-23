@@ -488,7 +488,8 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   It gates the publish.
 - `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
   installs the tarball into a clean consumer (npm pulls the
-  `@kasakame/constants` peer dependency from the registry), checks the version and
+  `@kasakame/constants` and `@algorandfoundation/algokit-utils` peer
+  dependencies from the registry), checks the version and
   `LICENSE`, imports the public API, verifies `SPECS_VERSION` against the
   contracts package version, and checks that every `dist/*.js.map` embeds its
   TypeScript source with no `.d.ts.map` published. It gates the publish.
