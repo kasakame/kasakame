@@ -602,11 +602,20 @@ write helpers against a live chain.
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The
-fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
-sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
-timeouts). The tests import the shared balance, minimum-balance, account-info,
-account-delta, rejected-call, and time helpers directly from
-`@kasakame/utils/testing`.
+fixtures live in `test/utils/`:
+
+- `fixture.ts` - platform deploy, `configureSdk`, and sessions.
+- `campaign.ts` - `createTestCampaign`, `advancePastDeadline`, `headerOf`,
+  `leafAt`, `expectLeaves`, `expectVaultBox`, and `campaignSnapshot` for
+  rejected-call comparisons.
+- `fees.ts` - `pledgeFee`, `campaignSpendFee`, and `vaultSpendFee` mirror the SDK
+  fee sizing.
+- `group.ts` - `submitGroup` sends a pre-built group and refreshes the indexer
+  caches.
+- `scale.ts` - tree sizes and timeouts.
+
+The tests import the shared balance, minimum-balance, account-info, account-delta,
+rejected-call, and time helpers directly from `@kasakame/utils/testing`.
 
 CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
 artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite

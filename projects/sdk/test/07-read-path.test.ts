@@ -5,7 +5,6 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import {
   cancelPledge,
   clearCachedCampaigns,
-  createCampaign,
   deleteCampaign,
   enumerateCampaigns,
   fetchChainTimestamp,
@@ -21,7 +20,16 @@ import {
   refundWindowEndsAt,
   waitForIndexerCatchUp,
 } from '../src/index.js'
-import { leafAt, session, setupSdkStack, type SdkStack } from './utils/index.js'
+import {
+  TEST_DEADLINE_SECONDS,
+  advancePastDeadline,
+  createTestCampaign,
+  expectVaultBox,
+  leafAt,
+  session,
+  setupSdkStack,
+  type SdkStack,
+} from './utils/index.js'
 
 describe('SDK read path (localnet)', () => {
   const fixture = algorandFixture()
@@ -34,10 +42,14 @@ describe('SDK read path (localnet)', () => {
   test('SDK-070 live, deleted, and finalized reads', { tags: ['happy', 'always'] }, async () => {
     const creator = await session(fixture, 50n)
     const backer = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
+    const deadline = (await fetchChainTimestamp()) + TEST_DEADLINE_SECONDS
 
     const liveGoal = MICRO_ALGOS_PER_ALGO
-    const { appId: liveId } = await createCampaign(creator, 'SDK read live', 'ipfs://sdk-read-live', liveGoal, deadline)
+    const { appId: liveId } = await createTestCampaign(creator, liveGoal, {
+      deadline,
+      title: 'SDK read live',
+      uri: 'ipfs://sdk-read-live',
+    })
     const remainingAmount = 2n * MICRO_ALGOS_PER_ALGO
     await pledge(liveId, backer, remainingAmount)
     await pledge(liveId, backer, MICRO_ALGOS_PER_ALGO)
@@ -48,10 +60,14 @@ describe('SDK read path (localnet)', () => {
     expect(await fetchMyPledge(liveId, backer.address)).toEqual(remainingAmount)
 
     const failedGoal = 10n * MICRO_ALGOS_PER_ALGO
-    const { appId: failedId } = await createCampaign(creator, 'SDK read deleted', 'ipfs://sdk-read-deleted', failedGoal, deadline)
+    const { appId: failedId } = await createTestCampaign(creator, failedGoal, {
+      deadline,
+      title: 'SDK read deleted',
+      uri: 'ipfs://sdk-read-deleted',
+    })
     const failedAmount = 2n * MICRO_ALGOS_PER_ALGO
     await pledge(failedId, backer, failedAmount)
-    await advanceTime(fixture, 90_001)
+    await advancePastDeadline(fixture)
     await deleteCampaign(failedId, creator)
     await waitForIndexerCatchUp()
 
@@ -99,7 +115,7 @@ describe('SDK read path (localnet)', () => {
     expect(config.sweepTarget).toMatch(/^[A-Z2-7]{58}$/)
     expect(config.sweepTarget).not.toEqual(stack.vaultAddress)
     const box = await fetchVaultBox(failedId)
-    expect(box?.status).toEqual(2)
+    expectVaultBox(box, { status: 2 })
     const settledAt = box?.settledAt ?? 0n
     expect(settledAt).toBeGreaterThan(0n)
     expect(refundWindowEndsAt(settledAt, config.window)).toEqual(settledAt + config.window)
