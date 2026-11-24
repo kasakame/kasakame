@@ -15,14 +15,13 @@ import {
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
-import { accountInfo, deployPlatform, type PlatformStack } from '@kasakame/utils/testing'
+import { accountInfo, deployPlatform, vaultBoxRef, type PlatformStack } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect } from 'vitest'
 import { CAMPAIGN_MBR, DEFAULT_GOAL, REGISTRY_MBR, VAULT_MBR } from './campaign'
-import { vaultBoxRef } from './state'
 
 /** The three ARC-56 specs the integration suites deploy. */
 export interface ContractSpecs {

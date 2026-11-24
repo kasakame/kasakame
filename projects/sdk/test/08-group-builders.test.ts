@@ -1,7 +1,7 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
-import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { accountInfo, advanceTime, assertRejectedUnchanged } from '@kasakame/utils/testing'
 import { TransactionType, type TransactionWithSigner } from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
 import {
@@ -67,8 +67,6 @@ describe('SDK group builders (localnet)', () => {
 
     // A group with the credit transaction removed must fail without adding a leaf or touching the box.
     const malformed = await pledgeGroup(appId, backer, secondAmount)
-    const leavesBeforeMalformed = await fetchMyLeaves(appId, backer.address)
-    const boxBeforeMalformed = await fetchVaultBox(appId)
     const malformedComposer = stack.algorand.send.newGroup()
     for (const transaction of malformed.slice(0, 2)) malformedComposer.addTransaction(transaction.txn, transaction.signer)
     // A fee-funded non-credit third transaction reaches the contract's group-shape guard.
@@ -79,11 +77,17 @@ describe('SDK group builders (localnet)', () => {
       staticFee: microAlgos(10n * stack.minFee),
     })
     malformedComposer.addTransaction(filler, backer.signer)
-    await expect(malformedComposer.send()).rejects.toThrow(/credit must follow pledge/)
-    clearTreeCache()
-    await waitForIndexerCatchUp()
-    expect(await fetchMyLeaves(appId, backer.address)).toEqual(leavesBeforeMalformed)
-    expect(await fetchVaultBox(appId)).toEqual(boxBeforeMalformed)
+    await assertRejectedUnchanged(
+      () => malformedComposer.send(),
+      async () => {
+        clearTreeCache()
+        return {
+          leaves: await fetchMyLeaves(appId, backer.address),
+          box: await fetchVaultBox(appId),
+        }
+      },
+      /credit must follow pledge/,
+    )
 
     await submit(await pledgeGroup(appId, backer, secondAmount))
     expect((await fetchMyLeaves(appId, backer.address)).map(({ position, amount }) => ({ position, amount }))).toEqual([

@@ -9,7 +9,17 @@ import {
   REGISTER_DEPOSIT_MICRO_ALGOS,
   SECONDS_PER_DAY,
 } from '@kasakame/constants'
-import { accountInfo, advanceTime, appIdBytes, balanceOf, concatHex } from '@kasakame/utils/testing'
+import {
+  accountInfo,
+  advanceTime,
+  appIdBytes,
+  appSnapshot,
+  assertRejectedUnchanged,
+  balanceOf,
+  concatHex,
+  registrationBoxRef,
+  vaultBoxRef,
+} from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { ABIMethod, OnApplicationComplete, decodeAddress, getApplicationAddress } from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
@@ -24,10 +34,8 @@ import {
   deployStack,
   isRegistered,
   pledge,
-  registrationBoxRef,
   spendCampaign,
   spendExtraFee,
-  vaultBoxRef,
   type ContractStack,
   type OraclePath,
 } from './utils'
@@ -269,37 +277,6 @@ async function settleOpen(stack: ContractStack, appId: bigint, sender: string): 
   })
 }
 
-interface AppSnapshot {
-  approval: string
-  clear: string
-  version: string
-  global: { key: string; bytes: string; uint: string }[]
-}
-
-/**
- * Snapshot the programs and global state of an app, including the update counter.
- *
- * @param stack The deployed stack.
- * @param appId The app to snapshot.
- * @returns The comparable program/state snapshot.
- */
-async function appSnapshot(stack: ContractStack, appId: bigint): Promise<AppSnapshot> {
-  const { params } = await stack.algorand.client.algod.getApplicationByID(appId).do()
-  if (params === undefined) throw new Error(`app ${appId.toString()} has no params`)
-  return {
-    approval: Buffer.from(params.approvalProgram).toString('base64'),
-    clear: Buffer.from(params.clearStateProgram).toString('base64'),
-    version: (params.version ?? 0).toString(),
-    global: (params.globalState ?? [])
-      .map(({ key, value }) => ({
-        key: Buffer.from(key).toString('base64'),
-        bytes: Buffer.from(value.bytes).toString('base64'),
-        uint: value.uint.toString(),
-      }))
-      .sort((left, right) => left.key.localeCompare(right.key)),
-  }
-}
-
 /**
  * Send a composed group and assert it is rejected without changing the app.
  *
@@ -312,11 +289,12 @@ async function expectRejected(
   appId: bigint,
   build: (composer: ReturnType<ContractStack['algorand']['send']['newGroup']>) => void,
 ): Promise<void> {
-  const before = await appSnapshot(stack, appId)
   const composer = stack.algorand.send.newGroup()
   build(composer)
-  await expect(composer.send({ suppressLog: true })).rejects.toThrow()
-  expect(await appSnapshot(stack, appId)).toEqual(before)
+  await assertRejectedUnchanged(
+    () => composer.send({ suppressLog: true }),
+    () => appSnapshot(stack.algorand, appId),
+  )
 }
 
 describe('04 bad paths', () => {

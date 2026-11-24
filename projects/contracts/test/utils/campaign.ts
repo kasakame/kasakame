@@ -15,13 +15,13 @@ import {
   SPEND_TOP_UP_OVERHEAD,
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
-import { accountInfo, addrHex, base32ToBytes, concatHex, selectorOf } from '@kasakame/utils/testing'
+import { accountInfo, addrHex, base32ToBytes, concatHex, registrationBoxRef, selectorOf, vaultBoxRef } from '@kasakame/utils/testing'
 import { ABIMethod } from 'algosdk'
 import { expect } from 'vitest'
 import { CONTRACT_SIZES } from './contract-sizes'
 import type { ClaimTreeOracle, OraclePath } from './oracle'
 import type { ContractStack } from './platform'
-import { campaignBox, campaignBoxExists, campaignState, registrationBoxRef, vaultBoxRef } from './state'
+import { campaignBox, campaignBoxExists, campaignState } from './state'
 
 /** Default campaign goal for lifecycle tests. */
 export const DEFAULT_GOAL = 10n * MICRO_ALGOS_PER_ALGO
