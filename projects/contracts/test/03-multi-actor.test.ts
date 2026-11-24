@@ -22,7 +22,7 @@ import {
   spendCampaign,
   type ContractStack,
 } from './utils'
-import { describeScale, scaleConfig } from './utils/scale'
+import { scaleConfig } from './utils/scale'
 import { runSequence } from './utils/sequence'
 
 const scale = scaleConfig('normal')
@@ -233,7 +233,6 @@ describe('03 multiple actors and campaigns', () => {
   })
 
   test('CON-062 seeded pledge/cancel/refund/finalize sequence', { tags: ['scale', 'happy', 'always'] }, async () => {
-    console.log(describeScale(scale))
     await runSequence(fixture, stack, scale, scale.seed)
   })
 })

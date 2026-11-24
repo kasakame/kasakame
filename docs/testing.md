@@ -85,6 +85,45 @@ campaigns/backers, and the seed count through the same config, without changing
 the test code; counts, N, and seeds are helper parameters, not constants inside
 the suites. The shared helpers live in `projects/utils` (#164).
 
+## Test logging
+
+The suites configure AlgoKit Utils logging through `configureTestLogging()` in
+`@kasakame/utils/testing`, called from each project's `vitest.setup.ts`.
+AlgoKit logging is silent by default, so a passing run prints only Vitest
+results.
+
+| `KASAKAME_TEST_LOG` | Output |
+| --- | --- |
+| unset or `silent` | None |
+| `info` | Errors, warnings, and info; no transaction debug |
+| `debug` | Everything, including transaction groups |
+
+Run the integration lane with all logs:
+
+```bash
+cd projects/contracts
+npm run test:integration:logs
+```
+
+The SDK has the same script. For one file, prefix the Vitest command:
+
+```bash
+KASAKAME_TEST_LOG=debug npx vitest run test/00-open-campaign.integration.test.ts
+```
+
+For any other test command, set the variable directly:
+
+```bash
+KASAKAME_TEST_LOG=debug npm test
+```
+
+An invalid value fails before the tests start. The switch controls AlgoKit's
+logger; explicit `console.log` calls need their own removal. The cap-scale
+progress lines in `fast-pledge.ts` remain, because that workflow runs for hours
+and needs a heartbeat. Assertion failures print expected and received values
+independently. The randomized sequence engine includes the scale, seed, step,
+and actions in its failure messages.
+
 ## Integration test order
 
 The contract integration tests are numbered files. The custom sequencer in
@@ -129,7 +168,8 @@ normal/heavy presets and `07` runs the heavy seeds through the same
 `test/utils/sequence.ts` engine. Every field has an env override:
 `KASAKAME_CREATORS`, `KASAKAME_CAMPAIGNS`, `KASAKAME_BACKERS`,
 `KASAKAME_PLEDGES_PER_BACKER`, `KASAKAME_MAX_N`, `KASAKAME_SEED`, and
-`KASAKAME_SEED_COUNT`. The active config and seed are printed on failure.
+`KASAKAME_SEED_COUNT`. The active config and seed are included in `runSequence`
+failure messages; `05` names its scale in the test title.
 
 ### Budget and cap regressions
 

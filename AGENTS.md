@@ -73,6 +73,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet integration lane (PR gate)
+npm run test:integration:logs    # same lane with AlgoKit logs (KASAKAME_TEST_LOG=debug)
 npm run test:cap:failed          # cap-scale failed campaign (heavy-tests workflow, CI only)
 npm run test:cap:claimed         # cap-scale claimed campaign (heavy-tests workflow, CI only)
 npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
@@ -105,6 +106,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
 npm run test:integration         # LocalNet (requires algokit localnet start + generated clients for the target contracts)
+npm run test:integration:logs    # same lane with AlgoKit logs (KASAKAME_TEST_LOG=debug)
 
 cd ../cli
 npm run build                    # tsc emit to dist
@@ -379,6 +381,11 @@ the product contract. The pinned values and the AVM limits are in
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
+- Test suites configure AlgoKit logging through `@kasakame/utils/testing` and
+  stay silent by default. Use `KASAKAME_TEST_LOG=info|debug` (or
+  `npm run test:integration:logs`) when diagnosing a failure; don't leave
+  `console.log` calls in tests (the cap-scale progress heartbeat is the
+  exception).
 - Add or update tests in the same change set as the code they cover.
 
 ## Definition of done
