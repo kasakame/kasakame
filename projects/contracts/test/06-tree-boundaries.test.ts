@@ -9,16 +9,18 @@ import {
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
-import { advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import { advanceTime } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
+  actorSnapshot,
   campaignBoxExists,
   campaignState,
   deleteCampaign,
   deployCampaign,
   deployStack,
+  expectActorDeltas,
   pledge,
   spendCampaign,
   spendVault,
@@ -262,8 +264,7 @@ describe('06 tree boundaries', () => {
             { expectedTakes: 4 },
           )
 
-          const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
-          const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+          const before = await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address])
           await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
           await stack.vault.client.send.call({
             method: 'finalize(uint64)void',
@@ -273,10 +274,10 @@ describe('06 tree boundaries', () => {
             suppressLog: true,
           })
 
-          expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(
-            sweeperBefore + BigInt(1_024 - refunded) * MICRO_ALGOS_PER_ALGO,
-          )
-          expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
+          expectActorDeltas(before, await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address]), {
+            [stack.sweeperAddress]: { balance: BigInt(1_024 - refunded) * MICRO_ALGOS_PER_ALGO },
+            [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+          })
           expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
         }
       })
