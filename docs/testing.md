@@ -76,7 +76,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Contract size budget | `test/08-size-budget.spec.ts` (`CON-300`..`CON-302`) | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet | `test/00`-`07` | `npm run test:integration` | `integration-test-contracts` | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| SDK LocalNet | `test/0*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
+| SDK LocalNet | `test/*.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
@@ -108,7 +108,7 @@ npm run test:integration:logs
 The SDK has the same script. For one file, prefix the Vitest command:
 
 ```bash
-KASAKAME_TEST_LOG=debug npx vitest run test/00-open-campaign.integration.test.ts
+KASAKAME_TEST_LOG=debug npx vitest run test/00-open-campaign.test.ts
 ```
 
 For any other test command, set the variable directly:
@@ -270,6 +270,13 @@ use it.
 offline, so a contract or SDK formula change fails without LocalNet.
 
 ## Test file naming (important)
+
+- `*.spec.ts` / `*.spec.tsx` - offline/unit tests. Colocated with the source they
+  test; the contract-wide formula and size pins stay in `test/`.
+- `test/NN-*.test.ts` - LocalNet integration tests, numbered so the path-order
+  sequencer runs them deterministically.
+- `test/utils/` - shared fixtures and helpers; no test suffix.
+- No 1:1 source/test rule; behavior and coverage decide.
 
 The transformer only processes files whose name ends in `.algo.ts`, `.algo.spec.ts`
 or `.algo.test.ts`. The contract (`contract.algo.ts`) is transformed; **the test file
@@ -577,17 +584,17 @@ write helpers against a live chain.
 
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
-| `test/00-open-campaign.integration.test.ts` | `SDK-001` | `smoke`, `happy`, `always` | create → pledge → cancel → delete; the `[pay, campaign.pledge, vault.credit]` group and the backer withdrawal |
-| `test/01-successful-campaign.integration.test.ts` | `SDK-010` | `happy`, `always` | successful campaign → claim → delete; creator payout and `[unregister, delete]` |
-| `test/02-failed-campaign.integration.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
-| `test/03-mid-size-tree.integration.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
-| `test/04-large-tree.integration.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
-| `test/05-permissionless-cleanup.integration.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
-| `test/06-create-recovery.integration.test.ts` | `SDK-060`/`SDK-061` | `happy`, `bad`, `always` | unbound Registry returns `registered: false`, binding then retrying `registerCampaign` (including an idempotent retry), cleanup returning the deposit and app MBR, and a mismatched program hash failing before app creation |
-| `test/07-read-path.integration.test.ts` | `SDK-070` | `happy`, `always` | `listCampaigns`, `getCampaign`, `enumerateCampaigns`, `fetchMyPledge`, `fetchVaultConfig`, and the cache across live, deleted, and finalized campaigns |
-| `test/08-group-builders.integration.test.ts` | `SDK-080` | `happy`, `always` | `pledgeGroup` and both `refundGroup` routes built, inspected, and submitted through a fresh composer |
-| `test/09-multi-backer.integration.test.ts` | `SDK-090` | `happy`, `always` | interleaved leaves across three backers, per-backer positions and totals, cancels, campaign refunds, delete, and the remaining vault refunds |
-| `test/10-bad-path-smoke.integration.test.ts` | `SDK-100`..`SDK-102` | `bad`, `always` | creator `pledge`, post-deadline `cancelPledge`, and pre-deadline `refund` rejections leave the tree and vault box unchanged |
+| `test/00-open-campaign.test.ts` | `SDK-001` | `smoke`, `happy`, `always` | create → pledge → cancel → delete; the `[pay, campaign.pledge, vault.credit]` group and the backer withdrawal |
+| `test/01-successful-campaign.test.ts` | `SDK-010` | `happy`, `always` | successful campaign → claim → delete; creator payout and `[unregister, delete]` |
+| `test/02-failed-campaign.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
+| `test/03-mid-size-tree.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
+| `test/04-large-tree.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
+| `test/05-permissionless-cleanup.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
+| `test/06-create-recovery.test.ts` | `SDK-060`/`SDK-061` | `happy`, `bad`, `always` | unbound Registry returns `registered: false`, binding then retrying `registerCampaign` (including an idempotent retry), cleanup returning the deposit and app MBR, and a mismatched program hash failing before app creation |
+| `test/07-read-path.test.ts` | `SDK-070` | `happy`, `always` | `listCampaigns`, `getCampaign`, `enumerateCampaigns`, `fetchMyPledge`, `fetchVaultConfig`, and the cache across live, deleted, and finalized campaigns |
+| `test/08-group-builders.test.ts` | `SDK-080` | `happy`, `always` | `pledgeGroup` and both `refundGroup` routes built, inspected, and submitted through a fresh composer |
+| `test/09-multi-backer.test.ts` | `SDK-090` | `happy`, `always` | interleaved leaves across three backers, per-backer positions and totals, cancels, campaign refunds, delete, and the remaining vault refunds |
+| `test/10-bad-path-smoke.test.ts` | `SDK-100`..`SDK-102` | `bad`, `always` | creator `pledge`, post-deadline `cancelPledge`, and pre-deadline `refund` rejections leave the tree and vault box unchanged |
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The

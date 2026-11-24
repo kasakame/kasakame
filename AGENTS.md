@@ -381,6 +381,9 @@ the product contract. The pinned values and the AVM limits are in
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
+- Test naming: `*.spec.ts(x)` for offline/unit tests, `test/NN-*.test.ts` for
+  LocalNet integration, `test/utils/` for fixtures. There is no 1:1 source/test
+  rule; behavior and coverage decide.
 - Test suites configure AlgoKit logging through `@kasakame/utils/testing` and
   stay silent by default. Use `KASAKAME_TEST_LOG=info|debug` (or
   `npm run test:integration:logs`) when diagnosing a failure; don't leave

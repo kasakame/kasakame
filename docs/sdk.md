@@ -323,8 +323,8 @@ The SDK preflights the contract's title, metadata URI, goal, deadline, and pledg
 
 Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) in each module folder; `chain` and the public barrel keep their specs at the `src/` root. Commit scope `sdk`.
 
-LocalNet integration lives in `test/00-open-campaign.integration.test.ts` through
-`test/04-large-tree.integration.test.ts`, with shared fixtures under `test/utils/`.
+LocalNet integration lives in `test/00-open-campaign.test.ts` through
+`test/10-bad-path-smoke.test.ts`, with shared fixtures under `test/utils/`.
 `npm run test:integration` runs the numbered files in path order against a live
 LocalNet; the suite is excluded from `npm test` and coverage. Each file deploys
 its own Registry + ClaimsVault from the generated clients' ARC-56 bytecode and
