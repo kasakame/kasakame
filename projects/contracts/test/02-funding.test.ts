@@ -9,7 +9,7 @@ import {
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
-import { advanceTime, balanceOf, concatHex, minBalanceOf } from '@kasakame/utils/testing'
+import { advanceTime, balanceOf, concatHex, minBalanceOf, vaultBoxRef } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
@@ -25,7 +25,6 @@ import {
   spendCampaign,
   spendExtraFee,
   spendVault,
-  vaultBoxRef,
   type ContractStack,
 } from './utils'
 

@@ -229,10 +229,14 @@ published:
 - `@kasakame/utils` - `programHash`/`specProgramHash` for the deploy code and
   tests.
 - `@kasakame/utils/testing` - `deployPlatform` (Registry + ClaimsVault from
-  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `advanceTime`,
+  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `assertBalance` and
+  `assertAccountDelta` (balance and minimum-balance deltas as `after - before`),
+  `assertRejectedUnchanged` (a failing call plus before/after state equality),
+  `appSnapshot` (programs, global state, and update counter), `advanceTime`,
   `selectorOf`, the byte helpers (`addrHex`, `appIdBytes`, `base32ToBytes`,
-  `concatHex`), and Node-`assert` checks. It does not import a test runner, so
-  each consumer keeps Vitest.
+  `concatHex`), the vault/registration box references, `decodeCampaignBox`, and
+  Node-`assert` checks. It does not import a test runner, so each consumer keeps
+  Vitest.
 
 Protocol values live in the public `projects/constants` package:
 
@@ -255,8 +259,8 @@ through its `index.ts`:
   `docs/claim-tree-protocol-reference.py`, with one state file per campaign.
   `pledgeExtraFee`, `spendExtraFee`, and `spendFee` mirror the contract/SDK take
   formulas.
-- `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, and `registrationBoxRef`
-  read the vault's per-campaign state.
+- `campaignBox` and `campaignBoxExists` read the vault's per-campaign state;
+  `campaignBox` decodes the raw box with the shared `decodeCampaignBox`.
 
 The cap suites use `test/utils/fast-pledge.ts` instead of the per-pledge
 oracle/ledger helpers: it keeps the tree in memory and sends the same
@@ -601,7 +605,8 @@ sequencer and `--no-file-parallelism` keep time travel from overlapping. The
 fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
 sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
 timeouts). The tests import the shared balance, minimum-balance, account-info,
-and time helpers directly from `@kasakame/utils/testing`.
+account-delta, rejected-call, and time helpers directly from
+`@kasakame/utils/testing`.
 
 CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
 artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite
