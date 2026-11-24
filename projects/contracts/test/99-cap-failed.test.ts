@@ -14,9 +14,18 @@ import {
   VAULT_BOX_STATUS_OPEN_HEX,
   ZERO_ROOT_HEX,
 } from '@kasakame/constants'
-import { accountInfo, advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import { advanceTime } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
-import { campaignBox, campaignBoxExists, campaignState, deleteCampaign, deployCampaign, deployStack } from './utils'
+import {
+  actorSnapshot,
+  campaignBox,
+  campaignBoxExists,
+  campaignState,
+  deleteCampaign,
+  deployCampaign,
+  deployStack,
+  expectActorDeltas,
+} from './utils'
 import { FastTree, fastPledge, fastVaultSpend, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
@@ -47,8 +56,8 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
   const campaign = await deployCampaign(stack, creatorAddr, { goal: GOAL, deadlineOffset: DEADLINE })
   const tree = new FastTree()
 
-  const backerBefore = await accountInfo(stack.algorand, backerAddr)
-  const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
+  const backerBefore = await actorSnapshot(stack.algorand, [backerAddr])
+  const vaultBefore = await actorSnapshot(stack.algorand, [stack.vault.address])
 
   const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, Number(MAX_TREE_SIZE))
 
@@ -66,11 +75,12 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
     n: 0n,
     status: BOX_OPEN,
   })
-  const backerAfterPledges = await accountInfo(stack.algorand, backerAddr)
-  expect(backerBefore.balance - backerAfterPledges.balance).toEqual(run.principal + run.fees)
-  const vaultAfterPledges = await accountInfo(stack.algorand, stack.vault.address)
-  expect(vaultAfterPledges.balance - vaultBefore.balance).toEqual(run.principal)
-  expect(vaultAfterPledges.minBalance - vaultBefore.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
+  expectActorDeltas(backerBefore, await actorSnapshot(stack.algorand, [backerAddr]), {
+    [backerAddr]: { balance: -(run.principal + run.fees) },
+  })
+  expectActorDeltas(vaultBefore, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+    [stack.vault.address]: { balance: run.principal, minBalance: VAULT_BOX_MBR_MICRO_ALGOS },
+  })
 
   // The cap itself: the next append is rejected by the contract and changes nothing.
   await expect(fastPledge(stack, campaign.appId, backerAddr, MIN_PLEDGE_MICRO_ALGOS, tree)).rejects.toThrow(/campaign reached maximum size/)
@@ -131,8 +141,7 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
 
   // After the refund window, finalize sweeps the residual and releases the box.
   const residual = run.principal - 5n * MIN_PLEDGE_MICRO_ALGOS
-  const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
-  const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+  const beforeFinalize = await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address])
   await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
   console.log('finalizing the residual')
   await stack.vault.client.send.call({
@@ -143,13 +152,17 @@ test('CON-240 cap-scale failed campaign settles at the cap', { tags: ['scale'], 
     suppressLog: true,
   })
   const finalizeFee = 2n * FEE_MICRO_ALGOS
-  expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + residual)
-  expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
+  expectActorDeltas(beforeFinalize, await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address]), {
+    [stack.sweeperAddress]: { balance: residual },
+    [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+  })
   expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
 
   // The vault ends where it started; the backer got every refund and paid only the fees.
-  expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)
-  expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(
-    backerBefore.balance - run.principal - run.fees - spendFees - finalizeFee + 5n * MIN_PLEDGE_MICRO_ALGOS,
-  )
+  expectActorDeltas(vaultBefore, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+    [stack.vault.address]: { balance: 0n, minBalance: 0n },
+  })
+  expectActorDeltas(backerBefore, await actorSnapshot(stack.algorand, [backerAddr]), {
+    [backerAddr]: { balance: -(run.principal + run.fees + spendFees + finalizeFee) + 5n * MIN_PLEDGE_MICRO_ALGOS },
+  })
 })

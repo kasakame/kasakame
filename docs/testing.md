@@ -249,6 +249,15 @@ Protocol values live in the public `projects/constants` package:
 Contract-only helpers live in `projects/contracts/test/utils/` and are imported
 through its `index.ts`:
 
+- `assertions.ts` - `expectRejected` and `expectSendRejected` send a failing call
+  and assert the app params, optional account balances, and optional campaign
+  box are unchanged; `rejectionState` builds that snapshot.
+- `ledger.ts` - `actorSnapshot` reads several balances and minimum balances at
+  once, and `expectActorDeltas` asserts per-actor `after - before` deltas.
+- `bad-paths.ts` - the bad-path campaign fixture plus explicit group builders:
+  `buildPledgeGroup`, `buildCreditGroup`, `buildRegisterGroup`,
+  `buildRawDeleteGroup`, `buildUnregisterDeleteGroup`, `attemptCampaignSpend`,
+  `refundFromVault`, and `settleOpen`.
 - `deployStack` deploys and funds the Registry, deploys and binds the vault, and
   optionally configures the campaign hash. `deployCampaign`, `registerCampaign`,
   and `deleteCampaign` assert the create/register/cleanup fees and MBRs.
