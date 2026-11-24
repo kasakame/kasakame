@@ -1,21 +1,22 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
-import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { accountInfo } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { cancelPledge, deleteCampaign, fetchMyLeaves, fetchMyPledge, fetchVaultBox, pledge, refund } from '../src/index.js'
 import {
-  cancelPledge,
-  createCampaign,
-  deleteCampaign,
-  fetchChainTimestamp,
-  fetchMyLeaves,
-  fetchMyPledge,
-  fetchVaultBox,
-  pledge,
-  pledgeOpUpIterations,
-  refund,
-  refundOpUpIterations,
-} from '../src/index.js'
-import { headerOf, leafAt, session, setupSdkStack, type SdkStack } from './utils/index.js'
+  advancePastDeadline,
+  campaignSpendFee,
+  createTestCampaign,
+  expectLeaves,
+  expectVaultBox,
+  headerOf,
+  leafAt,
+  pledgeFee,
+  session,
+  setupSdkStack,
+  vaultSpendFee,
+  type SdkStack,
+} from './utils/index.js'
 
 describe('SDK multi-backer (localnet)', () => {
   const fixture = algorandFixture()
@@ -33,8 +34,7 @@ describe('SDK multi-backer (localnet)', () => {
     const initialA = await accountInfo(stack.algorand, backerA.address)
     const initialB = await accountInfo(stack.algorand, backerB.address)
     const initialC = await accountInfo(stack.algorand, backerC.address)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK multi-backer', 'ipfs://sdk-multi-backer', 15n * MICRO_ALGOS_PER_ALGO, deadline)
+    const { appId } = await createTestCampaign(creator, 15n * MICRO_ALGOS_PER_ALGO)
 
     const a1 = 3n * MICRO_ALGOS_PER_ALGO
     const a2 = MICRO_ALGOS_PER_ALGO
@@ -53,9 +53,9 @@ describe('SDK multi-backer (localnet)', () => {
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(a1 + a2 + b1 + b2 + c1 + c2 + c3)
 
     const treeSize = 7n
-    const pledgeCost = (position: number): bigint => (4n + BigInt(pledgeOpUpIterations(BigInt(position)))) * stack.minFee
-    const campaignCost = (position: number): bigint => (3n + BigInt(refundOpUpIterations(treeSize, BigInt(position)))) * stack.minFee
-    const vaultCost = (position: number): bigint => (2n + BigInt(refundOpUpIterations(treeSize, BigInt(position)))) * stack.minFee
+    const pledgeCost = (position: number): bigint => pledgeFee(stack.minFee, BigInt(position))
+    const campaignCost = (position: number): bigint => campaignSpendFee(stack.minFee, treeSize, BigInt(position))
+    const vaultCost = (position: number): bigint => vaultSpendFee(stack.minFee, treeSize, BigInt(position))
 
     const cancelA = leafAt(await fetchMyLeaves(appId, backerA.address), 2)
     const aBeforeCancel = await accountInfo(stack.algorand, backerA.address)
@@ -81,7 +81,7 @@ describe('SDK multi-backer (localnet)', () => {
     expect(await fetchMyPledge(appId, backerB.address)).toEqual(b1)
     expect(await fetchMyPledge(appId, backerC.address)).toEqual(c1 + c2 + c3)
 
-    await advanceTime(fixture, 90_001)
+    await advancePastDeadline(fixture)
 
     // Campaign path while the box is open: one leaf from each backer, interleaved.
     const refundA = leafAt(await fetchMyLeaves(appId, backerA.address), 0)
@@ -110,10 +110,11 @@ describe('SDK multi-backer (localnet)', () => {
     expect(await fetchMyPledge(appId, backerC.address)).toEqual(c2 + c3)
 
     await deleteCampaign(appId, creator)
-    const settled = await fetchVaultBox(appId)
-    expect(settled?.status).toEqual(2)
-    expect(settled?.paidIn).toEqual(a1 + a2 + b1 + b2 + c1 + c2 + c3)
-    expect(settled?.paidOut).toEqual(a1 + a2 + b1 + b2 + c1)
+    expectVaultBox(await fetchVaultBox(appId), {
+      status: 2,
+      paidIn: a1 + a2 + b1 + b2 + c1 + c2 + c3,
+      paidOut: a1 + a2 + b1 + b2 + c1,
+    })
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(c2 + c3)
 
     // Vault path after delete: the remaining leaves.
@@ -129,12 +130,13 @@ describe('SDK multi-backer (localnet)', () => {
     await refund(appId, backerC, remainingC2)
     const cAfterVault2 = await accountInfo(stack.algorand, backerC.address)
     expect(cAfterVault2.balance - cBeforeVault2.balance).toEqual(remainingC2.amount - vaultCost(remainingC2.position))
-    expect(await fetchMyLeaves(appId, backerC.address)).toEqual([])
+    expectLeaves(await fetchMyLeaves(appId, backerC.address), [])
     expect(await fetchMyPledge(appId, backerC.address)).toBeUndefined()
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(0n)
-    const drained = await fetchVaultBox(appId)
-    expect(drained?.paidIn).toEqual(a1 + a2 + b1 + b2 + c1 + c2 + c3)
-    expect(drained?.paidOut).toEqual(a1 + a2 + b1 + b2 + c1 + c2 + c3)
+    expectVaultBox(await fetchVaultBox(appId), {
+      paidIn: a1 + a2 + b1 + b2 + c1 + c2 + c3,
+      paidOut: a1 + a2 + b1 + b2 + c1 + c2 + c3,
+    })
 
     // Every principal returned; each backer keeps the initial balance minus only the fees they paid.
     const feesA = pledgeCost(0) + pledgeCost(2) + campaignCost(cancelA.position) + campaignCost(refundA.position)

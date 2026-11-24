@@ -3,16 +3,8 @@ import { MICRO_ALGOS_PER_ALGO, REGISTER_DEPOSIT_MICRO_ALGOS } from '@kasakame/co
 import { accountInfo } from '@kasakame/utils/testing'
 import { describe, expect, test } from 'vitest'
 import { RegistryClient } from '../src/generated/RegistryClient.js'
-import {
-  createCampaign,
-  deleteCampaign,
-  enumerateCampaigns,
-  fetchChainTimestamp,
-  fetchVaultBox,
-  isRegistered,
-  registerCampaign,
-} from '../src/index.js'
-import { headerOf, session, setupSdkStack } from './utils/index.js'
+import { deleteCampaign, enumerateCampaigns, fetchVaultBox, isRegistered, registerCampaign } from '../src/index.js'
+import { createTestCampaign, headerOf, session, setupSdkStack } from './utils/index.js'
 
 describe('SDK create recovery (localnet)', () => {
   const fixture = algorandFixture()
@@ -20,17 +12,13 @@ describe('SDK create recovery (localnet)', () => {
   test('SDK-060 unbound Registry → registered: false → bind → register retry → delete', { tags: ['happy', 'always'] }, async () => {
     const stack = await setupSdkStack(fixture, { bindVault: false })
     const creator = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
     const creatorBeforeCreate = await accountInfo(stack.algorand, creator.address)
     const registryBefore = await accountInfo(stack.algorand, stack.registryAddress)
 
-    const { appId, registered, registerError } = await createCampaign(
-      creator,
-      'SDK create recovery',
-      'ipfs://sdk-create-recovery',
-      10n * MICRO_ALGOS_PER_ALGO,
-      deadline,
-    )
+    const { appId, registered, registerError } = await createTestCampaign(creator, 10n * MICRO_ALGOS_PER_ALGO, {
+      title: 'SDK create recovery',
+      uri: 'ipfs://sdk-create-recovery',
+    })
     expect(registered).toBe(false)
     expect(registerError).toMatch(/official vault not configured/)
     expect(await isRegistered(appId)).toBe(false)
@@ -71,12 +59,9 @@ describe('SDK create recovery (localnet)', () => {
   test('SDK-061 mismatched Registry program hash fails before creating an app', { tags: ['bad', 'always'] }, async () => {
     const stack = await setupSdkStack(fixture, { campaignProgramHash: new Uint8Array(32) })
     const creator = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
     const before = await stack.algorand.account.getInformation(creator.address)
 
-    await expect(createCampaign(creator, 'SDK wrong hash', 'ipfs://sdk-wrong-hash', MICRO_ALGOS_PER_ALGO, deadline)).rejects.toThrow(
-      /the Registry expects Campaign program hash/,
-    )
+    await expect(createTestCampaign(creator, MICRO_ALGOS_PER_ALGO)).rejects.toThrow(/the Registry expects Campaign program hash/)
 
     const after = await stack.algorand.account.getInformation(creator.address)
     expect(after.totalCreatedApps).toEqual(before.totalCreatedApps)

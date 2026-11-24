@@ -1,9 +1,9 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO, REGISTER_DEPOSIT_MICRO_ALGOS, VAULT_BOX_MBR_MICRO_ALGOS } from '@kasakame/constants'
-import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { accountInfo } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
-import { claim, createCampaign, deleteCampaign, fetchChainTimestamp, fetchVaultBox, isRegistered, pledge } from '../src/index.js'
-import { headerOf, session, setupSdkStack, type SdkStack } from './utils/index.js'
+import { claim, deleteCampaign, fetchVaultBox, isRegistered, pledge } from '../src/index.js'
+import { advancePastDeadline, createTestCampaign, expectVaultBox, headerOf, session, setupSdkStack, type SdkStack } from './utils/index.js'
 
 describe('SDK successful campaign (localnet)', () => {
   const fixture = algorandFixture()
@@ -16,12 +16,11 @@ describe('SDK successful campaign (localnet)', () => {
   test('SDK-010 successful campaign → claim → delete', { tags: ['happy', 'always'] }, async () => {
     const creator = await session(fixture, 50n)
     const backer = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
 
     const creatorBeforeCreate = await accountInfo(stack.algorand, creator.address)
     const registryBefore = await accountInfo(stack.algorand, stack.registryAddress)
     const vaultBefore = await accountInfo(stack.algorand, stack.vaultAddress)
-    const { appId } = await createCampaign(creator, 'SDK successful campaign', 'ipfs://sdk-success', MICRO_ALGOS_PER_ALGO, deadline)
+    const { appId } = await createTestCampaign(creator, MICRO_ALGOS_PER_ALGO)
     const creatorAfterCreate = await accountInfo(stack.algorand, creator.address)
     const campaignMbr = creatorAfterCreate.minBalance - creatorBeforeCreate.minBalance
     expect(creatorBeforeCreate.balance - creatorAfterCreate.balance - REGISTER_DEPOSIT_MICRO_ALGOS).toEqual(3n * stack.minFee)
@@ -29,7 +28,7 @@ describe('SDK successful campaign (localnet)', () => {
     await pledge(appId, backer, MICRO_ALGOS_PER_ALGO)
     const vaultAfterPledge = await accountInfo(stack.algorand, stack.vaultAddress)
     expect(vaultAfterPledge.minBalance - vaultBefore.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
-    await advanceTime(fixture, 90_001)
+    await advancePastDeadline(fixture)
 
     // Claim: campaign outer + inner payClaim + inner payment = 3 min fees.
     const creatorBeforeClaim = await accountInfo(stack.algorand, creator.address)
@@ -38,10 +37,11 @@ describe('SDK successful campaign (localnet)', () => {
     expect(creatorAfterClaim.balance - creatorBeforeClaim.balance).toEqual(MICRO_ALGOS_PER_ALGO - 3n * stack.minFee)
     expect(creatorAfterClaim.minBalance).toEqual(creatorBeforeClaim.minBalance)
     expect((await headerOf(appId)).status).toEqual('claimed')
-    const box = await fetchVaultBox(appId)
-    expect(box?.status).toEqual(3)
-    expect(box?.paidIn).toEqual(MICRO_ALGOS_PER_ALGO)
-    expect(box?.paidOut).toEqual(MICRO_ALGOS_PER_ALGO)
+    expectVaultBox(await fetchVaultBox(appId), {
+      status: 3,
+      paidIn: MICRO_ALGOS_PER_ALGO,
+      paidOut: MICRO_ALGOS_PER_ALGO,
+    })
 
     // Delete: unregister + inner deposit + delete + 2 inners = 5 min fees; the deposit returns and the claimed box is released.
     const creatorBeforeDelete = await accountInfo(stack.algorand, creator.address)

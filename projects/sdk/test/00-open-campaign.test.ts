@@ -2,19 +2,18 @@ import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO, REGISTER_DEPOSIT_MICRO_ALGOS, VAULT_BOX_MBR_MICRO_ALGOS } from '@kasakame/constants'
 import { accountInfo } from '@kasakame/utils/testing'
 import { beforeAll, describe, expect, test } from 'vitest'
+import { cancelPledge, deleteCampaign, fetchMyLeaves, fetchVaultBox, finalize, isRegistered, pledge } from '../src/index.js'
 import {
-  cancelPledge,
-  createCampaign,
-  deleteCampaign,
-  fetchChainTimestamp,
-  fetchMyLeaves,
-  fetchVaultBox,
-  finalize,
-  isRegistered,
-  pledge,
-  refundOpUpIterations,
-} from '../src/index.js'
-import { headerOf, leafAt, session, setupSdkStack, type SdkStack } from './utils/index.js'
+  campaignSpendFee,
+  createTestCampaign,
+  expectLeaves,
+  headerOf,
+  leafAt,
+  pledgeFee,
+  session,
+  setupSdkStack,
+  type SdkStack,
+} from './utils/index.js'
 
 describe('SDK open campaign (localnet)', () => {
   const fixture = algorandFixture()
@@ -27,12 +26,11 @@ describe('SDK open campaign (localnet)', () => {
   test('SDK-001 create → pledge → cancel → later pledge → cancel → delete → finalize', { tags: ['smoke', 'happy', 'always'] }, async () => {
     const creator = await session(fixture, 50n)
     const backer = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
 
     const creatorBefore = await accountInfo(stack.algorand, creator.address)
     const registryBefore = await accountInfo(stack.algorand, stack.registryAddress)
     const vaultBefore = await accountInfo(stack.algorand, stack.vaultAddress)
-    const { appId } = await createCampaign(creator, 'SDK open campaign', 'ipfs://sdk-open', 10n * MICRO_ALGOS_PER_ALGO, deadline)
+    const { appId } = await createTestCampaign(creator, 10n * MICRO_ALGOS_PER_ALGO)
     expect(await isRegistered(appId)).toBe(true)
 
     // Create is one txn and register is register + deposit (2 outer), so 3 min fees.
@@ -49,7 +47,7 @@ describe('SDK open campaign (localnet)', () => {
     const backerBeforePledge = await accountInfo(stack.algorand, backer.address)
     await pledge(appId, backer, firstAmount)
     const backerAfterPledge = await accountInfo(stack.algorand, backer.address)
-    expect(backerBeforePledge.balance - backerAfterPledge.balance - firstAmount).toEqual(4n * stack.minFee)
+    expect(backerBeforePledge.balance - backerAfterPledge.balance - firstAmount).toEqual(pledgeFee(stack.minFee, 0n))
     expect(backerAfterPledge.minBalance).toEqual(backerBeforePledge.minBalance)
     const vaultAfterPledge = await accountInfo(stack.algorand, stack.vaultAddress)
     expect(vaultAfterPledge.minBalance - vaultBefore.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
@@ -58,13 +56,12 @@ describe('SDK open campaign (localnet)', () => {
 
     // Cancel: campaign outer + 2 payout inners + the OpUp takes for this shape.
     const firstLeaf = leafAt(await fetchMyLeaves(appId, backer.address), 0)
-    const firstCancelTakes = refundOpUpIterations(1n, 0n)
     const backerBeforeCancel = await accountInfo(stack.algorand, backer.address)
     await cancelPledge(appId, backer, firstLeaf)
     const backerAfterCancel = await accountInfo(stack.algorand, backer.address)
-    expect(backerAfterCancel.balance - backerBeforeCancel.balance).toEqual(firstAmount - (3n + BigInt(firstCancelTakes)) * stack.minFee)
+    expect(backerAfterCancel.balance - backerBeforeCancel.balance).toEqual(firstAmount - campaignSpendFee(stack.minFee, 1n, 0n))
     expect(backerAfterCancel.minBalance).toEqual(backerBeforePledge.minBalance)
-    expect(await fetchMyLeaves(appId, backer.address)).toEqual([])
+    expectLeaves(await fetchMyLeaves(appId, backer.address), [])
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(0n)
 
     // Later pledge: no first-touch Registry check, so the on-chain minimum is 3 txns; the SDK still funds 4 (documented headroom).
@@ -73,19 +70,16 @@ describe('SDK open campaign (localnet)', () => {
     await pledge(appId, backer, laterAmount)
     const backerAfterLater = await accountInfo(stack.algorand, backer.address)
     const laterFee = backerBeforeLater.balance - backerAfterLater.balance - laterAmount
-    expect(laterFee).toEqual(4n * stack.minFee)
+    expect(laterFee).toEqual(pledgeFee(stack.minFee, 1n))
     expect(laterFee - 3n * stack.minFee).toEqual(stack.minFee)
     const vaultAfterLater = await accountInfo(stack.algorand, stack.vaultAddress)
     expect(vaultAfterLater.minBalance - vaultBefore.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
 
     const laterLeaf = leafAt(await fetchMyLeaves(appId, backer.address), 1)
-    const laterCancelTakes = refundOpUpIterations(2n, 1n)
     const backerBeforeLaterCancel = await accountInfo(stack.algorand, backer.address)
     await cancelPledge(appId, backer, laterLeaf)
     const backerAfterLaterCancel = await accountInfo(stack.algorand, backer.address)
-    expect(backerAfterLaterCancel.balance - backerBeforeLaterCancel.balance).toEqual(
-      laterAmount - (3n + BigInt(laterCancelTakes)) * stack.minFee,
-    )
+    expect(backerAfterLaterCancel.balance - backerBeforeLaterCancel.balance).toEqual(laterAmount - campaignSpendFee(stack.minFee, 2n, 1n))
     expect((await headerOf(appId)).raisedMicroAlgos).toEqual(0n)
 
     // Delete: unregister + inner deposit (2) + delete + 2 inners (3) = 5 min fees; the deposit returns.
