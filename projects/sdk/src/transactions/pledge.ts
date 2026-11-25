@@ -2,7 +2,7 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { CREDIT_EXTRA_INNERS, MAX_PLEDGE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import type { TransactionWithSigner } from 'algosdk'
 import { hexToBytes } from 'algosdk'
-import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from '../chain.js'
+import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerCatchUpBestEffort, waitForIndexerRound } from '../chain.js'
 import type { BackerLeaf } from '../claim-tree/index.js'
 import { MAX_TREE_SIZE, clearTreeCache, frontierForPledge, loadTree, pathBlobForRefund, pledgeOpUpIterations } from '../claim-tree/index.js'
 import { registrationBox } from './campaign.js'
@@ -94,7 +94,7 @@ export async function pledge(appId: bigint, session: WalletSession, amountMicroA
   await submitWithFreshProof(attempt)
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
 
 /**

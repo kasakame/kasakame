@@ -1,6 +1,13 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureSdk, fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from './chain.js'
+import {
+  configureSdk,
+  fetchChainTimestamp,
+  getSdkConfig,
+  waitForIndexerCatchUp,
+  waitForIndexerCatchUpBestEffort,
+  waitForIndexerRound,
+} from './chain.js'
 
 const algodStatus = vi.fn()
 const algodBlock = vi.fn()
@@ -58,6 +65,13 @@ describe('chain plumbing', () => {
     algodStatus.mockResolvedValue({ lastRound: 5n })
     healthCheck.mockResolvedValue({ round: 10n })
     await expect(waitForIndexerCatchUp(10_000, 250)).resolves.toBeUndefined()
+  })
+
+  it('swallows a post-write catch-up failure', async () => {
+    algodStatus.mockRejectedValueOnce(new Error('algod unreachable'))
+
+    await expect(waitForIndexerCatchUpBestEffort()).resolves.toBeUndefined()
+    expect(algodStatus).toHaveBeenCalledOnce()
   })
 })
 

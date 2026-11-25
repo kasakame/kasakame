@@ -2,7 +2,7 @@ import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { CLAIM_EXTRA_INNERS, DELETE_EXTRA_INNERS, UNREGISTER_EXTRA_INNERS } from '@kasakame/constants'
 import type { TransactionWithSigner } from 'algosdk'
 import { hexToBytes } from 'algosdk'
-import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from '../chain.js'
+import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerCatchUpBestEffort, waitForIndexerRound } from '../chain.js'
 import type { BackerLeaf } from '../claim-tree/index.js'
 import { clearTreeCache, loadTree, pathBlobForRefund } from '../claim-tree/index.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
@@ -156,7 +156,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
     }),
   )
   await composer.send()
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
 
 /**
@@ -176,7 +176,7 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
     appReferences: [appId],
     boxReferences: vaultBoxRef(appId),
   })
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
 
 /**
@@ -196,7 +196,7 @@ export async function releaseClaimed(appId: bigint, session: WalletSession): Pro
     appReferences: [appId],
     boxReferences: vaultBoxRef(appId),
   })
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
 
 /**
@@ -221,5 +221,5 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<v
     boxReferences: vaultBoxRef(appId),
     extraFee: microAlgos(extraInners * minFee),
   })
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
