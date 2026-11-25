@@ -111,6 +111,10 @@ const appSpecMock: { name: string; byteCode?: { approval: string; clear: string 
   byteCode: { approval: 'AA==', clear: 'AQ==' },
 }))
 
+const loggerMock = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+vi.mock('../log.js', () => ({ sdkLogger: () => loggerMock }))
+
 vi.mock('../generated/CampaignClient.js', () => ({
   APP_SPEC: appSpecMock,
   CampaignClient: class {
@@ -297,6 +301,12 @@ describe('transaction helpers', () => {
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+    expect(loggerMock.info).toHaveBeenCalledWith('write.confirmed', {
+      operation: 'createCampaign',
+      appId: '9',
+      txIds: ['CREATE'],
+      confirmedRound: '99',
+    })
   })
 
   it('createCampaign returns the app id when the post-send indexer wait fails', async () => {
@@ -328,6 +338,12 @@ describe('transaction helpers', () => {
       registered: false,
       registerError: 'not an official kasakame campaign',
     })
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'registerCampaign',
+      appId: '9',
+      type: 'chain-state',
+      code: 'not-an-official-kasakame-campaign',
+    })
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
@@ -338,6 +354,8 @@ describe('transaction helpers', () => {
 
     expect(result).toMatchObject({ registered: true })
     expect(result.registerError).toBeUndefined()
+    expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('stringifies a non-Error registration failure', async () => {
@@ -357,6 +375,8 @@ describe('transaction helpers', () => {
     sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
     await expect(registerCampaign(9n, session)).resolves.toEqual({ txIds: [] })
     expect(sendRegisterMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('registerCampaign surfaces other registration failures', async () => {
@@ -364,6 +384,12 @@ describe('transaction helpers', () => {
 
     await expect(registerCampaign(9n, session)).rejects.toThrow('not an official kasakame campaign')
     expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'registerCampaign',
+      appId: '9',
+      type: 'chain-state',
+      code: 'not-an-official-kasakame-campaign',
+    })
   })
 
   it('registerCampaign is a no-op when no registry is configured', async () => {
@@ -373,6 +399,7 @@ describe('transaction helpers', () => {
 
     expect(sendRegisterMock).not.toHaveBeenCalled()
     expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+    expect(loggerMock.info).not.toHaveBeenCalled()
   })
 
   it('a campaign whose registration failed can still be deleted', async () => {
@@ -415,6 +442,11 @@ describe('transaction helpers', () => {
     await expect(verifyDeployment()).rejects.toThrow(
       `the Registry expects Campaign program hash ${'07'.repeat(32)}, but this SDK ships contracts ${SPECS_VERSION}`,
     )
+    expect(loggerMock.error).toHaveBeenCalledWith('operation.failed', {
+      operation: 'verifyDeployment',
+      appId: '1001',
+      type: 'registry-mismatch',
+    })
   })
 
   it('verifyDeployment treats a missing Registry hash as a mismatch', async () => {
@@ -532,6 +564,28 @@ describe('transaction helpers', () => {
     expect(result).toEqual({ txIds: ['GROUP'], confirmedRound: 99n, position: 4, amount: 1_000_000n })
     expect(composerSendMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.info).toHaveBeenCalledWith('write.confirmed', {
+      operation: 'pledge',
+      appId: '9',
+      txIds: ['GROUP'],
+      confirmedRound: '99',
+      position: 4,
+      amount: '1000000',
+    })
+  })
+
+  it('logs a write confirmation without a round when the node omits it', async () => {
+    composerSendMock.mockResolvedValueOnce({ txIds: ['GROUP'] })
+
+    await pledge(9n, session, 1_000_000n)
+
+    expect(loggerMock.info).toHaveBeenCalledWith('write.confirmed', {
+      operation: 'pledge',
+      appId: '9',
+      txIds: ['GROUP'],
+      position: 4,
+      amount: '1000000',
+    })
   })
 
   it('pledge rejects amounts outside the contract bounds before building', async () => {
@@ -540,6 +594,12 @@ describe('transaction helpers', () => {
     expect(loadTreeMock).not.toHaveBeenCalled()
     expect(paramsPledgeMock).not.toHaveBeenCalled()
     expect(paymentMock).not.toHaveBeenCalled()
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'pledge',
+      appId: '9',
+      type: 'validation',
+    })
+    expect(loggerMock.warn).toHaveBeenCalledTimes(2)
   })
 
   it('pledge accepts the inclusive amount bounds', async () => {
@@ -581,11 +641,18 @@ describe('transaction helpers', () => {
     composerSendMock.mockRejectedValueOnce(new Error('stale or forged frontier')).mockResolvedValueOnce({})
     await pledge(9n, session, 1_000_000n)
     expect(loadTreeMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.debug).toHaveBeenCalledWith('stale-proof.retry', { operation: 'pledge', appId: '9' })
 
     composerSendMock
       .mockRejectedValueOnce(new Error('stale or forged frontier'))
       .mockRejectedValueOnce(new Error('stale or forged frontier'))
     await expect(pledge(9n, session, 1_000_000n)).rejects.toThrow('stale or forged frontier')
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'pledge',
+      appId: '9',
+      type: 'stale-proof',
+      code: 'stale-proof',
+    })
 
     composerSendMock.mockRejectedValueOnce(new Error('boom'))
     await expect(pledge(9n, session, 1_000_000n)).rejects.toThrow('boom')
@@ -623,6 +690,20 @@ describe('transaction helpers', () => {
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
   })
 
+  it('cancelPledge logs and throws a final failure', async () => {
+    sendCancelPledgeMock.mockRejectedValueOnce(new Error('pledging is closed'))
+
+    await expect(cancelPledge(9n, session, { position: 2, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow(
+      'pledging is closed',
+    )
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'cancelPledge',
+      appId: '9',
+      type: 'chain-state',
+      code: 'pledging-closed',
+    })
+  })
+
   it('refund routes through the campaign while the box is open', async () => {
     campaignBoxValueMock.mockResolvedValue(new Uint8Array(65).fill(1))
     await refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })
@@ -631,6 +712,7 @@ describe('transaction helpers', () => {
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
     expect(paramsVaultRefundMock).not.toHaveBeenCalled()
     expect(composerSendMock).toHaveBeenCalledOnce()
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.route', { appId: '9', route: 'campaign' })
   })
 
   it('scales the refund fee with the tree size', async () => {
@@ -651,6 +733,7 @@ describe('transaction helpers', () => {
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
     expect(paramsCampaignRefundMock).not.toHaveBeenCalled()
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.route', { appId: '9', route: 'vault' })
     const call = paramsVaultRefundMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
     expect(call.extraFee.microAlgo).toEqual(3_000n)
   })
@@ -694,6 +777,12 @@ describe('transaction helpers', () => {
     expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
     expect(campaignBoxValueMock).toHaveBeenCalledTimes(2)
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.reroute', {
+      appId: '9',
+      type: 'routing',
+      code: 'campaign-not-open',
+    })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('refund retries through the vault when the campaign app disappears mid-send', async () => {
@@ -714,6 +803,12 @@ describe('transaction helpers', () => {
 
     await expect(refund(9n, session, { position: 0, amount: 1_000_000n, txidHex: 'ab'.repeat(32) })).rejects.toThrow('campaign is not open')
     expect(composerSendMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'refund',
+      appId: '9',
+      type: 'routing',
+      code: 'campaign-not-open',
+    })
   })
 
   it('refund does not retry a non-routing failure', async () => {
@@ -804,6 +899,12 @@ describe('transaction helpers', () => {
 
     await expect(finalize(9n, session)).rejects.toThrow('refund window still open')
     expect(waitForIndexerCatchUpMock).not.toHaveBeenCalled()
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'finalize',
+      appId: '9',
+      type: 'chain-state',
+      code: 'refund-window-open',
+    })
   })
 
   it('deleteCampaign settles, closes, and unregisters in one atomic group', async () => {

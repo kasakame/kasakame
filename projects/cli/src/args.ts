@@ -1,3 +1,4 @@
+import type { SdkLogLevel } from '@kasakame/sdk'
 import { parseArgs } from 'node:util'
 
 export type CommandName = 'login' | 'whoami' | 'logout' | 'pledges' | 'campaigns' | 'refund' | 'withdraw' | 'claim' | 'delete'
@@ -16,6 +17,7 @@ export interface CliOptions {
   registryAppId?: bigint
   mnemonicFile?: string
   dryRun: boolean
+  logLevel?: SdkLogLevel
 }
 
 const TESTNET_VAULT_APP_ID = 774437570n
@@ -42,6 +44,8 @@ export function parseCliOptions(argv: string[]): CliOptions {
       pledge: { type: 'string' },
       all: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
+      'log-level': { type: 'string' },
+      verbose: { type: 'boolean' },
     },
   })
 
@@ -121,6 +125,8 @@ export function parseCliOptions(argv: string[]): CliOptions {
   if (values.address !== undefined) options.address = values.address
   if (values.pledge !== undefined) options.pledge = parsePledge(values.pledge)
   if (values.all === true) options.all = true
+  const logLevel = parseLogLevel(values['log-level'], values.verbose === true)
+  if (logLevel !== undefined) options.logLevel = logLevel
   return options
 }
 
@@ -198,4 +204,10 @@ function parsePledge(value: string): number {
     throw new Error('--pledge must be a non-negative integer')
   }
   return pledge
+}
+
+function parseLogLevel(value: string | undefined, verbose: boolean): SdkLogLevel | undefined {
+  if (value === undefined) return verbose ? 'debug' : undefined
+  if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') return value
+  throw new Error('--log-level must be debug, info, warn, or error')
 }

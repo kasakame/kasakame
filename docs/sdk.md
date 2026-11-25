@@ -100,14 +100,37 @@ interface SdkConfig {
   vaultAppId: bigint
 }
 
-function configureSdk(config: SdkConfig): void
+interface SdkLogger {
+  debug(event: string, context?: Record<string, unknown>): void
+  info(event: string, context?: Record<string, unknown>): void
+  warn(event: string, context?: Record<string, unknown>): void
+  error(event: string, context?: Record<string, unknown>): void
+}
+
+type SdkLogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+function configureSdk(config: SdkConfig, logger?: SdkLogger): void
+function createLevelLogger(minLevel: SdkLogLevel, sink: SdkLogger): SdkLogger
 function getSdkConfig(): SdkConfig
 function fetchChainTimestamp(): Promise<bigint>
 function waitForIndexerRound(round: bigint, timeoutMs?: number, pollMs?: number): Promise<void>
 function waitForIndexerCatchUp(timeoutMs?: number, pollMs?: number): Promise<void>
 ```
 
-`configureSdk` stores the session. `getSdkConfig` throws until you call it. `fetchChainTimestamp` reads the latest block header; use this, not `Date.now()`, for deadline and status decisions. The two waiters poll the indexer until it catches up to a round or to algod's tip.
+`configureSdk` stores the session and installs an optional structured logger, defaulting to a no-op. The SDK never calls `console.*` and never configures AlgoKit's global logger. `createLevelLogger` wraps a sink and drops events below the chosen level, so each host exposes its own switch while the SDK always emits every event. `getSdkConfig` throws until you call `configureSdk`. `fetchChainTimestamp` reads the latest block header; use this, not `Date.now()`, for deadline and status decisions. The two waiters poll the indexer until it catches up to a round or to algod's tip.
+
+| Event | Level | Context |
+| --- | --- | --- |
+| `refund.route` | `debug` | `appId`, `route` |
+| `stale-proof.retry` | `debug` | `operation`, `appId` |
+| `refund.reroute` | `debug` | `appId`, `type`, optional `code` |
+| `register.already-registered` | `debug` | `appId` |
+| `write.confirmed` | `info` | `operation`, `appId`, `txIds`, optional `confirmedRound`, `position`, `amount` |
+| `indexer.timeout` | `warn` | `round`, `timeoutMs` |
+| `indexer.wait-failed` | `warn` | `message` |
+| `operation.failed` | `warn` for `validation`, `routing`, `not-found`, `chain-state`, `stale-proof`; `error` for `registry-mismatch`, `network`, `unknown` | optional `operation`, `appId`, `code`, `txId`; `type` |
+
+Logs never include mnemonics, private keys, or signing material; addresses, app ids, tx ids, types, and codes are safe. The CLI uses `--log-level` (or `--verbose` for `debug`), the frontend reads `VITE_LOG_LEVEL` in development, and the SDK LocalNet fixture uses `KASAKAME_TEST_LOG`.
 
 ### Claim-tree math and replay (`claim-tree/`)
 

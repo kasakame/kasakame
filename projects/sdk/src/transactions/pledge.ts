@@ -10,7 +10,7 @@ import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { SdkError, submitWithFreshProof } from './errors.js'
+import { SdkError, classifyChainError, logWriteConfirmed, submitWithFreshProof, throwSdkError } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -106,10 +106,16 @@ export async function pledge(appId: bigint, session: WalletSession, amountMicroA
     return writeConfirmation(result, { position, amount: amountMicroAlgos })
   }
 
-  const confirmation = await submitWithFreshProof(attempt, 'pledge', appId)
+  let confirmation: WriteConfirmation
+  try {
+    confirmation = await submitWithFreshProof(attempt, 'pledge', appId)
+  } catch (error) {
+    throwSdkError(classifyChainError(error, { operation: 'pledge', appId }))
+  }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
   await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('pledge', appId, confirmation)
   return confirmation
 }
 
@@ -145,11 +151,17 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
     return writeConfirmation(result, { position: leaf.position, amount: leaf.amount })
   }
 
-  const confirmation = await submitWithFreshProof(attempt, 'cancelPledge', appId)
+  let confirmation: WriteConfirmation
+  try {
+    confirmation = await submitWithFreshProof(attempt, 'cancelPledge', appId)
+  } catch (error) {
+    throwSdkError(classifyChainError(error, { operation: 'cancelPledge', appId }))
+  }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
   if (confirmation.confirmedRound !== undefined) {
     await waitForIndexerRound(confirmation.confirmedRound)
   }
+  logWriteConfirmed('cancelPledge', appId, confirmation)
   return confirmation
 }

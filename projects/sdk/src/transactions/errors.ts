@@ -1,5 +1,7 @@
 import { clearTreeCache } from '../claim-tree/index.js'
 import { CONTRACT_ERROR_MESSAGES } from '../generated/contract-errors.js'
+import { sdkLogger } from '../log.js'
+import type { WriteConfirmation } from './confirmation.js'
 
 /** Stable category of an SDK failure, driving retries and user-facing recovery. */
 export type SdkErrorType =
@@ -65,6 +67,66 @@ export class SdkError extends Error {
     if (options.cause !== undefined) this.cause = options.cause
     if (options.details !== undefined) this.details = options.details
   }
+}
+
+// Protocol and user failures are expected; network, deployment-mismatch, and unknown failures are not.
+const EXPECTED_FAILURE_TYPES: ReadonlySet<SdkErrorType> = new Set(['validation', 'routing', 'not-found', 'chain-state', 'stale-proof'])
+
+/**
+ * Log a final failure at warn for expected rejections, error for unexpected ones.
+ *
+ * @param error The classified failure.
+ */
+export function logSdkFailure(error: SdkError): void {
+  const level = EXPECTED_FAILURE_TYPES.has(error.type) ? 'warn' : 'error'
+  sdkLogger()[level]('operation.failed', {
+    ...(error.operation === undefined ? {} : { operation: error.operation }),
+    ...(error.appId === undefined ? {} : { appId: error.appId.toString() }),
+    type: error.type,
+    ...(error.code === undefined ? {} : { code: error.code }),
+    ...(error.txId === undefined ? {} : { txId: error.txId }),
+  })
+}
+
+/**
+ * Log a final failure, then throw it.
+ *
+ * @param error The classified failure.
+ * @throws {SdkError} Always.
+ */
+export function throwSdkError(error: SdkError): never {
+  logSdkFailure(error)
+  throw error
+}
+
+/**
+ * Log and throw a validation failure.
+ *
+ * @param message The original failure message.
+ * @param operation The operation that failed.
+ * @throws {SdkError} Always.
+ */
+export function validationError(message: string, operation: SdkOperation): never {
+  throwSdkError(new SdkError('validation', message, { operation }))
+}
+
+/**
+ * Log a confirmed write at info; skipped when the call sent nothing (no Registry, already registered).
+ *
+ * @param operation The write operation.
+ * @param appId The application the write touched.
+ * @param confirmation The confirmed write.
+ */
+export function logWriteConfirmed(operation: SdkOperation, appId: bigint, confirmation: WriteConfirmation): void {
+  if (confirmation.txIds.length === 0) return
+  sdkLogger().info('write.confirmed', {
+    operation,
+    appId: appId.toString(),
+    txIds: confirmation.txIds,
+    ...(confirmation.confirmedRound === undefined ? {} : { confirmedRound: confirmation.confirmedRound.toString() }),
+    ...(confirmation.position === undefined ? {} : { position: confirmation.position }),
+    ...(confirmation.amount === undefined ? {} : { amount: confirmation.amount.toString() }),
+  })
 }
 
 // Codes the SDK acts on, plus messages whose text differs from the contract assert but means the same failure.
@@ -185,7 +247,23 @@ export function classifyChainError(error: unknown, context: SdkErrorContext = {}
 }
 
 /**
- * Run a submission and classify its failure at the boundary.
+ * Classify a submission failure without logging it, leaving the final-failure decision to the caller.
+ *
+ * @param operation The write operation.
+ * @param run The send call.
+ * @param appId The application the write targets, when known.
+ * @returns The send result.
+ */
+export async function classifySubmission<T>(operation: SdkOperation, run: () => Promise<T>, appId?: bigint): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    throw classifyChainError(error, { operation, ...(appId === undefined ? {} : { appId }) })
+  }
+}
+
+/**
+ * Run a submission, classify its failure, log it, and throw.
  *
  * @param operation The write operation.
  * @param run The send call.
@@ -194,9 +272,9 @@ export function classifyChainError(error: unknown, context: SdkErrorContext = {}
  */
 export async function submitWithClassification<T>(operation: SdkOperation, run: () => Promise<T>, appId?: bigint): Promise<T> {
   try {
-    return await run()
+    return await classifySubmission(operation, run, appId)
   } catch (error) {
-    throw classifyChainError(error, { operation, ...(appId === undefined ? {} : { appId }) })
+    throwSdkError(classifyChainError(error))
   }
 }
 
@@ -241,17 +319,19 @@ export function isAlreadyRegisteredError(error: unknown): boolean {
  */
 export async function submitWithFreshProof<T>(run: () => Promise<T>, operation: SdkOperation, appId: bigint): Promise<T> {
   const submit = async (): Promise<T> => {
-    try {
-      clearTreeCache()
-      return await run()
-    } catch (error) {
-      throw classifyChainError(error, { operation, appId })
-    }
+    clearTreeCache()
+    return await run()
   }
   try {
     return await submit()
   } catch (error) {
-    if (error instanceof SdkError && error.type === 'stale-proof') return await submit()
-    throw error
+    const classified = classifyChainError(error, { operation, appId })
+    if (classified.type !== 'stale-proof') throw classified
+    sdkLogger().debug('stale-proof.retry', { operation, appId: appId.toString() })
+    try {
+      return await submit()
+    } catch (retryError) {
+      throw classifyChainError(retryError, { operation, appId })
+    }
   }
 }

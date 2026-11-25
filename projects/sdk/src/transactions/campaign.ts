@@ -17,11 +17,22 @@ import { u64be } from '../claim-tree/tree.js'
 import { APP_SPEC, CampaignFactory } from '../generated/CampaignClient.js'
 import { RegistryClient } from '../generated/RegistryClient.js'
 import { SPECS_VERSION } from '../generated/specs-version.js'
+import { sdkLogger } from '../log.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { classifyChainError, isAlreadyRegisteredError, SdkError, submitWithClassification } from './errors.js'
+import {
+  classifyChainError,
+  classifySubmission,
+  isAlreadyRegisteredError,
+  logSdkFailure,
+  logWriteConfirmed,
+  SdkError,
+  submitWithClassification,
+  throwSdkError,
+  validationError,
+} from './errors.js'
 
 /** Result of `createCampaign`: the campaign exists, and `registered` is false when the Registry step failed. */
 export interface CreateCampaignResult extends WriteConfirmation {
@@ -88,13 +99,16 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
   if (getSdkConfig().registryAppId === 0n) return { txIds: [] }
   let confirmation: WriteConfirmation
   try {
-    confirmation = writeConfirmation(await submitWithClassification('registerCampaign', () => sendRegister(appId, session), appId))
+    confirmation = writeConfirmation(await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId))
   } catch (error) {
+    const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
     // A retry can race a registration that landed but whose confirmation was lost.
-    if (!isAlreadyRegisteredError(error)) throw error
+    if (!isAlreadyRegisteredError(classified)) throwSdkError(classified)
+    sdkLogger().debug('register.already-registered', { appId: appId.toString() })
     confirmation = { txIds: [] }
   }
   await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('registerCampaign', appId, confirmation)
   return confirmation
 }
 
@@ -106,7 +120,7 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
 function campaignProgramHash(): Uint8Array {
   const byteCode = APP_SPEC.byteCode
   if (byteCode === undefined) {
-    throw new SdkError('validation', 'Campaign spec has no byteCode; run codegen first', { operation: 'verifyDeployment' })
+    throwSdkError(new SdkError('validation', 'Campaign spec has no byteCode; run codegen first', { operation: 'verifyDeployment' }))
   }
   const approval = base64ToBytes(byteCode.approval)
   const clear = base64ToBytes(byteCode.clear)
@@ -132,21 +146,25 @@ export async function verifyDeployment(): Promise<void> {
   } catch (error) {
     const classified = classifyChainError(error, { operation: 'verifyDeployment', appId: registryAppId })
     const message = `could not read the Registry campaign program hash: ${classified.message}`
-    throw new SdkError(classified.type, message, {
-      operation: 'verifyDeployment',
-      appId: registryAppId,
-      ...(classified.code === undefined ? {} : { code: classified.code }),
-      cause: error,
-      details: error,
-    })
+    throwSdkError(
+      new SdkError(classified.type, message, {
+        operation: 'verifyDeployment',
+        appId: registryAppId,
+        ...(classified.code === undefined ? {} : { code: classified.code }),
+        cause: error,
+        details: error,
+      }),
+    )
   }
   const expectedHash = campaignProgramHash()
   if (registryHash === undefined || bytesToHex(registryHash) !== bytesToHex(expectedHash)) {
     const registryHex = registryHash === undefined ? 'missing' : bytesToHex(registryHash)
-    throw new SdkError(
-      'registry-mismatch',
-      `the Registry expects Campaign program hash ${registryHex}, but this SDK ships contracts ${SPECS_VERSION} (${bytesToHex(expectedHash)})`,
-      { operation: 'verifyDeployment', appId: registryAppId },
+    throwSdkError(
+      new SdkError(
+        'registry-mismatch',
+        `the Registry expects Campaign program hash ${registryHex}, but this SDK ships contracts ${SPECS_VERSION} (${bytesToHex(expectedHash)})`,
+        { operation: 'verifyDeployment', appId: registryAppId },
+      ),
     )
   }
 }
@@ -170,33 +188,24 @@ export async function createCampaign(
 ): Promise<CreateCampaignResult> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   const titleBytes = new TextEncoder().encode(title)
-  if (titleBytes.length === 0) {
-    throw new SdkError('validation', 'title is required', { operation: 'createCampaign' })
-  }
+  if (titleBytes.length === 0) validationError('title is required', 'createCampaign')
   if (titleBytes.length > MAX_TITLE_BYTES) {
-    throw new SdkError('validation', `title must be at most ${String(MAX_TITLE_BYTES)} bytes`, { operation: 'createCampaign' })
+    validationError(`title must be at most ${String(MAX_TITLE_BYTES)} bytes`, 'createCampaign')
   }
   const metadataUriBytes = new TextEncoder().encode(metadataUri)
   if (metadataUriBytes.length > MAX_METADATA_URI_BYTES) {
-    throw new SdkError('validation', `metadata URI must be at most ${String(MAX_METADATA_URI_BYTES)} bytes`, {
-      operation: 'createCampaign',
-    })
+    validationError(`metadata URI must be at most ${String(MAX_METADATA_URI_BYTES)} bytes`, 'createCampaign')
   }
   if (goalMicroAlgos < MIN_GOAL_MICRO_ALGOS || goalMicroAlgos > MAX_GOAL_MICRO_ALGOS) {
-    throw new SdkError(
-      'validation',
-      `goal must be between ${String(MIN_GOAL_MICRO_ALGOS)} and ${String(MAX_GOAL_MICRO_ALGOS)} microAlgos`,
-      { operation: 'createCampaign' },
-    )
+    validationError(`goal must be between ${String(MIN_GOAL_MICRO_ALGOS)} and ${String(MAX_GOAL_MICRO_ALGOS)} microAlgos`, 'createCampaign')
   }
   const now = await fetchChainTimestamp()
   const earliestDeadline = now + BigInt(MIN_CAMPAIGN_DURATION_SECONDS)
   const latestDeadline = now + BigInt(MAX_CAMPAIGN_DURATION_SECONDS)
   if (deadlineSeconds < earliestDeadline || deadlineSeconds > latestDeadline) {
-    throw new SdkError(
-      'validation',
+    validationError(
       `deadline must be between ${String(earliestDeadline)} and ${String(latestDeadline)} (chain time ${String(now)})`,
-      { operation: 'createCampaign' },
+      'createCampaign',
     )
   }
   await verifyDeployment()
@@ -229,18 +238,23 @@ export async function createCampaign(
   let registerTxIds: string[] | undefined
   if (registryAppId > 0n) {
     try {
-      const registerResult = await submitWithClassification('registerCampaign', () => sendRegister(appId, session), appId)
+      const registerResult = await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId)
       registerTxIds = registerResult.txIds
     } catch (error) {
-      if (!isAlreadyRegisteredError(error)) {
+      const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
+      if (isAlreadyRegisteredError(classified)) {
+        sdkLogger().debug('register.already-registered', { appId: appId.toString() })
+      } else {
+        logSdkFailure(classified)
         registered = false
-        registerError = classifyChainError(error).message
+        registerError = classified.message
       }
     }
   }
 
   // Best-effort: both writes are confirmed; the next read retries if the indexer is briefly behind.
   await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('createCampaign', appId, confirmation)
 
   return {
     ...confirmation,

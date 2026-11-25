@@ -27,6 +27,8 @@ Options:
   --pledge <position>                  Withdraw or refund one pledge (0-based)
   --all                                Withdraw or refund every live pledge
   --dry-run                            Print planned transactions without signing
+  --log-level <debug|info|warn|error>  Print SDK diagnostics at this level and above to stderr
+  --verbose                            Shorthand for --log-level debug
   --help, -h                           Show this help
 `
 
