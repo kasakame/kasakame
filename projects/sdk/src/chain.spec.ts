@@ -78,10 +78,22 @@ describe('chain plumbing', () => {
   })
 
   it('swallows a post-write catch-up failure', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
     algodStatus.mockRejectedValueOnce(new Error('algod unreachable'))
 
     await expect(waitForIndexerCatchUpBestEffort()).resolves.toBeUndefined()
     expect(algodStatus).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith('indexer.wait-failed', { message: 'algod unreachable' })
+  })
+
+  it('stringifies a non-Error post-write catch-up failure', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+    algodStatus.mockRejectedValueOnce('offline')
+
+    await expect(waitForIndexerCatchUpBestEffort()).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledWith('indexer.wait-failed', { message: 'offline' })
   })
 })
 

@@ -17,6 +17,7 @@ const algorandMocks = vi.hoisted(() => {
   }
 })
 const configureSdkMock = vi.hoisted(() => vi.fn())
+const createLevelLoggerMock = vi.hoisted(() => vi.fn((_level: string, sink: unknown) => sink))
 const warningLogger = vi.hoisted(() => ({ level: 'warn' }))
 const configureConfigMock = vi.hoisted(() => vi.fn())
 
@@ -29,7 +30,7 @@ vi.mock('@algorandfoundation/algokit-utils', () => ({
   Config: { configure: configureConfigMock },
 }))
 vi.mock('@algorandfoundation/algokit-utils/types/logging', () => ({ warningConsoleLogger: warningLogger }))
-vi.mock('@kasakame/sdk', () => ({ configureSdk: configureSdkMock }))
+vi.mock('@kasakame/sdk', () => ({ configureSdk: configureSdkMock, createLevelLogger: createLevelLoggerMock }))
 
 function options(overrides: Partial<CliOptions> = {}): CliOptions {
   return {
@@ -57,10 +58,11 @@ describe('configureCliChain', () => {
     expect(configureConfigMock).toHaveBeenCalledWith({ logger: warningLogger })
   })
 
-  it('passes a stderr logger in verbose mode', () => {
+  it('passes a filtered stderr logger in verbose mode', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    configureCliChain(options({ verbose: true }))
+    configureCliChain(options({ logLevel: 'info' }))
 
+    expect(createLevelLoggerMock).toHaveBeenCalledWith('info', expect.any(Object))
     const logger = configureSdkMock.mock.calls[0]?.[1] as SdkLogger
     logger.debug('refund.route', { appId: '9', route: 'vault' })
     logger.info('plain')

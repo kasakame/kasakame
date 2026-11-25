@@ -242,7 +242,16 @@ describe('parseCliOptions', () => {
     expect(() => parseCliOptions(['refund', '1', '--bogus'])).toThrow()
   })
 
-  it('reads the verbose switch', () => {
-    expect(parseCliOptions(['refund', '1', '--verbose'])).toMatchObject({ verbose: true })
+  it('reads the verbose switch as debug level', () => {
+    expect(parseCliOptions(['refund', '1', '--verbose'])).toMatchObject({ logLevel: 'debug' })
+  })
+
+  it('reads an explicit log level and lets it override --verbose', () => {
+    expect(parseCliOptions(['refund', '1', '--log-level', 'info'])).toMatchObject({ logLevel: 'info' })
+    expect(parseCliOptions(['refund', '1', '--verbose', '--log-level', 'warn'])).toMatchObject({ logLevel: 'warn' })
+  })
+
+  it('rejects an unknown log level', () => {
+    expect(() => parseCliOptions(['refund', '1', '--log-level', 'trace'])).toThrow('--log-level must be debug, info, warn, or error')
   })
 })

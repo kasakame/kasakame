@@ -10,7 +10,14 @@ import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, registryClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { classifyChainError, isCampaignRoutingError, submitWithClassification, submitWithFreshProof } from './errors.js'
+import {
+  classifyChainError,
+  isCampaignRoutingError,
+  logWriteConfirmed,
+  submitWithClassification,
+  submitWithFreshProof,
+  throwSdkError,
+} from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -92,7 +99,9 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
   try {
     confirmation = await submitWithFreshProof(attempt, 'refund', appId)
   } catch (error) {
-    if (!isCampaignRoutingError(error)) throw error
+    if (!isCampaignRoutingError(error)) {
+      throwSdkError(classifyChainError(error, { operation: 'refund', appId }))
+    }
     const classified = classifyChainError(error)
     sdkLogger().debug('refund.reroute', {
       appId: appId.toString(),
@@ -100,13 +109,18 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
       ...(classified.code === undefined ? {} : { code: classified.code }),
     })
     // The box settled or the campaign vanished between our read and the send: re-read the box and route once more.
-    confirmation = await submitWithFreshProof(attempt, 'refund', appId)
+    try {
+      confirmation = await submitWithFreshProof(attempt, 'refund', appId)
+    } catch (retryError) {
+      throwSdkError(classifyChainError(retryError, { operation: 'refund', appId }))
+    }
   }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
   if (confirmation.confirmedRound !== undefined) {
     await waitForIndexerRound(confirmation.confirmedRound)
   }
+  logWriteConfirmed('refund', appId, confirmation)
   return confirmation
 }
 
@@ -139,6 +153,7 @@ export async function claim(appId: bigint, session: WalletSession): Promise<Writ
   if (confirmation.confirmedRound !== undefined) {
     await waitForIndexerRound(confirmation.confirmedRound)
   }
+  logWriteConfirmed('claim', appId, confirmation)
   return confirmation
 }
 
@@ -178,7 +193,9 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
   )
   const result = await submitWithClassification('deleteCampaign', () => composer.send(), appId)
   await waitForIndexerCatchUpBestEffort()
-  return writeConfirmation(result, { appId })
+  const confirmation = writeConfirmation(result, { appId })
+  logWriteConfirmed('deleteCampaign', appId, confirmation)
+  return confirmation
 }
 
 /**
@@ -205,7 +222,9 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
     appId,
   )
   await waitForIndexerCatchUpBestEffort()
-  return writeConfirmation(result, { appId })
+  const confirmation = writeConfirmation(result, { appId })
+  logWriteConfirmed('settleOpen', appId, confirmation)
+  return confirmation
 }
 
 /**
@@ -232,7 +251,9 @@ export async function releaseClaimed(appId: bigint, session: WalletSession): Pro
     appId,
   )
   await waitForIndexerCatchUpBestEffort()
-  return writeConfirmation(result, { appId })
+  const confirmation = writeConfirmation(result, { appId })
+  logWriteConfirmed('releaseClaimed', appId, confirmation)
+  return confirmation
 }
 
 /**
@@ -264,5 +285,7 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<W
     appId,
   )
   await waitForIndexerCatchUpBestEffort()
-  return writeConfirmation(result, { appId, amount: box === undefined ? 0n : box.paidIn - box.paidOut })
+  const confirmation = writeConfirmation(result, { appId, amount: box === undefined ? 0n : box.paidIn - box.paidOut })
+  logWriteConfirmed('finalize', appId, confirmation)
+  return confirmation
 }

@@ -91,7 +91,8 @@ export async function waitForIndexerCatchUp(timeoutMs = 10_000, pollMs = 250): P
 export async function waitForIndexerCatchUpBestEffort(timeoutMs = 10_000, pollMs = 250): Promise<void> {
   try {
     await waitForIndexerCatchUp(timeoutMs, pollMs)
-  } catch {
+  } catch (error) {
     // The write is confirmed; the next read retries.
+    sdkLogger().warn('indexer.wait-failed', { message: error instanceof Error ? error.message : String(error) })
   }
 }

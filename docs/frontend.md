@@ -393,7 +393,7 @@ this campaign, and backers can still refund from the vault until the window clos
 
 ## Logging
 
-`src/lib/log.ts` builds a development-only `SdkLogger` and passes it to `configureSdk`; production builds keep the SDK silent. `logError` writes through the same logger with a `[kasakame:<action>]` prefix and the caught error, so browser diagnostics never leave the page and carry no wallet material.
+`src/lib/log.ts` builds a development-only `SdkLogger` and passes it to `configureSdk`; production builds keep the SDK silent. `VITE_LOG_LEVEL` (`debug` by default in development) sets the minimum level. `logError` writes through the same logger with a `[kasakame:<action>]` prefix and the caught error, so browser diagnostics never leave the page and carry no wallet material.
 
 ## Wallet integration
 

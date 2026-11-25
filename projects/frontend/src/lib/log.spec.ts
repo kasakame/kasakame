@@ -38,6 +38,34 @@ describe('frontendSdkLogger', () => {
     expect(error).toHaveBeenCalledWith('[kasakame:sdk.event]', { a: 1 })
   })
 
+  it('honors VITE_LOG_LEVEL in development', async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_LOG_LEVEL', 'warn')
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const development = await import('./log')
+    development.frontendSdkLogger.debug('sdk.event')
+    development.frontendSdkLogger.info('sdk.event')
+    development.frontendSdkLogger.warn('sdk.event')
+
+    expect(debug).not.toHaveBeenCalled()
+    expect(info).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalledWith('[kasakame:sdk.event]', undefined)
+  })
+
+  it('defaults an unknown VITE_LOG_LEVEL to debug', async () => {
+    vi.resetModules()
+    vi.stubEnv('VITE_LOG_LEVEL', 'trace')
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+
+    const development = await import('./log')
+    development.frontendSdkLogger.debug('sdk.event')
+
+    expect(debug).toHaveBeenCalledWith('[kasakame:sdk.event]', undefined)
+  })
+
   it('stays silent in a production build', async () => {
     vi.resetModules()
     vi.stubEnv('DEV', false)

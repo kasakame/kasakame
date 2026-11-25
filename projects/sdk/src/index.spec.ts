@@ -22,6 +22,7 @@ const PUBLIC_EXPORTS = [
   'concatHashes',
   'configureSdk',
   'createCampaign',
+  'createLevelLogger',
   'decodeGlobalState',
   'deleteCampaign',
   'emptyTree',

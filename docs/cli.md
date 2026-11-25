@@ -183,10 +183,12 @@ the transaction id.
 
 ### Verbose diagnostics
 
-Pass `--verbose` to print SDK routing and recovery diagnostics to stderr. Default
-output stays unchanged. Diagnostics name the refund route, stale-proof retries,
-refund re-routes, already-registered retries, and indexer wait timeouts, with app
-ids and error types/codes as JSON context.
+Pass `--log-level <debug|info|warn|error>` to print SDK diagnostics at that
+level and above to stderr; `--verbose` is shorthand for `--log-level debug`.
+Without either flag, default output stays unchanged. Diagnostics name the refund
+route, stale-proof retries, refund re-routes, already-registered retries, indexer
+wait timeouts, confirmed writes, and final failures, with app ids and error
+types/codes as JSON context.
 
 ### Wallet (default on TestNet)
 

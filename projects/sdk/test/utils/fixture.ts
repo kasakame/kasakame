@@ -8,6 +8,7 @@ import { CampaignFactory } from '../../src/generated/CampaignClient.js'
 import { ClaimsVaultFactory } from '../../src/generated/ClaimsVaultClient.js'
 import { RegistryFactory } from '../../src/generated/RegistryClient.js'
 import { configureSdk, type WalletSession } from '../../src/index.js'
+import { testSdkLogger } from './logging.js'
 
 /** Deployment overrides for the platform behind the SDK session. */
 export interface SdkStackOptions {
@@ -63,7 +64,7 @@ export async function setupSdkStack(fixture: AlgorandFixture, options: SdkStackO
     bindVault: options.bindVault ?? true,
   })
 
-  configureSdk({ algorand, registryAppId: registry.appId, vaultAppId: vault.appId })
+  configureSdk({ algorand, registryAppId: registry.appId, vaultAppId: vault.appId }, testSdkLogger())
   return {
     algorand,
     minFee,

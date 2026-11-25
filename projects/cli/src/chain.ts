@@ -1,7 +1,7 @@
 import { AlgorandClient, Config } from '@algorandfoundation/algokit-utils'
 import { warningConsoleLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import type { SdkLogger } from '@kasakame/sdk'
-import { configureSdk } from '@kasakame/sdk'
+import { configureSdk, createLevelLogger } from '@kasakame/sdk'
 import type { CliOptions } from './args.js'
 
 const verboseLogger: SdkLogger = {
@@ -48,6 +48,6 @@ export function configureCliChain(options: CliOptions): void {
     registryAppId: options.registryAppId ?? 0n,
     vaultAppId: options.vaultAppId ?? 0n,
   }
-  if (options.verbose === true) configureSdk(config, verboseLogger)
+  if (options.logLevel !== undefined) configureSdk(config, createLevelLogger(options.logLevel, verboseLogger))
   else configureSdk(config)
 }

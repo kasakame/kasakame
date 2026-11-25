@@ -1,5 +1,5 @@
 import { LogicError } from '@algorandfoundation/algokit-utils/types/logic-error'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CONTRACT_ERROR_MESSAGES } from '../generated/contract-errors.js'
 import {
   classifyChainError,
@@ -9,7 +9,16 @@ import {
   SdkError,
   submitWithClassification,
   submitWithFreshProof,
+  throwSdkError,
 } from './errors.js'
+
+const loggerMock = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+vi.mock('../log.js', () => ({ sdkLogger: () => loggerMock }))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 function logicError(message: string, txId = 'TX'): LogicError {
   return new LogicError({ txId, pc: 1, msg: message, desc: 'desc', traces: [] }, ['#pragma'], () => 1)
@@ -155,6 +164,28 @@ describe('compatibility predicates', () => {
   })
 })
 
+describe('throwSdkError', () => {
+  it('logs a bare failure without optional context', () => {
+    const error = new SdkError('unknown', 'boom')
+
+    expect(() => throwSdkError(error)).toThrow(error)
+    expect(loggerMock.error).toHaveBeenCalledWith('operation.failed', { type: 'unknown' })
+  })
+
+  it('logs the full classified context', () => {
+    const error = new SdkError('network', 'down', { operation: 'claim', appId: 9n, code: 'offline', txId: 'TX' })
+
+    expect(() => throwSdkError(error)).toThrow(error)
+    expect(loggerMock.error).toHaveBeenCalledWith('operation.failed', {
+      operation: 'claim',
+      appId: '9',
+      type: 'network',
+      code: 'offline',
+      txId: 'TX',
+    })
+  })
+})
+
 describe('submission wrappers', () => {
   it('submitWithClassification returns the result or throws a typed failure', async () => {
     await expect(submitWithClassification('claim', () => Promise.resolve('ok'), 9n)).resolves.toBe('ok')
@@ -163,6 +194,12 @@ describe('submission wrappers', () => {
       (error: unknown) => error,
     )
     expect(withApp).toMatchObject({ type: 'routing', operation: 'claim', appId: 9n })
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'claim',
+      appId: '9',
+      type: 'routing',
+      code: 'campaign-not-open',
+    })
 
     const withoutApp = await submitWithClassification('createCampaign', () => Promise.reject(new Error('boom'))).catch(
       (error: unknown) => error,
@@ -170,6 +207,7 @@ describe('submission wrappers', () => {
     expect(withoutApp).toBeInstanceOf(SdkError)
     expect(withoutApp).toMatchObject({ type: 'unknown', operation: 'createCampaign' })
     expect((withoutApp as SdkError).appId).toBeUndefined()
+    expect(loggerMock.error).toHaveBeenCalledWith('operation.failed', { operation: 'createCampaign', type: 'unknown' })
   })
 
   it('submitWithFreshProof retries a stale proof once', async () => {
@@ -182,6 +220,8 @@ describe('submission wrappers', () => {
 
     await expect(submitWithFreshProof(run, 'pledge', 9n)).resolves.toBe('ok')
     expect(calls).toBe(2)
+    expect(loggerMock.debug).toHaveBeenCalledWith('stale-proof.retry', { operation: 'pledge', appId: '9' })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('submitWithFreshProof surfaces a second stale proof', async () => {

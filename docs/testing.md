@@ -118,9 +118,11 @@ KASAKAME_TEST_LOG=debug npm test
 ```
 
 An invalid value fails before the tests start. The switch controls AlgoKit's
-logger; explicit `console.log` calls need their own removal. The cap-scale
-progress lines in `fast-pledge.ts` remain, because that workflow runs for hours
-and needs a heartbeat. Assertion failures print expected and received values
+logger and the SDK's structured logger; the SDK LocalNet fixture passes a
+level-filtered logger to `configureSdk`. Explicit `console.log` calls need their
+own removal. The cap-scale progress lines in `fast-pledge.ts` remain, because
+that workflow runs for hours and needs a heartbeat. Assertion failures print
+expected and received values
 independently. The randomized sequence engine includes the scale, seed, step,
 and actions in its failure messages.
 

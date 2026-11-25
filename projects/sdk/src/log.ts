@@ -10,6 +10,16 @@ export interface SdkLogger {
   error(event: string, context?: Readonly<Record<string, unknown>>): void
 }
 
+/** Minimum severity a logger prints; `debug` is the most verbose. */
+export type SdkLogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+const LEVEL_RANK: Readonly<Record<SdkLogLevel, number>> = {
+  debug: 0,
+  info: 1,
+  warn: 2,
+  error: 3,
+}
+
 const NOOP_LOGGER: SdkLogger = {
   debug: () => undefined,
   info: () => undefined,
@@ -35,4 +45,29 @@ export function setSdkLogger(logger?: SdkLogger): void {
  */
 export function sdkLogger(): SdkLogger {
   return activeLogger ?? NOOP_LOGGER
+}
+
+/**
+ * Wrap a logger so events below `minLevel` are dropped.
+ *
+ * @param minLevel The least severe level to print.
+ * @param sink The logger that formats and writes the events.
+ * @returns A filtered logger for `configureSdk`.
+ */
+export function createLevelLogger(minLevel: SdkLogLevel, sink: SdkLogger): SdkLogger {
+  const enabled = (level: SdkLogLevel): boolean => LEVEL_RANK[level] >= LEVEL_RANK[minLevel]
+  return {
+    debug: (event, context) => {
+      if (enabled('debug')) sink.debug(event, context)
+    },
+    info: (event, context) => {
+      if (enabled('info')) sink.info(event, context)
+    },
+    warn: (event, context) => {
+      if (enabled('warn')) sink.warn(event, context)
+    },
+    error: (event, context) => {
+      sink.error(event, context)
+    },
+  }
 }
