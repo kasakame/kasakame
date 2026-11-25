@@ -1,7 +1,10 @@
+import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO, MIN_REFUND_WINDOW_SECONDS, VAULT_BOX_MBR_MICRO_ALGOS } from '@kasakame/constants'
 import { accountInfo, advanceTime, assertAccountDelta, assertRejectedUnchanged } from '@kasakame/utils/testing'
+import algosdk from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
+import type { WalletSession } from '../src/index.js'
 import {
   claim,
   deleteCampaign,
@@ -35,10 +38,22 @@ describe('SDK permissionless cleanup (localnet)', () => {
     stack = await setupSdkStack(fixture)
   })
 
+  async function unregisteredSession(): Promise<WalletSession> {
+    const account = algosdk.generateAccount()
+    await stack.algorand.send.payment({
+      sender: fixture.context.testAccount.addr,
+      receiver: account.addr,
+      amount: microAlgos(1n * MICRO_ALGOS_PER_ALGO),
+      suppressLog: true,
+    })
+    return { address: account.addr.toString(), signer: algosdk.makeBasicAccountTransactionSigner(account) }
+  }
+
   test('SDK-050 settleOpen → vault refund → residual finalize → releaseClaimed', { tags: ['happy', 'always'] }, async () => {
     const creator = await session(fixture, 50n)
     const backer = await session(fixture, 50n)
-    const stranger = await session(fixture, 50n)
+    // Not registered with the Algorand client: each helper must install the supplied signer.
+    const stranger = await unregisteredSession()
     const { appId } = await createTestCampaign(creator, 10n * MICRO_ALGOS_PER_ALGO)
     const refundedAmount = 2n * MICRO_ALGOS_PER_ALGO
     const residualAmount = MICRO_ALGOS_PER_ALGO
