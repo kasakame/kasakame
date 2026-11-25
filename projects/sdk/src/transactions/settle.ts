@@ -5,11 +5,12 @@ import { hexToBytes } from 'algosdk'
 import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerCatchUpBestEffort, waitForIndexerRound } from '../chain.js'
 import type { BackerLeaf } from '../claim-tree/index.js'
 import { clearTreeCache, loadTree, pathBlobForRefund } from '../claim-tree/index.js'
+import { sdkLogger } from '../log.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, registryClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { isCampaignRoutingError, submitWithClassification, submitWithFreshProof } from './errors.js'
+import { classifyChainError, isCampaignRoutingError, submitWithClassification, submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -32,7 +33,9 @@ async function buildRefundGroup(appId: bigint, session: WalletSession, leaf: Bac
   const txid = hexToBytes(leaf.txidHex)
   const composer = algorand.send.newGroup()
   const box = await fetchVaultBox(appId)
-  if (box !== undefined && box.status === VAULT_BOX_STATUS_FAILED) {
+  const vaultRoute = box !== undefined && box.status === VAULT_BOX_STATUS_FAILED
+  sdkLogger().debug('refund.route', { appId: appId.toString(), route: vaultRoute ? 'vault' : 'campaign' })
+  if (vaultRoute) {
     const vaultClient = vaultClientFor(session)
     composer.addAppCallMethodCall(
       await vaultClient.params.refund({
@@ -90,6 +93,12 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
     confirmation = await submitWithFreshProof(attempt, 'refund', appId)
   } catch (error) {
     if (!isCampaignRoutingError(error)) throw error
+    const classified = classifyChainError(error)
+    sdkLogger().debug('refund.reroute', {
+      appId: appId.toString(),
+      type: classified.type,
+      ...(classified.code === undefined ? {} : { code: classified.code }),
+    })
     // The box settled or the campaign vanished between our read and the send: re-read the box and route once more.
     confirmation = await submitWithFreshProof(attempt, 'refund', appId)
   }

@@ -1,4 +1,6 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
+import type { SdkLogger } from './log.js'
+import { sdkLogger, setSdkLogger } from './log.js'
 
 /** The session the SDK operates on: one configured `AlgorandClient` plus the app ids. */
 export interface SdkConfig {
@@ -16,9 +18,11 @@ let session: SdkConfig | undefined
  * Configure the SDK session. Call once at startup: the frontend passes its `AlgorandClient`, the CLI builds one from flags/env.
  *
  * @param config The session configuration.
+ * @param logger Optional structured logger; defaults to a no-op.
  */
-export function configureSdk(config: SdkConfig): void {
+export function configureSdk(config: SdkConfig, logger?: SdkLogger): void {
   session = config
+  setSdkLogger(logger)
 }
 
 /**
@@ -63,6 +67,7 @@ export async function waitForIndexerRound(round: bigint, timeoutMs = 10_000, pol
     }
     await new Promise((resolve) => setTimeout(resolve, pollMs))
   }
+  sdkLogger().warn('indexer.timeout', { round: round.toString(), timeoutMs })
 }
 
 /**

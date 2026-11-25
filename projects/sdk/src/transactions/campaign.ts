@@ -17,6 +17,7 @@ import { u64be } from '../claim-tree/tree.js'
 import { APP_SPEC, CampaignFactory } from '../generated/CampaignClient.js'
 import { RegistryClient } from '../generated/RegistryClient.js'
 import { SPECS_VERSION } from '../generated/specs-version.js'
+import { sdkLogger } from '../log.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
@@ -92,6 +93,7 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
   } catch (error) {
     // A retry can race a registration that landed but whose confirmation was lost.
     if (!isAlreadyRegisteredError(error)) throw error
+    sdkLogger().debug('register.already-registered', { appId: appId.toString() })
     confirmation = { txIds: [] }
   }
   await waitForIndexerCatchUpBestEffort()
@@ -235,6 +237,8 @@ export async function createCampaign(
       if (!isAlreadyRegisteredError(error)) {
         registered = false
         registerError = classifyChainError(error).message
+      } else {
+        sdkLogger().debug('register.already-registered', { appId: appId.toString() })
       }
     }
   }

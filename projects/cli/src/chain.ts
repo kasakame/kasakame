@@ -1,7 +1,27 @@
 import { AlgorandClient, Config } from '@algorandfoundation/algokit-utils'
 import { warningConsoleLogger } from '@algorandfoundation/algokit-utils/types/logging'
+import type { SdkLogger } from '@kasakame/sdk'
 import { configureSdk } from '@kasakame/sdk'
 import type { CliOptions } from './args.js'
+
+const verboseLogger: SdkLogger = {
+  debug: (event, context) => {
+    write('debug', event, context)
+  },
+  info: (event, context) => {
+    write('info', event, context)
+  },
+  warn: (event, context) => {
+    write('warn', event, context)
+  },
+  error: (event, context) => {
+    write('error', event, context)
+  },
+}
+
+function write(level: string, event: string, context: Readonly<Record<string, unknown>> | undefined): void {
+  console.error(`[sdk:${level}] ${event}${context === undefined ? '' : ` ${JSON.stringify(context)}`}`)
+}
 
 /**
  * Build the Algod/indexer client for the selected network and configure the SDK session.
@@ -23,9 +43,11 @@ export function configureCliChain(options: CliOptions): void {
         ? AlgorandClient.defaultLocalNet()
         : AlgorandClient.fromEnvironment()
 
-  configureSdk({
+  const config = {
     algorand,
     registryAppId: options.registryAppId ?? 0n,
     vaultAppId: options.vaultAppId ?? 0n,
-  })
+  }
+  if (options.verbose === true) configureSdk(config, verboseLogger)
+  else configureSdk(config)
 }

@@ -241,4 +241,8 @@ describe('parseCliOptions', () => {
   it('rejects unknown options', () => {
     expect(() => parseCliOptions(['refund', '1', '--bogus'])).toThrow()
   })
+
+  it('reads the verbose switch', () => {
+    expect(parseCliOptions(['refund', '1', '--verbose'])).toMatchObject({ verbose: true })
+  })
 })

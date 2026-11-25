@@ -1,5 +1,6 @@
 import { clearTreeCache } from '../claim-tree/index.js'
 import { CONTRACT_ERROR_MESSAGES } from '../generated/contract-errors.js'
+import { sdkLogger } from '../log.js'
 
 /** Stable category of an SDK failure, driving retries and user-facing recovery. */
 export type SdkErrorType =
@@ -251,7 +252,10 @@ export async function submitWithFreshProof<T>(run: () => Promise<T>, operation: 
   try {
     return await submit()
   } catch (error) {
-    if (error instanceof SdkError && error.type === 'stale-proof') return await submit()
+    if (error instanceof SdkError && error.type === 'stale-proof') {
+      sdkLogger().debug('stale-proof.retry', { operation, appId: appId.toString() })
+      return await submit()
+    }
     throw error
   }
 }

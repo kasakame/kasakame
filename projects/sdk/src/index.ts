@@ -4,4 +4,5 @@ export { configureSdk, fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp,
 export type { SdkConfig } from './chain.js'
 export * from './claim-tree/index.js'
 export { SPECS_VERSION } from './generated/specs-version.js'
+export type { SdkLogger } from './log.js'
 export * from './transactions/index.js'

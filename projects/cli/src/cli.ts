@@ -27,6 +27,7 @@ Options:
   --pledge <position>                  Withdraw or refund one pledge (0-based)
   --all                                Withdraw or refund every live pledge
   --dry-run                            Print planned transactions without signing
+  --verbose                            Print SDK diagnostics to stderr
   --help, -h                           Show this help
 `
 

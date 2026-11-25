@@ -1,15 +1,60 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { logError } from './log'
+import { frontendSdkLogger, logError } from './log'
 
 describe('logError', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllEnvs()
   })
 
-  it('logs the context and the error', () => {
+  it('logs the context and the error through the development logger', () => {
     const consoleMock = vi.spyOn(console, 'error').mockImplementation(() => {})
     const failure = new Error('boom')
     logError('pledge', failure)
-    expect(consoleMock).toHaveBeenCalledWith('[kasakame:pledge]', failure)
+    expect(consoleMock).toHaveBeenCalledWith('[kasakame:pledge]', { error: failure })
+  })
+})
+
+describe('frontendSdkLogger', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllEnvs()
+  })
+
+  it('writes every level to the matching console channel', () => {
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    frontendSdkLogger.debug('sdk.event', { a: 1 })
+    frontendSdkLogger.info('sdk.event', { a: 1 })
+    frontendSdkLogger.warn('sdk.event', { a: 1 })
+    frontendSdkLogger.error('sdk.event', { a: 1 })
+
+    expect(debug).toHaveBeenCalledWith('[kasakame:sdk.event]', { a: 1 })
+    expect(info).toHaveBeenCalledWith('[kasakame:sdk.event]', { a: 1 })
+    expect(warn).toHaveBeenCalledWith('[kasakame:sdk.event]', { a: 1 })
+    expect(error).toHaveBeenCalledWith('[kasakame:sdk.event]', { a: 1 })
+  })
+
+  it('stays silent in a production build', async () => {
+    vi.resetModules()
+    vi.stubEnv('DEV', false)
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const production = await import('./log')
+    production.frontendSdkLogger.debug('sdk.event')
+    production.frontendSdkLogger.info('sdk.event')
+    production.frontendSdkLogger.warn('sdk.event')
+    production.frontendSdkLogger.error('sdk.event')
+
+    expect(debug).not.toHaveBeenCalled()
+    expect(info).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    expect(error).not.toHaveBeenCalled()
   })
 })

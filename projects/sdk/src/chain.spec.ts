@@ -8,6 +8,7 @@ import {
   waitForIndexerCatchUpBestEffort,
   waitForIndexerRound,
 } from './chain.js'
+import { sdkLogger, setSdkLogger } from './log.js'
 
 const algodStatus = vi.fn()
 const algodBlock = vi.fn()
@@ -38,6 +39,15 @@ describe('configureSdk', () => {
     expect(getSdkConfig().algorand).toBe(algorand)
     expect(getSdkConfig().registryAppId).toEqual(1001n)
     expect(getSdkConfig().vaultAppId).toEqual(2002n)
+  })
+
+  it('installs the structured logger and resets it when omitted', () => {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n }, logger)
+    expect(sdkLogger()).toBe(logger)
+
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
+    expect(sdkLogger()).not.toBe(logger)
   })
 })
 
@@ -85,6 +95,7 @@ describe('waitForIndexerRound', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    setSdkLogger(undefined)
   })
 
   it('resolves immediately when the indexer is already past the round', async () => {
@@ -112,6 +123,8 @@ describe('waitForIndexerRound', () => {
   })
 
   it('gives up after the timeout', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
     healthCheck.mockResolvedValue({ round: 1n })
 
     let resolved = false
@@ -123,6 +136,7 @@ describe('waitForIndexerRound', () => {
     await promise
 
     expect(resolved).toBe(true)
+    expect(warn).toHaveBeenCalledWith('indexer.timeout', { round: '8', timeoutMs: 1_000 })
   })
 
   it('keeps polling when the health check is temporarily unreachable', async () => {

@@ -1,3 +1,4 @@
+import type { SdkLogger } from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
@@ -54,6 +55,22 @@ describe('configureCliChain', () => {
     configureCliChain(options())
 
     expect(configureConfigMock).toHaveBeenCalledWith({ logger: warningLogger })
+  })
+
+  it('passes a stderr logger in verbose mode', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    configureCliChain(options({ verbose: true }))
+
+    const logger = configureSdkMock.mock.calls[0]?.[1] as SdkLogger
+    logger.debug('refund.route', { appId: '9', route: 'vault' })
+    logger.info('plain')
+    logger.warn('indexer.timeout', { round: '8' })
+    logger.error('refund.reroute', { type: 'routing' })
+
+    expect(errorSpy).toHaveBeenCalledWith('[sdk:debug] refund.route {"appId":"9","route":"vault"}')
+    expect(errorSpy).toHaveBeenCalledWith('[sdk:info] plain')
+    expect(errorSpy).toHaveBeenCalledWith('[sdk:warn] indexer.timeout {"round":"8"}')
+    expect(errorSpy).toHaveBeenCalledWith('[sdk:error] refund.reroute {"type":"routing"}')
   })
 
   it('configures TestNet with explicit app ids', () => {

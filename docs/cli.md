@@ -181,6 +181,13 @@ After a confirmed write, the command prints the confirmed round, the transaction
 id, and a Lora explorer link on TestNet and LocalNet; custom networks print only
 the transaction id.
 
+### Verbose diagnostics
+
+Pass `--verbose` to print SDK routing and recovery diagnostics to stderr. Default
+output stays unchanged. Diagnostics name the refund route, stale-proof retries,
+refund re-routes, already-registered retries, and indexer wait timeouts, with app
+ids and error types/codes as JSON context.
+
 ### Wallet (default on TestNet)
 
 `kasakame login` pairs a wallet over WalletConnect and stores the session at

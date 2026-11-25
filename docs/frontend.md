@@ -44,6 +44,7 @@ projects/frontend/src/
 │   ├── campaign.ts           # re-exports the SDK read model (deleted-campaign recovery included)
 │   ├── claimtree.ts          # re-exports the SDK proof builder (tree math + indexer replay)
 │   ├── metadata.ts           # campaign metadata blob type
+│   ├── log.ts                # development-only structured logger + logError
 │   ├── transaction.ts        # wallet disconnect helper + re-export of the SDK write path
 │   └── format.ts             # microAlgo / deadline formatting
 ├── components/               # generic UI (ConnectWallet, Account, ErrorBoundary)
@@ -389,6 +390,10 @@ this campaign, and backers can still refund from the vault until the window clos
   group carries it twice.
 - **Spent leaves drop out of the live set.** After a claim, the detail view's
   "Your pledge" reflects the live total naturally - the spent leaves are gone.
+
+## Logging
+
+`src/lib/log.ts` builds a development-only `SdkLogger` and passes it to `configureSdk`; production builds keep the SDK silent. `logError` writes through the same logger with a `[kasakame:<action>]` prefix and the caught error, so browser diagnostics never leave the page and carry no wallet material.
 
 ## Wallet integration
 

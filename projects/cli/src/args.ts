@@ -16,6 +16,7 @@ export interface CliOptions {
   registryAppId?: bigint
   mnemonicFile?: string
   dryRun: boolean
+  verbose?: boolean
 }
 
 const TESTNET_VAULT_APP_ID = 774437570n
@@ -42,6 +43,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
       pledge: { type: 'string' },
       all: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
+      verbose: { type: 'boolean' },
     },
   })
 
@@ -121,6 +123,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
   if (values.address !== undefined) options.address = values.address
   if (values.pledge !== undefined) options.pledge = parsePledge(values.pledge)
   if (values.all === true) options.all = true
+  if (values.verbose === true) options.verbose = true
   return options
 }
 

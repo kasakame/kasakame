@@ -111,6 +111,10 @@ const appSpecMock: { name: string; byteCode?: { approval: string; clear: string 
   byteCode: { approval: 'AA==', clear: 'AQ==' },
 }))
 
+const loggerMock = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
+
+vi.mock('../log.js', () => ({ sdkLogger: () => loggerMock }))
+
 vi.mock('../generated/CampaignClient.js', () => ({
   APP_SPEC: appSpecMock,
   CampaignClient: class {
@@ -338,6 +342,7 @@ describe('transaction helpers', () => {
 
     expect(result).toMatchObject({ registered: true })
     expect(result.registerError).toBeUndefined()
+    expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
   })
 
   it('stringifies a non-Error registration failure', async () => {
@@ -357,6 +362,7 @@ describe('transaction helpers', () => {
     sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
     await expect(registerCampaign(9n, session)).resolves.toEqual({ txIds: [] })
     expect(sendRegisterMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
   })
 
   it('registerCampaign surfaces other registration failures', async () => {
@@ -581,6 +587,7 @@ describe('transaction helpers', () => {
     composerSendMock.mockRejectedValueOnce(new Error('stale or forged frontier')).mockResolvedValueOnce({})
     await pledge(9n, session, 1_000_000n)
     expect(loadTreeMock).toHaveBeenCalledTimes(2)
+    expect(loggerMock.debug).toHaveBeenCalledWith('stale-proof.retry', { operation: 'pledge', appId: '9' })
 
     composerSendMock
       .mockRejectedValueOnce(new Error('stale or forged frontier'))
@@ -631,6 +638,7 @@ describe('transaction helpers', () => {
     expect(paramsCampaignRefundMock).toHaveBeenCalledOnce()
     expect(paramsVaultRefundMock).not.toHaveBeenCalled()
     expect(composerSendMock).toHaveBeenCalledOnce()
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.route', { appId: '9', route: 'campaign' })
   })
 
   it('scales the refund fee with the tree size', async () => {
@@ -651,6 +659,7 @@ describe('transaction helpers', () => {
     expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
     expect(paramsCampaignRefundMock).not.toHaveBeenCalled()
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.route', { appId: '9', route: 'vault' })
     const call = paramsVaultRefundMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
     expect(call.extraFee.microAlgo).toEqual(3_000n)
   })
@@ -694,6 +703,11 @@ describe('transaction helpers', () => {
     expect(paramsVaultRefundMock).toHaveBeenCalledOnce()
     expect(campaignBoxValueMock).toHaveBeenCalledTimes(2)
     expect(waitForIndexerRoundMock).toHaveBeenCalledWith(99n)
+    expect(loggerMock.debug).toHaveBeenCalledWith('refund.reroute', {
+      appId: '9',
+      type: 'routing',
+      code: 'campaign-not-open',
+    })
   })
 
   it('refund retries through the vault when the campaign app disappears mid-send', async () => {
