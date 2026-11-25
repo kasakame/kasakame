@@ -166,6 +166,9 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
  * @param session Wallet session holding the signer and address.
  */
 export async function settleOpen(appId: bigint, session: WalletSession): Promise<void> {
+  const { algorand } = getSdkConfig()
+  // The AppClient compares the raw sender string, so the supplied signer is otherwise dropped.
+  algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
   await vaultClient.send.settleOpen({
     args: { app: appId },
@@ -183,6 +186,9 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
  * @param session Wallet session holding the signer and address.
  */
 export async function releaseClaimed(appId: bigint, session: WalletSession): Promise<void> {
+  const { algorand } = getSdkConfig()
+  // Same signer registration as claim: the generated client drops its default signer for an explicit sender.
+  algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
   await vaultClient.send.releaseClaimed({
     args: { app: appId },
@@ -205,6 +211,8 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<v
   const box = await fetchVaultBox(appId)
   // The residual payment is the only inner transaction; skip its fee when the box is fully paid out or missing.
   const extraInners = box !== undefined && box.paidIn > box.paidOut ? 1n : 0n
+  // The signer must be registered before the generated client resolves it by sender.
+  algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
   await vaultClient.send.finalize({
     args: { app: appId },

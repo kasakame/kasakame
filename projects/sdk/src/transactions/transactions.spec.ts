@@ -675,6 +675,7 @@ describe('transaction helpers', () => {
   it('settleOpen settles a failed campaign permissionlessly', async () => {
     await settleOpen(9n, session)
 
+    expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     const call = sendSettleOpenMock.mock.calls[0]?.[0] as {
       args: { app: bigint }
       sender: string
@@ -691,6 +692,7 @@ describe('transaction helpers', () => {
   it('releaseClaimed releases a claimed box permissionlessly', async () => {
     await releaseClaimed(9n, session)
 
+    expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     const call = sendReleaseClaimedMock.mock.calls[0]?.[0] as { args: { app: bigint }; boxReferences: unknown[] }
     expect(call.args.app).toEqual(9n)
     expect(call.boxReferences).toHaveLength(1)
@@ -702,6 +704,7 @@ describe('transaction helpers', () => {
 
     await finalize(9n, session)
 
+    expect(setSignerMock).toHaveBeenCalledWith('ADDRESS', session.signer)
     const call = sendFinalizeMock.mock.calls[0]?.[0] as { extraFee: { microAlgo: bigint } }
     expect(call.extraFee.microAlgo).toEqual(1_000n)
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
