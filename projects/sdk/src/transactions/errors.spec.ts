@@ -135,6 +135,30 @@ describe('classifyChainError', () => {
     expect(unknown.code).toBeUndefined()
   })
 
+  it('keeps the consumer-facing codes stable', () => {
+    const messages: Readonly<Record<string, string>> = {
+      'campaign-not-open': 'campaign is not open',
+      'campaign-not-refundable': 'campaign is not refundable',
+      'pledging-closed': 'pledging is closed',
+      'goal-not-reached': 'goal not reached',
+      'goal-was-reached-no-refunds': 'goal was reached, no refunds',
+      'deadline-not-passed': 'deadline has not passed',
+      'refund-window-closed': 'refund window closed',
+      'refund-window-open': 'refund window still open',
+      'campaign-max-size': 'campaign reached maximum size',
+      'cancel-final-day-goal': 'cancel would drop below goal in the final day',
+      'campaign-already-registered': 'campaign already registered',
+      'campaign-not-registered': 'campaign not registered',
+      'not-an-official-kasakame-campaign': 'not an official kasakame campaign',
+      'campaign-is-still-live': 'campaign is still live',
+      'already-claimed': 'already claimed',
+    }
+    for (const [code, message] of Object.entries(messages)) {
+      expect(classifyChainError(new Error(message)).code).toBe(code)
+    }
+    expect(classifyChainError(new Error('only the creator can claim')).code).toBe('only-the-creator-can-claim')
+  })
+
   it('classifies every generated contract assert message', () => {
     const unclassified = CONTRACT_ERROR_MESSAGES.map((message) => ({ message, classified: classifyChainError(new Error(message)) })).filter(
       (entry) => entry.classified.code === undefined || entry.classified.type === 'unknown',

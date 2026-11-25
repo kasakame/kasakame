@@ -232,7 +232,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
         void disconnectQuietly(activeWallet)
         setMessage('Wallet session expired. Connect your wallet again to continue.')
       } else {
-        setMessage(errorMessage(kind, 'transaction'))
+        setMessage(errorMessage(error, 'transaction'))
       }
     } finally {
       setBusy(false)

@@ -1,3 +1,4 @@
+import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
 import { runCampaigns, runClaim, runDelete, runPledges, runRefund, runWithdraw } from './commands.js'
@@ -18,7 +19,10 @@ const openCliSessionMock = vi.hoisted(() => vi.fn())
 const whoamiMock = vi.hoisted(() => vi.fn())
 const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@kasakame/sdk', () => sdkMocks)
+vi.mock('@kasakame/sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof Sdk>()
+  return { ...sdkMocks, SdkError: actual.SdkError, classifyChainError: actual.classifyChainError }
+})
 vi.mock('./session.js', () => ({ openCliSession: openCliSessionMock }))
 vi.mock('./walletconnect.js', () => ({ whoami: whoamiMock }))
 vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
@@ -121,7 +125,7 @@ describe('runRefund', () => {
     expect(await runRefund(options({ all: true }))).toBe(1)
 
     expect(sdkMocks.refund).toHaveBeenCalledTimes(2)
-    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: Transaction rejected in the wallet.')
     expect(console.error).toHaveBeenCalledWith('Refunded 1 of 2 pledges; 1 failed.')
     expect(closeMock).toHaveBeenCalled()
   })
@@ -130,7 +134,22 @@ describe('runRefund', () => {
     sdkMocks.refund.mockRejectedValue('rejected')
 
     expect(await runRefund(options({ all: true }))).toBe(1)
-    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: Could not refund the pledges. Please try again.')
+  })
+
+  it('prints the raw failure only at debug level', async () => {
+    sdkMocks.refund.mockRejectedValue(new Error('Transaction rejected by user'))
+
+    expect(await runRefund(options({ all: true, logLevel: 'debug' }))).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: Transaction rejected in the wallet.')
+    expect(console.error).toHaveBeenCalledWith('[detail] Transaction rejected by user')
+  })
+
+  it('does not print a detail for a non-Error at debug level', async () => {
+    sdkMocks.refund.mockRejectedValue('rejected')
+
+    expect(await runRefund(options({ all: true, logLevel: 'debug' }))).toBe(1)
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('[detail]'))
   })
 
   it('reports no live pledges', async () => {
@@ -178,6 +197,12 @@ describe('runRefund', () => {
 
     await expect(runRefund(options())).rejects.toThrow('Campaign 1 not found on testnet')
     expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('treats a non-Error 404 as not found', async () => {
+    sdkMocks.fetchCampaignHeader.mockRejectedValue('404')
+
+    await expect(runRefund(options())).rejects.toThrow('Campaign 1 not found on testnet')
   })
 
   it('keeps unexpected indexer errors', async () => {
@@ -260,7 +285,7 @@ describe('runWithdraw', () => {
     expect(await runWithdraw(withdrawOptions({ all: true }))).toBe(1)
 
     expect(sdkMocks.cancelPledge).toHaveBeenCalledTimes(2)
-    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: rejected')
+    expect(console.error).toHaveBeenCalledWith('Pledge #0 failed: Transaction rejected in the wallet.')
     expect(console.error).toHaveBeenCalledWith('Withdrawn 1 of 2 pledges; 1 failed.')
   })
 

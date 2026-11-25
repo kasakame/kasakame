@@ -17,6 +17,7 @@ import {
 } from '@kasakame/sdk'
 import { isValidAddress } from 'algosdk'
 import type { CliOptions } from './args.js'
+import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { openCliSession } from './session.js'
 import { whoami } from './walletconnect.js'
@@ -160,7 +161,7 @@ export async function runPledges(options: CliOptions): Promise<number> {
   try {
     result = await pledgeRows(await listCampaignEntries(), address, readOnly)
   } catch (error) {
-    throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
+    throw new Error(`Could not read pledges from the indexer: ${cliErrorMessage(error, 'pledges')}`)
   }
 
   const headers = ['app id', 'title', 'status', 'deadline', 'pledge', 'amount']
@@ -238,7 +239,7 @@ export async function runCampaigns(options: CliOptions): Promise<number> {
         return row
       })
   } catch (error) {
-    throw new Error(`Could not read campaigns from the indexer: ${messageOf(error)}`)
+    throw new Error(`Could not read campaigns from the indexer: ${cliErrorMessage(error, 'campaigns')}`)
   }
 
   printTable(
@@ -445,7 +446,11 @@ async function spendLeaves(
         printConfirmation(confirmation, options.network)
       } catch (error) {
         failed += 1
-        console.error(`Pledge #${String(leaf.position)} failed: ${messageOf(error)}`)
+        const message = cliErrorMessage(error, options.command, appId)
+        console.error(`Pledge #${String(leaf.position)} failed: ${message}`)
+        if (options.logLevel === 'debug' && error instanceof Error && message !== error.message) {
+          console.error(`[detail] ${error.message}`)
+        }
       }
     }
 
