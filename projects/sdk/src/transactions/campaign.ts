@@ -132,7 +132,7 @@ export async function verifyDeployment(): Promise<void> {
   } catch (error) {
     const classified = classifyChainError(error, { operation: 'verifyDeployment', appId: registryAppId })
     const message = `could not read the Registry campaign program hash: ${classified.message}`
-    throw new SdkError(classified.kind, message, {
+    throw new SdkError(classified.type, message, {
       operation: 'verifyDeployment',
       appId: registryAppId,
       ...(classified.code === undefined ? {} : { code: classified.code }),

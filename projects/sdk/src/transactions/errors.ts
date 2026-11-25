@@ -2,7 +2,7 @@ import { clearTreeCache } from '../claim-tree/index.js'
 import { CONTRACT_ERROR_MESSAGES } from '../generated/contract-errors.js'
 
 /** Stable category of an SDK failure, driving retries and user-facing recovery. */
-export type SdkErrorKind =
+export type SdkErrorType =
   'validation' | 'registry-mismatch' | 'stale-proof' | 'routing' | 'chain-state' | 'not-found' | 'network' | 'unknown'
 
 /** SDK write operation that produced a failure. */
@@ -41,7 +41,7 @@ export interface SdkErrorOptions extends SdkErrorContext {
 
 /** Typed failure returned by SDK write helpers; the message is always the original failure text. */
 export class SdkError extends Error {
-  readonly kind: SdkErrorKind
+  readonly type: SdkErrorType
   readonly code?: string
   readonly operation?: SdkOperation
   readonly appId?: bigint
@@ -50,14 +50,14 @@ export class SdkError extends Error {
   readonly details?: unknown
 
   /**
-   * @param kind The failure category.
+   * @param type The failure category.
    * @param message The original failure message.
    * @param options Optional code, operation context, cause, and raw details.
    */
-  constructor(kind: SdkErrorKind, message: string, options: SdkErrorOptions = {}) {
+  constructor(type: SdkErrorType, message: string, options: SdkErrorOptions = {}) {
     super(message)
     this.name = 'SdkError'
-    this.kind = kind
+    this.type = type
     if (options.code !== undefined) this.code = options.code
     if (options.operation !== undefined) this.operation = options.operation
     if (options.appId !== undefined) this.appId = options.appId
@@ -84,8 +84,8 @@ const MESSAGE_CODES: Readonly<Record<string, string>> = {
   'proof does not match root': 'stale-proof',
 }
 
-// Kinds that drive a retry; every other contract assert is chain state.
-const KIND_BY_CODE: Readonly<Record<string, SdkErrorKind>> = {
+// Types that drive a retry; every other contract assert is chain state.
+const TYPE_BY_CODE: Readonly<Record<string, SdkErrorType>> = {
   'stale-proof': 'stale-proof',
   'campaign-not-open': 'routing',
 }
@@ -147,17 +147,17 @@ function logicDetails(error: unknown): { message: string; txId?: string } | unde
 }
 
 /**
- * Infer the failure kind from its text and code.
+ * Infer the failure type from its text and code.
  *
  * @param text The failure text.
  * @param code The resolved assert code, if any.
  * @returns The failure category.
  */
-function kindFor(text: string, code: string | undefined): SdkErrorKind {
+function typeFor(text: string, code: string | undefined): SdkErrorType {
   if (NOT_FOUND_PATTERN.test(text)) return 'not-found'
   if (NETWORK_PATTERN.test(text)) return 'network'
   if (code === undefined) return 'unknown'
-  return KIND_BY_CODE[code] ?? 'chain-state'
+  return TYPE_BY_CODE[code] ?? 'chain-state'
 }
 
 /**
@@ -174,7 +174,7 @@ export function classifyChainError(error: unknown, context: SdkErrorContext = {}
   const text = led?.message ?? message
   const code = errorCodeFor(text)
   const txId = context.txId ?? led?.txId
-  return new SdkError(kindFor(text, code), message, {
+  return new SdkError(typeFor(text, code), message, {
     ...(context.operation === undefined ? {} : { operation: context.operation }),
     ...(context.appId === undefined ? {} : { appId: context.appId }),
     ...(txId === undefined ? {} : { txId }),
@@ -207,7 +207,7 @@ export async function submitWithClassification<T>(operation: SdkOperation, run: 
  * @returns True when rebuilding proofs and retrying once is correct.
  */
 export function isStaleProofError(error: unknown): boolean {
-  return classifyChainError(error).kind === 'stale-proof'
+  return classifyChainError(error).type === 'stale-proof'
 }
 
 /**
@@ -217,8 +217,8 @@ export function isStaleProofError(error: unknown): boolean {
  * @returns True when re-reading the vault box and rebuilding the refund once is correct.
  */
 export function isCampaignRoutingError(error: unknown): boolean {
-  const kind = classifyChainError(error).kind
-  return kind === 'routing' || kind === 'not-found'
+  const type = classifyChainError(error).type
+  return type === 'routing' || type === 'not-found'
 }
 
 /**
@@ -251,7 +251,7 @@ export async function submitWithFreshProof<T>(run: () => Promise<T>, operation: 
   try {
     return await submit()
   } catch (error) {
-    if (error instanceof SdkError && error.kind === 'stale-proof') return await submit()
+    if (error instanceof SdkError && error.type === 'stale-proof') return await submit()
     throw error
   }
 }

@@ -23,7 +23,7 @@ describe('SDK bad-path smoke (localnet)', () => {
       snapshot,
       (error: unknown) => {
         expect(error).toBeInstanceOf(SdkError)
-        expect(error).toMatchObject({ kind: 'chain-state', code: 'creator-self-pledge', operation: 'pledge', appId })
+        expect(error).toMatchObject({ type: 'chain-state', code: 'creator-self-pledge', operation: 'pledge', appId })
         expect((error as Error).message).toMatch(/creator cannot pledge to their own campaign/)
         return true
       },
@@ -47,7 +47,7 @@ describe('SDK bad-path smoke (localnet)', () => {
       snapshot,
       (error: unknown) => {
         expect(error).toBeInstanceOf(SdkError)
-        expect(error).toMatchObject({ kind: 'chain-state', code: 'pledging-closed', operation: 'cancelPledge', appId })
+        expect(error).toMatchObject({ type: 'chain-state', code: 'pledging-closed', operation: 'cancelPledge', appId })
         expect((error as Error).message).toMatch(/pledging is closed/)
         return true
       },
@@ -72,7 +72,7 @@ describe('SDK bad-path smoke (localnet)', () => {
       snapshot,
       (error: unknown) => {
         expect(error).toBeInstanceOf(SdkError)
-        expect(error).toMatchObject({ kind: 'chain-state', code: 'deadline-not-passed', operation: 'refund', appId })
+        expect(error).toMatchObject({ type: 'chain-state', code: 'deadline-not-passed', operation: 'refund', appId })
         expect((error as Error).message).toMatch(/deadline has not passed/)
         return true
       },
@@ -92,7 +92,7 @@ describe('SDK bad-path smoke (localnet)', () => {
 
     const error = await refund(appId, backer, leaf).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(SdkError)
-    expect(error).toMatchObject({ kind: 'stale-proof', code: 'stale-proof', operation: 'refund', appId })
+    expect(error).toMatchObject({ type: 'stale-proof', code: 'stale-proof', operation: 'refund', appId })
     expect((error as Error).message).toMatch(/proof does not match root|stale or forged frontier/)
   })
 })

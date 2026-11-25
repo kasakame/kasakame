@@ -16,7 +16,7 @@ function logicError(message: string, txId = 'TX'): LogicError {
 }
 
 describe('SdkError', () => {
-  it('carries the kind, code, context, cause, and details', () => {
+  it('carries the type, code, context, cause, and details', () => {
     const cause = new Error('boom')
     const error = new SdkError('chain-state', 'boom', {
       code: 'some-code',
@@ -30,7 +30,7 @@ describe('SdkError', () => {
     expect(error).toMatchObject({
       name: 'SdkError',
       message: 'boom',
-      kind: 'chain-state',
+      type: 'chain-state',
       code: 'some-code',
       operation: 'claim',
       appId: 42n,
@@ -64,7 +64,7 @@ describe('classifyChainError', () => {
 
     expect(classified).toBeInstanceOf(SdkError)
     expect(classified).toMatchObject({
-      kind: 'stale-proof',
+      type: 'stale-proof',
       code: 'stale-proof',
       operation: 'refund',
       appId: 42n,
@@ -81,54 +81,54 @@ describe('classifyChainError', () => {
 
   it('falls back to the error message when the led details are unusable', () => {
     const numericTx = Object.assign(new Error('campaign is not open'), { led: { msg: 'campaign is not open', txId: 7 } })
-    expect(classifyChainError(numericTx)).toMatchObject({ kind: 'routing', code: 'campaign-not-open' })
+    expect(classifyChainError(numericTx)).toMatchObject({ type: 'routing', code: 'campaign-not-open' })
     expect(classifyChainError(numericTx).txId).toBeUndefined()
 
     const noLed = Object.assign(new Error('campaign is not open'), { led: 'nope' })
-    expect(classifyChainError(noLed).kind).toBe('routing')
+    expect(classifyChainError(noLed).type).toBe('routing')
 
     const noMessage = Object.assign(new Error('campaign is not open'), { led: { msg: 7 } })
-    expect(classifyChainError(noMessage).kind).toBe('routing')
+    expect(classifyChainError(noMessage).type).toBe('routing')
   })
 
   it('classifies a generic simulate text by the contract message inside it', () => {
     const error = new Error('transaction ABC: logic eval error: campaign is not open. Details: pc=1')
-    expect(classifyChainError(error)).toMatchObject({ kind: 'routing', code: 'campaign-not-open' })
+    expect(classifyChainError(error)).toMatchObject({ type: 'routing', code: 'campaign-not-open' })
   })
 
   it('uses an explicit code for the SDK max-size guard', () => {
     const error = new Error('campaign reached its maximum size; it can no longer accept pledges')
-    expect(classifyChainError(error)).toMatchObject({ kind: 'chain-state', code: 'campaign-max-size' })
+    expect(classifyChainError(error)).toMatchObject({ type: 'chain-state', code: 'campaign-max-size' })
   })
 
   it('generates a stable code for a contract assert without an explicit mapping', () => {
     expect(classifyChainError(new Error('only the creator can claim'))).toMatchObject({
-      kind: 'chain-state',
+      type: 'chain-state',
       code: 'only-the-creator-can-claim',
     })
   })
 
   it('classifies not-found and network failures', () => {
     const notFound = classifyChainError(new Error('application 123 not found'))
-    expect(notFound.kind).toBe('not-found')
+    expect(notFound.type).toBe('not-found')
     expect(notFound.code).toBeUndefined()
-    expect(classifyChainError(new Error('application 123 does not exist')).kind).toBe('not-found')
+    expect(classifyChainError(new Error('application 123 does not exist')).type).toBe('not-found')
     const network = classifyChainError(new Error('fetch failed'))
-    expect(network.kind).toBe('network')
+    expect(network.type).toBe('network')
     expect(network.code).toBeUndefined()
-    expect(classifyChainError(new Error('socket hang up')).kind).toBe('network')
+    expect(classifyChainError(new Error('socket hang up')).type).toBe('network')
   })
 
   it('leaves a non-chain failure unknown and preserves a non-Error message', () => {
-    expect(classifyChainError('boom')).toMatchObject({ kind: 'unknown', message: 'boom', cause: 'boom', details: 'boom' })
+    expect(classifyChainError('boom')).toMatchObject({ type: 'unknown', message: 'boom', cause: 'boom', details: 'boom' })
     const unknown = classifyChainError(new Error('boom'))
-    expect(unknown.kind).toBe('unknown')
+    expect(unknown.type).toBe('unknown')
     expect(unknown.code).toBeUndefined()
   })
 
   it('classifies every generated contract assert message', () => {
     const unclassified = CONTRACT_ERROR_MESSAGES.map((message) => ({ message, classified: classifyChainError(new Error(message)) })).filter(
-      (entry) => entry.classified.code === undefined || entry.classified.kind === 'unknown',
+      (entry) => entry.classified.code === undefined || entry.classified.type === 'unknown',
     )
 
     expect(unclassified).toEqual([])
@@ -162,13 +162,13 @@ describe('submission wrappers', () => {
     const withApp = await submitWithClassification('claim', () => Promise.reject(new Error('campaign is not open')), 9n).catch(
       (error: unknown) => error,
     )
-    expect(withApp).toMatchObject({ kind: 'routing', operation: 'claim', appId: 9n })
+    expect(withApp).toMatchObject({ type: 'routing', operation: 'claim', appId: 9n })
 
     const withoutApp = await submitWithClassification('createCampaign', () => Promise.reject(new Error('boom'))).catch(
       (error: unknown) => error,
     )
     expect(withoutApp).toBeInstanceOf(SdkError)
-    expect(withoutApp).toMatchObject({ kind: 'unknown', operation: 'createCampaign' })
+    expect(withoutApp).toMatchObject({ type: 'unknown', operation: 'createCampaign' })
     expect((withoutApp as SdkError).appId).toBeUndefined()
   })
 
@@ -189,7 +189,7 @@ describe('submission wrappers', () => {
       (error: unknown) => error,
     )
 
-    expect(failure).toMatchObject({ kind: 'stale-proof', operation: 'cancelPledge', appId: 9n })
+    expect(failure).toMatchObject({ type: 'stale-proof', operation: 'cancelPledge', appId: 9n })
   })
 
   it('submitWithFreshProof does not retry another failure', async () => {
@@ -203,7 +203,7 @@ describe('submission wrappers', () => {
       9n,
     ).catch((error: unknown) => error)
 
-    expect(failure).toMatchObject({ kind: 'unknown', operation: 'refund', appId: 9n })
+    expect(failure).toMatchObject({ type: 'unknown', operation: 'refund', appId: 9n })
     expect(calls).toBe(1)
   })
 })

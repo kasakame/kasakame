@@ -323,7 +323,7 @@ Write helpers reject with `SdkError`, which preserves the original message and a
 
 ```ts
 class SdkError extends Error {
-  kind: SdkErrorKind
+  type: SdkErrorType
   code?: string
   operation?: SdkOperation
   appId?: bigint
@@ -333,7 +333,7 @@ class SdkError extends Error {
 }
 ```
 
-`classifyChainError` classifies at the send boundary. It reads `LogicError.led.msg` from generated-client sends, or finds the contract assert inside a generic simulate error, so helpers never match prose. The kinds are:
+`classifyChainError` classifies at the send boundary. It reads `LogicError.led.msg` from generated-client sends, or finds the contract assert inside a generic simulate error, so helpers never match prose. The types are:
 
 | Kind | Meaning |
 | --- | --- |
@@ -346,7 +346,7 @@ class SdkError extends Error {
 | `network` | The node or indexer was unreachable. |
 | `unknown` | Anything the classifier does not recognize. |
 
-`code` comes from one map in `errors.ts`. `scripts/codegen.ts` reads every ARC-56 `sourceInfo` map into `CONTRACT_ERROR_MESSAGES`, and each assert gets either an explicit code for a failure the SDK acts on (`stale-proof`, `routing` via `campaign-not-open`, `campaign-already-registered`, plus display codes such as `creator-self-pledge`, `pledging-closed`, `deadline-not-passed`, `refund-window-open`, and `campaign-max-size`) or a slug of its message, so a new contract assert is never unclassified. Only the classified `kind`/`code` drives retries: stale proofs retry inside `submitWithFreshProof`, routing/not-found refunds re-route, and `registerCampaign` treats `campaign-already-registered` as success. `isStaleProofError` remains as a compatibility wrapper.
+`code` comes from one map in `errors.ts`. `scripts/codegen.ts` reads every ARC-56 `sourceInfo` map into `CONTRACT_ERROR_MESSAGES`, and each assert gets either an explicit code for a failure the SDK acts on (`stale-proof`, `routing` via `campaign-not-open`, `campaign-already-registered`, plus display codes such as `creator-self-pledge`, `pledging-closed`, `deadline-not-passed`, `refund-window-open`, and `campaign-max-size`) or a slug of its message, so a new contract assert is never unclassified. Only the classified `type`/`code` drives retries: stale proofs retry inside `submitWithFreshProof`, routing/not-found refunds re-route, and `registerCampaign` treats `campaign-already-registered` as success. `isStaleProofError` remains as a compatibility wrapper.
 
 The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
 

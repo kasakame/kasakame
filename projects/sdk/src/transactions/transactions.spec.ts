@@ -433,7 +433,7 @@ describe('transaction helpers', () => {
     campaignProgramHashMock.mockRejectedValueOnce(new Error('campaign is not open'))
 
     const error = await verifyDeployment().catch((caught: unknown) => caught)
-    expect(error).toMatchObject({ kind: 'routing', code: 'campaign-not-open' })
+    expect(error).toMatchObject({ type: 'routing', code: 'campaign-not-open' })
     expect((error as Error).message).toContain('could not read the Registry campaign program hash:')
   })
 
@@ -573,7 +573,7 @@ describe('transaction helpers', () => {
     loadTreeMock.mockResolvedValue({ leaves: { length: Number(MAX_TREE_SIZE) }, raised: 0n })
     const error = await pledgeGroup(9n, session, 1_000_000n).catch((caught: unknown) => caught)
     expect(error).toBeInstanceOf(SdkError)
-    expect(error).toMatchObject({ kind: 'chain-state', code: 'campaign-max-size', operation: 'pledge', appId: 9n })
+    expect(error).toMatchObject({ type: 'chain-state', code: 'campaign-max-size', operation: 'pledge', appId: 9n })
     expect((error as Error).message).toContain('maximum size')
   })
 
