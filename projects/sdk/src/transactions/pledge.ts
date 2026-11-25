@@ -10,7 +10,7 @@ import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { SdkError, classifyChainError, logWriteConfirmed, submitWithFreshProof, throwSdkError, validationError } from './errors.js'
+import { SdkError, classifyChainError, logWriteConfirmed, submitWithFreshProof, throwSdkError } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -29,10 +29,10 @@ async function buildPledgeGroup(
 ): Promise<{ composer: TransactionComposer; position: number }> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   if (amountMicroAlgos < MIN_PLEDGE_MICRO_ALGOS || amountMicroAlgos > MAX_PLEDGE_MICRO_ALGOS) {
-    validationError(
+    throw new SdkError(
+      'validation',
       `pledge amount must be between ${String(MIN_PLEDGE_MICRO_ALGOS)} and ${String(MAX_PLEDGE_MICRO_ALGOS)} microAlgos`,
-      'pledge',
-      appId,
+      { operation: 'pledge', appId },
     )
   }
   const minFee = await minimumFee(algorand)
@@ -42,13 +42,11 @@ async function buildPledgeGroup(
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
   const n = BigInt(tree.leaves.length)
   if (n >= MAX_TREE_SIZE) {
-    throwSdkError(
-      new SdkError('chain-state', 'campaign reached its maximum size; it can no longer accept pledges', {
-        code: 'campaign-max-size',
-        operation: 'pledge',
-        appId,
-      }),
-    )
+    throw new SdkError('chain-state', 'campaign reached its maximum size; it can no longer accept pledges', {
+      code: 'campaign-max-size',
+      operation: 'pledge',
+      appId,
+    })
   }
   const campaignClient = campaignClientFor(appId, session)
   const vaultClient = vaultClientFor(session)

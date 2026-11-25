@@ -73,12 +73,11 @@ export class SdkError extends Error {
 const EXPECTED_FAILURE_TYPES: ReadonlySet<SdkErrorType> = new Set(['validation', 'routing', 'not-found', 'chain-state', 'stale-proof'])
 
 /**
- * Log a final failure at warn for expected rejections, error for unexpected ones, then throw it.
+ * Log a final failure at warn for expected rejections, error for unexpected ones.
  *
  * @param error The classified failure.
- * @throws {SdkError} Always.
  */
-export function throwSdkError(error: SdkError): never {
+export function logSdkFailure(error: SdkError): void {
   const level = EXPECTED_FAILURE_TYPES.has(error.type) ? 'warn' : 'error'
   sdkLogger()[level]('operation.failed', {
     ...(error.operation === undefined ? {} : { operation: error.operation }),
@@ -87,6 +86,16 @@ export function throwSdkError(error: SdkError): never {
     ...(error.code === undefined ? {} : { code: error.code }),
     ...(error.txId === undefined ? {} : { txId: error.txId }),
   })
+}
+
+/**
+ * Log a final failure, then throw it.
+ *
+ * @param error The classified failure.
+ * @throws {SdkError} Always.
+ */
+export function throwSdkError(error: SdkError): never {
+  logSdkFailure(error)
   throw error
 }
 
@@ -95,11 +104,10 @@ export function throwSdkError(error: SdkError): never {
  *
  * @param message The original failure message.
  * @param operation The operation that failed.
- * @param appId The application the operation targeted, when known.
  * @throws {SdkError} Always.
  */
-export function validationError(message: string, operation: SdkOperation, appId?: bigint): never {
-  throwSdkError(new SdkError('validation', message, { operation, ...(appId === undefined ? {} : { appId }) }))
+export function validationError(message: string, operation: SdkOperation): never {
+  throwSdkError(new SdkError('validation', message, { operation }))
 }
 
 /**
@@ -239,7 +247,23 @@ export function classifyChainError(error: unknown, context: SdkErrorContext = {}
 }
 
 /**
- * Run a submission and classify its failure at the boundary.
+ * Classify a submission failure without logging it, leaving the final-failure decision to the caller.
+ *
+ * @param operation The write operation.
+ * @param run The send call.
+ * @param appId The application the write targets, when known.
+ * @returns The send result.
+ */
+export async function classifySubmission<T>(operation: SdkOperation, run: () => Promise<T>, appId?: bigint): Promise<T> {
+  try {
+    return await run()
+  } catch (error) {
+    throw classifyChainError(error, { operation, ...(appId === undefined ? {} : { appId }) })
+  }
+}
+
+/**
+ * Run a submission, classify its failure, log it, and throw.
  *
  * @param operation The write operation.
  * @param run The send call.
@@ -248,9 +272,9 @@ export function classifyChainError(error: unknown, context: SdkErrorContext = {}
  */
 export async function submitWithClassification<T>(operation: SdkOperation, run: () => Promise<T>, appId?: bigint): Promise<T> {
   try {
-    return await run()
+    return await classifySubmission(operation, run, appId)
   } catch (error) {
-    throwSdkError(classifyChainError(error, { operation, ...(appId === undefined ? {} : { appId }) }))
+    throwSdkError(classifyChainError(error))
   }
 }
 

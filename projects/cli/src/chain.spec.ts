@@ -1,4 +1,4 @@
-import type { SdkLogger } from '@kasakame/sdk'
+import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
@@ -17,7 +17,6 @@ const algorandMocks = vi.hoisted(() => {
   }
 })
 const configureSdkMock = vi.hoisted(() => vi.fn())
-const createLevelLoggerMock = vi.hoisted(() => vi.fn((_level: string, sink: unknown) => sink))
 const warningLogger = vi.hoisted(() => ({ level: 'warn' }))
 const configureConfigMock = vi.hoisted(() => vi.fn())
 
@@ -30,7 +29,10 @@ vi.mock('@algorandfoundation/algokit-utils', () => ({
   Config: { configure: configureConfigMock },
 }))
 vi.mock('@algorandfoundation/algokit-utils/types/logging', () => ({ warningConsoleLogger: warningLogger }))
-vi.mock('@kasakame/sdk', () => ({ configureSdk: configureSdkMock, createLevelLogger: createLevelLoggerMock }))
+vi.mock('@kasakame/sdk', async (importOriginal) => {
+  const actual = await importOriginal<typeof Sdk>()
+  return { ...actual, configureSdk: configureSdkMock }
+})
 
 function options(overrides: Partial<CliOptions> = {}): CliOptions {
   return {
@@ -58,12 +60,11 @@ describe('configureCliChain', () => {
     expect(configureConfigMock).toHaveBeenCalledWith({ logger: warningLogger })
   })
 
-  it('passes a filtered stderr logger in verbose mode', () => {
+  it('writes all diagnostics at debug', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    configureCliChain(options({ logLevel: 'info' }))
+    configureCliChain(options({ logLevel: 'debug' }))
 
-    expect(createLevelLoggerMock).toHaveBeenCalledWith('info', expect.any(Object))
-    const logger = configureSdkMock.mock.calls[0]?.[1] as SdkLogger
+    const logger = configureSdkMock.mock.calls[0]?.[1] as Sdk.SdkLogger
     logger.debug('refund.route', { appId: '9', route: 'vault' })
     logger.info('plain')
     logger.warn('indexer.timeout', { round: '8' })
@@ -73,6 +74,20 @@ describe('configureCliChain', () => {
     expect(errorSpy).toHaveBeenCalledWith('[sdk:info] plain')
     expect(errorSpy).toHaveBeenCalledWith('[sdk:warn] indexer.timeout {"round":"8"}')
     expect(errorSpy).toHaveBeenCalledWith('[sdk:error] refund.reroute {"type":"routing"}')
+  })
+
+  it('filters diagnostics at the CLI boundary', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    configureCliChain(options({ logLevel: 'warn' }))
+
+    const logger = configureSdkMock.mock.calls[0]?.[1] as Sdk.SdkLogger
+    logger.debug('refund.route', { appId: '9', route: 'vault' })
+    logger.info('plain')
+    logger.warn('indexer.timeout', { round: '8' })
+
+    expect(errorSpy).not.toHaveBeenCalledWith('[sdk:debug] refund.route {"appId":"9","route":"vault"}')
+    expect(errorSpy).not.toHaveBeenCalledWith('[sdk:info] plain')
+    expect(errorSpy).toHaveBeenCalledWith('[sdk:warn] indexer.timeout {"round":"8"}')
   })
 
   it('configures TestNet with explicit app ids', () => {

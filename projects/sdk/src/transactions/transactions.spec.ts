@@ -338,6 +338,12 @@ describe('transaction helpers', () => {
       registered: false,
       registerError: 'not an official kasakame campaign',
     })
+    expect(loggerMock.warn).toHaveBeenCalledWith('operation.failed', {
+      operation: 'registerCampaign',
+      appId: '9',
+      type: 'chain-state',
+      code: 'not-an-official-kasakame-campaign',
+    })
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
@@ -349,6 +355,7 @@ describe('transaction helpers', () => {
     expect(result).toMatchObject({ registered: true })
     expect(result.registerError).toBeUndefined()
     expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('stringifies a non-Error registration failure', async () => {
@@ -369,6 +376,7 @@ describe('transaction helpers', () => {
     await expect(registerCampaign(9n, session)).resolves.toEqual({ txIds: [] })
     expect(sendRegisterMock).toHaveBeenCalledTimes(2)
     expect(loggerMock.debug).toHaveBeenCalledWith('register.already-registered', { appId: '9' })
+    expect(loggerMock.warn).not.toHaveBeenCalled()
   })
 
   it('registerCampaign surfaces other registration failures', async () => {
@@ -591,6 +599,7 @@ describe('transaction helpers', () => {
       appId: '9',
       type: 'validation',
     })
+    expect(loggerMock.warn).toHaveBeenCalledTimes(2)
   })
 
   it('pledge accepts the inclusive amount bounds', async () => {

@@ -24,7 +24,9 @@ import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
 import {
   classifyChainError,
+  classifySubmission,
   isAlreadyRegisteredError,
+  logSdkFailure,
   logWriteConfirmed,
   SdkError,
   submitWithClassification,
@@ -97,10 +99,11 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
   if (getSdkConfig().registryAppId === 0n) return { txIds: [] }
   let confirmation: WriteConfirmation
   try {
-    confirmation = writeConfirmation(await submitWithClassification('registerCampaign', () => sendRegister(appId, session), appId))
+    confirmation = writeConfirmation(await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId))
   } catch (error) {
+    const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
     // A retry can race a registration that landed but whose confirmation was lost.
-    if (!isAlreadyRegisteredError(error)) throw error
+    if (!isAlreadyRegisteredError(classified)) throwSdkError(classified)
     sdkLogger().debug('register.already-registered', { appId: appId.toString() })
     confirmation = { txIds: [] }
   }
@@ -235,14 +238,16 @@ export async function createCampaign(
   let registerTxIds: string[] | undefined
   if (registryAppId > 0n) {
     try {
-      const registerResult = await submitWithClassification('registerCampaign', () => sendRegister(appId, session), appId)
+      const registerResult = await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId)
       registerTxIds = registerResult.txIds
     } catch (error) {
-      if (!isAlreadyRegisteredError(error)) {
-        registered = false
-        registerError = classifyChainError(error).message
-      } else {
+      const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
+      if (isAlreadyRegisteredError(classified)) {
         sdkLogger().debug('register.already-registered', { appId: appId.toString() })
+      } else {
+        logSdkFailure(classified)
+        registered = false
+        registerError = classified.message
       }
     }
   }
