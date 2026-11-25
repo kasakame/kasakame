@@ -318,6 +318,10 @@ MBR in `test/utils/contract-sizes.ts`. The checks live in
 - Integration tests live in `test/*.test.ts` (files `00`-`07`) -
   **plain `.test.ts`** files, so the puya
   transformer skips them (no AVM emulation; they talk to real algod).
+- `vitest.config.mts` sets `hookTimeout: 120_000`: the first `deployStack` can
+  exceed Vitest's 10s hook default on a cold or loaded LocalNet, which would skip
+  the file. The frontend create test uses a 20s per-test timeout for the same
+  reason.
 - Uses `algorandFixture()` to fund throwaway accounts from the LocalNet dispenser.
 - Loads the ARC-56 specs at runtime via `fs.readFileSync` with the generic
   `AppFactory` - avoids statically importing the gitignored `*Client.ts`,
