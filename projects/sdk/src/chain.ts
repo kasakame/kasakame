@@ -76,3 +76,17 @@ export async function waitForIndexerCatchUp(timeoutMs = 10_000, pollMs = 250): P
   const status = await getSdkConfig().algorand.client.algod.status().do()
   await waitForIndexerRound(status.lastRound, timeoutMs, pollMs)
 }
+
+/**
+ * Wait for the indexer after a confirmed write; a read failure is not a write failure, so this never throws. The next read retries.
+ *
+ * @param timeoutMs Maximum time to wait before giving up. Defaults to 10s.
+ * @param pollMs Delay between polls. Defaults to 250ms.
+ */
+export async function waitForIndexerCatchUpBestEffort(timeoutMs = 10_000, pollMs = 250): Promise<void> {
+  try {
+    await waitForIndexerCatchUp(timeoutMs, pollMs)
+  } catch {
+    // The write is confirmed; the next read retries.
+  }
+}

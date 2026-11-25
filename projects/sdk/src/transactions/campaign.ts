@@ -12,7 +12,7 @@ import {
 } from '@kasakame/constants'
 import { sha256 } from '@noble/hashes/sha2.js'
 import { base64ToBytes, bytesToHex } from 'algosdk'
-import { fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp } from '../chain.js'
+import { fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUpBestEffort } from '../chain.js'
 import { u64be } from '../claim-tree/tree.js'
 import { APP_SPEC, CampaignFactory } from '../generated/CampaignClient.js'
 import { RegistryClient } from '../generated/RegistryClient.js'
@@ -82,7 +82,7 @@ export async function registerCampaign(appId: bigint, session: WalletSession): P
     // A retry can race a registration that landed but whose confirmation was lost; the Registry message is stable.
     if (!(error instanceof Error) || !/campaign already registered/i.test(error.message)) throw error
   }
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 }
 
 /**
@@ -197,7 +197,7 @@ export async function createCampaign(
   }
 
   // The generated create result doesn't expose the confirmation round, so wait for the indexer to catch up to algod's current tip.
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
 
   return { appId, appAddress, registered, ...(registerError === undefined ? {} : { registerError }) }
 }

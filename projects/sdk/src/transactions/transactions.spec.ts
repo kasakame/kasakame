@@ -194,6 +194,13 @@ vi.mock('../chain.js', () => ({
   }),
   waitForIndexerRound: (...args: unknown[]) => waitForIndexerRoundMock(...args),
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
+  waitForIndexerCatchUpBestEffort: async (...args: unknown[]) => {
+    try {
+      await waitForIndexerCatchUpMock(...args)
+    } catch {
+      // The write is confirmed; the next read retries.
+    }
+  },
   fetchChainTimestamp: (...args: unknown[]) => fetchChainTimestampMock(...args),
 }))
 
@@ -276,10 +283,18 @@ describe('transaction helpers', () => {
 
   it('createCampaign runs create then register (nothing funded)', async () => {
     const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
-
     expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).toHaveBeenCalledOnce()
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
+  })
+
+  it('createCampaign returns the app id when the post-send indexer wait fails', async () => {
+    waitForIndexerCatchUpMock.mockRejectedValueOnce(new Error('indexer unreachable'))
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
+
+    expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
@@ -470,6 +485,15 @@ describe('transaction helpers', () => {
     expect(composerAddMock).toHaveBeenCalledTimes(2)
     expect(composerSendMock).toHaveBeenCalledOnce()
     // Once before building proofs (fresh tree on the first attempt), once after for UI refresh.
+    expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('pledge keeps a confirmed write successful when the post-send indexer wait fails', async () => {
+    waitForIndexerCatchUpMock.mockReset()
+    waitForIndexerCatchUpMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('algod unreachable'))
+
+    await expect(pledge(9n, session, 1_000_000n)).resolves.toBeUndefined()
+    expect(composerSendMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
   })
 
