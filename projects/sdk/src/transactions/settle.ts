@@ -9,7 +9,7 @@ import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, registryClientFor, vaultClientFor, withoutGroupId } from './clients.js'
 import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
-import { isCampaignRoutingError, submitWithFreshProof } from './errors.js'
+import { isCampaignRoutingError, submitWithClassification, submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
 
@@ -87,11 +87,11 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
 
   let confirmation: WriteConfirmation
   try {
-    confirmation = await submitWithFreshProof(attempt)
+    confirmation = await submitWithFreshProof(attempt, 'refund', appId)
   } catch (error) {
     if (!isCampaignRoutingError(error)) throw error
     // The box settled or the campaign vanished between our read and the send: re-read the box and route once more.
-    confirmation = await submitWithFreshProof(attempt)
+    confirmation = await submitWithFreshProof(attempt, 'refund', appId)
   }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
@@ -114,12 +114,17 @@ export async function claim(appId: bigint, session: WalletSession): Promise<Writ
   algorand.account.setSigner(session.address, session.signer)
   const minFee = await minimumFee(algorand)
   const client = campaignClientFor(appId, session)
-  const result = await client.send.claim({
-    args: [],
-    appReferences: [vaultAppId],
-    boxReferences: vaultBoxRef(appId),
-    extraFee: microAlgos(CLAIM_EXTRA_INNERS * minFee),
-  })
+  const result = await submitWithClassification(
+    'claim',
+    () =>
+      client.send.claim({
+        args: [],
+        appReferences: [vaultAppId],
+        boxReferences: vaultBoxRef(appId),
+        extraFee: microAlgos(CLAIM_EXTRA_INNERS * minFee),
+      }),
+    appId,
+  )
 
   const confirmation = writeConfirmation(result, { appId })
   if (confirmation.confirmedRound !== undefined) {
@@ -162,7 +167,7 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
       extraFee: microAlgos(DELETE_EXTRA_INNERS * minFee),
     }),
   )
-  const result = await composer.send()
+  const result = await submitWithClassification('deleteCampaign', () => composer.send(), appId)
   await waitForIndexerCatchUpBestEffort()
   return writeConfirmation(result, { appId })
 }
@@ -179,12 +184,17 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
   // The AppClient compares the raw sender string, so the supplied signer is otherwise dropped.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  const result = await vaultClient.send.settleOpen({
-    args: { app: appId },
-    sender: session.address,
-    appReferences: [appId],
-    boxReferences: vaultBoxRef(appId),
-  })
+  const result = await submitWithClassification(
+    'settleOpen',
+    () =>
+      vaultClient.send.settleOpen({
+        args: { app: appId },
+        sender: session.address,
+        appReferences: [appId],
+        boxReferences: vaultBoxRef(appId),
+      }),
+    appId,
+  )
   await waitForIndexerCatchUpBestEffort()
   return writeConfirmation(result, { appId })
 }
@@ -201,12 +211,17 @@ export async function releaseClaimed(appId: bigint, session: WalletSession): Pro
   // Same signer registration as claim: the generated client drops its default signer for an explicit sender.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  const result = await vaultClient.send.releaseClaimed({
-    args: { app: appId },
-    sender: session.address,
-    appReferences: [appId],
-    boxReferences: vaultBoxRef(appId),
-  })
+  const result = await submitWithClassification(
+    'releaseClaimed',
+    () =>
+      vaultClient.send.releaseClaimed({
+        args: { app: appId },
+        sender: session.address,
+        appReferences: [appId],
+        boxReferences: vaultBoxRef(appId),
+      }),
+    appId,
+  )
   await waitForIndexerCatchUpBestEffort()
   return writeConfirmation(result, { appId })
 }
@@ -227,13 +242,18 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<W
   // The signer must be registered before the generated client resolves it by sender.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  const result = await vaultClient.send.finalize({
-    args: { app: appId },
-    sender: session.address,
-    appReferences: [appId],
-    boxReferences: vaultBoxRef(appId),
-    extraFee: microAlgos(extraInners * minFee),
-  })
+  const result = await submitWithClassification(
+    'finalize',
+    () =>
+      vaultClient.send.finalize({
+        args: { app: appId },
+        sender: session.address,
+        appReferences: [appId],
+        boxReferences: vaultBoxRef(appId),
+        extraFee: microAlgos(extraInners * minFee),
+      }),
+    appId,
+  )
   await waitForIndexerCatchUpBestEffort()
   return writeConfirmation(result, { appId, amount: box === undefined ? 0n : box.paidIn - box.paidOut })
 }

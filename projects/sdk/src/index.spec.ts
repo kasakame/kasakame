@@ -10,11 +10,13 @@ const contractsPackage = require('../../contracts/package.json') as { version: s
 const PUBLIC_EXPORTS = [
   'MAX_TREE_SIZE',
   'SPECS_VERSION',
+  'SdkError',
   'appendLeaf',
   'base32ToBytes',
   'campaignFromHeader',
   'cancelPledge',
   'claim',
+  'classifyChainError',
   'clearCachedCampaigns',
   'clearTreeCache',
   'concatHashes',
