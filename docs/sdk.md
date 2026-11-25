@@ -75,7 +75,7 @@ The three modules are folders, one concern per file. `src/index.ts` re-exports t
 
 - `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `selectors.ts` (replayed ARC-4 selectors), `claim-tree.vectors.ts` (committed differential vectors), `index.ts` (barrel).
 - `src/campaigns/` - `decode.ts` (global state, box names, create args), `view.ts` (status and view model), `header.ts` (live and deleted headers), `read.ts` (indexer reads, enumeration, list cache), `index.ts` (barrel).
-- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (stale-proof detection and retry), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
+- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (typed failures, contract assert codes, stale-proof and routing retries), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
 
 ### Specs version
 
@@ -88,7 +88,8 @@ import { SPECS_VERSION } from '@kasakame/sdk'
 ```
 
 It records the contracts package version the generated clients were built
-against.
+against. The same run emits `src/generated/contract-errors.ts`, the assert-message
+list the error classifier uses.
 
 ### Chain plumbing (`chain.ts`)
 
@@ -266,6 +267,7 @@ interface WriteConfirmation {
 }
 
 function isStaleProofError(error: unknown): boolean
+function classifyChainError(error: unknown): SdkError
 function vaultAddress(): string
 function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undefined>
 function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }>
@@ -314,6 +316,37 @@ Creation sends `create`, then registers with the Registry in a second group beca
 The wait after a confirmed write is best-effort: if the indexer or algod read is briefly unavailable, the SDK returns the confirmed result instead of reporting the write as failed, and the next read retries. Waits before a write still fail loudly, because a fresh tree cannot be built without the indexer.
 
 Every write helper resolves with a `WriteConfirmation`: the base32 `txIds`, the `confirmedRound` when the node returned it, and the operation-specific fields (`appId`, `position`, `amount`). `createCampaign` also returns `registerTxIds`. The frontend uses the round and first tx id for the success message and Lora link; the CLI prints both.
+
+### Errors
+
+Write helpers reject with `SdkError`, which preserves the original message and adds stable facts:
+
+```ts
+class SdkError extends Error {
+  type: SdkErrorType
+  code?: string
+  operation?: SdkOperation
+  appId?: bigint
+  txId?: string
+  cause?: unknown
+  details?: unknown
+}
+```
+
+`classifyChainError` classifies at the send boundary. It reads `LogicError.led.msg` from generated-client sends, or finds the contract assert inside a generic simulate error, so helpers never match prose. The types are:
+
+| Kind | Meaning |
+| --- | --- |
+| `validation` | Input or configuration rejected before submission (bounds, spec missing). |
+| `registry-mismatch` | The Registry expects another Campaign program hash. |
+| `stale-proof` | A concurrent write moved the Merkle root; the SDK rebuilds proofs and retries once. |
+| `routing` | The campaign path stopped being valid (for example `campaign is not open`); refunds re-read the vault box and re-route once. |
+| `chain-state` | Another contract assert rejected the write. |
+| `not-found` | The application no longer exists; refunds treat it like routing. |
+| `network` | The node or indexer was unreachable. |
+| `unknown` | Anything the classifier does not recognize. |
+
+`code` comes from one map in `errors.ts`. `scripts/codegen.ts` reads every ARC-56 `sourceInfo` map into `CONTRACT_ERROR_MESSAGES`, and each assert gets either an explicit code for a failure the SDK acts on (`stale-proof`, `routing` via `campaign-not-open`, `campaign-already-registered`, plus display codes such as `creator-self-pledge`, `pledging-closed`, `deadline-not-passed`, `refund-window-open`, and `campaign-max-size`) or a slug of its message, so a new contract assert is never unclassified. Only the classified `type`/`code` drives retries: stale proofs retry inside `submitWithFreshProof`, routing/not-found refunds re-route, and `registerCampaign` treats `campaign-already-registered` as success. `isStaleProofError` remains as a compatibility wrapper.
 
 The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
 

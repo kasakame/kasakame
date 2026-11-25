@@ -32,6 +32,7 @@ import {
   refundWindowEndsAt,
   registerCampaign,
   releaseClaimed,
+  SdkError,
   settleOpen,
   vaultAddress,
   verifyDeployment,
@@ -330,6 +331,15 @@ describe('transaction helpers', () => {
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
+  it('treats an already-registered race during create as registered', async () => {
+    sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
+
+    const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
+
+    expect(result).toMatchObject({ registered: true })
+    expect(result.registerError).toBeUndefined()
+  })
+
   it('stringifies a non-Error registration failure', async () => {
     sendRegisterMock.mockRejectedValueOnce('not an official kasakame campaign')
 
@@ -417,6 +427,14 @@ describe('transaction helpers', () => {
     campaignProgramHashMock.mockRejectedValueOnce(new Error('registry unreachable'))
 
     await expect(verifyDeployment()).rejects.toThrow('could not read the Registry campaign program hash: registry unreachable')
+  })
+
+  it('verifyDeployment classifies a read failure that carries a contract assert', async () => {
+    campaignProgramHashMock.mockRejectedValueOnce(new Error('campaign is not open'))
+
+    const error = await verifyDeployment().catch((caught: unknown) => caught)
+    expect(error).toMatchObject({ type: 'routing', code: 'campaign-not-open' })
+    expect((error as Error).message).toContain('could not read the Registry campaign program hash:')
   })
 
   it('verifyDeployment stringifies a non-Error Registry failure', async () => {
@@ -553,7 +571,10 @@ describe('transaction helpers', () => {
 
   it('rejects a pledge at the maximum tree size', async () => {
     loadTreeMock.mockResolvedValue({ leaves: { length: Number(MAX_TREE_SIZE) }, raised: 0n })
-    await expect(pledgeGroup(9n, session, 1_000_000n)).rejects.toThrow('maximum size')
+    const error = await pledgeGroup(9n, session, 1_000_000n).catch((caught: unknown) => caught)
+    expect(error).toBeInstanceOf(SdkError)
+    expect(error).toMatchObject({ type: 'chain-state', code: 'campaign-max-size', operation: 'pledge', appId: 9n })
+    expect((error as Error).message).toContain('maximum size')
   })
 
   it('pledge retries once on a stale frontier, then throws', async () => {

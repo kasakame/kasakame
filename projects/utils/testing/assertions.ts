@@ -42,12 +42,12 @@ export function assertAccountDelta(label: string, before: AccountAmounts, after:
  *
  * @param action The call expected to fail.
  * @param snapshot Reads the state that must not change.
- * @param error Optional pattern the rejection must match.
+ * @param error Optional pattern or validator the rejection must satisfy.
  */
 export async function assertRejectedUnchanged<T>(
   action: () => Promise<unknown>,
   snapshot: () => Promise<T>,
-  error?: RegExp,
+  error?: RegExp | ((error: unknown) => boolean),
 ): Promise<void> {
   const before = await snapshot()
   if (error === undefined) await assert.rejects(action)
