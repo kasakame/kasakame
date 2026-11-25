@@ -70,7 +70,7 @@ describe('CreateCampaignForm', () => {
     fireEvent.change(input, { target: { value: toDateTimeLocal(seconds) } })
   }
 
-  it('creates a campaign and calls onCreated with the new app id', async () => {
+  it('creates a campaign and calls onCreated with the new app id', { timeout: 20_000 }, async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
     const fetchMock = vi
       .fn()

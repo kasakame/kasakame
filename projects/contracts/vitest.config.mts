@@ -24,6 +24,8 @@ export default defineConfig({
     sequence: { sequencer: PathOrderSequencer },
     // LocalNet integration tests deploy apps and fast-forward blocks, which occasionally exceeds the default 5s test timeout.
     testTimeout: 120_000,
+    // The first deployStack can exceed Vitest's 10s hook default on a cold LocalNet and would skip the file.
+    hookTimeout: 120_000,
     tags: [
       { name: 'smoke', description: 'Deployment and basic happy-path integration.' },
       { name: 'happy', description: 'Successful user flows.' },
