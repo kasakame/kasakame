@@ -181,6 +181,15 @@ After a confirmed write, the command prints the confirmed round, the transaction
 id, and a Lora explorer link on TestNet and LocalNet; custom networks print only
 the transaction id.
 
+### Errors
+
+Command failures use the SDK's typed error kind/code to pick short,
+action-specific copy: closed campaign, goal reached, deadline or refund-window
+state, creator-only actions, full tree, registry mismatch, unregistered campaign,
+stale proof, not found, and network failure. Unknown failures fall back to a
+command-specific message. Raw TEAL traces stay out of default output;
+`--log-level debug` prints the original SDK message as `[detail]`.
+
 ### Verbose diagnostics
 
 Pass `--log-level <debug|info|warn|error>` to print SDK diagnostics at that

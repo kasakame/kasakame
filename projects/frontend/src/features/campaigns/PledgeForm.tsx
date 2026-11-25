@@ -58,7 +58,7 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
           setMessage('Wallet session expired. Disconnect and reconnect your wallet, then try again.')
         }
       } else {
-        setMessage(errorMessage(kind, 'pledge'))
+        setMessage(errorMessage(error, 'pledge'))
       }
     } finally {
       setBusy(false)

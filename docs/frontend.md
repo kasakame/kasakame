@@ -395,6 +395,10 @@ this campaign, and backers can still refund from the vault until the window clos
 
 `src/lib/log.ts` builds a development-only `SdkLogger` and passes it to `configureSdk`; production builds keep the SDK silent. `VITE_LOG_LEVEL` (`debug` by default in development) sets the minimum level. `logError` writes through the same logger with a `[kasakame:<action>]` prefix and the caught error, so browser diagnostics never leave the page and carry no wallet material.
 
+### Errors
+
+`src/lib/errors.ts` keeps wallet rejection and dead-session detection on the vendor messages, and maps chain failures through the SDK's `SdkError` type/code. Common codes get short copy: closed campaign, goal reached, deadline or refund-window state, creator-only actions, full tree, registry mismatch, unregistered campaign, stale proof, not found, and network failure. Unknown failures fall back to an action-specific message. The raw chain message goes only to the development logger through `logError`, never to the visible status line.
+
 ## Wallet integration
 
 `App.tsx` builds a `WalletManager`
