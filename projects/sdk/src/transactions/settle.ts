@@ -7,6 +7,8 @@ import type { BackerLeaf } from '../claim-tree/index.js'
 import { clearTreeCache, loadTree, pathBlobForRefund } from '../claim-tree/index.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, registryClientFor, vaultClientFor, withoutGroupId } from './clients.js'
+import type { WriteConfirmation } from './confirmation.js'
+import { writeConfirmation } from './confirmation.js'
 import { isCampaignRoutingError, submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { VAULT_BOX_STATUS_FAILED, fetchVaultBox, vaultAddress, vaultBoxRef } from './vault.js'
@@ -74,27 +76,29 @@ export async function refundGroup(appId: bigint, session: WalletSession, leaf: B
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param leaf The leaf to spend (from `fetchMyLeaves`).
+ * @returns The confirmed transaction ids, round, position, and amount.
  */
-export async function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void> {
-  const attempt = async (): Promise<bigint | undefined> => {
+export async function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation> {
+  const attempt = async (): Promise<WriteConfirmation> => {
     const composer = await buildRefundGroup(appId, session, leaf)
     const result = await composer.send()
-    return result.confirmations[0]?.confirmedRound
+    return writeConfirmation(result, { position: leaf.position, amount: leaf.amount })
   }
 
-  let confirmedRound: bigint | undefined
+  let confirmation: WriteConfirmation
   try {
-    confirmedRound = await submitWithFreshProof(attempt)
+    confirmation = await submitWithFreshProof(attempt)
   } catch (error) {
     if (!isCampaignRoutingError(error)) throw error
     // The box settled or the campaign vanished between our read and the send: re-read the box and route once more.
-    confirmedRound = await submitWithFreshProof(attempt)
+    confirmation = await submitWithFreshProof(attempt)
   }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
-  if (confirmedRound !== undefined) {
-    await waitForIndexerRound(confirmedRound)
+  if (confirmation.confirmedRound !== undefined) {
+    await waitForIndexerRound(confirmation.confirmedRound)
   }
+  return confirmation
 }
 
 /**
@@ -102,8 +106,9 @@ export async function refund(appId: bigint, session: WalletSession, leaf: Backer
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
+ * @returns The confirmed transaction ids and round.
  */
-export async function claim(appId: bigint, session: WalletSession): Promise<void> {
+export async function claim(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
   const { algorand, vaultAppId } = getSdkConfig()
   // Same signer registration as pledge (see cancelPledge): without it the send always throws "No signer found".
   algorand.account.setSigner(session.address, session.signer)
@@ -116,10 +121,11 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
     extraFee: microAlgos(CLAIM_EXTRA_INNERS * minFee),
   })
 
-  const confirmedRound = result.confirmation.confirmedRound
-  if (confirmedRound !== undefined) {
-    await waitForIndexerRound(confirmedRound)
+  const confirmation = writeConfirmation(result, { appId })
+  if (confirmation.confirmedRound !== undefined) {
+    await waitForIndexerRound(confirmation.confirmedRound)
   }
+  return confirmation
 }
 
 /**
@@ -127,8 +133,9 @@ export async function claim(appId: bigint, session: WalletSession): Promise<void
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
+ * @returns The confirmed transaction ids, round, and app id.
  */
-export async function deleteCampaign(appId: bigint, session: WalletSession): Promise<void> {
+export async function deleteCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   const minFee = await minimumFee(algorand)
   const client = campaignClientFor(appId, session)
@@ -155,8 +162,9 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
       extraFee: microAlgos(DELETE_EXTRA_INNERS * minFee),
     }),
   )
-  await composer.send()
+  const result = await composer.send()
   await waitForIndexerCatchUpBestEffort()
+  return writeConfirmation(result, { appId })
 }
 
 /**
@@ -164,19 +172,21 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
+ * @returns The confirmed transaction ids, round, and app id.
  */
-export async function settleOpen(appId: bigint, session: WalletSession): Promise<void> {
+export async function settleOpen(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
   const { algorand } = getSdkConfig()
   // The AppClient compares the raw sender string, so the supplied signer is otherwise dropped.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  await vaultClient.send.settleOpen({
+  const result = await vaultClient.send.settleOpen({
     args: { app: appId },
     sender: session.address,
     appReferences: [appId],
     boxReferences: vaultBoxRef(appId),
   })
   await waitForIndexerCatchUpBestEffort()
+  return writeConfirmation(result, { appId })
 }
 
 /**
@@ -184,19 +194,21 @@ export async function settleOpen(appId: bigint, session: WalletSession): Promise
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
+ * @returns The confirmed transaction ids, round, and app id.
  */
-export async function releaseClaimed(appId: bigint, session: WalletSession): Promise<void> {
+export async function releaseClaimed(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
   const { algorand } = getSdkConfig()
   // Same signer registration as claim: the generated client drops its default signer for an explicit sender.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  await vaultClient.send.releaseClaimed({
+  const result = await vaultClient.send.releaseClaimed({
     args: { app: appId },
     sender: session.address,
     appReferences: [appId],
     boxReferences: vaultBoxRef(appId),
   })
   await waitForIndexerCatchUpBestEffort()
+  return writeConfirmation(result, { appId })
 }
 
 /**
@@ -204,8 +216,9 @@ export async function releaseClaimed(appId: bigint, session: WalletSession): Pro
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
+ * @returns The confirmed transaction ids, round, app id, and swept residual.
  */
-export async function finalize(appId: bigint, session: WalletSession): Promise<void> {
+export async function finalize(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
   const { algorand } = getSdkConfig()
   const minFee = await minimumFee(algorand)
   const box = await fetchVaultBox(appId)
@@ -214,7 +227,7 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<v
   // The signer must be registered before the generated client resolves it by sender.
   algorand.account.setSigner(session.address, session.signer)
   const vaultClient = vaultClientFor(session)
-  await vaultClient.send.finalize({
+  const result = await vaultClient.send.finalize({
     args: { app: appId },
     sender: session.address,
     appReferences: [appId],
@@ -222,4 +235,5 @@ export async function finalize(appId: bigint, session: WalletSession): Promise<v
     extraFee: microAlgos(extraInners * minFee),
   })
   await waitForIndexerCatchUpBestEffort()
+  return writeConfirmation(result, { appId, amount: box === undefined ? 0n : box.paidIn - box.paidOut })
 }

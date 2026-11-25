@@ -177,6 +177,10 @@ use `--signer mnemonic`: Pera and Defly cannot target those chains.
 The CLI supports a connected wallet and a local mnemonic. Both produce the same
 signer interface, so every read and transaction command works with either.
 
+After a confirmed write, the command prints the confirmed round, the transaction
+id, and a Lora explorer link on TestNet and LocalNet; custom networks print only
+the transaction id.
+
 ### Wallet (default on TestNet)
 
 `kasakame login` pairs a wallet over WalletConnect and stores the session at

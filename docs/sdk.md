@@ -257,16 +257,25 @@ interface VaultBoxView {
   settledAt: bigint
 }
 
+interface WriteConfirmation {
+  txIds: string[]
+  confirmedRound?: bigint
+  appId?: bigint
+  position?: number
+  amount?: bigint
+}
+
 function isStaleProofError(error: unknown): boolean
 function vaultAddress(): string
 function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undefined>
 function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }>
 function refundWindowEndsAt(settledAt: bigint, window: bigint): bigint
-interface CreateCampaignResult {
+interface CreateCampaignResult extends WriteConfirmation {
   appId: bigint
   appAddress: string
   registered: boolean
   registerError?: string
+  registerTxIds?: string[]
 }
 
 function createCampaign(
@@ -276,22 +285,22 @@ function createCampaign(
   goalMicroAlgos: bigint,
   deadlineSeconds: bigint,
 ): Promise<CreateCampaignResult>
-function registerCampaign(appId: bigint, session: WalletSession): Promise<void>
+function registerCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
 function verifyDeployment(): Promise<void>
-function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void>
+function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<WriteConfirmation>
 function pledgeGroup(
   appId: bigint,
   session: WalletSession,
   amountMicroAlgos: bigint,
 ): Promise<TransactionWithSigner[]>
-function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
-function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
+function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation>
+function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation>
 function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]>
-function claim(appId: bigint, session: WalletSession): Promise<void>
-function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
-function settleOpen(appId: bigint, session: WalletSession): Promise<void>
-function releaseClaimed(appId: bigint, session: WalletSession): Promise<void>
-function finalize(appId: bigint, session: WalletSession): Promise<void>
+function claim(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function deleteCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function settleOpen(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function releaseClaimed(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function finalize(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
 ```
 
 The Registry fixes the Campaign program hash at `create`, so an SDK built from another contracts bundle would create a campaign that `register` rejects. `verifyDeployment` compares the hash embedded in the generated Campaign spec (`sha256(itob(approval.length) ‖ approval ‖ clear)`) with the Registry's `campaignProgramHash`; `createCampaign` runs it before building `create`, and callers can also run it at startup. A mismatch throws before any transaction, naming the Registry hash and the contracts version (`SPECS_VERSION`); a Registry read failure throws too, and no Registry configured is a no-op.
@@ -303,6 +312,8 @@ Creation sends `create`, then registers with the Registry in a second group beca
 `pledgeGroup` and `refundGroup` return the built, unsigned transactions with the session signer attached and no group id, so an external signer can add them to a fresh composer; they never submit. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
 
 The wait after a confirmed write is best-effort: if the indexer or algod read is briefly unavailable, the SDK returns the confirmed result instead of reporting the write as failed, and the next read retries. Waits before a write still fail loudly, because a fresh tree cannot be built without the indexer.
+
+Every write helper resolves with a `WriteConfirmation`: the base32 `txIds`, the `confirmedRound` when the node returned it, and the operation-specific fields (`appId`, `position`, `amount`). `createCampaign` also returns `registerTxIds`. The frontend uses the round and first tx id for the success message and Lora link; the CLI prints both.
 
 The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
 

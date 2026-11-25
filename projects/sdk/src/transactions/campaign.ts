@@ -19,15 +19,19 @@ import { RegistryClient } from '../generated/RegistryClient.js'
 import { SPECS_VERSION } from '../generated/specs-version.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
+import type { WriteConfirmation } from './confirmation.js'
+import { writeConfirmation } from './confirmation.js'
 
 /** Result of `createCampaign`: the campaign exists, and `registered` is false when the Registry step failed. */
-export interface CreateCampaignResult {
+export interface CreateCampaignResult extends WriteConfirmation {
   appId: bigint
   appAddress: string
   /** True when registration landed, or when no Registry is configured. */
   registered: boolean
   /** The Registry failure message when `registered` is false. */
   registerError?: string
+  /** Base32 transaction ids for the registration group, when it landed. */
+  registerTxIds?: string[]
 }
 
 /**
@@ -51,11 +55,15 @@ export function registrationBox(appId: bigint): { appId: bigint; name: Uint8Arra
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
+ * @returns The confirmed registration group result.
  */
-async function sendRegister(appId: bigint, session: WalletSession): Promise<void> {
+async function sendRegister(
+  appId: bigint,
+  session: WalletSession,
+): Promise<{ txIds: string[]; confirmation?: { confirmedRound?: bigint } }> {
   const { algorand } = getSdkConfig()
   const registryClient = registryClientFor(session)
-  await registryClient.send.register({
+  return registryClient.send.register({
     args: {
       app: appId,
       payment: await algorand.createTransaction.payment({
@@ -73,16 +81,20 @@ async function sendRegister(appId: bigint, session: WalletSession): Promise<void
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
+ * @returns The confirmed registration, or empty txIds when it was already registered or no Registry is configured.
  */
-export async function registerCampaign(appId: bigint, session: WalletSession): Promise<void> {
-  if (getSdkConfig().registryAppId === 0n) return
+export async function registerCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
+  if (getSdkConfig().registryAppId === 0n) return { txIds: [] }
+  let confirmation: WriteConfirmation
   try {
-    await sendRegister(appId, session)
+    confirmation = writeConfirmation(await sendRegister(appId, session))
   } catch (error) {
     // A retry can race a registration that landed but whose confirmation was lost; the Registry message is stable.
     if (!(error instanceof Error) || !/campaign already registered/i.test(error.message)) throw error
+    confirmation = { txIds: [] }
   }
   await waitForIndexerCatchUpBestEffort()
+  return confirmation
 }
 
 /**
@@ -183,21 +195,31 @@ export async function createCampaign(
 
   const appId = sendResult.result.appId
   const appAddress = sendResult.result.appAddress.toString()
+  const confirmation = writeConfirmation(sendResult.result)
 
   // Register with the Registry (when configured) so the browse page treats the campaign as official; first-touch credit verifies registration on-chain.
   let registered = true
   let registerError: string | undefined
+  let registerTxIds: string[] | undefined
   if (registryAppId > 0n) {
     try {
-      await sendRegister(appId, session)
+      const registerResult = await sendRegister(appId, session)
+      registerTxIds = registerResult.txIds
     } catch (error) {
       registered = false
       registerError = error instanceof Error ? error.message : String(error)
     }
   }
 
-  // The generated create result doesn't expose the confirmation round, so wait for the indexer to catch up to algod's current tip.
+  // Best-effort: both writes are confirmed; the next read retries if the indexer is briefly behind.
   await waitForIndexerCatchUpBestEffort()
 
-  return { appId, appAddress, registered, ...(registerError === undefined ? {} : { registerError }) }
+  return {
+    ...confirmation,
+    appId,
+    appAddress,
+    registered,
+    ...(registerError === undefined ? {} : { registerError }),
+    ...(registerTxIds === undefined ? {} : { registerTxIds }),
+  }
 }

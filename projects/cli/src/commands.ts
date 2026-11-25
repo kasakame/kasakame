@@ -13,6 +13,7 @@ import {
   type CampaignHeader,
   type CampaignStatus,
   type WalletSession,
+  type WriteConfirmation,
 } from '@kasakame/sdk'
 import { isValidAddress } from 'algosdk'
 import type { CliOptions } from './args.js'
@@ -90,8 +91,9 @@ export async function runClaim(options: CliOptions): Promise<number> {
     }
 
     announceSubmit(options, `claim campaign ${appId.toString()}`)
-    await claim(appId, session.wallet)
+    const confirmation = await claim(appId, session.wallet)
     console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
+    printConfirmation(confirmation, options.network)
     return 0
   } finally {
     await session.close()
@@ -130,8 +132,9 @@ export async function runDelete(options: CliOptions): Promise<number> {
     }
 
     announceSubmit(options, `delete campaign ${appId.toString()}`)
-    await deleteCampaign(appId, session.wallet)
+    const confirmation = await deleteCampaign(appId, session.wallet)
     console.log(`Deleted campaign ${appId.toString()}.`)
+    printConfirmation(confirmation, options.network)
     if (status === 'failed' && header.raisedMicroAlgos > 0n) {
       console.log('Backers keep refunding from the vault until the refund window closes.')
     }
@@ -337,6 +340,24 @@ function announceSubmit(options: CliOptions, phrase: string): void {
   progress(options.signer === 'wallet' ? `Waiting for wallet approval: ${phrase}…` : `Submitting: ${phrase}…`)
 }
 
+/**
+ * Print the round and transaction of a confirmed write.
+ *
+ * @param confirmation The SDK confirmation.
+ * @param network The active CLI network.
+ */
+function printConfirmation(confirmation: WriteConfirmation, network: CliOptions['network']): void {
+  if (confirmation.confirmedRound !== undefined) {
+    console.log(`Confirmed in round ${confirmation.confirmedRound.toString()}.`)
+  }
+  const txId = confirmation.txIds[0]
+  if (txId === undefined) return
+  console.log(`Transaction: ${txId}`)
+  if (network !== 'custom') {
+    console.log(`Explorer: https://lora.algokit.io/${network}/tx/${txId}`)
+  }
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -388,7 +409,7 @@ async function spendLeaves(
   options: CliOptions,
   appId: bigint,
   label: SpendLabel,
-  spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<void>,
+  spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<WriteConfirmation>,
 ): Promise<number> {
   const session = await openCliSession(options)
   try {
@@ -419,8 +440,9 @@ async function spendLeaves(
     for (const leaf of selected) {
       try {
         announceSubmit(options, `${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO)`)
-        await spend(session.wallet, leaf)
+        const confirmation = await spend(session.wallet, leaf)
         console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
+        printConfirmation(confirmation, options.network)
       } catch (error) {
         failed += 1
         console.error(`Pledge #${String(leaf.position)} failed: ${messageOf(error)}`)

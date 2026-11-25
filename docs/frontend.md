@@ -331,6 +331,9 @@ target) once settled:
 The pledge/refund ranges depend on the campaign's tree size; the SDK charges the exact take count. See
 [`limits.md`](limits.md#current-transaction-fees) for the formula and the supported cap.
 
+Every confirmed detail action (pledge, cancel, refund, claim) shows the confirmed round and a Lora transaction link from the SDK
+`WriteConfirmation`. `createCampaign` returns the same payload; the create form navigates to the new campaign.
+
 The create row's 0.59 ALGO is **locked**, not spent: 571,000 µA campaign app MBR + 18,900 µA registration deposit, returned by
 `[unregister, delete]`. The fee-only cost of a create is ~0.005 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
 pledge. See [`limits.md`](limits.md) for the current sizes, page counts, and minimum fees.

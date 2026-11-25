@@ -5,6 +5,7 @@
 export { createCampaign, registerCampaign, verifyDeployment } from './campaign.js'
 export type { CreateCampaignResult } from './campaign.js'
 export type { WalletSession } from './clients.js'
+export type { WriteConfirmation } from './confirmation.js'
 export { isStaleProofError } from './errors.js'
 export { cancelPledge, pledge, pledgeGroup } from './pledge.js'
 export { claim, deleteCampaign, finalize, refund, refundGroup, releaseClaimed, settleOpen } from './settle.js'

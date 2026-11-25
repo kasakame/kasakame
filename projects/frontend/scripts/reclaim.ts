@@ -99,7 +99,7 @@ void (async () => {
     }
 
     const creatorSession = sessions.get(campaign.creator)
-    const run = async (label: string, action: () => Promise<void>): Promise<boolean> => {
+    const run = async (label: string, action: () => Promise<unknown>): Promise<boolean> => {
       try {
         await action()
         report(`#${id}: ${label}`)
