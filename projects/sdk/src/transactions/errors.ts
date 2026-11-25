@@ -30,9 +30,9 @@ export function isCampaignRoutingError(error: unknown): boolean {
  * Run a proof-carrying submission, rebuilding proofs once when the tree moved under us (concurrent pledge/refund changed the root between read and submit); anything else throws immediately.
  *
  * @param run Builds fresh proofs from a fresh tree, then submits. Called up to twice.
- * @returns The confirmed round, if exposed.
+ * @returns The result of the successful run.
  */
-export async function submitWithFreshProof(run: () => Promise<bigint | undefined>): Promise<bigint | undefined> {
+export async function submitWithFreshProof<T>(run: () => Promise<T>): Promise<T> {
   try {
     clearTreeCache()
     return await run()

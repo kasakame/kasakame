@@ -60,10 +60,10 @@ beforeEach(() => {
   sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
   sdkMocks.getCampaignStatus.mockReturnValue('failed')
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
-  sdkMocks.cancelPledge.mockResolvedValue(undefined)
-  sdkMocks.claim.mockResolvedValue(undefined)
-  sdkMocks.deleteCampaign.mockResolvedValue(undefined)
-  sdkMocks.refund.mockResolvedValue(undefined)
+  sdkMocks.cancelPledge.mockResolvedValue({ txIds: ['CANCELTX'], confirmedRound: 99n })
+  sdkMocks.claim.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
+  sdkMocks.deleteCampaign.mockResolvedValue({ txIds: ['DELETETX'], confirmedRound: 99n })
+  sdkMocks.refund.mockResolvedValue({ txIds: ['REFUNDTX'], confirmedRound: 99n })
   mnemonicSessionMock.mockResolvedValue(WALLET)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
@@ -116,7 +116,7 @@ describe('runRefund', () => {
   })
 
   it('keeps going after a failed pledge and exits non-zero', async () => {
-    sdkMocks.refund.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
+    sdkMocks.refund.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce({ txIds: ['REFUNDTX'], confirmedRound: 99n })
 
     expect(await runRefund(options({ all: true }))).toBe(1)
 
@@ -255,7 +255,7 @@ describe('runWithdraw', () => {
   })
 
   it('keeps going after a failed withdrawal and exits non-zero', async () => {
-    sdkMocks.cancelPledge.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce(undefined)
+    sdkMocks.cancelPledge.mockRejectedValueOnce(new Error('rejected')).mockResolvedValueOnce({ txIds: ['CANCELTX'], confirmedRound: 99n })
 
     expect(await runWithdraw(withdrawOptions({ all: true }))).toBe(1)
 
@@ -309,8 +309,24 @@ describe('runClaim', () => {
 
     expect(sdkMocks.claim).toHaveBeenCalledWith(1n, WALLET)
     expect(console.log).toHaveBeenCalledWith('Claimed campaign 1; the vault paid its live total to BACKER.')
+    expect(console.log).toHaveBeenCalledWith('Confirmed in round 99.')
+    expect(console.log).toHaveBeenCalledWith('Transaction: CLAIMTX')
+    expect(console.log).toHaveBeenCalledWith('Explorer: https://lora.algokit.io/testnet/tx/CLAIMTX')
     expect(console.error).toHaveBeenCalledWith('Submitting: claim campaign 1…')
     expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('omits the round and transaction lines when the node returns neither', async () => {
+    sdkMocks.claim.mockResolvedValue({ txIds: [] })
+
+    expect(await runClaim(claimOptions())).toBe(0)
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Confirmed in round'))
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Transaction:'))
+  })
+
+  it('does not print a Lora link on a custom network', async () => {
+    expect(await runClaim(claimOptions({ network: 'custom' }))).toBe(0)
+    expect(console.log).not.toHaveBeenCalledWith(expect.stringContaining('Explorer:'))
   })
 
   it('prints the plan in a dry run without submitting', async () => {

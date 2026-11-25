@@ -8,6 +8,8 @@ import { MAX_TREE_SIZE, clearTreeCache, frontierForPledge, loadTree, pathBlobFor
 import { registrationBox } from './campaign.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
 import { campaignClientFor, vaultClientFor, withoutGroupId } from './clients.js'
+import type { WriteConfirmation } from './confirmation.js'
+import { writeConfirmation } from './confirmation.js'
 import { submitWithFreshProof } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
@@ -18,9 +20,13 @@ import { vaultAddress, vaultBoxRef } from './vault.js'
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param amountMicroAlgos Pledge amount in microAlgos.
- * @returns The composer holding the group, ready to build or send.
+ * @returns The composer holding the group and the new leaf position.
  */
-async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
+async function buildPledgeGroup(
+  appId: bigint,
+  session: WalletSession,
+  amountMicroAlgos: bigint,
+): Promise<{ composer: TransactionComposer; position: number }> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
   if (amountMicroAlgos < MIN_PLEDGE_MICRO_ALGOS || amountMicroAlgos > MAX_PLEDGE_MICRO_ALGOS) {
     throw new Error(`pledge amount must be between ${String(MIN_PLEDGE_MICRO_ALGOS)} and ${String(MAX_PLEDGE_MICRO_ALGOS)} microAlgos`)
@@ -61,7 +67,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
       extraFee: microAlgos(CREDIT_EXTRA_INNERS * minFee),
     }),
   )
-  return composer
+  return { composer, position: tree.leaves.length }
 }
 
 /**
@@ -73,7 +79,7 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
  * @returns The unsigned group.
  */
 export async function pledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionWithSigner[]> {
-  const composer = await buildPledgeGroup(appId, session, amountMicroAlgos)
+  const { composer } = await buildPledgeGroup(appId, session, amountMicroAlgos)
   return withoutGroupId((await composer.build()).transactions)
 }
 
@@ -83,18 +89,20 @@ export async function pledgeGroup(appId: bigint, session: WalletSession, amountM
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param amountMicroAlgos Pledge amount in microAlgos.
+ * @returns The confirmed transaction ids, round, leaf position, and amount.
  */
-export async function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void> {
-  const attempt = async (): Promise<bigint | undefined> => {
-    const composer = await buildPledgeGroup(appId, session, amountMicroAlgos)
-    await composer.send()
-    return undefined
+export async function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<WriteConfirmation> {
+  const attempt = async (): Promise<WriteConfirmation> => {
+    const { composer, position } = await buildPledgeGroup(appId, session, amountMicroAlgos)
+    const result = await composer.send()
+    return writeConfirmation(result, { position, amount: amountMicroAlgos })
   }
 
-  await submitWithFreshProof(attempt)
+  const confirmation = await submitWithFreshProof(attempt)
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
   await waitForIndexerCatchUpBestEffort()
+  return confirmation
 }
 
 /**
@@ -103,13 +111,14 @@ export async function pledge(appId: bigint, session: WalletSession, amountMicroA
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param leaf The leaf to spend (from `fetchMyLeaves`).
+ * @returns The confirmed transaction ids, round, position, and amount.
  */
-export async function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void> {
+export async function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation> {
   const { algorand, vaultAppId } = getSdkConfig()
   // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check), so register globally like pledge/delete.
   algorand.account.setSigner(session.address, session.signer)
   const minFee = await minimumFee(algorand)
-  const attempt = async (): Promise<bigint | undefined> => {
+  const attempt = async (): Promise<WriteConfirmation> => {
     await waitForIndexerCatchUp()
     const tree = await loadTree(appId, vaultAppId, vaultAddress())
     const client = campaignClientFor(appId, session)
@@ -125,13 +134,14 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
       boxReferences: vaultBoxRef(appId),
       extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2, minFee)),
     })
-    return result.confirmation.confirmedRound
+    return writeConfirmation(result, { position: leaf.position, amount: leaf.amount })
   }
 
-  const confirmedRound = await submitWithFreshProof(attempt)
+  const confirmation = await submitWithFreshProof(attempt)
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
-  if (confirmedRound !== undefined) {
-    await waitForIndexerRound(confirmedRound)
+  if (confirmation.confirmedRound !== undefined) {
+    await waitForIndexerRound(confirmation.confirmedRound)
   }
+  return confirmation
 }

@@ -5,10 +5,11 @@ import { fetchChainTimestamp } from '../../lib/algorand'
 import type { CampaignViewModel } from '../../lib/campaign'
 import { getCachedCampaigns, getCampaign } from '../../lib/campaign'
 import { classifyError, errorMessage } from '../../lib/errors'
+import { explorerTxUrl } from '../../lib/explorer'
 import { formatAlgo, formatCountdown, formatDeadline } from '../../lib/format'
 import { logError } from '../../lib/log'
 import { ensureLiveSessionFor } from '../../lib/session'
-import type { BackerLeaf } from '../../lib/transaction'
+import type { BackerLeaf, WriteConfirmation } from '../../lib/transaction'
 import {
   cancelPledge,
   claim,
@@ -52,6 +53,20 @@ const NETWORK_FEE_ALGO = '≈0.004–0.018 ALGO'
 const CLAIM_FEE_ALGO = '≈0.003 ALGO'
 const DELETE_FEE_ALGO = '≈0.005 ALGO'
 
+const ConfirmationLine = ({ confirmation }: { confirmation: WriteConfirmation | null }) => {
+  const txId = confirmation?.txIds[0]
+  if (confirmation === null || txId === undefined) return null
+  const round = confirmation.confirmedRound
+  return (
+    <p className="mt-3 mb-0 text-sm text-muted">
+      Confirmed{round === undefined ? '' : ` in round ${round.toString()}`} ·{' '}
+      <a className="text-teal underline" href={explorerTxUrl(txId)} target="_blank" rel="noreferrer">
+        View transaction
+      </a>
+    </p>
+  )
+}
+
 const badgeBg: Record<CampaignViewModel['status'], string> = {
   open: 'bg-badge-open',
   successful: 'bg-badge-successful',
@@ -70,6 +85,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const [busy, setBusy] = useState(false)
   const [busyAction, setBusyAction] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<WriteConfirmation | null>(null)
 
   const readCore = useCallback(async () => {
     const now = await fetchChainTimestamp()
@@ -196,15 +212,17 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
   const canCancelPledge = campaign.status === 'open' && connected && hasPledge
   const canDelete = isCreator && (campaign.status === 'failed' || campaign.claimed || campaign.raisedMicroAlgos === 0n)
 
-  const runAction = async (key: string, action: () => Promise<void>, success: string, refresh: () => Promise<unknown>) => {
+  const runAction = async (key: string, action: () => Promise<WriteConfirmation>, success: string, refresh: () => Promise<unknown>) => {
     setBusy(true)
     setBusyAction(key)
     setMessage(null)
+    setConfirmation(null)
     try {
       // Fail fast on a dead bridge instead of sending into it: the throw below classifies as a dead session, keeping one handling path.
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
-      await action()
+      const result = await action()
       setMessage(success)
+      setConfirmation(result)
       await refresh()
     } catch (error) {
       logError('transaction', error)
@@ -298,6 +316,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
             </div>
           )}
           {message && <p className="mt-3 mb-0 text-sm text-muted">{message}</p>}
+          <ConfirmationLine confirmation={confirmation} />
         </div>
       </div>
     )
@@ -447,6 +466,7 @@ const CampaignDetail = ({ appId, onBack }: CampaignDetailProps) => {
         )}
 
         {message && <p className="mt-3 mb-0 text-sm text-muted">{message}</p>}
+        <ConfirmationLine confirmation={confirmation} />
       </div>
     </div>
   )

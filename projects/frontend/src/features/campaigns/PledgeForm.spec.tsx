@@ -37,10 +37,11 @@ describe('PledgeForm', () => {
     vi.clearAllMocks()
     disconnectMock.mockResolvedValue(undefined)
     useWalletMock.mockReturnValue(activeWalletSession)
+    pledgeMock.mockResolvedValue({ txIds: ['TX'], confirmedRound: 99n })
   })
 
   it('submits a pledge and calls onPledged', async () => {
-    pledgeMock.mockResolvedValue(undefined)
+    pledgeMock.mockResolvedValue({ txIds: ['TX'], confirmedRound: 99n })
     const onPledged = vi.fn()
     const user = userEvent.setup()
     render(<PledgeForm appId={42n} onPledged={onPledged} />)
@@ -50,6 +51,8 @@ describe('PledgeForm', () => {
 
     expect(pledgeMock).toHaveBeenCalledWith(42n, { address: 'ADDRESS', signer: {} }, 5_000_000n)
     expect(onPledged).toHaveBeenCalled()
+    expect(await screen.findByText(/Confirmed in round 99/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View transaction' })).toHaveAttribute('href', 'https://lora.algokit.io/localnet/tx/TX')
   })
 
   it('rejects a pledge below the 0.1 ALGO minimum', async () => {
@@ -63,8 +66,8 @@ describe('PledgeForm', () => {
     expect(pledgeMock).not.toHaveBeenCalled()
   })
 
-  it('accepts a pledge exactly at the 0.1 ALGO minimum', async () => {
-    pledgeMock.mockResolvedValue(undefined)
+  it('accepts a pledge exactly at the 0.1 ALGO minimum and shows the round when the node omits it', async () => {
+    pledgeMock.mockResolvedValue({ txIds: ['TX'] })
     const onPledged = vi.fn()
     const user = userEvent.setup()
     render(<PledgeForm appId={42n} onPledged={onPledged} />)
@@ -74,6 +77,7 @@ describe('PledgeForm', () => {
 
     expect(pledgeMock).toHaveBeenCalledWith(42n, { address: 'ADDRESS', signer: {} }, 100_000n)
     expect(onPledged).toHaveBeenCalled()
+    expect(await screen.findByText(/Confirmed ·/)).toBeInTheDocument()
   })
 
   it('shows an error message when pledge fails', async () => {

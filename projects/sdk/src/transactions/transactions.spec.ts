@@ -261,8 +261,10 @@ describe('transaction helpers', () => {
     paramsUnregisterMock.mockResolvedValue({ unregister: 'params' })
     paymentMock.mockResolvedValue({ payment: 'pay-txn' })
     composerBuildMock.mockResolvedValue({ transactions: [{ txn: { group: new Uint8Array(32) }, signer: 'signer' }] })
-    composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }] })
-    sendCreateMock.mockResolvedValue({ result: { appId: 9n, appAddress: { toString: () => 'ESCROW' } } })
+    composerSendMock.mockResolvedValue({ confirmations: [{ confirmedRound: 99n }], txIds: ['GROUP'] })
+    sendCreateMock.mockResolvedValue({
+      result: { appId: 9n, appAddress: { toString: () => 'ESCROW' }, txIds: ['CREATE'], confirmation: { confirmedRound: 99n } },
+    })
     for (const mock of [
       sendRegisterMock,
       sendUnregisterMock,
@@ -273,7 +275,7 @@ describe('transaction helpers', () => {
       sendFinalizeMock,
       sendReleaseClaimedMock,
     ]) {
-      mock.mockResolvedValue({ confirmation: { confirmedRound: 99n } })
+      mock.mockResolvedValue({ confirmation: { confirmedRound: 99n }, txIds: ['CLIENT'] })
     }
   })
 
@@ -283,7 +285,14 @@ describe('transaction helpers', () => {
 
   it('createCampaign runs create then register (nothing funded)', async () => {
     const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
-    expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
+    expect(result).toEqual({
+      txIds: ['CREATE'],
+      confirmedRound: 99n,
+      appId: 9n,
+      appAddress: 'ESCROW',
+      registered: true,
+      registerTxIds: ['CLIENT'],
+    })
     expect(sendCreateMock).toHaveBeenCalledOnce()
     expect(sendRegisterMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
@@ -294,7 +303,14 @@ describe('transaction helpers', () => {
 
     const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
-    expect(result).toEqual({ appId: 9n, appAddress: 'ESCROW', registered: true })
+    expect(result).toEqual({
+      txIds: ['CREATE'],
+      confirmedRound: 99n,
+      appId: 9n,
+      appAddress: 'ESCROW',
+      registered: true,
+      registerTxIds: ['CLIENT'],
+    })
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
   })
 
@@ -304,6 +320,8 @@ describe('transaction helpers', () => {
     const result = await createCampaign(session, 'Title', 'ipfs://meta', 1_000_000n, BigInt(MIN_CAMPAIGN_DURATION_SECONDS))
 
     expect(result).toEqual({
+      txIds: ['CREATE'],
+      confirmedRound: 99n,
       appId: 9n,
       appAddress: 'ESCROW',
       registered: false,
@@ -327,7 +345,7 @@ describe('transaction helpers', () => {
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledOnce()
 
     sendRegisterMock.mockRejectedValueOnce(new Error('campaign already registered'))
-    await expect(registerCampaign(9n, session)).resolves.toBeUndefined()
+    await expect(registerCampaign(9n, session)).resolves.toEqual({ txIds: [] })
     expect(sendRegisterMock).toHaveBeenCalledTimes(2)
   })
 
@@ -492,7 +510,8 @@ describe('transaction helpers', () => {
     waitForIndexerCatchUpMock.mockReset()
     waitForIndexerCatchUpMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('algod unreachable'))
 
-    await expect(pledge(9n, session, 1_000_000n)).resolves.toBeUndefined()
+    const result = await pledge(9n, session, 1_000_000n)
+    expect(result).toEqual({ txIds: ['GROUP'], confirmedRound: 99n, position: 4, amount: 1_000_000n })
     expect(composerSendMock).toHaveBeenCalledOnce()
     expect(waitForIndexerCatchUpMock).toHaveBeenCalledTimes(2)
   })
