@@ -59,12 +59,12 @@ interface GraphQlEnvelope {
 }
 
 const usage = `Usage:
-  node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file body.md
+  node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority P2 --effort Medium --title "..." --body-file body.md
 
 Required for Task, Bug, Feature, and Epic:
   --type      Task | Bug | Feature | Epic
   --parent    Epic (for a ticket) or Component (for an Epic)
-  --priority  Urgent | High | Medium | Low
+  --priority  P1 | P2 | P3
   --effort    High | Medium | Low
   --title     Issue title
   --body      Inline body, or --body-file <path>

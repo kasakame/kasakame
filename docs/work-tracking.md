@@ -22,7 +22,7 @@ Use the script from the repository root for every new ticket and epic:
 node projects/utils/work-tracking/create-issue.ts \
   --type Task \
   --parent 52 \
-  --priority High \
+  --priority P2 \
   --effort Medium \
   --title "Add the thing" \
   --body-file /tmp/body.md
@@ -34,7 +34,7 @@ For an epic, pass the component as the parent:
 node projects/utils/work-tracking/create-issue.ts \
   --type Epic \
   --parent 39 \
-  --priority High \
+  --priority P2 \
   --effort High \
   --title "New workstream" \
   --body-file /tmp/epic.md
@@ -46,7 +46,7 @@ The script validates the parent type, derives `Component`, sets `Priority` and `
 
 Use the Task, Bug, Feature, or Epic form. The form sets the issue type. After creating the issue, set the parent from the **Sub-issue** menu: an epic goes under a component, and a ticket goes under an epic. Then set `Component`, `Priority`, and `Effort` in the sidebar.
 
-The `check-issue` workflow fills a missing or mismatched `Component` from the parent and adds `needs-triage` when the type, parent, `Component`, `Priority`, or `Effort` is missing. The **Needs triage** view lists those issues.
+The `check-issue` job fills a missing or mismatched `Component` from the parent and adds `needs-triage` when the type, parent, `Component`, `Priority`, or `Effort` is missing. The **Needs triage** view lists those issues.
 
 ## Automation
 
@@ -74,7 +74,7 @@ node projects/utils/work-tracking/show-work-tracking.ts
 
 ## Pull requests
 
-Every PR links one issue. Create the branch with `gh issue develop <N> --name type/N-slug --checkout`, or add `Closes #N` to the PR body. Both link the PR and close the issue on merge. The issue fields are set when the issue is created; the PR template covers the PR work.
+Every PR links one issue. Create the branch with `gh issue develop <N> --name type/N-slug --checkout`; the linked branch closes the issue on merge. If the branch is not linked, add `Closes #N` to the PR body. The issue fields are set when the issue is created; the PR template covers the PR work.
 
 ## Verification
 
@@ -92,6 +92,6 @@ Keep the hierarchy and the fields aligned:
 
 - Create an epic when a ticket grows into several independent deliverables, then move the remaining scope into child tickets.
 - Re-parent tickets when their owning epic changes, and update `Component` to match the new parent.
-- Close an epic when all its children are done and no follow-up epic exists.
+- Let the built-in `Auto-close issue` workflow close an epic when all its children are done and no follow-up epic exists; close it manually if the workflow is disabled.
 - Keep the linked issue's fields current before opening a pull request.
 - Update this page and the project README together when the workflow changes.

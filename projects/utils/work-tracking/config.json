@@ -35,10 +35,9 @@
     "Priority": {
       "id": "IFSS_kgDOAuR0JQ",
       "options": {
-        "Urgent": "IFSSO_kgDOBRBJGQ",
-        "High": "IFSSO_kgDOBRBJGg",
-        "Medium": "IFSSO_kgDOBRBJHA",
-        "Low": "IFSSO_kgDOBRBJHw"
+        "P1": "IFSSO_kgDOBRBJGQ",
+        "P2": "IFSSO_kgDOBRBJGg",
+        "P3": "IFSSO_kgDOBRBJHw"
       }
     },
     "Effort": {
