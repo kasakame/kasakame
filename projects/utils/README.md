@@ -18,6 +18,11 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
   validates the parent, sets the native issue fields, and adds the issue to the
   project. Run `node projects/utils/scripts/create-issue.ts --help` from the
   repo root for the arguments.
+- `scripts/check-issue.ts` - the check-issue workflow script; it fills a
+  missing or mismatched `Component` from the parent and keeps the
+  `needs-triage` label aligned with `Priority` and `Effort`. Run
+  `node projects/utils/scripts/check-issue.ts --help` for the environment
+  variables.
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.

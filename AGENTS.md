@@ -429,8 +429,15 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
-The hierarchy, native issue fields, priority and effort definitions, views, and
-maintenance rules live in [`docs/work-tracking.md`](docs/work-tracking.md).
+The project README is the source of truth for the hierarchy, field definitions,
+views, and read recipes. Read it with:
+
+```bash
+gh project view 1 --owner kasakame --format json --jq .readme
+```
+
+The creation workflow, automation, verification, and maintenance commands live
+in [`docs/work-tracking.md`](docs/work-tracking.md).
 
 Create every ticket and epic with the script:
 
@@ -444,6 +451,9 @@ with raw `gh issue create`.
 
 - Every ticket belongs to an epic; every epic belongs to a component. A ticket
   never sits under another ticket.
+- The `check-issue` workflow fills a missing `Component` from the parent and
+  flags missing `Priority` or `Effort` with `needs-triage`; check the Needs
+  triage view.
 - Create issues only for changes that need a PR. Project metadata edits are done
   directly.
 - Before opening a PR, confirm the linked issue has a type, parent, matching

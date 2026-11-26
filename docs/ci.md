@@ -4,7 +4,8 @@ This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, Markdown, and
 comment lint,
-the separate scheduled/manual
+the [`check-issue`](../.github/workflows/check-issue.yml) workflow, the
+separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-contracts`](../.github/workflows/release-contracts.yml),
 [`release-constants`](../.github/workflows/release-constants.yml),
@@ -173,6 +174,7 @@ flowchart TD
 | `integration-test-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
+| `check-issue` (own workflow) | issue events or manual | ✅ | - | - | - |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-constants` (own workflow) | manual | ✅ | - | - | - |
@@ -372,6 +374,23 @@ because there is no artifact to share after a failure.
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
+
+## Workflow: check-issue (separate file)
+
+Implemented at `.github/workflows/check-issue.yml`. This workflow keeps issue
+metadata aligned with the hierarchy. It runs when an issue is opened, edited,
+reopened, retyped, or has a field added or removed. It fills `Component` from the
+parent chain and adds the `needs-triage` label when the type, parent, `Component`,
+`Priority`, or `Effort` is missing. It removes the label when the metadata is
+complete, and skips closed issues and `Component` issues.
+
+The workflow runs `projects/utils/scripts/check-issue.ts` with the workflow
+token. The script uses the GraphQL issue-field mutation and the GitHub CLI. Run
+it manually for one issue with:
+
+```bash
+gh workflow run check-issue.yml -f issue_number=<number>
+```
 
 ## Workflow: heavy-tests (separate file)
 
