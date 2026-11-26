@@ -36,6 +36,6 @@ The `work-tracking` workflow's epic job needs a repository secret `PROJECT_TOKEN
 
 `GITHUB_TOKEN` handles issue reopen. `PROJECT_TOKEN` handles project reads and `Status` mutations.
 
-The project's built-in `Auto-close issue` workflow closes an issue when its `Status` becomes `Done`, and `Item closed` sets `Status` to `Done` when an issue closes. Keep both enabled: the workflow script sets the epic `Status`, and these workflows close or reopen the loop.
+The project's built-in `Auto-close issue` workflow closes an issue when its `Status` becomes `Done`, and `Item closed` sets `Status` to `Done` when an issue closes. Keep both enabled: the script sets the epic `Status` and reopens a closed epic; the built-ins close it at `Done`.
 
 See [`docs/work-tracking.md`](../../../docs/work-tracking.md) for the full workflow.
