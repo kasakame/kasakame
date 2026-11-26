@@ -62,7 +62,9 @@ reasoning behind the splits.
   workflow files run `repo-lint`; `comment-lint` runs on every change. Docs
   images, licenses, and inert root files run no project lane.
   `.prettierrc.json` is part of `workspace`, so formatting-config changes are
-  not a special filter.
+  not a special filter; `workspace` still runs `check-utils` and
+  `check-constants` so a rule change cannot leave their formatting drift
+  untested.
 - **The trigger policy is centralized.** `changes` publishes derived `run_*`
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
@@ -166,8 +168,8 @@ flowchart TD
 | `check-frontend` | contracts, SDK, `constants`, frontend, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-cli` | contracts, SDK, `constants`, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
-| `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
-| `check-constants` | `constants` changed | ✅ | - | - | - |
+| `check-utils` | `utils`, `constants`, or `workspace` changed | ✅ | - | - | - |
+| `check-constants` | `constants` or `workspace` changed | ✅ | - | - | - |
 | `integration-test-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
@@ -288,8 +290,8 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_frontend` - `contracts || sdk || constants || frontend || workspace`.
 - `run_check_cli` - `contracts || sdk || constants || cli || workspace`.
 - `run_check_backend` - `backend || workspace`.
-- `run_check_utils` - `utils || constants`.
-- `run_check_constants` - `constants`.
+- `run_check_utils` - `utils || constants || workspace`.
+- `run_check_constants` - `constants || workspace`.
 - `run_contracts_integration` - `contracts || utils_core || constants`.
 - `run_sdk_integration` - `sdk || contracts || utils_core || constants`.
 
@@ -342,9 +344,9 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   workspace): starts a Postgres service, runs format, lint, and type-check, then
   migrations and `npm run test:coverage`. It is independent of
   contracts/SDK/frontend/CLI.
-- **`check-utils`** - runs when `run_check_utils` is true (`utils` changed):
-  installs the private package, then format, lint, and type-check. It produces
-  no artifact and publishes nothing.
+- **`check-utils`** - runs when `run_check_utils` is true (`utils`, `constants`,
+  or workspace): installs the private package, then format, lint, and
+  type-check. It produces no artifact and publishes nothing.
 - **`integration-test-contracts`** - runs when
   `run_contracts_integration` is true and waits for
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
