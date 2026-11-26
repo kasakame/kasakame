@@ -117,7 +117,7 @@ tree. **Empty tree:** `Root(∅) = Z`, asserted while `N = 0`.
 | 4 | `H(H(l₀‖l₁)‖H(l₂‖l₃))` |
 | 5 | `H(H(H(l₀‖l₁)‖H(l₂‖l₃))‖l₄)` |
 | 6 | `H(H(H(l₀‖l₁)‖H(l₂‖l₃))‖H(l₄‖l₅))` |
-| 7 | `H(H(H(l₀‖l₁)‖H(l₂‖l₃))‖H(H(l₄‖l₅)‖l₆))` |
+| 7 | `H(H(H(H(l₀‖l₁)‖H(l₂‖l₃))‖H(l₄‖l₅))‖l₆)` |
 | 8 | `H(H(H(l₀‖l₁)‖H(l₂‖l₃))‖H(H(l₄‖l₅)‖H(l₆‖l₇)))` |
 
 All formulas in this document were validated symbolically and exhaustively (every N ≤ 12, every leaf pattern) by the reference model.
@@ -688,7 +688,7 @@ real consensus, including the races of §7.
 | 38 | Inner-call pollution: an app wraps `[pay, Campaign.pledge, Vault.credit]` in an inner group | `Campaign.pledge` and `Vault.credit` require `Global.callerApplicationId == 0`, so the inner pledge is rejected before a leaf exists. Without the guard the chain state is valid but the SDK cannot pair the nested payment, and the campaign tree becomes unreadable. Old deployments remain callable from inner transactions. | app checks |
 | 39 | Tree-cap saturation: an attacker fills the 524,287 lifetime positions with pledge/cancel cycles | Funds stay safe; the risk is a campaign that can never succeed. `Vault.settleOpen` settles it early, and `Campaign.delete`/`Registry.unregister` treat `n == MAX_TREE_SIZE && raised < goal` as failed-in-fact, so the creator recovers the MBR and backers refund immediately. #208 accepts the residual risk: no fee, cooldown, per-backer cap, or lower max N; monitoring and creator capacity are follow-ups. | app checks + AVM |
 | 40 | Last-minute goal flip: a backer cancels in the final 24 hours and drops a successful campaign below its goal | `Campaign.cancelPledge` rejects a cancel that would drop a campaign currently at or above its goal below the goal. Cancels that keep the goal, and cancels in an already-below-goal campaign, are allowed. A one-day campaign is entirely inside the window; this is accepted and disclosed. | app checks |
-| 41 | App upgrade or raw on-completion bypass: a campaign, vault, or Registry is updated, deleted, opted in, closed out, or cleared outside its methods | The routers allow only their declared on-completions (NoOp methods plus Campaign `delete`). `UpdateApplication`, raw `DeleteApplication`, `OptIn`, `CloseOut`, and `ClearState` fail without changing the programs or state, so the vault's `Txn.sender == campaign.address` trust cannot be redirected to replacement code. Pinned by `04` `CON-250`..`CON-253`. | app checks + AVM |
+| 41 | App upgrade or raw on-completion bypass: a campaign, vault, or Registry is updated, deleted, opted in, closed out, or cleared outside its methods | The routers allow only their declared on-completions (NoOp methods plus Campaign `delete`). `UpdateApplication`, raw `DeleteApplication`, `OptIn`, and `CloseOut` fail without changing the programs or state. `ClearState` has a 4-byte approve program, but no account can opt in, so it cannot run and cannot change state; the vault's `Txn.sender == campaign.address` trust cannot be redirected to replacement code. Pinned by `04` `CON-250`..`CON-253`. | app checks + AVM |
 
 ## 18. Six-requirement scorecard
 

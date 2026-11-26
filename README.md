@@ -50,7 +50,7 @@ campaign's first pledge; with an empty `VITE_REGISTRY_APP_ID`, creation skips
 registration, pledges are rejected, and the campaign cannot be deleted until the
 id is set (see [Frontend](docs/frontend.md)).
 
-The backend is an optional user service (wallet-signature auth plus profiles/settings storage; pinning and catalog are planned) and runs as a separate service:
+The backend is an optional user service (wallet-signature auth, profiles/settings storage, and image/metadata pinning; a campaign catalog is planned) and runs as a separate service:
 
 ```bash
 cd ../backend

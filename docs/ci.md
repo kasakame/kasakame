@@ -357,7 +357,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 - **`integration-test-sdk`** - runs when `run_sdk_integration` is true and
   `build-sdk` succeeded. It installs the SDK dependencies, downloads
   `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
-  `00`-`04`). It is independent of the contract LocalNet lane.
+  `00`-`10`). It is independent of the contract LocalNet lane.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -401,12 +401,13 @@ needs roughly 5 hours; the timeout is the 360-minute GitHub-hosted maximum. The
 suites stream an initial line, a heartbeat with the pledge rate and ETA every
 5,000 positions (~2.5 minutes at the measured rate), and phase lines for the
 deadline, refunds, delete, and claim/finalize. A job that cannot finish
-inside the limit fails without affecting the other outcome. The SDK and CLI
-LocalNet suites stay with #158 and #118.
+inside the limit fails without affecting the other outcome. The SDK LocalNet
+suite runs in the PR graph and the SDK release; the CLI LocalNet smoke test
+stays with #118.
 
 The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
 workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
-workflow, together with files `00`-`04`.
+workflow, together with the `00`-`04` contract files.
 
 All four release workflows share the same shape: every `prep` job is gated on
 `refs/heads/main`, `assert-unpublished.ts` stops on anything other than an npm
@@ -544,8 +545,8 @@ interactive actions (npmjs.com login, `npm trust`, and `npm stage approve`).
 The package's Publishing access is set to "Require two-factor authentication
 and disallow tokens" so only the trusted publisher can publish.
 
-The frontend is built by its own release/deploy workflow against the published
-version; it is not part of the SDK release.
+The frontend is built and deployed outside this repository's workflows against
+the published SDK; it has no release workflow of its own.
 
 Then dispatch the workflow from `main` with `dry_run=false`.
 
@@ -645,10 +646,9 @@ the four artifact folders. Package-specific packaging stays in the package:
 - Publishing goes through `projects/utils/release/publish.ts` (provenance,
   public access, dist-tag, optional tarball) and
   `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
-- The SDK and CLI still need their first publish. Use a temporary `NPM_TOKEN`
-  for that batch, keep it until both are published, then revoke it. Configure
-  each trusted publisher when its next release is within 2 days; an unused
-  configuration expires.
+- The SDK and CLI `0.1.0` publishes are done. Configure each package's trusted
+  publisher before its next release; no temporary `NPM_TOKEN` is needed, and an
+  unused trusted-publisher configuration expires after 2 days.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.

@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.2.0`, published as a public npm package. The frontend and CLI consume `"@kasakame/sdk": "^0.2.0"` from the registry; a packed local copy is installed only to test unreleased SDK changes. See [`cli.md`](cli.md) for the escape-hatch CLI.
+Status: version `0.1.0`, published as a public npm package. The frontend and CLI consume `"@kasakame/sdk": "^0.1.0"` from the registry; a packed local copy is installed only to test unreleased SDK changes. See [`cli.md`](cli.md) for the escape-hatch CLI.
 
 ## Why the SDK exists
 
@@ -12,7 +12,7 @@ Before the SDK, the frontend's `lib/` folder held the chain logic: claim-tree ma
 
 - Location `projects/sdk/`. The AlgoKit workspace discovers `projects/*` entries through their `.algokit.toml`, so the SDK ships a minimal one to take part in `algokit project run` and `bootstrap`.
 - One package. Split only when a consumer needs a subset; today nobody does.
-- Version `0.2.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
+- Version `0.1.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
 - Node.js >= 24, ESM. Entry point is `./dist/index.js` with types in `./dist/index.d.ts`; `files` publishes only `dist/` plus the package metadata and README.
 
 Peer dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and the generated clients' runtime) and `@kasakame/constants`. Direct dependencies: `@noble/hashes` (SHA-512/256, the same function as the AVM opcode) and `algosdk` (indexer and algod access). The SDK receives the consumer's `AlgorandClient`, so `algokit-utils` is a peer; one copy keeps the class and type instances consistent.
@@ -404,9 +404,9 @@ local artifacts after `SDK_SPECS=local npm run codegen`.
 
 ## Release info
 
-- Version `0.2.0`, following the contracts' breaking changes while they churn.
-- Public npm package, published as `0.2.0`. The frontend and CLI consume
-  `"@kasakame/sdk": "^0.2.0"` from the registry.
+- Version `0.1.0`, following the contracts' breaking changes while they churn.
+- Public npm package, published as `0.1.0`. The frontend and CLI consume
+  `"@kasakame/sdk": "^0.1.0"` from the registry.
 - Release `@kasakame/contracts` and `@kasakame/constants` first: the SDK builds
   from the released contracts package and declares constants as a peer
   dependency.
