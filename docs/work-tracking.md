@@ -2,63 +2,13 @@
 
 KasaKame tracks work in the [KasaKame project](https://github.com/orgs/kasakame/projects/1). The project is owned by the `kasakame` organization, is public, and is linked to the `kasakame/kasakame` repository. Issues hold the work; the project holds the views and the workflow status.
 
-## Hierarchy
+The project README is the source of truth for the hierarchy, field definitions, views, and read recipes. Read it with:
 
-Work follows three levels:
+```bash
+gh project view 1 --owner kasakame --format json --jq .readme
+```
 
-- **Component** - a stable product area. The nine components are `contracts`, `frontend`, `sdk`, `cli`, `backend`, `ci`, `infra`, `docs`, and `maintenance`.
-- **Epic** - a workstream inside one component. An epic can stay open indefinitely; close it when the work is finished for good or a follow-up epic exists.
-- **Ticket** - a `Task`, `Bug`, or `Feature`. Every ticket belongs to an epic, and every epic belongs to a component.
-
-Components describe work areas; folders describe code layout. The `utils` and `constants` packages are shared support code; their changes belong to the component that consumes them or to `maintenance`. Add a component when a new area needs its own long-running workstream.
-
-## Fields
-
-Issue fields hold the shared metadata. They live on the issue, so they appear in the issue sidebar, work across every project, and support `field.<name>` search. The project uses one custom field, `Status`, for workflow state.
-
-The organization defines these issue fields:
-
-| Field | Values | Purpose |
-| --- | --- | --- |
-| `Component` | One of the nine components | The area that owns the work |
-| `Priority` | `Urgent`, `High`, `Medium`, `Low` | Current importance |
-| `Effort` | `High`, `Medium`, `Low` | Relative size of the work |
-| `Start date` and `Target date` | Dates | Optional planning dates |
-
-### Component
-
-`Component` names the area that owns the issue. For an epic, it matches the parent component. For a ticket, it matches the parent epic's component. The creation script derives the value from the parent, so the field and the hierarchy always agree.
-
-A ticket can touch several areas. The component still belongs to the owning epic; use the issue body or labels to name the other areas.
-
-### Priority
-
-`Priority` follows the current release:
-
-- `Urgent` blocks the release, funds, or security.
-- `High` is current-milestone work.
-- `Medium` is planned work outside the current milestone.
-- `Low` is cleanup or later.
-
-The old project values map directly: `P1` to `Urgent`, `P2` to `High`, and `P3` to `Low`.
-
-### Effort
-
-`Effort` measures the work in the issue, not its importance:
-
-- `High` covers multi-day work, cross-package changes, and contract or security-sensitive changes.
-- `Medium` covers a focused pull request or about a day of work.
-- `Low` covers a small fix, documentation, configuration, or a dependency bump.
-
-### Status
-
-`Status` is the project workflow field:
-
-- `Todo` means the work has not started.
-- `In Progress` means someone is working on it.
-- `Done` means the acceptance criteria are met and the pull request is merged.
-
-An epic is `Done` when all its sub-issues are `Done`.
+The read recipes cover components, epics, field filters, missing metadata, text search, and combined GraphQL reads. This page covers the creation workflow, automation, verification, and maintenance.
 
 ## Creating an issue
 
@@ -96,21 +46,17 @@ The script validates the parent type, derives `Component`, sets `Priority` and `
 
 Use the Task, Bug, Feature, or Epic form. The form sets the issue type. After the form opens, set `Component`, `Priority`, and `Effort` in the sidebar, then create the issue. Set the parent from the issue's **Sub-issue** menu: an epic goes under a component, and a ticket goes under an epic.
 
-The hygiene workflow adds the `needs-triage` label when `Priority` or `Effort` is missing. The **Needs triage** view lists those issues.
+The `check-issue` workflow fills a missing or mismatched `Component` from the parent and adds `needs-triage` when the type, parent, `Component`, `Priority`, or `Effort` is missing. The **Needs triage** view lists those issues.
 
-## Views
+## Automation
 
-The project has five views:
+The `check-issue` workflow runs when an issue is opened, edited, retyped, or has a field changed. It runs `projects/utils/scripts/check-issue.ts`, which fills `Component` from the parent chain and keeps the `needs-triage` label in sync. It skips closed issues and `Component` issues.
 
-| View | Layout | Purpose |
-| --- | --- | --- |
-| Components | Table | Index of the nine product areas |
-| Epics | Table | Workstreams and their progress, grouped by component |
-| Board | Board | Open tickets grouped by status |
-| Tickets | Table | Open tickets with component, priority, effort, and milestone |
-| Needs triage | Table | Issues missing priority or effort |
+Run it manually for one issue with:
 
-Add a Roadmap view when active epics have target dates.
+```bash
+gh workflow run check-issue.yml -f issue_number=<number>
+```
 
 ## Verification
 

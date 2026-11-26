@@ -72,7 +72,7 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |
 | [`docs/sdk.md`](docs/sdk.md) | SDK package design and migration order |
 | [`docs/testing.md`](docs/testing.md) | Contract, CLI, and frontend test strategy |
-| [`docs/work-tracking.md`](docs/work-tracking.md) | Hierarchy, issue fields, creation script, and views |
+| [`docs/work-tracking.md`](docs/work-tracking.md) | Issue creation, check-issue automation, and verification |
 | [`docs/ci.md`](docs/ci.md) | GitHub Actions workflows and checks |
 | [`docs/conventions.md`](docs/conventions.md) | Lint, format, and TypeScript rules |
 | [`docs/design.md`](docs/design.md) | Product decisions and open questions |
