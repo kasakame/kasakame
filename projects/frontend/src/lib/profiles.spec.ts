@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { clearSession } from './backend'
 import type { ProfileInput, SettingsInput } from './profiles'
-import { clearProfileCache, clearSettingsCache, fetchProfile, fetchSettings, saveProfile, saveSettings } from './profiles'
+import { clearProfileCache, clearSettingsCache, fetchMyProfile, fetchProfile, fetchSettings, saveProfile, saveSettings } from './profiles'
 
 function profileInput(overrides: Partial<ProfileInput> = {}): ProfileInput {
   return {
@@ -60,7 +60,6 @@ describe('fetchProfile', () => {
       display_name: 'Kyogre Fan',
       bio: 'Collector',
       avatar_cid: 'QmAvatar',
-      email: 'kyogre@example.com',
     })
     expect(fetchMock).toHaveBeenCalledWith('http://backend/profiles?address=ADDRESS')
   })
@@ -85,7 +84,6 @@ describe('fetchProfile', () => {
       display_name: null,
       bio: null,
       avatar_cid: null,
-      email: null,
     })
   })
 
@@ -99,7 +97,6 @@ describe('fetchProfile', () => {
       display_name: null,
       bio: null,
       avatar_cid: null,
-      email: null,
     })
     clearProfileCache()
     await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
@@ -124,6 +121,66 @@ describe('fetchProfile', () => {
     await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
     clearProfileCache()
     await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
+  })
+})
+
+describe('fetchMyProfile', () => {
+  afterEach(() => {
+    clearSession()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('signs in and reads the private email', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ nonce: 'abc123' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(okJson({ display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar', email: 'kyogre@example.com' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toEqual({
+      address: 'ADDRESS',
+      display_name: 'Kyogre Fan',
+      bio: 'Collector',
+      avatar_cid: 'QmAvatar',
+      email: 'kyogre@example.com',
+    })
+    const calls = fetchMock.mock.calls as unknown[][]
+    expect(calls[2]?.[0]).toBe('http://backend/profiles/me')
+    expect(calls[2]?.[1]).toMatchObject({ headers: { authorization: 'Bearer session' } })
+  })
+
+  it('returns null for a missing, malformed, or unreachable profile', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ nonce: 'a' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(notOkJson(404))
+      .mockResolvedValueOnce(okJson({ nonce: 'b' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(okJson('oops'))
+      .mockRejectedValueOnce(new Error('offline'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+  })
+
+  it('returns null without a backend or address', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', '')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    await expect(fetchMyProfile({ address: '', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 
@@ -161,7 +218,6 @@ describe('saveProfile', () => {
       display_name: 'Kyogre Fan',
       bio: 'Collector',
       avatar_cid: 'QmAvatar',
-      email: 'kyogre@example.com',
     })
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })

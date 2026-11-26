@@ -1,7 +1,7 @@
 import algosdk from 'algosdk'
 import Fastify from 'fastify'
 import { authenticate, createChallenge, verifyChallenge, verifyTransactionChallenge } from './auth.js'
-import { getProfile, getSettings, upsertProfile, upsertSettings } from './profiles.js'
+import { getProfile, getPublicProfile, getSettings, upsertProfile, upsertSettings } from './profiles.js'
 import { PinningError, pinImage, pinJson, safeFilename } from './uploads.js'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -82,7 +82,17 @@ export function buildApp() {
       await reply.code(400).send({ error: 'address is required' })
       return
     }
-    const profile = await getProfile(address)
+    const profile = await getPublicProfile(address)
+    if (profile === null) {
+      await reply.code(404).send({ error: 'profile not found' })
+      return
+    }
+    await reply.send(profile)
+  })
+
+  // Owner-only: the email is never part of the public profile response.
+  app.get('/profiles/me', { preHandler: authenticate }, async (request, reply) => {
+    const profile = await getProfile(request.address as string)
     if (profile === null) {
       await reply.code(404).send({ error: 'profile not found' })
       return

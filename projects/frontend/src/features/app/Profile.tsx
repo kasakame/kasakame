@@ -1,7 +1,7 @@
 import { useNetwork, useWallet } from '@txnlab/use-wallet-react'
 import { useEffect, useState } from 'react'
 import { adaptSignData, adaptSignTransaction } from '../../lib/backend'
-import { fetchProfile, saveProfile } from '../../lib/profiles'
+import { fetchMyProfile, saveProfile } from '../../lib/profiles'
 import { ellipseAddress } from '../../utils/ellipseAddress'
 import { orEmpty } from '../../utils/orEmpty'
 
@@ -28,8 +28,13 @@ const Profile = ({ onBack }: ProfileProps) => {
     }
     setLoading(true)
     let cancelled = false
-    // fetchProfile resolves null on every failure path, so no catch is needed.
-    void fetchProfile(activeAddress)
+    // fetchMyProfile resolves null on every failure path, so no catch is needed.
+    void fetchMyProfile({
+      address: activeAddress,
+      chainId: activeNetworkConfig.caipChainId,
+      sign: adaptSignData(signData),
+      signTxn: adaptSignTransaction(signTransactions),
+    })
       .then((p) => {
         if (!cancelled && p) {
           setDisplayName(orEmpty(p.display_name))
@@ -44,7 +49,7 @@ const Profile = ({ onBack }: ProfileProps) => {
     return () => {
       cancelled = true
     }
-  }, [activeAddress])
+  }, [activeAddress, activeNetworkConfig.caipChainId, signData, signTransactions])
 
   const handleSave = async () => {
     // Defensive: the form only renders while connected, so this is unreachable in the UI.
