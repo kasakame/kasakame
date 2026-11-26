@@ -183,6 +183,36 @@ describe('fetchPledges', () => {
     expect(pledges[0]?.txidHex).not.toEqual(pledges[2]?.txidHex)
   })
 
+  it('bounds concurrent block lookups', async () => {
+    const calls: unknown[] = []
+    const blocks = new Map<bigint, unknown[]>()
+    for (let index = 0; index < 40; index++) {
+      const round = 100n + BigInt(index)
+      const pay = payment('A'.repeat(52), BACKER_A, VAULT, 1_000_000n)
+      const call = pledgeCall('B'.repeat(52), BACKER_A, round)
+      calls.push(call)
+      blocks.set(round, [pay, call])
+    }
+    indexerMock.searchForTransactions.mockImplementation(searchMock(new Map([[CAMPAIGN, [calls]]])))
+    let active = 0
+    let peak = 0
+    indexerMock.lookupBlock.mockImplementation((round: number | bigint) => ({
+      do: async () => {
+        active += 1
+        peak = Math.max(peak, active)
+        await Promise.resolve()
+        active -= 1
+        return { transactions: blocks.get(BigInt(round)) ?? [] }
+      },
+    }))
+
+    const pledges = await fetchPledges(CAMPAIGN, VAULT)
+
+    expect(pledges).toHaveLength(40)
+    expect(peak).toBeGreaterThan(1)
+    expect(peak).toBeLessThanOrEqual(16)
+  })
+
   it('ignores non-pledge calls', async () => {
     const claim = appCall('ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ', BACKER_A, 100n, [hexToBytes(SELECTOR.claim)])
     indexerMock.searchForTransactions.mockImplementation(searchMock(new Map([[CAMPAIGN, [[claim]]]])))
