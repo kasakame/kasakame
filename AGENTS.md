@@ -131,11 +131,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- **Issue first, then branch, then PR.** Create the issue before the branch, then
-  create the branch with `gh issue develop <N> --name type/N-slug --checkout`, then
-  open the PR from it. The linked branch attaches the PR to the issue and closes
-  it on merge, so no `Closes`/`Fixes` keyword is needed. Never push to `main`. Do
-  not create worktrees or merge a PR without explicit approval.
+- **Issue first, then branch, then PR.** Create the issue before the branch. Link
+  the PR to the issue with `gh issue develop <N> --name type/N-slug --checkout` or
+  with `Closes #N` in the PR body. Both link the PR and close the issue on merge.
+  Never push to `main`. Do not create worktrees or merge a PR without explicit
+  approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Preserve the six protocol requirements.** Any change must keep the A–F scorecard in
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) §18 satisfied; update the scorecard in the

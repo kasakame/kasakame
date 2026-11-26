@@ -58,6 +58,10 @@ Run it manually for one issue with:
 gh workflow run check-issue.yml -f issue_number=<number>
 ```
 
+## Pull requests
+
+Every PR links one issue. Create the branch with `gh issue develop <N> --name type/N-slug --checkout`, or add `Closes #N` to the PR body. Both link the PR and close the issue on merge. The issue fields are set when the issue is created; the PR template covers the PR work.
+
 ## Verification
 
 The creation script verifies each new issue. For an existing issue, check the parent and type with the CLI and check the fields in the issue sidebar:
