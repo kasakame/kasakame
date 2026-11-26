@@ -1,10 +1,12 @@
 import algosdk from 'algosdk'
-import Fastify from 'fastify'
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { authenticate, createChallenge, verifyChallenge, verifyTransactionChallenge } from './auth.js'
 import { getProfile, getSettings, upsertProfile, upsertSettings } from './profiles.js'
 import { PinningError, pinImage, pinJson, safeFilename } from './uploads.js'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+const CHALLENGE_WINDOW_MS = 60 * 1000
+const CHALLENGE_MAX = 30
 
 /**
  * Build the Fastify application with all routes. Exported for inject-based tests.
@@ -13,6 +15,28 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
  */
 export function buildApp() {
   const app = Fastify({ logger: true })
+  // shortcut: per-process fixed window, move to a shared store when the backend runs multiple instances
+  const challengeHits = new Map<string, { count: number; resetAt: number }>()
+  let lastSweep = 0
+  const limitChallenge = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const now = Date.now()
+    if (now - lastSweep >= CHALLENGE_WINDOW_MS) {
+      for (const [key, hit] of challengeHits) {
+        if (hit.resetAt <= now) challengeHits.delete(key)
+      }
+      lastSweep = now
+    }
+    const hit = challengeHits.get(request.ip)
+    if (hit === undefined || hit.resetAt <= now) {
+      challengeHits.set(request.ip, { count: 1, resetAt: now + CHALLENGE_WINDOW_MS })
+      return
+    }
+    if (hit.count >= CHALLENGE_MAX) {
+      await reply.code(429).send({ error: 'too many challenge requests' })
+      return
+    }
+    hit.count += 1
+  }
 
   // Cross-origin browser calls with Bearer auth (no cookies), so a wildcard origin is safe.
   app.addHook('onSend', async (_request, reply, payload) => {
@@ -30,7 +54,7 @@ export function buildApp() {
     return { status: 'ok' }
   })
 
-  app.post<{ Body: { address: unknown } }>('/auth/challenge', async (request, reply) => {
+  app.post<{ Body: { address: unknown } }>('/auth/challenge', { preHandler: limitChallenge }, async (request, reply) => {
     if (typeof request.body.address !== 'string' || !algosdk.isValidAddress(request.body.address)) {
       await reply.code(400).send({ error: 'a valid address is required' })
       return
