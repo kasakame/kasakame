@@ -406,6 +406,12 @@ The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in thi
 workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
 workflow, together with files `00`-`04`.
 
+All four release workflows share the same shape: every `prep` job is gated on
+`refs/heads/main`, `assert-unpublished.ts` stops on anything other than an npm
+`E404`, and the tarball packed in prep is the artifact the smoke and publish
+jobs install and `npm publish --tarball ... --ignore-scripts` ships. A failed
+smoke, publish, or version check therefore cannot burn a GitHub tag.
+
 ## Workflow: release-contracts (separate file)
 
 Implemented at `.github/workflows/release-contracts.yml`. Manual
@@ -427,8 +433,12 @@ pre-release status only affects the "Latest" label, not downloads by tag.
 The npm tarball is the tested artifact passed from the prep job to the smoke and
 publish jobs, so `npm publish` publishes exactly the checked bytes. The smoke
 job installs the tarball in a clean consumer and reads an ARC-56 spec. The
-publish job uses npm OIDC trusted publishing with `--provenance`. `dry_run`
-defaults to true and skips both the GitHub release and the npm publish.
+publish job uses npm OIDC trusted publishing with `--provenance`. The GitHub
+release and `contracts-v<version>` tag are created in a final job after prep,
+smoke, and publish succeed; prep runs with `contents: read`, so a failed check
+or publish cannot consume the tag. Every release prep runs only on
+`refs/heads/main`. `dry_run` defaults to true and skips both the GitHub release
+and the npm publish.
 
 The SDK installs `@kasakame/contracts` at the version in
 `projects/contracts/package.json` and regenerates its clients from
@@ -460,13 +470,15 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` installs the package, validates the input version against
   `package.json` and that it is unpublished, builds `dist`, verifies the
-  committed `dist` is unchanged, formats, lints, type-checks, inspects the
-  packed tarball, dry-runs the publish, and installs the tarball in a clean
-  consumer to import the compiled values. It uploads the tested `dist/`.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`, then polls the registry for the version for up to 10 minutes.
+  committed `dist` is unchanged, formats, lints, type-checks, packs and
+  verifies the npm tarball, dry-runs the publish from that tarball, and installs
+  it in a clean consumer to import the compiled values. It uploads the tested
+  tarball.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`, then polls the registry for the
+  version for up to 10 minutes.
 
 Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
@@ -494,26 +506,26 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   input version against `package.json` and that it is unpublished, installs the
   released `@kasakame/contracts` at the version in
   `projects/contracts/package.json`, regenerates clients, compiles TypeScript,
-  lints, format-checks, type-checks, runs coverage, inspects the packed
-  tarball, and dry-runs the publish. Each command is its own step. It uploads
-  the tested `dist/` and the generated clients.
+  lints, format-checks, type-checks, runs coverage, packs and verifies the npm
+  tarball, and dry-runs the publish from that tarball. Each command is its own
+  step. It uploads the tested tarball and the generated clients.
 - `integration` starts LocalNet, downloads the prep-generated clients and the
   tested `dist/`, checks the dist imports, and runs `npm run test:integration`.
   It gates the publish.
-- `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
-  installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/sdk.ts`: it installs the prep tarball
+  into a clean consumer (npm pulls the
   `@kasakame/constants` and `@algorandfoundation/algokit-utils` peer
   dependencies from the registry), checks the version and
   `LICENSE`, imports the public API, verifies `SPECS_VERSION` against the
   contracts package version, and checks that every `dist/*.js.map` embeds its
   TypeScript source with no `.d.ts.map` published. It gates the publish.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`. It then polls the registry for the version, allowing 10
-  minutes: npm stages a new package and the first publish took about 2.5
-  minutes to become visible. A dry run stops before the publish and registry
-  check.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`. It then polls the registry for the
+  version, allowing 10 minutes: npm stages a new package and the first publish
+  took about 2.5 minutes to become visible. A dry run stops before the publish
+  and registry check.
 
 Configure the trusted publisher for `@kasakame/sdk` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
@@ -551,19 +563,19 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 - `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
   never the `file:../sdk` copy, because a released CLI must ship against a
   released SDK. It validates the input version against `package.json` and that
-  it is unpublished, lints, formats, type-checks, runs coverage, builds,
-  inspects the packed tarball, and dry-runs the publish. Each command is its own
-  step. It uploads the tested `dist/`.
-- `smoke` runs `projects/utils/smoke/cli.ts`: it packs the tested `dist/`,
-  installs the tarball into a clean consumer (npm pulls the
-  `@kasakame/constants` peer dependency from the registry), checks the version and
-  `LICENSE`, and runs `kasakame --help`. It gates the publish.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`. It then polls the registry for the version for up to 10
-  minutes, like the SDK release. A dry run stops before the publish and
-  registry check.
+  it is unpublished, lints, formats, type-checks, runs coverage, builds, packs
+  and verifies the npm tarball, and dry-runs the publish from that tarball.
+  Each command is its own step. It uploads the tested tarball.
+- `smoke` runs `projects/utils/smoke/cli.ts`: it installs the prep tarball
+  into a clean consumer (npm pulls the `@kasakame/constants` peer dependency
+  from the registry), checks the version and `LICENSE`, and runs
+  `kasakame --help`. It gates the publish.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`. It then polls the registry for the
+  version for up to 10 minutes, like the SDK release. A dry run stops before the
+  publish and registry check.
 
 Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
