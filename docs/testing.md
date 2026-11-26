@@ -378,7 +378,7 @@ MBR in `test/utils/contract-sizes.ts`. The checks live in
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 88 tests across `00`-`07`; the
+`npm run test:integration` in `projects/contracts`; 92 tests across `00`-`07`; the
 two cap-scale suites in `99-*` run separately in `heavy-tests`).
 Each file deploys its own fixture chain to a live algod.
 The LocalNet integration files run **sequentially** (`--no-file-parallelism`):
@@ -388,7 +388,7 @@ pledge, flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+1 day` at deploy) valid. The cap suites each own a
 runner and a LocalNet instance, so they run in parallel jobs.
 Offline specs live next to each contract and the deploy code, plus the helper
-pins in `test/`: **231 tests**, including the formula/selector tests in
+pins in `test/`: **232 tests**, including the formula/selector tests in
 `test/formulas.spec.ts`, all green with 100% line/branch/function
 coverage of the contracts.
 
@@ -437,7 +437,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-005` | bindVault is permissionless | always | A stranger can bind the first correct vault |
 | `CON-006` | register and unregister round-trip after binding | always | `register` creates the box, `[unregister, delete]` removes it and returns the deposit |
 
-#### `test/01-single-campaign.test.ts` (6 tests)
+#### `test/01-single-campaign.test.ts` (7 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -447,6 +447,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-013` | delete the cancelled campaign | chain | App deleted, campaign box retained for `finalize`, `isRegistered` false (unregister round trip) |
 | `CON-014` | delete a pristine campaign, registered and unregistered | always | Both cleanup paths: registered returns the deposit; unregistered `unregister` is a no-op; app gone |
 | `CON-015` | single-test happy path: create, pledge, cancel, delete | always | One standalone end-to-end lifecycle with ledger assertions |
+| `CON-016` | a minimum pledge is accepted and cancelled | always | 100,000 µA pledge records one leaf, the vault box, and the exact payback |
 
 #### `test/02-funding.test.ts` (15 tests)
 
@@ -482,7 +483,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-061` | refunding one campaign leaves the other untouched | always | Per-campaign accounting isolation |
 | `CON-062` | seeded pledge/cancel/refund/finalize sequence | always | One normal-lane seed through the shared sequence engine (N ≤ 100) |
 
-#### `test/04-bad-paths.test.ts` (35 tests)
+#### `test/04-bad-paths.test.ts` (38 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -498,6 +499,9 @@ earlier tests in the same file, which stop on first failure).
 | `CON-130` | final-day cancel that would drop the goal is rejected | always | Goal-protection guard at the final-day boundary |
 | `CON-131` | final-day cancel that keeps the goal is allowed | always | Cancel leaving `raised >= goal` is unaffected |
 | `CON-132` | goal-dropping cancel before the final day is allowed | always | The guard only applies inside the final 24 hours |
+| `CON-133` | a stranger cannot spend a victim's proof | always | The path check binds the spend to the leaf owner; the victim's own cancel still succeeds |
+| `CON-134` | a proof from one campaign cannot be replayed on another | always | The root check rejects a foreign path; the second campaign's own proof still spends |
+| `CON-135` | a valid proof with a changed amount or position is rejected | always | The leaf hash binds amount and position; the unmodified proof still spends |
 | `CON-109` | refund before the deadline is rejected | always | Campaign refund after the deadline |
 | `CON-110` | refund after the goal was reached is rejected | always | Failed-only refund guard |
 | `CON-111` | only the creator can claim | always | Claim authorization |
