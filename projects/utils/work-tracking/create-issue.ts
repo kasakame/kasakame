@@ -1,11 +1,8 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import process from 'node:process'
+import { loadWorkTracking, type IssueFieldConfig } from './config.ts'
 
-const REPO = 'kasakame/kasakame'
-const ORG = 'kasakame'
-const PROJECT_TITLE = 'KasaKame'
-const PROJECT_NUMBER = 1
 const TYPES = ['Task', 'Bug', 'Feature', 'Epic', 'Component'] as const
 
 type IssueTypeName = (typeof TYPES)[number]
@@ -33,33 +30,10 @@ interface IssueQueryData {
   repository: { issue: Issue | null }
 }
 
-interface IssueFieldOption {
-  id: string
-  name: string
-}
-
-interface IssueFieldNode {
-  __typename: string
-  name: string
-  id?: string
-  options?: IssueFieldOption[]
-}
-
-interface SingleSelectField {
-  __typename: 'IssueFieldSingleSelect'
-  name: string
-  id: string
-  options: IssueFieldOption[]
-}
-
-interface FieldsData {
-  organization: { issueFields: { nodes: IssueFieldNode[] } }
-}
-
 interface NativeFieldSet {
-  component: { field: SingleSelectField; option: IssueFieldOption }
-  priority: { field: SingleSelectField; option: IssueFieldOption }
-  effort: { field: SingleSelectField; option: IssueFieldOption }
+  component: { field: IssueFieldConfig; option: { name: string; id: string } }
+  priority: { field: IssueFieldConfig; option: { name: string; id: string } }
+  effort: { field: IssueFieldConfig; option: { name: string; id: string } }
 }
 
 interface IssueFieldValue {
@@ -85,12 +59,12 @@ interface GraphQlEnvelope {
 }
 
 const usage = `Usage:
-  node projects/utils/scripts/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file body.md
+  node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority P2 --effort Medium --title "..." --body-file body.md
 
 Required for Task, Bug, Feature, and Epic:
   --type      Task | Bug | Feature | Epic
   --parent    Epic (for a ticket) or Component (for an Epic)
-  --priority  Urgent | High | Medium | Low
+  --priority  P1 | P2 | P3
   --effort    High | Medium | Low
   --title     Issue title
   --body      Inline body, or --body-file <path>
@@ -155,12 +129,9 @@ const parseArgs = (argv: string[]): Record<string, string> => {
   return options
 }
 
-const isSingleSelectField = (field: IssueFieldNode): field is SingleSelectField =>
-  field.__typename === 'IssueFieldSingleSelect' && typeof field.id === 'string' && Array.isArray(field.options)
-
-const issueQuery = (number: number): string => `
+const issueQuery = (owner: string, repo: string, number: number): string => `
 query {
-  repository(owner: "${ORG}", name: "kasakame") {
+  repository(owner: "${owner}", name: "${repo}") {
     issue(number: ${String(number)}) {
       id
       number
@@ -172,6 +143,10 @@ query {
 }`
 
 const options = parseArgs(process.argv.slice(2))
+const config = loadWorkTracking()
+const [repoOwner, repoName] = config.repo.split('/')
+if (!repoOwner || !repoName) fail(`repo must be OWNER/REPO, got ${config.repo}`)
+if (repoOwner !== config.org) fail(`repo owner ${repoOwner} does not match org ${config.org}`)
 const typeValue = options.type
 if (!typeValue || !isIssueType(typeValue)) fail(`--type must be one of: ${TYPES.join(', ')}`)
 const type = typeValue
@@ -196,7 +171,7 @@ if (type === 'Component') {
   if (!effortValue) fail('--effort is required')
   const parentId = Number(parentNumber)
   expectedParent = parentId
-  const parent = (graphql(issueQuery(parentId)) as IssueQueryData).repository.issue
+  const parent = (graphql(issueQuery(config.org, repoName, parentId)) as IssueQueryData).repository.issue
   if (!parent) fail(`parent issue #${parentNumber} was not found`)
 
   if (type === 'Epic') {
@@ -211,47 +186,27 @@ if (type === 'Component') {
     component = grandparent.title
   }
 
-  const fieldsData = graphql(`
-query {
-  organization(login: "${ORG}") {
-    issueFields(first: 50) {
-      nodes {
-        __typename
-        ... on IssueFieldCommon { name }
-        ... on IssueFieldSingleSelect { id options { id name } }
-      }
-    }
-  }
-}`) as FieldsData
-  const fields = fieldsData.organization.issueFields.nodes
-  const findField = (name: string): SingleSelectField => {
-    const field = fields.find((candidate) => candidate.name === name)
-    if (!field) fail(`issue field ${name} is missing`)
-    if (!isSingleSelectField(field)) fail(`issue field ${name} is not a single-select field`)
-    return field
-  }
-  const normalizeOption = (field: SingleSelectField, value: string, label: string): IssueFieldOption => {
-    const match = field.options.find((option) => option.name.toLowerCase() === value.toLowerCase())
-    if (!match) fail(`${label} must be one of: ${field.options.map((option) => option.name).join(', ')}`)
-    return match
-  }
-
   const componentName = component
-  const componentField = findField('Component')
-  const componentOption = componentField.options.find((option) => option.name === componentName)
-  if (!componentOption) fail(`Component "${componentName}" is not an issue field option`)
-  const priorityField = findField('Priority')
-  const priorityOption = normalizeOption(priorityField, priorityValue, '--priority')
-  const effortField = findField('Effort')
-  const effortOption = normalizeOption(effortField, effortValue, '--effort')
+  if (!componentName) fail('could not derive Component from the parent')
+  const componentId = config.issueFields.Component.options[componentName]
+  if (!componentId) fail(`Component "${componentName}" is not in the work-tracking config`)
+  const chooseOption = (field: IssueFieldConfig, value: string, label: string): { name: string; id: string } => {
+    const name = Object.keys(field.options).find((option) => option.toLowerCase() === value.toLowerCase())
+    if (!name) fail(`${label} must be one of: ${Object.keys(field.options).join(', ')}`)
+    const id = field.options[name]
+    if (!id) fail(`${label} has no id for ${name}`)
+    return { name, id }
+  }
+  const priorityOption = chooseOption(config.issueFields.Priority, priorityValue, '--priority')
+  const effortOption = chooseOption(config.issueFields.Effort, effortValue, '--effort')
   nativeFields = {
-    component: { field: componentField, option: componentOption },
-    priority: { field: priorityField, option: priorityOption },
-    effort: { field: effortField, option: effortOption },
+    component: { field: config.issueFields.Component, option: { name: componentName, id: componentId } },
+    priority: { field: config.issueFields.Priority, option: priorityOption },
+    effort: { field: config.issueFields.Effort, option: effortOption },
   }
 }
 
-const createArgs = ['issue', 'create', '--repo', REPO, '--type', type, '--project', PROJECT_TITLE, '--title', title]
+const createArgs = ['issue', 'create', '--repo', config.repo, '--type', type, '--project', config.project.title, '--title', title]
 if (bodyFile) createArgs.push('--body-file', bodyFile)
 else if (body) createArgs.push('--body', body)
 if (parentNumber) createArgs.push('--parent', parentNumber)
@@ -266,7 +221,7 @@ const number = Number(issueNumber)
 const url = match[0]
 
 if (nativeFields) {
-  const issue = (graphql(issueQuery(number)) as IssueQueryData).repository.issue
+  const issue = (graphql(issueQuery(config.org, repoName, number)) as IssueQueryData).repository.issue
   if (!issue) fail(`issue #${String(number)} was created but could not be read back`)
   const fieldInputs = [nativeFields.component, nativeFields.priority, nativeFields.effort].map(
     (field) => `{ fieldId: "${field.field.id}", singleSelectOptionId: "${field.option.id}" }`,
@@ -282,7 +237,7 @@ mutation {
 
 const verifyQuery = `
 query {
-  repository(owner: "${ORG}", name: "kasakame") {
+  repository(owner: "${config.org}", name: "${repoName}") {
     issue(number: ${String(number)}) {
       number
       issueType { name }
@@ -299,7 +254,7 @@ query {
 let verified: VerifyIssue | null = null
 for (let attempt = 0; attempt < 5; attempt += 1) {
   verified = (graphql(verifyQuery) as VerifyData).repository.issue
-  if (verified?.projectItems.nodes.some((item) => item.project.number === PROJECT_NUMBER)) break
+  if (verified?.projectItems.nodes.some((item) => item.project.number === config.project.number)) break
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)
 }
 if (!verified) fail(`issue #${String(number)} was created but could not be read back`)
@@ -320,11 +275,11 @@ if (type === 'Component') {
     if (values.Effort !== nativeFields.effort.option.name) errors.push(`Effort is ${values.Effort ?? 'missing'}`)
   }
 }
-if (!verified.projectItems.nodes.some((item) => item.project.number === PROJECT_NUMBER))
-  errors.push(`project ${String(PROJECT_NUMBER)} item is missing`)
+if (!verified.projectItems.nodes.some((item) => item.project.number === config.project.number))
+  errors.push(`project ${String(config.project.number)} item is missing`)
 if (errors.length > 0) fail(`${url} was created but verification failed: ${errors.join('; ')}`)
 
 console.log(`Created #${String(number)}: ${url}`)
 console.log(
-  `type=${type} parent=${parentNumber ?? '-'} component=${component ?? '-'} priority=${nativeFields?.priority.option.name ?? '-'} effort=${nativeFields?.effort.option.name ?? '-'} project=${String(PROJECT_NUMBER)}`,
+  `type=${type} parent=${parentNumber ?? '-'} component=${component ?? '-'} priority=${nativeFields?.priority.option.name ?? '-'} effort=${nativeFields?.effort.option.name ?? '-'} project=${String(config.project.number)}`,
 )

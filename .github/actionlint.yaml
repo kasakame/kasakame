@@ -1,5 +1,5 @@
 # actionlint 1.7.12 predates the field_added and field_removed issue activity types.
 paths:
-  .github/workflows/check-issue.yml:
+  .github/workflows/work-tracking.yml:
     ignore:
       - 'invalid activity type "field_(added|removed)" for "issues" Webhook event'

@@ -611,11 +611,19 @@ jobs:
         working-directory: projects/utils
       - name: Check work-tracking script
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: node scripts/create-issue.ts --help
+        run: node work-tracking/create-issue.ts --help
         working-directory: projects/utils
       - name: Check issue script
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
-        run: node scripts/check-issue.ts --help
+        run: node work-tracking/check-issue.ts --help
+        working-directory: projects/utils
+      - name: Check work-tracking helper
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/show-work-tracking.ts --help
+        working-directory: projects/utils
+      - name: Check epic automation script
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/epic-automation.ts --help
         working-directory: projects/utils
 
   # Deploy and exercise the compiled TEAL on a live LocalNet with the same-run artifacts, after contract verification even if it failed.

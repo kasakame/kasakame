@@ -1,20 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process'
 import process from 'node:process'
-
-const DEFAULT_REPO = 'kasakame/kasakame'
-const COMPONENT_FIELD_ID = 'IFSS_kgDOAwJCtw'
-const COMPONENT_OPTIONS: Record<string, string> = {
-  contracts: 'IFSSO_kgDOBUS7Tw',
-  frontend: 'IFSSO_kgDOBUS7UA',
-  sdk: 'IFSSO_kgDOBUS7UQ',
-  cli: 'IFSSO_kgDOBUS7Ug',
-  backend: 'IFSSO_kgDOBUS7Uw',
-  ci: 'IFSSO_kgDOBUS7VA',
-  infra: 'IFSSO_kgDOBUS7VQ',
-  docs: 'IFSSO_kgDOBUS7Vg',
-  maintenance: 'IFSSO_kgDOBUS7Vw',
-}
+import { loadWorkTracking } from './config.ts'
 
 interface IssueType {
   name: string | null
@@ -52,9 +39,9 @@ interface GraphQlEnvelope {
 }
 
 const usage = `Usage:
-  ISSUE_NUMBER=<number> GH_TOKEN=<token> node projects/utils/scripts/check-issue.ts
+  ISSUE_NUMBER=<number> GH_TOKEN=<token> node projects/utils/work-tracking/check-issue.ts
 
-Reads GITHUB_REPOSITORY (default ${DEFAULT_REPO}) and ISSUE_NUMBER.
+Reads ISSUE_NUMBER and projects/utils/work-tracking/config.json.
 Fills a missing or mismatched Component from the parent and keeps the
 needs-triage label aligned with Priority and Effort.`
 
@@ -105,9 +92,11 @@ if (args.includes('--help') || args.includes('-h')) {
 }
 if (args.length > 0) fail(`unexpected arguments: ${args.join(' ')}`)
 
-const repo = process.env.GITHUB_REPOSITORY ?? DEFAULT_REPO
+const config = loadWorkTracking()
+const repo = config.repo
 const [owner, name] = repo.split('/')
-if (!owner || !name) fail(`GITHUB_REPOSITORY must be OWNER/REPO, got ${repo}`)
+if (!owner || !name) fail(`repo must be OWNER/REPO, got ${repo}`)
+if (owner !== config.org) fail(`repo owner ${owner} does not match org ${config.org}`)
 const issueNumber = Number(process.env.ISSUE_NUMBER)
 if (!Number.isInteger(issueNumber)) fail('ISSUE_NUMBER must be an integer')
 
@@ -184,13 +173,13 @@ if (type === 'Epic' && parent?.issueType?.name === 'Component') {
 }
 
 let component = values.Component ?? null
-const componentOptionId = expectedComponent ? COMPONENT_OPTIONS[expectedComponent] : undefined
+const componentOptionId = expectedComponent ? config.issueFields.Component.options[expectedComponent] : undefined
 if (validParent && expectedComponent && component !== expectedComponent && componentOptionId) {
   try {
     graphql(`mutation {
   setIssueFieldValue(input: {
     issueId: "${issue.id}"
-    issueFields: [{ fieldId: "${COMPONENT_FIELD_ID}", singleSelectOptionId: "${componentOptionId}" }]
+    issueFields: [{ fieldId: "${config.issueFields.Component.id}", singleSelectOptionId: "${componentOptionId}" }]
   }) { issue { number } }
 }`)
     component = expectedComponent

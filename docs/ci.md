@@ -4,7 +4,7 @@ This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, Markdown, and
 comment lint,
-the [`check-issue`](../.github/workflows/check-issue.yml) workflow, the
+the [`work-tracking`](../.github/workflows/work-tracking.yml) workflow, the
 separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-contracts`](../.github/workflows/release-contracts.yml),
@@ -174,7 +174,7 @@ flowchart TD
 | `integration-test-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
-| `check-issue` (own workflow) | issue events or manual | ✅ | - | - | - |
+| `work-tracking` (own workflow) | issue events or manual | ✅ | - | - | - |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-constants` (own workflow) | manual | ✅ | - | - | - |
@@ -266,7 +266,7 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   `utils_core` is the surface consumers import: `package.json` (exports, `files`,
   and dependencies), `program-hash.ts` (the `.` entry), and `testing/**` (the
   `./testing` entry). `check-utils` runs the private helper package's format,
-  lint, type-check, and the work-tracking script's `--help` smoke check;
+  lint, type-check, and the work-tracking scripts' `--help` smoke checks;
   `check-constants` rebuilds the public constants package and fails when the
   committed `dist` drifts. Changes to `utils_core` or
   `constants` re-run the contract and SDK checks that consume them; `release/`
@@ -375,21 +375,35 @@ because there is no artifact to share after a failure.
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
 
-## Workflow: check-issue (separate file)
+## Workflow: work-tracking (separate file)
 
-Implemented at `.github/workflows/check-issue.yml`. This workflow keeps issue
-metadata aligned with the hierarchy. It runs when an issue is opened, edited,
-reopened, retyped, or has a field added or removed. It fills `Component` from the
-parent chain and adds the `needs-triage` label when the type, parent, `Component`,
-`Priority`, or `Effort` is missing. It removes the label when the metadata is
-complete, and skips closed issues and `Component` issues.
+Implemented at `.github/workflows/work-tracking.yml`. The workflow has two jobs:
+`check-issue` keeps issue metadata aligned with the hierarchy, and
+`epic-automation` keeps the parent epic `Status` in sync with its children. It
+runs when an issue is opened, reopened, closed, retyped, or has a field added or
+removed.
 
-The workflow runs `projects/utils/scripts/check-issue.ts` with the workflow
-token. The script uses the GraphQL issue-field mutation and the GitHub CLI. Run
-it manually for one issue with:
+`check-issue` runs `projects/utils/work-tracking/check-issue.ts` with the
+workflow token. It fills `Component` from the parent chain and adds the
+`needs-triage` label when the type, parent, `Component`, `Priority`, or `Effort`
+is missing. It removes the label when the metadata is complete, and skips closed
+issues and `Component` issues.
+
+`epic-automation` runs `projects/utils/work-tracking/epic-automation.ts`. It
+sets the parent epic to `In Progress` or `Done` and reopens a completed epic
+while it still has open children. Project mutations use the `PROJECT_TOKEN`
+secret, a fine-grained PAT with Organization Projects read and write plus Issues
+read; `GITHUB_TOKEN` cannot access Projects. The job uses `GITHUB_TOKEN` to
+reopen the epic. The project's built-in `Auto-close issue` workflow closes the
+epic when the job sets `Done`, and `Item closed` sets `Status` to `Done` when an
+issue closes; keep both enabled.
+
+A field update emits one event per field, so the concurrency group keeps only
+the latest run for the issue; earlier runs show as cancelled and the final run
+reconciles. Run the workflow manually for one issue with:
 
 ```bash
-gh workflow run check-issue.yml -f issue_number=<number>
+gh workflow run work-tracking.yml -f issue_number=<number>
 ```
 
 ## Workflow: heavy-tests (separate file)

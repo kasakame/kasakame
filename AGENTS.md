@@ -131,11 +131,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- **Issue first, then branch, then PR.** Create the issue before the branch. Link
-  the PR to the issue with `gh issue develop <N> --name type/N-slug --checkout` or
-  with `Closes #N` in the PR body. Both link the PR and close the issue on merge.
-  Never push to `main`. Do not create worktrees or merge a PR without explicit
-  approval.
+- **Issue first, then branch, then PR.** Create the issue before the branch. Create
+  the branch with `gh issue develop <N> --name type/N-slug --checkout`; the linked
+  branch closes the issue on merge. If the branch is not linked, add `Closes #N`
+  to the PR body. Never push to `main`. Do not create worktrees or merge a PR
+  without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Preserve the six protocol requirements.** Any change must keep the A–F scorecard in
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) §18 satisfied; update the scorecard in the
@@ -419,9 +419,10 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
   - The title is the change name in Conventional Commit form.
-  - List the issue in the **Related issues** section, for example `#N`. The
+  - List the issue in the **Related issue** section, for example `#N`. A
     `gh issue develop` branch links the PR and closes the issue on merge; do not
-    add a `Closes`/`Fixes` keyword. Close it after merge only if it is still open.
+    add a `Closes`/`Fixes` keyword in that case. Close it after merge only if it
+    is still open.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
   - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
     directly.
@@ -442,7 +443,7 @@ in [`docs/work-tracking.md`](docs/work-tracking.md).
 Create every ticket and epic with the script:
 
 ```bash
-node projects/utils/scripts/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file /tmp/body.md
+node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority P2 --effort Medium --title "..." --body-file /tmp/body.md
 ```
 
 The script validates the parent, derives `Component`, sets `Priority` and
@@ -451,9 +452,13 @@ with raw `gh issue create`.
 
 - Every ticket belongs to an epic; every epic belongs to a component. A ticket
   never sits under another ticket.
-- The `check-issue` workflow fills a missing `Component` from the parent and
-  flags missing `Priority` or `Effort` with `needs-triage`; check the Needs
-  triage view.
+- Stable project and field IDs live in `projects/utils/work-tracking/config.json`;
+  run `node projects/utils/work-tracking/show-work-tracking.ts` to validate the
+  config and list the current epics.
+- The `work-tracking` workflow runs `check-issue` to fill a missing `Component`
+  and flag missing `Priority` or `Effort` with `needs-triage`, and
+  `epic-automation` to keep the parent epic `Status` in sync. The epic job needs
+  the `PROJECT_TOKEN` secret; see [`docs/work-tracking.md`](docs/work-tracking.md).
 - Create issues only for changes that need a PR. Project metadata edits are done
   directly.
 - Before opening a PR, confirm the linked issue has a type, parent, matching
