@@ -1,7 +1,9 @@
 import { buildApp } from './app.js'
+import { assertSessionSecret } from './auth.js'
 
 const PORT = Number(process.env.PORT ?? '3001')
 
+assertSessionSecret()
 const app = buildApp()
 
 await app.listen({ port: PORT, host: '127.0.0.1' })
