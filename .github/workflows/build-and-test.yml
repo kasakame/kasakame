@@ -609,6 +609,10 @@ jobs:
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run check-types
         working-directory: projects/utils
+      - name: Check work-tracking script
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node scripts/create-issue.ts --help
+        working-directory: projects/utils
 
   # Deploy and exercise the compiled TEAL on a live LocalNet with the same-run artifacts, after contract verification even if it failed.
   integration-test-contracts:

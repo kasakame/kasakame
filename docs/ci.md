@@ -264,8 +264,9 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   `utils_core` is the surface consumers import: `package.json` (exports, `files`,
   and dependencies), `program-hash.ts` (the `.` entry), and `testing/**` (the
   `./testing` entry). `check-utils` runs the private helper package's format,
-  lint, and type-check; `check-constants` rebuilds the public constants package
-  and fails when the committed `dist` drifts. Changes to `utils_core` or
+  lint, type-check, and the work-tracking script's `--help` smoke check;
+  `check-constants` rebuilds the public constants package and fails when the
+  committed `dist` drifts. Changes to `utils_core` or
   `constants` re-run the contract and SDK checks that consume them; `release/`
   and `smoke/` changes run only `check-utils`.
 - `ci` - `.github/**` (workflows and release scripts).

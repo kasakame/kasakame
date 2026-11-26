@@ -18,7 +18,8 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "check:comments": "node scripts/check-comments.ts"
+    "check:comments": "node scripts/check-comments.ts",
+    "create:issue": "node scripts/create-issue.ts"
   },
   "engines": {
     "node": ">=24.0.0",
