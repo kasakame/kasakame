@@ -19,7 +19,7 @@ Create an issue only for a change that needs a pull request. Project metadata ed
 Use the script from the repository root for every new ticket and epic:
 
 ```bash
-node projects/utils/scripts/create-issue.ts \
+node projects/utils/work-tracking/create-issue.ts \
   --type Task \
   --parent 52 \
   --priority High \
@@ -31,7 +31,7 @@ node projects/utils/scripts/create-issue.ts \
 For an epic, pass the component as the parent:
 
 ```bash
-node projects/utils/scripts/create-issue.ts \
+node projects/utils/work-tracking/create-issue.ts \
   --type Epic \
   --parent 39 \
   --priority High \
@@ -44,18 +44,32 @@ The script validates the parent type, derives `Component`, sets `Priority` and `
 
 ### Web UI
 
-Use the Task, Bug, Feature, or Epic form. The form sets the issue type. After the form opens, set `Component`, `Priority`, and `Effort` in the sidebar, then create the issue. Set the parent from the issue's **Sub-issue** menu: an epic goes under a component, and a ticket goes under an epic.
+Use the Task, Bug, Feature, or Epic form. The form sets the issue type. After creating the issue, set the parent from the **Sub-issue** menu: an epic goes under a component, and a ticket goes under an epic. Then set `Component`, `Priority`, and `Effort` in the sidebar.
 
 The `check-issue` workflow fills a missing or mismatched `Component` from the parent and adds `needs-triage` when the type, parent, `Component`, `Priority`, or `Effort` is missing. The **Needs triage** view lists those issues.
 
 ## Automation
 
-The `check-issue` workflow runs when an issue is opened, edited, retyped, or has a field changed. It runs `projects/utils/scripts/check-issue.ts`, which fills `Component` from the parent chain and keeps the `needs-triage` label in sync. It skips closed issues and `Component` issues.
+The `work-tracking` workflow runs when an issue is opened, reopened, closed, retyped, or has a field changed. It has two jobs. `check-issue` runs `projects/utils/work-tracking/check-issue.ts`, which fills `Component` from the parent chain and keeps the `needs-triage` label in sync. It skips closed issues and `Component` issues. `epic-automation` runs `projects/utils/work-tracking/epic-automation.ts`, which sets the parent epic to `In Progress` or `Done` and reopens a completed epic when it still has open children.
 
-Run it manually for one issue with:
+The project's built-in workflows finish the loop: `Auto-close issue` closes an issue when its `Status` becomes `Done`, and `Item closed` sets `Status` to `Done` when an issue is closed. Keep both enabled.
+
+A field update emits one event per field; the concurrency group keeps the latest run for the issue.
+
+The epic job needs a repository secret `PROJECT_TOKEN`: a fine-grained PAT with Organization Projects read and write plus Issues read. `GITHUB_TOKEN` cannot access Projects. The built-in `Auto-close issue` workflow closes the epic when the script sets `Done`; if it is disabled, the epic stays open at `Done`.
+
+Run the workflow manually for one issue with:
 
 ```bash
-gh workflow run check-issue.yml -f issue_number=<number>
+gh workflow run work-tracking.yml -f issue_number=<number>
+```
+
+## Configuration
+
+Stable project and field IDs and the component issue numbers live in `projects/utils/work-tracking/config.json`. The scripts read it. Validate the configuration against the live project and print the component-to-epic tree with:
+
+```bash
+node projects/utils/work-tracking/show-work-tracking.ts
 ```
 
 ## Pull requests

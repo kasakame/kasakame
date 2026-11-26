@@ -442,7 +442,7 @@ in [`docs/work-tracking.md`](docs/work-tracking.md).
 Create every ticket and epic with the script:
 
 ```bash
-node projects/utils/scripts/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file /tmp/body.md
+node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file /tmp/body.md
 ```
 
 The script validates the parent, derives `Component`, sets `Priority` and
@@ -451,9 +451,13 @@ with raw `gh issue create`.
 
 - Every ticket belongs to an epic; every epic belongs to a component. A ticket
   never sits under another ticket.
-- The `check-issue` workflow fills a missing `Component` from the parent and
-  flags missing `Priority` or `Effort` with `needs-triage`; check the Needs
-  triage view.
+- Stable project and field IDs live in `projects/utils/work-tracking/config.json`;
+  run `node projects/utils/work-tracking/show-work-tracking.ts` to validate the
+  config and list the current epics.
+- The `work-tracking` workflow runs `check-issue` to fill a missing `Component`
+  and flag missing `Priority` or `Effort` with `needs-triage`, and
+  `epic-automation` to keep the parent epic `Status` in sync. The epic job needs
+  the `PROJECT_TOKEN` secret; see [`docs/work-tracking.md`](docs/work-tracking.md).
 - Create issues only for changes that need a PR. Project metadata edits are done
   directly.
 - Before opening a PR, confirm the linked issue has a type, parent, matching
