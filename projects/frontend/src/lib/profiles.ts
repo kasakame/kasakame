@@ -22,14 +22,14 @@ export interface UserSettings {
   theme: string
 }
 
-/** Inputs for saving a profile (see `saveProfile`). */
+/** Inputs for saving a profile; omit a field to keep its stored value. */
 export interface ProfileInput {
   address: string
   chainId: string | undefined
   sign: (payload: string) => Promise<{ signature: Uint8Array; authenticatorData: Uint8Array }>
   signTxn?: SignTxn | undefined
-  displayName: string
-  bio: string
+  displayName?: string
+  bio?: string
   avatarCid?: string
   email?: string
 }
@@ -77,22 +77,24 @@ export async function fetchProfile(address: string): Promise<UserProfile | null>
   if (base === '' || address === '') return null
   const cached = cache.get(address)
   if (cached !== undefined) return cached
-  let profile: UserProfile | null = null
+  let response: Response
   try {
-    const response = await fetch(`${base}/profiles?address=${encodeURIComponent(address)}`)
-    if (response.ok) {
-      const json: unknown = await response.json()
-      if (isRecord(json)) {
-        profile = {
-          address,
-          display_name: textField(json.display_name),
-          bio: textField(json.bio),
-          avatar_cid: textField(json.avatar_cid),
-        }
-      }
-    }
+    response = await fetch(`${base}/profiles?address=${encodeURIComponent(address)}`)
   } catch {
-    profile = null
+    throw new Error('Could not load the profile. Check your connection and try again.')
+  }
+  if (response.status === 404) {
+    cache.set(address, null)
+    return null
+  }
+  if (!response.ok) throw new Error('Could not load the profile. Please try again.')
+  const json: unknown = await response.json()
+  if (!isRecord(json)) throw new Error('Could not load the profile. Please try again.')
+  const profile: UserProfile = {
+    address,
+    display_name: textField(json.display_name),
+    bio: textField(json.bio),
+    avatar_cid: textField(json.avatar_cid),
   }
   cache.set(address, profile)
   return profile
@@ -121,8 +123,9 @@ export async function fetchMyProfile({
 }): Promise<MyProfile | null> {
   const base = backendUrl()
   if (base === '' || address === '') return null
+  let token: string
   try {
-    const token = await ensureSession({
+    token = await ensureSession({
       baseUrl: base,
       address,
       chainId,
@@ -131,19 +134,25 @@ export async function fetchMyProfile({
       statement: 'Sign in to kasakame to manage your profile.',
       action: 'profile fetch',
     })
-    const response = await fetch(`${base}/profiles/me`, { headers: { authorization: `Bearer ${token}` } })
-    if (!response.ok) return null
-    const json: unknown = await response.json()
-    if (!isRecord(json)) return null
-    return {
-      address,
-      display_name: textField(json.display_name),
-      bio: textField(json.bio),
-      avatar_cid: textField(json.avatar_cid),
-      email: textField(json.email),
-    }
   } catch {
-    return null
+    throw new Error('Could not load the profile. Check your connection and try again.')
+  }
+  let response: Response
+  try {
+    response = await fetch(`${base}/profiles/me`, { headers: { authorization: `Bearer ${token}` } })
+  } catch {
+    throw new Error('Could not load the profile. Check your connection and try again.')
+  }
+  if (response.status === 404) return null
+  if (!response.ok) throw new Error('Could not load the profile. Please try again.')
+  const json: unknown = await response.json()
+  if (!isRecord(json)) throw new Error('Could not load the profile. Please try again.')
+  return {
+    address,
+    display_name: textField(json.display_name),
+    bio: textField(json.bio),
+    avatar_cid: textField(json.avatar_cid),
+    email: textField(json.email),
   }
 }
 
@@ -172,9 +181,9 @@ export async function fetchSettings({
   if (base === '' || address === '') return null
   const cached = settingsCache.get(address)
   if (cached !== undefined) return cached
-  let settings: UserSettings | null = null
+  let token: string
   try {
-    const token = await ensureSession({
+    token = await ensureSession({
       baseUrl: base,
       address,
       chainId,
@@ -183,22 +192,23 @@ export async function fetchSettings({
       statement: 'Sign in to kasakame to manage your settings.',
       action: 'settings fetch',
     })
-    const response = await fetch(`${base}/settings`, {
-      headers: { authorization: `Bearer ${token}` },
-    })
-    if (response.ok) {
-      const json: unknown = await response.json()
-      if (isRecord(json)) {
-        settings = {
-          address,
-          notify_funded: json.notify_funded as boolean,
-          notify_failed: json.notify_failed as boolean,
-          theme: json.theme as string,
-        }
-      }
-    }
   } catch {
-    settings = null
+    throw new Error('Could not load settings. Check your connection and try again.')
+  }
+  let response: Response
+  try {
+    response = await fetch(`${base}/settings`, { headers: { authorization: `Bearer ${token}` } })
+  } catch {
+    throw new Error('Could not load settings. Check your connection and try again.')
+  }
+  if (!response.ok) throw new Error('Could not load settings. Please try again.')
+  const json: unknown = await response.json()
+  if (!isRecord(json)) throw new Error('Could not load settings. Please try again.')
+  const settings: UserSettings = {
+    address,
+    notify_funded: json.notify_funded as boolean,
+    notify_failed: json.notify_failed as boolean,
+    theme: json.theme as string,
   }
   settingsCache.set(address, settings)
   return settings
@@ -212,10 +222,10 @@ export async function fetchSettings({
  * @param input.chainId CAIP-2 chain id for the SIWA request, if the network config provides one.
  * @param input.sign Wallet message signer (receives the base64 SIWA payload), returning raw signature bytes.
  * @param input.signTxn Transaction signer for wallets without message signing (universal sign-in fallback).
- * @param input.displayName Display name, blank clears.
- * @param input.bio Bio text, blank clears.
- * @param input.avatarCid Avatar CID, blank clears.
- * @param input.email Email address, blank clears.
+ * @param input.displayName Display name, blank clears; omit to keep.
+ * @param input.bio Bio text, blank clears; omit to keep.
+ * @param input.avatarCid Avatar CID, blank clears; omit to keep.
+ * @param input.email Email address, blank clears; omit to keep.
  * @returns The saved profile.
  */
 export async function saveProfile({
@@ -228,6 +238,13 @@ export async function saveProfile({
   avatarCid,
   email,
 }: ProfileInput): Promise<MyProfile> {
+  const body: Record<string, unknown> = {}
+  if (displayName !== undefined) body.display_name = displayName === '' ? null : displayName
+  if (bio !== undefined) body.bio = bio === '' ? null : bio
+  if (avatarCid !== undefined) body.avatar_cid = avatarCid === '' ? null : avatarCid
+  if (email !== undefined) body.email = email === '' ? null : email
+  if (Object.keys(body).length === 0) throw new Error('Nothing to update.')
+
   const base = backendUrl()
   if (base === '') throw new Error('Profiles need the backend configured (VITE_BACKEND_URL).')
   const token = await ensureSession({
@@ -245,12 +262,7 @@ export async function saveProfile({
     response = await fetch(`${base}/profiles`, {
       method: 'PUT',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        display_name: displayName === '' ? null : displayName,
-        bio: bio === '' ? null : bio,
-        avatar_cid: avatarCid === '' ? null : avatarCid,
-        email: email === '' ? null : email,
-      }),
+      body: JSON.stringify(body),
     })
   } catch {
     throw new Error('Saving failed. Is the backend reachable?')
