@@ -50,7 +50,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   (escape-hatch CLI: signers, commands, networks, self-hosting),
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
   [`testing.md`](docs/testing.md),
-  [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
+  [`work-tracking.md`](docs/work-tracking.md) (hierarchy, issue fields, and
+  views), [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
 - [`README.md`](README.md) - project overview, quick start, and docs map
@@ -428,16 +429,26 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
-The project README is the source of truth for the hierarchy (Component ->
-Epic -> Ticket), the epic lifecycle, the issue-vs-direct-edit rule, priority and
-status definitions, the views, and the commands.
+The hierarchy, native issue fields, priority and effort definitions, views, and
+maintenance rules live in [`docs/work-tracking.md`](docs/work-tracking.md).
 
-- Every ticket belongs to an epic; if no existing epic fits, create one under
-  the component. A ticket never sits under another ticket.
+Create every ticket and epic with the script:
+
+```bash
+node projects/utils/scripts/create-issue.ts --type Task --parent 52 --priority High --effort Medium --title "..." --body-file /tmp/body.md
+```
+
+The script validates the parent, derives `Component`, sets `Priority` and
+`Effort`, adds the issue to the project, and verifies it. Do not create issues
+with raw `gh issue create`.
+
+- Every ticket belongs to an epic; every epic belongs to a component. A ticket
+  never sits under another ticket.
 - Create issues only for changes that need a PR. Project metadata edits are done
-  directly; if one changes the workflow, update the project README.
-- Before opening a PR, set the linked issue's type, parent epic, component, and
-  priority, and sync the epic status. The PR template repeats this check.
+  directly.
+- Before opening a PR, confirm the linked issue has a type, parent, matching
+  `Component`, `Priority`, and `Effort`, and sync the epic status. The PR
+  template repeats this check.
 - Use the Epic and Component forms for those issue types; do not create them as
   Task and retype.
 - Milestones: use the current release milestone from the project; do not create

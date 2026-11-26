@@ -14,6 +14,10 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
 - `scripts/check-comments.ts` - the repo-wide one-line, 200-character comment
   rule; run `npm run check:comments` or `node scripts/check-comments.ts --report`
   for the baseline table.
+- `scripts/create-issue.ts` - the work-tracking issue creation script; it
+  validates the parent, sets the native issue fields, and adds the issue to the
+  project. Run `node projects/utils/scripts/create-issue.ts --help` from the
+  repo root for the arguments.
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.
