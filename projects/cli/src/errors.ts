@@ -18,6 +18,11 @@ const CODE_MESSAGES: Readonly<Record<string, string>> = {
   'not-an-official-kasakame-campaign': 'The campaign is not registered with the official registry.',
   'campaign-is-still-live': 'The campaign is still live.',
   'already-claimed': 'The campaign has already been claimed.',
+  'campaign-not-claimed': 'The campaign vault box is not claimed.',
+  'campaign-balance-outstanding': 'The campaign balance is still outstanding.',
+  'campaign-is-not-failed': 'The campaign is not settled as failed.',
+  'campaign-vault-mismatch': 'The campaign belongs to a different vault.',
+  'unknown-campaign': 'The campaign has no vault box.',
   'insufficient-campaign-balance': 'The campaign balance is too low for that action.',
 }
 
@@ -81,6 +86,12 @@ function fallback(command: CommandName | undefined): string {
       return 'Could not claim the campaign. Please try again.'
     case 'delete':
       return 'Could not delete the campaign. Please try again.'
+    case 'settle-open':
+      return 'Could not settle the campaign. Please try again.'
+    case 'finalize':
+      return 'Could not finalize the campaign. Please try again.'
+    case 'release-claimed':
+      return 'Could not release the campaign vault box. Please try again.'
     case 'pledges':
       return 'Could not read pledges from the indexer. Check your connection and try again.'
     case 'campaigns':

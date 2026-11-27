@@ -17,6 +17,21 @@ describe('cliErrorMessage', () => {
     expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'campaign-max-size' }), 'withdraw')).toBe(
       'The campaign is full and cannot accept more pledges.',
     )
+    expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'campaign-not-claimed' }), 'release-claimed')).toBe(
+      'The campaign vault box is not claimed.',
+    )
+    expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'campaign-balance-outstanding' }), 'release-claimed')).toBe(
+      'The campaign balance is still outstanding.',
+    )
+    expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'campaign-is-not-failed' }), 'finalize')).toBe(
+      'The campaign is not settled as failed.',
+    )
+    expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'campaign-vault-mismatch' }), 'settle-open')).toBe(
+      'The campaign belongs to a different vault.',
+    )
+    expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'unknown-campaign' }), 'finalize')).toBe(
+      'The campaign has no vault box.',
+    )
     expect(cliErrorMessage(new SdkError('chain-state', 'x', { code: 'only-the-creator-can-delete' }), 'delete')).toBe(
       'Only the campaign creator can do that.',
     )
@@ -56,6 +71,9 @@ describe('cliErrorMessage', () => {
       withdraw: 'Could not withdraw the pledges. Please try again.',
       claim: 'Could not claim the campaign. Please try again.',
       delete: 'Could not delete the campaign. Please try again.',
+      'settle-open': 'Could not settle the campaign. Please try again.',
+      finalize: 'Could not finalize the campaign. Please try again.',
+      'release-claimed': 'Could not release the campaign vault box. Please try again.',
       pledges: 'Could not read pledges from the indexer. Check your connection and try again.',
       campaigns: 'Could not read campaigns from the indexer. Check your connection and try again.',
       login: 'Could not connect the wallet. Please try again.',

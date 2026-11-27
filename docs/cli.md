@@ -1,9 +1,10 @@
 # CLI
 
 The kasakame CLI is the escape hatch for pledges and campaigns. It refunds,
-withdraws, claims, and deletes by app ID from a terminal, using a wallet app or
-a local mnemonic. It reads public algod and indexer endpoints and talks to no
-kasakame backend, so an exit never depends on our servers.
+withdraws, claims, deletes, and cleans up vault boxes by app ID from a terminal,
+using a wallet app or a local mnemonic. It reads public algod and indexer
+endpoints and talks to no kasakame backend, so an exit never depends on our
+servers.
 
 Status: the package ships through the `release-cli` workflow; `@kasakame/cli@0.1.0`
 is published on npm. From a checkout, build it with the commands in
@@ -35,6 +36,9 @@ prints its result and exits non-zero on failure.
 | `withdraw <appId>` | Take back your pledges while a campaign is open |
 | `claim <appId>` | Claim a successful campaign as its creator |
 | `delete <appId>` | Delete a campaign and reclaim its deposit |
+| `settle-open <appId>` | Settle a failed campaign whose creator is gone |
+| `finalize <appId>` | Sweep a failed campaign's residual and release its box |
+| `release-claimed <appId>` | Release a claimed campaign's vault box |
 | `login` | Pair a wallet over WalletConnect |
 | `whoami` | Show the signer address |
 | `logout` | Disconnect the stored wallet session |
@@ -133,6 +137,55 @@ the campaign is registered in a Registry, the same approval sends the atomic
 unregister; the campaign requires the unregister immediately before). An
 unregistered campaign's unregister is a no-op, so the same command cleans it up.
 
+### Settle open
+
+`settle-open` is the permissionless recovery for a failed campaign whose creator
+never deletes it. The ClaimsVault reads the campaign's on-chain state and marks
+its box failed, so refunds take the vault path without the creator.
+
+```bash
+kasakame settle-open <appId>
+kasakame settle-open <appId> --dry-run
+```
+
+Any account can run it, and the signer pays only the transaction fee. The
+campaign app must still exist, and the deadline must have passed with
+`raised < goal` (or the tree must be full and short of the goal); the command
+rejects a successful, deleted, or already settled campaign before the wallet is
+touched. Afterwards backers run `refund` as usual.
+
+### Finalize
+
+`finalize` cleans up a settled-failed campaign's vault box. Once the 730-day
+refund window closes, or every pledge has been refunded, it sweeps the residual
+to the vault's sweep target and deletes the box, returning the box minimum
+balance to the vault.
+
+```bash
+kasakame finalize <appId>
+kasakame finalize <appId> --dry-run
+```
+
+It is permissionless and works after the campaign app is deleted. The command
+rejects an open or claimed campaign, and a failed campaign whose residual is
+still refundable, before the wallet is touched. The swept funds go to the
+vault's configured sweep target, not to the signer.
+
+### Release claimed
+
+`release-claimed` frees a claimed campaign's vault box when its creator claimed
+the funds but never deleted the campaign. The box minimum balance returns to the
+vault's account.
+
+```bash
+kasakame release-claimed <appId>
+kasakame release-claimed <appId> --dry-run
+```
+
+It is permissionless and needs a claimed box with nothing outstanding. A missing
+box is already clean, so the command exits successfully without opening the
+wallet. It rejects open and failed campaigns before the wallet is touched.
+
 ## Options
 
 Every command accepts the network, signer, and help flags; the rest apply to
@@ -148,7 +201,7 @@ specific commands.
 | `--address <address>` | reads, mnemonic signer | Inspect this address, or pick the account a 24-word phrase signs for |
 | `--pledge <position>` | refund, withdraw | Act on one live pledge (0-based) |
 | `--all` | refund, withdraw | Act on every live pledge |
-| `--dry-run` | refund, withdraw, claim, delete | Print the plan without submitting |
+| `--dry-run` | refund, withdraw, claim, delete, settle-open, finalize, release-claimed | Print the plan without submitting |
 | `--help`, `-h` | all | Print usage |
 
 `--pledge` and `--all` cannot be combined. `--dry-run` is rejected on reads and
