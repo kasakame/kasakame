@@ -91,7 +91,7 @@ const CreateCampaignForm = ({ onCreated, onCancel }: CreateCampaignFormProps) =>
         setMessage('Wallet session expired. Disconnect and reconnect your wallet, then try again.')
       }
     } else {
-      setMessage(fallback ?? errorMessage(kind, 'create'))
+      setMessage(fallback ?? errorMessage(error, 'create'))
     }
   }
 

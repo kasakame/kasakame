@@ -4,11 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ErrorBoundary from './ErrorBoundary'
 
 describe('ErrorBoundary', () => {
-  // React's DEV error-boundary machinery re-reports deliberately thrown errors
-  // through jsdom's `window` error event (bypassing `console.error`, so a
-  // console spy can't silence it). Marking the event as handled prevents jsdom
-  // from printing noisy "uncaught" stack traces while the boundary still
-  // catches the error and renders the fallback.
+  // React's DEV error-boundary machinery re-reports thrown errors via jsdom's `window` error event; marking it handled silences the noisy "uncaught" traces.
   let cleanup: () => void
 
   beforeEach(() => {

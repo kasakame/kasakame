@@ -1,29 +1,40 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
-import { CREDIT_EXTRA_INNERS } from '@kasakame/constants'
+import { CREDIT_EXTRA_INNERS, MAX_PLEDGE_MICRO_ALGOS, MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import type { TransactionWithSigner } from 'algosdk'
 import { hexToBytes } from 'algosdk'
-import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from '../chain.js'
+import { getSdkConfig, waitForIndexerCatchUp, waitForIndexerCatchUpBestEffort, waitForIndexerRound } from '../chain.js'
 import type { BackerLeaf } from '../claim-tree/index.js'
 import { MAX_TREE_SIZE, clearTreeCache, frontierForPledge, loadTree, pathBlobForRefund, pledgeOpUpIterations } from '../claim-tree/index.js'
 import { registrationBox } from './campaign.js'
 import type { TransactionComposer, WalletSession } from './clients.js'
-import { campaignClientFor, vaultClientFor } from './clients.js'
-import { submitWithFreshProof } from './errors.js'
+import { campaignClientFor, vaultClientFor, withoutGroupId } from './clients.js'
+import type { WriteConfirmation } from './confirmation.js'
+import { writeConfirmation } from './confirmation.js'
+import { SdkError, classifyChainError, logWriteConfirmed, submitWithFreshProof, throwSdkError } from './errors.js'
 import { minimumFee, spendExtraFee } from './fees.js'
 import { vaultAddress, vaultBoxRef } from './vault.js'
 
 /**
- * Build the pledge group without sending it: one atomic `[pay, campaign.pledge, vault.credit]` (payment immediately
- * before the pledge, matching credit immediately after it and last) with a freshly rebuilt frontier. Waits for the indexer to catch up before building proofs (a lagging indexer is the usual cause of stale
- * first attempts, each of which costs the user an approval plus burned fees).
+ * Build the pledge group without sending it: atomic [pay, campaign.pledge, vault.credit] with a freshly rebuilt frontier, after the indexer catches up; lag costs an approval plus fees.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param amountMicroAlgos Pledge amount in microAlgos.
- * @returns The composer holding the group, ready to build or send.
+ * @returns The composer holding the group and the new leaf position.
  */
-async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionComposer> {
+async function buildPledgeGroup(
+  appId: bigint,
+  session: WalletSession,
+  amountMicroAlgos: bigint,
+): Promise<{ composer: TransactionComposer; position: number }> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  if (amountMicroAlgos < MIN_PLEDGE_MICRO_ALGOS || amountMicroAlgos > MAX_PLEDGE_MICRO_ALGOS) {
+    throw new SdkError(
+      'validation',
+      `pledge amount must be between ${String(MIN_PLEDGE_MICRO_ALGOS)} and ${String(MAX_PLEDGE_MICRO_ALGOS)} microAlgos`,
+      { operation: 'pledge', appId },
+    )
+  }
   const minFee = await minimumFee(algorand)
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
@@ -31,7 +42,11 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
   const tree = await loadTree(appId, vaultAppId, vaultAddress())
   const n = BigInt(tree.leaves.length)
   if (n >= MAX_TREE_SIZE) {
-    throw new Error('campaign reached its maximum size; it can no longer accept pledges')
+    throw new SdkError('chain-state', 'campaign reached its maximum size; it can no longer accept pledges', {
+      code: 'campaign-max-size',
+      operation: 'pledge',
+      appId,
+    })
   }
   const campaignClient = campaignClientFor(appId, session)
   const vaultClient = vaultClientFor(session)
@@ -60,12 +75,11 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
       extraFee: microAlgos(CREDIT_EXTRA_INNERS * minFee),
     }),
   )
-  return composer
+  return { composer, position: tree.leaves.length }
 }
 
 /**
- * Build the pledge group without sending it. The transactions come back unsigned with the session signer attached, so
- * an external signer can inspect or replace it before submitting; `pledge` is the build-and-send wrapper.
+ * Build the pledge group without sending it; transactions come back unsigned with the session signer attached, and `pledge` is the build-and-send wrapper.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -73,46 +87,52 @@ async function buildPledgeGroup(appId: bigint, session: WalletSession, amountMic
  * @returns The unsigned group.
  */
 export async function pledgeGroup(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<TransactionWithSigner[]> {
-  return (await buildPledgeGroup(appId, session, amountMicroAlgos)).build().then((built) => built.transactions)
+  const { composer } = await buildPledgeGroup(appId, session, amountMicroAlgos)
+  return withoutGroupId((await composer.build()).transactions)
 }
 
 /**
- * Pledge ALGO: build the group with `pledgeGroup` and send it. Retries once when a concurrent pledge moved the
- * frontier under us.
+ * Pledge ALGO: build the group with `pledgeGroup` and send it, retrying once when a concurrent pledge moved the frontier.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param amountMicroAlgos Pledge amount in microAlgos.
+ * @returns The confirmed transaction ids, round, leaf position, and amount.
  */
-export async function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void> {
-  const attempt = async (): Promise<bigint | undefined> => {
-    const composer = await buildPledgeGroup(appId, session, amountMicroAlgos)
-    await composer.send()
-    return undefined
+export async function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<WriteConfirmation> {
+  const attempt = async (): Promise<WriteConfirmation> => {
+    const { composer, position } = await buildPledgeGroup(appId, session, amountMicroAlgos)
+    const result = await composer.send()
+    return writeConfirmation(result, { position, amount: amountMicroAlgos })
   }
 
-  await submitWithFreshProof(attempt)
+  let confirmation: WriteConfirmation
+  try {
+    confirmation = await submitWithFreshProof(attempt, 'pledge', appId)
+  } catch (error) {
+    throwSdkError(classifyChainError(error, { operation: 'pledge', appId }))
+  }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('pledge', appId, confirmation)
+  return confirmation
 }
 
 /**
- * Withdraw one pledge before the deadline (backer, while the campaign is still open). Waits for the indexer to
- * catch up before rebuilding the path (see pledge), then retries once when a concurrent spend moved the root
- * under us.
+ * Withdraw one pledge before the deadline (backer, while the campaign is open), waiting for the indexer and retrying once when a concurrent spend moved the root.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
  * @param leaf The leaf to spend (from `fetchMyLeaves`).
+ * @returns The confirmed transaction ids, round, position, and amount.
  */
-export async function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void> {
+export async function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation> {
   const { algorand, vaultAppId } = getSdkConfig()
-  // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check),
-  // so register globally like pledge/delete do - otherwise this always throws "No signer found".
+  // The AppClient drops defaultSigner when sender is passed explicitly (string vs Address identity check), so register globally like pledge/delete.
   algorand.account.setSigner(session.address, session.signer)
   const minFee = await minimumFee(algorand)
-  const attempt = async (): Promise<bigint | undefined> => {
+  const attempt = async (): Promise<WriteConfirmation> => {
     await waitForIndexerCatchUp()
     const tree = await loadTree(appId, vaultAppId, vaultAddress())
     const client = campaignClientFor(appId, session)
@@ -128,13 +148,20 @@ export async function cancelPledge(appId: bigint, session: WalletSession, leaf: 
       boxReferences: vaultBoxRef(appId),
       extraFee: microAlgos(spendExtraFee(tree, leaf.position, 2, minFee)),
     })
-    return result.confirmation.confirmedRound
+    return writeConfirmation(result, { position: leaf.position, amount: leaf.amount })
   }
 
-  const confirmedRound = await submitWithFreshProof(attempt)
+  let confirmation: WriteConfirmation
+  try {
+    confirmation = await submitWithFreshProof(attempt, 'cancelPledge', appId)
+  } catch (error) {
+    throwSdkError(classifyChainError(error, { operation: 'cancelPledge', appId }))
+  }
   // Our own write superseded the cache: drop it so the UI reload below refetches.
   clearTreeCache()
-  if (confirmedRound !== undefined) {
-    await waitForIndexerRound(confirmedRound)
+  if (confirmation.confirmedRound !== undefined) {
+    await waitForIndexerRound(confirmation.confirmedRound)
   }
+  logWriteConfirmed('cancelPledge', appId, confirmation)
+  return confirmation
 }

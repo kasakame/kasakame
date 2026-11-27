@@ -1,3 +1,6 @@
 export * from './campaign.js'
+export * from './fees.js'
 export * from './fixture.js'
+export * from './group.js'
+export * from './logging.js'
 export * from './scale.js'

@@ -16,9 +16,7 @@ updates:
           - minor
           - patch
 
-  # One npm entry covers every project. Shared tooling is grouped by dependency
-  # name across directories, so one pull request updates every project that uses
-  # it; project-specific updates stay grouped per directory.
+  # One npm entry covers every project; shared tooling is grouped by name across directories, while project-specific updates stay grouped per directory.
   - package-ecosystem: npm
     directories:
       - /projects/contracts
@@ -89,8 +87,7 @@ updates:
         update-types:
           - minor
           - patch
-      # One pull request for patch and minor security fixes. Major security
-      # fixes stay individual.
+      # One pull request for patch and minor security fixes; major security fixes stay individual.
       security-updates:
         applies-to: security-updates
         patterns:

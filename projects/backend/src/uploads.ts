@@ -16,8 +16,7 @@ function pinataJwt(): string {
 const CONTROL_CHARS = /[\0-\x1F\x7F]/g
 
 /**
- * Sanitize a client-supplied display name. Display-only (Pinata dashboard): the worst case is an ugly name, never
- * a path - nothing is written to disk. Path segments and control characters go; spaces, quotes, and unicode stay.
+ * Sanitize a client-supplied display name for Pinata: strip path segments and control characters, never touches disk.
  *
  * @param raw Raw `filename` query value.
  * @returns The trailing path segment, trimmed and capped, or `'upload'`.

@@ -96,8 +96,7 @@ export async function fetchProfile(address: string): Promise<UserProfile | null>
 }
 
 /**
- * Fetch the caller's settings, cached per address. Null without a backend. Signs in
- * with the caller's wallet (settings reads are authenticated), sharing the session cache.
+ * Fetch the caller's settings, cached per address; null without a backend, signing in to share the session cache.
  *
  * @param input Fetch inputs.
  * @param input.address Backend address.

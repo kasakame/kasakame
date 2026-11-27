@@ -1,9 +1,4 @@
-// Upload a cover image through POST /uploads and print the resulting CID.
-//
-// Usage (from projects/backend):
-//   export $(node scripts/mint-token.mjs)
-//   node scripts/upload-image.mjs path/to/cover.png
-// Prints the CID, the `ipfs://` URI for the create form, and a gateway URL.
+// Upload a cover image through POST /uploads (export a token with scripts/mint-token.mjs first); prints the CID, ipfs:// URI, and gateway URL.
 import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 

@@ -12,7 +12,7 @@ Implements the incremental frontier-Merkle with in-place null-deletion:
 
 Property tests (spec §15):
 
-    * fold == naive tree root for all N < 300
+    * fold == independent recursive root for all N < 300
     * append == naive root over 500 random sequences
     * exhaustive: every leaf pattern at every N <= 12 -- verify, arbitrary
       null sequences, double-null rejection
@@ -37,11 +37,7 @@ def leaf(backer: bytes, amount: int, txid: bytes) -> bytes:
     return H(b"\x01" + backer + amount.to_bytes(8, "big") + txid)
 
 
-# --------------------------------------------------------------------------
-# Canonical left-filled binary tree over positions 0..N-1 (spec §3).
-# Node (l, i) covers [i*2^l, (i+1)*2^l); it exists iff (i+1)*2^l <= N.
-# --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
+# Canonical left-filled binary tree (spec §3): node (l, i) covers [i*2^l, (i+1)*2^l) and exists iff (i+1)*2^l <= N.
 
 
 def build_nodes(leaves):
@@ -86,6 +82,20 @@ def root_of(leaves):
     if n == 0:
         return Z
     return fold(peaks(n, build_nodes(leaves)))
+
+
+def naive_root(leaves):
+    """Recursive root from the binary split, independent of build_nodes/peaks/fold (spec §3)."""
+    n = len(leaves)
+    if n == 0:
+        return Z
+    if n & (n - 1) == 0:
+        if n == 1:
+            return leaves[0]
+        half = n // 2
+        return H(naive_root(leaves[:half]) + naive_root(leaves[half:]))
+    right = n & -n
+    return H(naive_root(leaves[:n - right]) + naive_root(leaves[n - right:]))
 
 
 def append(leaves, new_leaf):
@@ -160,9 +170,7 @@ def null(k, leaves):
     return new_leaves, new_root, calls
 
 
-# --------------------------------------------------------------------------
 # Property tests
-# --------------------------------------------------------------------------
 
 random.seed(20260915)
 
@@ -175,7 +183,7 @@ def test_fold_equals_naive():
     for N in range(1, 300):
         leaves = [rand_leaf() for _ in range(N)]
         nodes = build_nodes(leaves)
-        assert fold(peaks(N, nodes)) == root_of(leaves), N
+        assert fold(peaks(N, nodes)) == naive_root(leaves), N
 
 
 def test_append_matches_naive():

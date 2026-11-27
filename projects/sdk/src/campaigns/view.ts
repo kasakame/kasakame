@@ -51,9 +51,7 @@ export interface CampaignHeader {
 }
 
 /**
- * Derive the three-value display word from a campaign header: `successful` when claimed or goal-reached,
- * `failed` when past the deadline and unfunded, `open` otherwise. Raw `status`/`deleted` stay on the header
- * for consumers that need them (creator claim reminders, audit views).
+ * Derive the three-value display word from a campaign header; raw `status`/`deleted` stay on the header for consumers that need them.
  *
  * @param header Campaign header from `fetchCampaignHeader`.
  * @param nowSeconds Current UNIX timestamp (seconds).
@@ -68,8 +66,7 @@ export function getCampaignStatus(header: CampaignHeader, nowSeconds: bigint): '
 }
 
 /**
- * Map a campaign header to a view model, deriving the display status. Deleted campaigns take this path (see
- * `fetchCampaignHeader`), so every consumer renders the same recovered fields.
+ * Map a campaign header to a view model, deriving the display status; deleted campaigns take this path too, so every consumer renders the same recovered fields.
  *
  * @param header Campaign header, live or recovered from history.
  * @param nowSeconds Current UNIX timestamp (seconds).

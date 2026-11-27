@@ -13,8 +13,7 @@ const REGISTRATION_BOX_PREFIX_BYTE = REGISTRY_BOX_PREFIX.charCodeAt(0)
 const VAULT_BOX_PREFIX_BYTE = VAULT_BOX_PREFIX.charCodeAt(0)
 
 /**
- * Fetch the connected wallet's live pledge total for a campaign: the sum of their unspent leaves. Rebuilt from
- * history (see `claim-tree/`) - there is no balance to read.
+ * Fetch the connected wallet's live pledge total for a campaign: the sum of their unspent leaves, rebuilt from history (see `claim-tree/`).
  *
  * @param appId Campaign application id.
  * @param address Viewer's Algorand address.
@@ -51,8 +50,7 @@ export async function fetchRegisteredCampaignIds(registryId: bigint): Promise<Se
 }
 
 /**
- * Whether a campaign is registered with the configured Registry - the check `ClaimsVault.credit` runs on a campaign's
- * first pledge. Gate pledge actions on it so an unregistered app never produces a doomed transaction.
+ * Whether a campaign is registered - the check `ClaimsVault.credit` runs on a campaign's first pledge; gate pledge actions on it.
  *
  * @param appId Campaign application id.
  * @returns True when the Registry's registration box exists for the app; false when it does not, or when no Registry is
@@ -72,8 +70,7 @@ export async function isRegistered(appId: bigint): Promise<boolean> {
 }
 
 /**
- * Fetch every campaign that has a vault box (the box lives until the campaign settles and its box is released by
- * `notifyDelete` or `finalize`), so deleted-but-unfinalized campaigns surface too.
+ * Fetch every campaign that has a vault box (live until the campaign settles and `notifyDelete` or `finalize` releases it), so deleted-but-unfinalized campaigns surface too.
  *
  * @param vaultId The ClaimsVault application id.
  * @returns Campaign app ids with a vault box.
@@ -97,9 +94,7 @@ async function fetchVaultCampaignIds(vaultId: bigint): Promise<Set<bigint>> {
 }
 
 /**
- * Enumerate every campaign app id worth browsing: every campaign registered with the Registry plus every campaign
- * that has a vault box (campaigns that received at least one pledge, including deleted-but-unfinalized ones whose
- * vault box hasn't been released yet). The union dedupes - a registered campaign with pledges appears once.
+ * Enumerate every campaign app id worth browsing: registered with the Registry plus every campaign with a vault box (pledged, including deleted-but-unfinalized); the union dedupes.
  *
  * @returns The campaign app ids.
  */
@@ -142,9 +137,7 @@ export function clearCachedCampaigns(): void {
 }
 
 /**
- * List all campaigns. With a Registry configured, look each registered id up directly - the unfiltered application
- * scan below works on sandbox-sized chains but never finishes on TestNet-scale chains (tens of thousands of apps,
- * each response carrying full approval programs).
+ * List all campaigns. With a Registry configured, look each registered id up directly; the unfiltered application scan below never finishes on TestNet-scale chains.
  *
  * @param viewerAddress Connected wallet address, if any.
  * @returns The campaigns with the chain timestamp used to derive them.
@@ -152,9 +145,7 @@ export function clearCachedCampaigns(): void {
 export async function listCampaigns(viewerAddress?: string): Promise<{ campaigns: CampaignViewModel[]; nowSeconds: bigint }> {
   const registryId = getSdkConfig().registryAppId
   if (registryId <= 0n) {
-    // No registry: fall back to scanning indexed applications for our global-state keys. There is no app-name filter
-    // on the indexer, so presence of the known keys is the discriminator (docs/frontend.md). Only viable on small
-    // chains.
+    // No registry: fall back to scanning indexed applications for our global-state keys (no app-name filter exists); only viable on small chains (docs/frontend.md).
     const indexer = getSdkConfig().algorand.client.indexer
     const now = await fetchChainTimestamp()
     const applications: algosdk.indexerModels.Application[] = []
@@ -199,8 +190,7 @@ export async function listCampaigns(viewerAddress?: string): Promise<{ campaigns
  * @returns The campaign, or undefined if not found or not a campaign app.
  */
 export async function getCampaign(appId: bigint, nowSeconds: bigint, viewerAddress?: string): Promise<CampaignViewModel | undefined> {
-  // Deleted apps are excluded by default - include them so the detail page can render the deleted state
-  // (backers refund from the vault after deletion).
+  // Deleted apps are excluded by default - include them so the detail page renders the deleted state (backers refund from the vault after deletion).
   const response = await getSdkConfig().algorand.client.indexer.lookupApplications(appId).includeAll(true).do()
   const app = response.application
   if (!app) return undefined

@@ -41,28 +41,7 @@ import {
 } from '@kasakame/constants/source'
 
 /**
- * Campaign - a non-custodial crowdfunding campaign with a frontier-Merkle receipt tree (see
- * docs/claim-tree-protocol.md for the full design and security analysis).
- *
- * One stateful application per campaign. Backers' pledged ALGO goes to the **ClaimsVault** (the pooled refund
- * escrow); the campaign app itself holds no funds at all - not even a creator deposit - so creation costs the creator
- * only the global-schema sponsorship floor on their own account (~0.59 ALGO for the current 2-page program,
- * recovered at `delete()`; see docs/limits.md for the size/MBR table).
- *
- * A backer's receipt is their pledge leaf in the campaign's incremental tree: `leaf = H(0x01 ‖ backer ‖ amount ‖
- * paymentTxId)`, committed at pledge time from the in-group payment (never caller-supplied). The contract stores only
- * the single 32-byte root plus the position count N; callers supply frontiers/paths that the contract authenticates
- * against the stored root. Cancellations and refunds null the leaf in place, and the vault pays out on the campaign's
- * inner instruction - the tree itself is the anti-double-refund state, with no ASA, no boxes, and no per-backer
- * storage on the campaign.
- *
- * Because no backer funds ever sit in the campaign escrow, the creator can finalize (and delete) the campaign in O(1)
- * on **both** paths - after a successful claim, or after a failure, even when backers never act - while the vault
- * keeps paying failed-campaign refunds after the campaign is gone.
- *
- * User actions are top-level only (`Global.callerApplicationId == 0`). The SDK rebuilds a campaign from top-level
- * pledge/refund calls and their block payments; an app-created inner group would look valid on-chain but leave the
- * tree unreadable. The campaign's vault payouts are inner calls in the other direction and stay allowed there.
+ * Campaign - a non-custodial crowdfunding campaign with a frontier-Merkle receipt tree; the escrow holds nothing and actions are top-level only (see docs/claim-tree-protocol.md).
  */
 
 // Status is stored in global state as a uint64.
@@ -76,8 +55,7 @@ const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
 // `Z`, the consumed-leaf marker and the empty-tree root.
 const ZERO_ROOT = Bytes.fromHex(ZERO_ROOT_HEX)
 
-// ARC-4 method selectors for the ClaimsVault methods this contract invokes as inner app calls (computed from the
-// emitted ARC-56 signatures - see smart_contracts/claimsvault/contract.algo.ts; kept in sync by the integration tests).
+// ARC-4 selectors for the ClaimsVault inner calls this contract makes, computed from the emitted ARC-56 (see claimsvault/contract.algo.ts; synced by the integration tests).
 const VAULT_PAY_BACK_SELECTOR = Bytes.fromHex('b0e0eedf') // payBack(uint64,address,uint64)void
 const VAULT_PAY_CLAIM_SELECTOR = Bytes.fromHex('f8c4e0cb') // payClaim(uint64)void
 const VAULT_SETTLE_SELECTOR = Bytes.fromHex('09200848') // settle(uint64,byte[],uint64)void
@@ -86,8 +64,7 @@ const VAULT_NOTIFY_DELETE_SELECTOR = Bytes.fromHex('87060e1d') // notifyDelete(u
 // ARC-4 selector for the top-level Vault.credit(uint64,uint64)void that must immediately follow every pledge.
 const VAULT_CREDIT_SELECTOR = Bytes.fromHex('8027a4bb') // credit(uint64,uint64)void
 
-// ARC-4 selector for Registry.unregister(uint64)void; the previous transaction must be this call when the campaign's vault
-// has a Registry binding, so delisting and deletion are one atomic operation.
+// ARC-4 selector for Registry.unregister(uint64)void; it must be the transaction immediately before delete(), so delisting and deletion are atomic.
 const REGISTRY_UNREGISTER_SELECTOR = Bytes.fromHex('5df32277') // unregister(uint64)void
 
 export class Campaign extends Contract {
@@ -122,10 +99,7 @@ export class Campaign extends Contract {
   n = GlobalState<uint64>({ initialValue: 0 })
 
   /**
-   * Deploy the campaign.
-   *
-   * Unlike the Claim ASA design there is nothing to fund: the escrow never holds funds (pledges go to the vault, and
-   * the tree lives in global state sponsored by the creator's account).
+   * Deploy the campaign (nothing to fund: pledges go to the vault, and the creator's account sponsors the global state).
    *
    * @param vault The ClaimsVault app that holds the backers' pledges.
    * @param title Short campaign title (on-chain).
@@ -163,16 +137,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Append one pledge leaf.
-   *
-   * The caller submits this app call in a group with a payment from their own account **to the vault** (the pooled
-   * refund escrow), followed by the vault's `credit` call in the same group (which records the inflow). The payment
-   * must be the transaction immediately before this call, and the vault's `credit` must be the transaction immediately
-   * after it, for this campaign and the same amount - so a pledge can never be left uncredited. The credit must be a
-   * NoOp call: a ClearState call runs the clear-state program and would bypass the credit method. The caller
-   * supplies the frontier (peaks ascending, 32 bytes each); the contract authenticates it with `fold` against the
-   * stored root, derives the leaf from the in-group payment (`sender ‖ amount ‖ txnId` - never caller-supplied), runs
-   * the merge cascade, and stores the new root. N == 0 takes the empty-frontier branch.
+   * Append one pledge leaf: the in-group payment must immediately precede this call and the vault's NoOp credit must immediately follow it (see docs/claim-tree-protocol.md).
    *
    * @param payment Payment from the caller to the vault.
    * @param frontier The current frontier peaks, ascending level order.
@@ -199,8 +164,7 @@ export class Campaign extends Contract {
     assert(n < Uint64(MAX_TREE_SIZE), 'campaign reached maximum size')
     const p = this.popcount(n)
     assert(frontier.length === p * Uint64(32), 'bad frontier length')
-    // 240 per peak covers the hash plus the fold-loop overhead; 400 covers the rest of this
-    // method and the following vault credit, which shares the group's opcode budget.
+    // 240 per peak covers the hash plus the fold-loop overhead; 400 covers the rest and the vault credit sharing the group budget.
     ensureBudget(p * Uint64(PLEDGE_PEAK_COST) + Uint64(PLEDGE_BASE_COST), OpUpFeeSource.GroupCredit)
 
     const leaf = op.sha512_256(LEAF_DOMAIN.concat(Txn.sender.bytes).concat(op.itob(payment.amount)).concat(payment.txnId))
@@ -218,8 +182,7 @@ export class Campaign extends Contract {
       newRoot = this.foldPeaks(g.concat(frontier.slice(t * Uint64(32))))
     }
 
-    // The matching vault credit must be the very next transaction. This closes the uncredited-pledge griefing path:
-    // a leaf can no longer be created without the vault recording the same payment.
+    // The vault credit must be the very next transaction: a leaf cannot exist without the vault recording the same payment.
     const creditIndex: uint64 = Txn.groupIndex + Uint64(1)
     assert(creditIndex < Global.groupSize, 'credit must follow pledge')
     assert(gtxn.Transaction(creditIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
@@ -238,11 +201,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Withdraw a backer's pledge before the deadline.
-   *
-   * The caller proves their leaf (rebuilt from caller + proof, never trusted) against the stored root; the contract
-   * nulls it, decrements `raised`, and instructs the vault to pay the caller back. A second cancellation of the same
-   * position - or a proof built against any older root - reconstructs a non-stored root and is rejected.
+   * Withdraw a pledge before the deadline: the proof nulls the leaf and the vault pays the caller back, so a position pays at most once.
    *
    * @param k Leaf position to null.
    * @param amount Pledged amount committed by the leaf.
@@ -255,10 +214,8 @@ export class Campaign extends Contract {
     assert(Global.latestTimestamp < this.deadline.value, 'pledging is closed')
     assert(this.status.value === STATUS_OPEN, 'campaign is not open')
 
-    // In the final day, a cancel cannot flip a successful campaign below its goal. A campaign that is already below
-    // its goal is unaffected, as is a cancel that leaves it at or above the goal.
+    // Kickstarter-style goal protection: in the final day, a cancel cannot drop a campaign at or above its goal below the goal.
     if (this.raised.value >= this.goal.value) {
-      // Kickstarter-style goal protection: a final-day cancel cannot drop a successful campaign below its goal.
       assert(
         Global.latestTimestamp + Uint64(FINAL_DAY_SECONDS) < this.deadline.value || amount <= this.raised.value - this.goal.value,
         'cancel would drop below goal in the final day',
@@ -269,11 +226,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Return a backer's pledge after a failed campaign.
-   *
-   * Only after the deadline, when the goal was not reached. Same proof mechanics as `cancelPledge`; the first refund
-   * flips an Open campaign to Failed. Keeps working as long as the campaign app exists, with no creator involvement -
-   * and after `settleOpen`/deletion, backers use the vault's `refund` directly with the same proofs.
+   * Return a pledge after a failed campaign (same proof mechanics as `cancelPledge`); works after deletion via the vault's `refund`.
    *
    * @param k Leaf position to null.
    * @param amount Pledged amount committed by the leaf.
@@ -295,11 +248,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Release the campaign funds to the creator.
-   *
-   * Only the creator may call, only once the deadline has passed and only if the goal was reached. The campaign sets
-   * its status to Claimed and asks the vault (via an inner app call) to pay the creator - the vault derives the payout
-   * (`paidIn − paidOut`, exactly the live pledge total). No backer action is needed after success.
+   * Release the funds to the creator (creator only, after the deadline, goal reached); the vault derives the payout as `paidIn − paidOut`.
    */
   @abimethod()
   claim(): void {
@@ -321,32 +270,14 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Delete the campaign application and close the escrow to the creator.
-   *
-   * Creator only. The escrow never holds backer funds, so deletion is O(1) on **every** path, even when backers never
-   * act:
-   *
-   * - **Claimed** - the vault releases the campaign's box (`notifyDelete`: requires Claimed with inflows fully paid
-   *   out), recovering its minimum balance to the pool.
-   * - **Failed** (or failed in fact: Open with the deadline passed and the goal not reached) - the vault records the
-   *   failed settlement with the final root/N (`settle`), after which backers keep refunding **directly from the
-   *   vault** until the window closes; `finalize` later recovers the box.
-   * - **Pristine** (Open with `raised == 0`) - `settle` runs unconditionally and no-ops when no box exists; if a
-   *   legacy no-pledge inflow created one, it settles to Failed so `finalize` can recover it instead of stranding it.
-   * - **Open with N > 0 but `raised == 0`** (everything cancelled) - settled like a failure; nothing is owed.
-   *
-   * When the campaign's vault has a Registry binding, the previous transaction must be the Registry's `unregister` for this
-   * campaign (a NoOp call - ClearState would bypass it); the Registry enforces the other side (the delete must immediately
-   * follow unregister). Delisting and deletion are therefore one atomic operation, and a raw delete of an official
-   * campaign is rejected.
+   * Delete the campaign and close its account to the creator: O(1) on every path, and the vault keeps paying refunds after deletion (see docs/claim-tree-protocol.md).
    */
   @abimethod({ allowActions: 'DeleteApplication' })
   delete(): void {
     assert(Global.callerApplicationId === Uint64(0), 'must be called from the top level')
     assert(Txn.sender === this.creator.value, 'only the creator can delete')
 
-    // The vault records the official Registry. If this is a real deployment, the previous transaction must be the
-    // Registry's unregister for this campaign, so the registration cannot be left behind by a raw delete.
+    // If this is a real deployment, the previous transaction must be the Registry's unregister for this campaign, so a raw delete cannot leave it behind.
     const vaultRegistry = op.AppGlobal.getExUint64(this.vault.value, Bytes('registry'))
     if (vaultRegistry[1]) {
       assert(Txn.groupIndex > Uint64(0), 'unregister must precede delete')
@@ -361,8 +292,7 @@ export class Campaign extends Contract {
       assert(unregisterCall.appArgs(Uint64(1)) === op.itob(Global.currentApplicationId.id), 'unregister app mismatch')
     }
 
-    // A full tree that has not reached its goal can never succeed: no further leaf can be appended. Treat it as failed
-    // in fact so the creator does not have to wait for the deadline to recover the app MBR.
+    // A full tree that has not reached its goal can never succeed, so treat it as failed in fact and let the creator recover the app MBR early.
     const failedInFact =
       this.status.value === STATUS_OPEN &&
       (Global.latestTimestamp >= this.deadline.value || this.n.value >= Uint64(MAX_TREE_SIZE)) &&
@@ -386,8 +316,7 @@ export class Campaign extends Contract {
         })
         .submit()
     } else {
-      // Always settle (a no-op when no box exists): this also settles stray no-pledge inflows a pristine campaign
-      // cannot see, so they become finalizable instead of stranded.
+      // Always settle (a no-op without a box): this also settles stray no-pledge inflows a pristine campaign cannot see, so they become finalizable.
       itxn
         .applicationCall({
           appId: this.vault.value,
@@ -413,11 +342,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Verify a caller's leaf proof against the stored root, null the leaf, decrement `raised`, and pay the caller back
-   * via the vault. Shared by `cancelPledge` and `refund` (their guards differ; the spend mechanics are identical).
-   *
-   * A second spend of the same position - or a proof built against any older root - reconstructs a non-stored root
-   * and is rejected, so no leaf can ever pay twice.
+   * Verify the caller's proof against the stored root, null the leaf, decrement `raised`, and pay them back via the vault (shared by `cancelPledge` and `refund`).
    *
    * @param k Leaf position to null.
    * @param amount Pledged amount committed by the leaf.
@@ -430,8 +355,7 @@ export class Campaign extends Contract {
     const n = this.n.value
     assert(k < n, 'unknown position')
 
-    // Reserve the whole spend from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
-    // base budget. The blob length is validated below, and an underfunded group fails atomically.
+    // Reserve the whole spend from the blob length before pathLen/popcount can exhaust the 700-op base budget; the length is validated below.
     ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
@@ -462,8 +386,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * ARC-4-encode a byte string for raw inner app args: uint16 big-endian length prefix + bytes. (Static types like
-   * `address` need no prefix; dynamic `byte[]` does - the callee's ABI router strips it.)
+   * ARC-4-encode a dynamic `byte[]` for raw inner app args: uint16 big-endian length prefix plus the bytes.
    *
    * @param value The bytes to encode.
    * @returns The length-prefixed encoding.
@@ -484,8 +407,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Test the lowest bit (the PuyaTs arithmetic operators cover `+ - *` and comparisons only - shifts and bitwise
-   * operators fall back to JS `number` semantics, so this helper uses `op.shr`/`op.shl` instead of `& 1`).
+   * Test the lowest bit with `op.shr`/`op.shl`: PuyaTs arithmetic covers `+ - *` and comparisons, while bitwise operators fall back to JS `number` semantics.
    *
    * @param n The value to test.
    * @returns True when `n` is odd.
@@ -535,8 +457,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Within-peak path length for position k at size N: the first level whose sibling block extends past N.
-   * Returns at the first missing level, so the cost is O(r), not O(64).
+   * Within-peak path length for position k at size N - the first level whose sibling block extends past N (cost O(r), not O(64)).
    *
    * @param n Tree size (positions ever appended).
    * @param k Leaf position.
@@ -579,8 +500,7 @@ export class Campaign extends Contract {
   }
 
   /**
-   * Recombine a leaf value along its path into the root: within-peak siblings by direction bit, then
-   * H(top ‖ acc), then lower peaks descending.
+   * Recombine a leaf value along its path into the root: within-peak siblings by direction bit, then H(top ‖ acc), then lower peaks descending.
    *
    * @param start The leaf value (genuine leaf to verify, Z to null).
    * @param k Leaf position.

@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "lastVerified": "2026-11-26",
+  "org": "kasakame",
+  "repo": "kasakame/kasakame",
+  "project": {
+    "owner": "kasakame",
+    "title": "KasaKame",
+    "number": 1,
+    "id": "PVT_kwDOFH_bj84BqKQm",
+    "statusField": {
+      "id": "PVTSSF_lADOFH_bj84BqKQmzhoilEM",
+      "options": {
+        "Todo": "f75ad846",
+        "In Progress": "47fc9ee4",
+        "Done": "98236657"
+      }
+    }
+  },
+  "issueFields": {
+    "Component": {
+      "id": "IFSS_kgDOAwJCtw",
+      "options": {
+        "contracts": "IFSSO_kgDOBUS7Tw",
+        "frontend": "IFSSO_kgDOBUS7UA",
+        "sdk": "IFSSO_kgDOBUS7UQ",
+        "cli": "IFSSO_kgDOBUS7Ug",
+        "backend": "IFSSO_kgDOBUS7Uw",
+        "ci": "IFSSO_kgDOBUS7VA",
+        "infra": "IFSSO_kgDOBUS7VQ",
+        "docs": "IFSSO_kgDOBUS7Vg",
+        "maintenance": "IFSSO_kgDOBUS7Vw"
+      }
+    },
+    "Priority": {
+      "id": "IFSS_kgDOAuR0JQ",
+      "options": {
+        "P1": "IFSSO_kgDOBRBJGQ",
+        "P2": "IFSSO_kgDOBRBJGg",
+        "P3": "IFSSO_kgDOBRBJHw"
+      }
+    },
+    "Effort": {
+      "id": "IFSS_kgDOAuR0KQ",
+      "options": {
+        "High": "IFSSO_kgDOBRBJIQ",
+        "Medium": "IFSSO_kgDOBRBJIg",
+        "Low": "IFSSO_kgDOBRBJIw"
+      }
+    }
+  },
+  "components": {
+    "contracts": 37,
+    "frontend": 38,
+    "sdk": 39,
+    "cli": 40,
+    "backend": 41,
+    "ci": 42,
+    "infra": 43,
+    "docs": 44,
+    "maintenance": 45
+  }
+}

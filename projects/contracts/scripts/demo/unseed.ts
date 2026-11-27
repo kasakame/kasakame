@@ -3,16 +3,7 @@ import { ABIMethod, OnApplicationComplete } from 'algosdk'
 import { clearSeedState, isLocalNet, readSeedState, vaultBoxName, writeSeedState, type SeedEntry } from './state'
 
 /**
- * Remove campaigns created by `seed.ts`: creator-signed `unregister()` then `delete()` in one atomic group.
- * Unregister runs first because it reads the campaign's on-chain state, which a deleted app cannot provide; the group
- * drops the campaign from the browse list and recovers the registration deposit. An unregistered campaign's unregister
- * is a no-op, so the same group still deletes it. Reads `.seed-state.<network>.json` and clears entries that fully clean
- * up; anything left (e.g. a campaign that still has live pledges) is reported for a later retry after its deadline
- * passes.
- *
- * Same environment rules as the seed script: `npm run unseed:localnet` loads `.env.localnet`, `npm run unseed:testnet` loads `.env.testnet`.
- *
- * Usage: `npm run unseed:localnet` (the Registry and vault ids come from `.env.localnet`; `npm run unseed:testnet` reads `.env.testnet`)
+ * Remove campaigns created by `seed.ts` with a creator-signed atomic `[unregister, delete]` group and clear them from the seed state.
  */
 
 void (async () => {

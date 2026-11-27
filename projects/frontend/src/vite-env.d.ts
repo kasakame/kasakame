@@ -19,6 +19,8 @@ interface ImportMetaEnv {
   readonly VITE_KMD_WALLET: string
 
   readonly VITE_BACKEND_URL: string
+
+  readonly VITE_LOG_LEVEL?: string
 }
 
 interface ImportMeta {

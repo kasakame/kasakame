@@ -8,6 +8,15 @@ import { CampaignFactory } from '../../src/generated/CampaignClient.js'
 import { ClaimsVaultFactory } from '../../src/generated/ClaimsVaultClient.js'
 import { RegistryFactory } from '../../src/generated/RegistryClient.js'
 import { configureSdk, type WalletSession } from '../../src/index.js'
+import { testSdkLogger } from './logging.js'
+
+/** Deployment overrides for the platform behind the SDK session. */
+export interface SdkStackOptions {
+  /** Bind the vault to the Registry. Defaults to true. */
+  bindVault?: boolean
+  /** Campaign program hash committed to the Registry. Defaults to the generated Campaign spec hash. */
+  campaignProgramHash?: Uint8Array
+}
 
 /** The deployed Registry + vault and the SDK session they are configured for. */
 export interface SdkStack {
@@ -26,13 +35,13 @@ export interface SdkStack {
 }
 
 /**
- * Start a fresh fixture scope, deploy the Registry + ClaimsVault from the generated clients' ARC-56 bytecode, and
- * configure the SDK against them.
+ * Start a fresh fixture scope, deploy the Registry + ClaimsVault from the generated clients' ARC-56 bytecode, and configure the SDK against them.
  *
  * @param fixture The Algorand fixture.
+ * @param options Deployment overrides.
  * @returns The configured stack.
  */
-export async function setupSdkStack(fixture: AlgorandFixture): Promise<SdkStack> {
+export async function setupSdkStack(fixture: AlgorandFixture, options: SdkStackOptions = {}): Promise<SdkStack> {
   await fixture.newScope()
   const algorand = fixture.context.algorand
   const minFee = BigInt((await algorand.getSuggestedParams()).minFee)
@@ -51,10 +60,11 @@ export async function setupSdkStack(fixture: AlgorandFixture): Promise<SdkStack>
     owner,
     sweepTarget: ownerAddress,
     vaultWindowSeconds: BigInt(MIN_REFUND_WINDOW_SECONDS),
-    campaignProgramHash: specProgramHash(campaignFactory.appSpec, 'Campaign'),
+    campaignProgramHash: options.campaignProgramHash ?? specProgramHash(campaignFactory.appSpec, 'Campaign'),
+    bindVault: options.bindVault ?? true,
   })
 
-  configureSdk({ algorand, registryAppId: registry.appId, vaultAppId: vault.appId })
+  configureSdk({ algorand, registryAppId: registry.appId, vaultAppId: vault.appId }, testSdkLogger())
   return {
     algorand,
     minFee,

@@ -45,10 +45,7 @@ function pickUnspent(random: () => number, leaves: Leaf[]): number | undefined {
 }
 
 /**
- * Run one reproducible pledge/cancel/refund/finalize sequence against a fresh campaign.
- *
- * The shared pledge/spend helpers already assert the oracle root/N/raised and the vault box after every step; this
- * wrapper only chooses the actions and adds the seed and ordered action list to a failure.
+ * Run one reproducible pledge/cancel/refund/finalize sequence; the shared helpers assert the oracle and vault box at each step.
  *
  * @param fixture The LocalNet fixture.
  * @param stack The deployed platform stack.

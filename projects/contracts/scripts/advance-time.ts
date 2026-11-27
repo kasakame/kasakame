@@ -1,17 +1,7 @@
 import { AlgorandClient, microAlgos } from '@algorandfoundation/algokit-utils'
 
 /**
- * Move the LocalNet chain clock forward (devmode block-offset timestamp) and mine a block at the new time.
- *
- * LocalNet only - never run against TestNet/MainNet. Used to expire campaign
- * deadlines (or refund windows) while testing the UI by hand.
- *
- * Usage: `SECONDS=<offset> npm run localnet:advance`
- *
- * `SECONDS` replaces the current offset (it does not add to it); `SECONDS=0`
- * resets the clock to real time. The offset persists on the sandbox until
- * changed - new blocks keep the shifted time, so campaigns created afterwards
- * use it as their baseline. Prints the resulting chain time.
+ * Moves the LocalNet clock by `SECONDS` (replaces the current offset; 0 resets) and mines a block; LocalNet only.
  */
 void (async () => {
   const seconds = process.env.SECONDS
@@ -26,7 +16,7 @@ void (async () => {
   await algorand.send.payment({ sender: dispenser.addr, receiver: dispenser.addr, amount: microAlgos(1000n) })
 
   const status = await algorand.client.algod.status().do()
-  const block = await algorand.client.algod.block(status.lastRound).do()
+  const block = await algorand.client.algod.block(status.lastRound).headerOnly(true).do()
   console.log(
     `round ${String(status.lastRound)} chain time: ${new Date(Number(block.block.header.timestamp) * 1000).toISOString()} (offset ${seconds}s)`,
   )
