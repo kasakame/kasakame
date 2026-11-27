@@ -642,7 +642,9 @@ describe('CampaignDetail', () => {
     useWalletMock.mockReturnValue({ activeAddress: 'OTHER', activeWallet: { disconnect: disconnectMock }, transactionSigner: {} })
     rerender(<CampaignDetail appId={42n} onBack={() => {}} />)
 
-    await waitFor(() => expect(screen.queryByText('Refund my pledge')).not.toBeInTheDocument())
+    await waitFor(() => {
+      expect(screen.queryByText('Refund my pledge')).not.toBeInTheDocument()
+    })
   })
 
   it('does not show leaves fetched for a previous wallet', async () => {
