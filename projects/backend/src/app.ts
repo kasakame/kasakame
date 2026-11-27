@@ -1,10 +1,12 @@
 import algosdk from 'algosdk'
-import Fastify from 'fastify'
+import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify'
 import { authenticate, createChallenge, verifyChallenge, verifyTransactionChallenge } from './auth.js'
-import { getProfile, getSettings, upsertProfile, upsertSettings } from './profiles.js'
+import { getProfile, getPublicProfile, getSettings, upsertProfile, upsertSettings } from './profiles.js'
 import { PinningError, pinImage, pinJson, safeFilename } from './uploads.js'
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+const CHALLENGE_WINDOW_MS = 60 * 1000
+const CHALLENGE_MAX = 30
 
 /**
  * Build the Fastify application with all routes. Exported for inject-based tests.
@@ -13,9 +15,30 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024
  */
 export function buildApp() {
   const app = Fastify({ logger: true })
+  // shortcut: per-process fixed window, move to a shared store when the backend runs multiple instances
+  const challengeHits = new Map<string, { count: number; resetAt: number }>()
+  let lastSweep = 0
+  const limitChallenge = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const now = Date.now()
+    if (now - lastSweep >= CHALLENGE_WINDOW_MS) {
+      for (const [key, hit] of challengeHits) {
+        if (hit.resetAt <= now) challengeHits.delete(key)
+      }
+      lastSweep = now
+    }
+    const hit = challengeHits.get(request.ip)
+    if (hit === undefined || hit.resetAt <= now) {
+      challengeHits.set(request.ip, { count: 1, resetAt: now + CHALLENGE_WINDOW_MS })
+      return
+    }
+    if (hit.count >= CHALLENGE_MAX) {
+      await reply.code(429).send({ error: 'too many challenge requests' })
+      return
+    }
+    hit.count += 1
+  }
 
-  // Browsers call the API cross-origin (frontend :5173 -> backend :3001). Auth rides on Bearer headers, not
-  // cookies, so a wildcard origin is sufficient - no credentials mode involved.
+  // Cross-origin browser calls with Bearer auth (no cookies), so a wildcard origin is safe.
   app.addHook('onSend', async (_request, reply, payload) => {
     reply.header('access-control-allow-origin', '*')
     reply.header('access-control-allow-methods', 'GET, POST, OPTIONS')
@@ -31,7 +54,7 @@ export function buildApp() {
     return { status: 'ok' }
   })
 
-  app.post<{ Body: { address: unknown } }>('/auth/challenge', async (request, reply) => {
+  app.post<{ Body: { address: unknown } }>('/auth/challenge', { preHandler: limitChallenge }, async (request, reply) => {
     if (typeof request.body.address !== 'string' || !algosdk.isValidAddress(request.body.address)) {
       await reply.code(400).send({ error: 'a valid address is required' })
       return
@@ -83,7 +106,17 @@ export function buildApp() {
       await reply.code(400).send({ error: 'address is required' })
       return
     }
-    const profile = await getProfile(address)
+    const profile = await getPublicProfile(address)
+    if (profile === null) {
+      await reply.code(404).send({ error: 'profile not found' })
+      return
+    }
+    await reply.send(profile)
+  })
+
+  // Owner-only: the email is never part of the public profile response.
+  app.get('/profiles/me', { preHandler: authenticate }, async (request, reply) => {
+    const profile = await getProfile(request.address as string)
     if (profile === null) {
       await reply.code(404).send({ error: 'profile not found' })
       return
@@ -116,8 +149,7 @@ export function buildApp() {
     done(null, body)
   })
 
-  // Authenticated: pinning spends the platform's Pinata quota.
-  // The image/* parser above only runs when that content-type is present, so the Headers generic holds at runtime.
+  // Authenticated (Pinata quota); the image/* parser above only runs for that content type, so the Headers generic holds.
   app.post<{ Body: Uint8Array<ArrayBuffer>; Headers: { 'content-type': string }; Querystring: { filename?: unknown } }>(
     '/uploads',
     { preHandler: authenticate, bodyLimit: MAX_UPLOAD_BYTES },

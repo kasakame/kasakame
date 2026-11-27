@@ -1,3 +1,4 @@
+import { SdkError } from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { run } from './cli.js'
 
@@ -214,6 +215,22 @@ describe('run', () => {
     loginMock.mockRejectedValue('relay down')
 
     expect(await run(['login'])).toBe(1)
-    expect(console.error).toHaveBeenCalledWith('Error: relay down')
+    expect(console.error).toHaveBeenCalledWith('Error: Could not connect the wallet. Please try again.')
+  })
+
+  it('maps SDK failures and hides the raw chain message by default', async () => {
+    runClaimMock.mockRejectedValue(new SdkError('stale-proof', 'transaction ABC: logic eval error: proof does not match root'))
+
+    expect(await run(['claim', '1'])).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Error: Another pledge or refund landed first. Retry the command.')
+    expect(console.error).not.toHaveBeenCalledWith(expect.stringContaining('logic eval error'))
+  })
+
+  it('prints the raw SDK message only at debug level', async () => {
+    runClaimMock.mockRejectedValue(new SdkError('network', 'fetch failed'))
+
+    expect(await run(['claim', '1', '--log-level', 'debug'])).toBe(1)
+    expect(console.error).toHaveBeenCalledWith('Error: Could not reach the chain. Check your connection and try again.')
+    expect(console.error).toHaveBeenCalledWith('[detail] fetch failed')
   })
 })

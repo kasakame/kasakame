@@ -9,23 +9,7 @@ import { CAMPAIGNS_LOCALNET, CAMPAIGNS_TESTNET } from './campaigns'
 import { STATE_PATH, appIdBytes, isLocalNet, writeSeedState, type SeedEntry } from './state'
 
 /**
- * Seed demo `Campaign` applications so the frontend has data to render.
- *
- * Requires the Registry (`REGISTRY_APP_ID`) and the ClaimsVault (`VAULT_APP_ID`) to be deployed. Creates one campaign per wallet below,
- * runs the setup chain (create → register), and pledges to a couple of them from a backer wallet so the list shows partial progress.
- * Each campaign gets at most one pledge, so the frontier is always empty.
- *
- * `npm run seed:localnet` targets LocalNet (`AlgorandClient.defaultLocalNet()`, auto-created KMD wallets) and loads
- * `.env.localnet`; `npm run seed:testnet` loads `.env.testnet`, where accounts come from `<NAME>_MNEMONIC` env vars
- * (`BACKER_A`, `ALICE`, `BOB`, `CAROL`, `DAVE`) and must be pre-funded. TestNet amounts are smaller (faucet-friendly).
- *
- * Created campaigns are recorded in `.seed-state.<network>.json` (gitignored) for `unseed.ts`.
- *
- * Metadata URIs default to `ipfs://seed/<creator>` placeholders. Override per campaign (in table order,
- * comma-separated) with `SEED_METADATA_URIS`, e.g. real pins from `scripts/demo/metadata/cids.json`:
- * `SEED_METADATA_URIS=ipfs://bafkreiAAA,ipfs://bafkreiBBB npm run seed`.
- *
- * Usage: `npm run seed:localnet` (the Registry and vault ids come from `.env.localnet`; `npm run seed:testnet` reads `.env.testnet`)
+ * Seed demo `Campaign` apps; `SEED_METADATA_URIS` overrides the default `ipfs://seed/<creator>` metadata in table order.
  */
 
 const SPEC_PATH = path.resolve(__dirname, '../../smart_contracts/artifacts/campaign/Campaign.arc56.json')
@@ -92,8 +76,7 @@ void (async () => {
 
     let pledged = '-'
     if (c.pledgeAlgo > 0) {
-      // Pledge through the real group [pay, campaign.pledge, vault.credit]. Each campaign gets a single pledge, so
-      // the frontier is always empty (N == 0 takes the empty-frontier branch).
+      // Real group [pay, campaign.pledge, vault.credit]; one pledge each keeps the frontier empty (N == 0).
       const amount = toMicroAlgos(c.pledgeAlgo)
       const pay = await algorand.createTransaction.payment({
         sender: backer.addr,

@@ -1,5 +1,5 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
-import type { TransactionSigner } from 'algosdk'
+import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
 import { getSdkConfig } from '../chain.js'
 import { CampaignClient } from '../generated/CampaignClient.js'
 import { ClaimsVaultClient } from '../generated/ClaimsVaultClient.js'
@@ -11,6 +11,17 @@ export interface WalletSession {
 }
 
 export type TransactionComposer = ReturnType<AlgorandClient['newGroup']>
+
+/**
+ * Detach built transactions from their composer's group id so an external composer can regroup and sign them.
+ *
+ * @param transactions The built transactions.
+ * @returns The same transactions, ready for `addTransaction`.
+ */
+export function withoutGroupId(transactions: TransactionWithSigner[]): TransactionWithSigner[] {
+  for (const transaction of transactions) delete transaction.txn.group
+  return transactions
+}
 
 /**
  * A campaign client bound to the session's sender and signer.

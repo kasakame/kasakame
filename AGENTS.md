@@ -50,7 +50,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   (escape-hatch CLI: signers, commands, networks, self-hosting),
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
   [`testing.md`](docs/testing.md),
-  [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
+  [`work-tracking.md`](docs/work-tracking.md) (hierarchy, issue fields, and
+  views), [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
 - [`README.md`](README.md) - project overview, quick start, and docs map
@@ -65,6 +66,7 @@ algokit localnet start           # start algod + indexer (Docker)
 
 npx --yes markdownlint-cli2@0.23.2        # markdownlint across all docs (add --fix to autofix)
 git ls-files -z '*.sh' '*.bash' | xargs -0 -r shellcheck  # ShellCheck all tracked shell scripts
+node projects/utils/scripts/check-comments.ts  # one-line/200-char comment rule (--report for the baseline)
 
 cd projects/contracts
 npm run build                    # compile contracts + generate typed clients
@@ -72,6 +74,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint (also: npm run lint:fix)
 npm run format                   # Prettier check (also: npm run format:fix)
 npm run test:integration         # LocalNet integration lane (PR gate)
+npm run test:integration:logs    # same lane with AlgoKit logs (KASAKAME_TEST_LOG=debug)
 npm run test:cap:failed          # cap-scale failed campaign (heavy-tests workflow, CI only)
 npm run test:cap:claimed         # cap-scale claimed campaign (heavy-tests workflow, CI only)
 npm run localnet:advance         # shift the LocalNet clock (SECONDS=...)
@@ -104,6 +107,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
 npm run test:integration         # LocalNet (requires algokit localnet start + generated clients for the target contracts)
+npm run test:integration:logs    # same lane with AlgoKit logs (KASAKAME_TEST_LOG=debug)
 
 cd ../cli
 npm run build                    # tsc emit to dist
@@ -127,11 +131,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- **Issue first, then branch, then PR.** Create the issue before the branch, then
-  create the branch with `gh issue develop <N> --name type/N-slug --checkout`, then
-  open the PR from it. The linked branch attaches the PR to the issue and closes
-  it on merge, so no `Closes`/`Fixes` keyword is needed. Never push to `main`. Do
-  not create worktrees or merge a PR without explicit approval.
+- **Issue first, then branch, then PR.** Create the issue before the branch. Create
+  the branch with `gh issue develop <N> --name type/N-slug --checkout`; the linked
+  branch closes the issue on merge. If the branch is not linked, add `Closes #N`
+  to the PR body. Never push to `main`. Do not create worktrees or merge a PR
+  without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Preserve the six protocol requirements.** Any change must keep the A–F scorecard in
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) §18 satisfied; update the scorecard in the
@@ -167,7 +171,7 @@ the product contract. The pinned values and the AVM limits are in
   [`docs/limits.md`](docs/limits.md#measure-the-current-sizes).
 - **The size budget is pinned.** `npm run test:size` asserts the compiled bytes,
   pages, global schema, and app MBR in
-  `test/utils/size-budget.fixture.ts`; it runs in the `compile-contracts` CI
+  `test/utils/contract-sizes.ts`; it runs in the `compile-contracts` CI
   job after `npm run build`. Update the snapshot and `docs/limits.md` together.
 - **The product input bounds are pinned.** Goal, pledge, refund window, and
   registration deposit bounds live in [`docs/limits.md`](docs/limits.md) and the
@@ -233,6 +237,13 @@ the product contract. The pinned values and the AVM limits are in
   that source. `dist` is committed: rebuild it with `src` and commit both in the
   same change; `check-constants` rebuilds and fails when the committed output
   drifts.
+- **Comments carry one line of prose.** One line is enough. If it needs two,
+  reconsider whether it is needed at all. Consecutive `//`/`#` comments and
+  block comments stay on one line and at most 200 characters; JSDoc
+  `@param`/`@returns` tags may stack. Run
+  `node projects/utils/scripts/check-comments.ts` (or `npm run check:comments` in
+  `projects/utils`); `--report` prints the per-area baseline. Generated output
+  and commented-out config assignments (`# KEY=`) are skipped.
 - **Generated files are gitignored.** `smart_contracts/artifacts/` (compiled TEAL, specs,
   `*Client.ts`) and the SDK's `src/generated/` clients are build outputs - never edit or
   commit them. Rebuild instead (`npm run build` in `projects/contracts`; `npm run codegen` in
@@ -371,6 +382,14 @@ the product contract. The pinned values and the AVM limits are in
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
+- Test naming: `*.spec.ts(x)` for offline/unit tests, `test/NN-*.test.ts` for
+  LocalNet integration, `test/utils/` for fixtures. There is no 1:1 source/test
+  rule; behavior and coverage decide.
+- Test suites configure AlgoKit logging through `@kasakame/utils/testing` and
+  stay silent by default. Use `KASAKAME_TEST_LOG=info|debug` (or
+  `npm run test:integration:logs`) when diagnosing a failure; don't leave
+  `console.log` calls in tests (the cap-scale progress heartbeat is the
+  exception).
 - Add or update tests in the same change set as the code they cover.
 
 ## Definition of done
@@ -400,9 +419,10 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
   - The title is the change name in Conventional Commit form.
-  - List the issue in the **Related issues** section, for example `#N`. The
+  - List the issue in the **Related issue** section, for example `#N`. A
     `gh issue develop` branch links the PR and closes the issue on merge; do not
-    add a `Closes`/`Fixes` keyword. Close it after merge only if it is still open.
+    add a `Closes`/`Fixes` keyword in that case. Close it after merge only if it
+    is still open.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
   - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
     directly.
@@ -410,16 +430,40 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
-The project README is the source of truth for the hierarchy (Component ->
-Epic -> Ticket), the epic lifecycle, the issue-vs-direct-edit rule, priority and
-status definitions, the views, and the commands.
+The project README is the source of truth for the hierarchy, field definitions,
+views, and read recipes. Read it with:
 
-- Every ticket belongs to an epic; if no existing epic fits, create one under
-  the component. A ticket never sits under another ticket.
+```bash
+gh project view 1 --owner kasakame --format json --jq .readme
+```
+
+The creation workflow, automation, verification, and maintenance commands live
+in [`docs/work-tracking.md`](docs/work-tracking.md).
+
+Create every ticket and epic with the script:
+
+```bash
+node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority P2 --effort Medium --title "..." --body-file /tmp/body.md
+```
+
+The script validates the parent, derives `Component`, sets `Priority` and
+`Effort`, adds the issue to the project, and verifies it. Do not create issues
+with raw `gh issue create`.
+
+- Every ticket belongs to an epic; every epic belongs to a component. A ticket
+  never sits under another ticket.
+- Stable project and field IDs live in `projects/utils/work-tracking/config.json`;
+  run `node projects/utils/work-tracking/show-work-tracking.ts` to validate the
+  config and list the current epics.
+- The `work-tracking` workflow runs `check-issue` to fill a missing `Component`
+  and flag missing `Priority` or `Effort` with `needs-triage`, and
+  `epic-automation` to keep the parent epic `Status` in sync. The epic job needs
+  the `PROJECT_TOKEN` secret; see [`docs/work-tracking.md`](docs/work-tracking.md).
 - Create issues only for changes that need a PR. Project metadata edits are done
-  directly; if one changes the workflow, update the project README.
-- Before opening a PR, set the linked issue's type, parent epic, component, and
-  priority, and sync the epic status. The PR template repeats this check.
+  directly.
+- Before opening a PR, confirm the linked issue has a type, parent, matching
+  `Component`, `Priority`, and `Effort`, and sync the epic status. The PR
+  template repeats this check.
 - Use the Epic and Component forms for those issue types; do not create them as
   Task and retype.
 - Milestones: use the current release milestone from the project; do not create

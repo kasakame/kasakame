@@ -6,8 +6,7 @@ import { mnemonicToSeedSync } from 'bip39'
 
 type XhdWalletModule = typeof XhdWalletApi
 
-// CommonJS transpilation of dynamic imports can turn them into `require`, which cannot load this ESM-only
-// package; a native dynamic import created outside the downleveling can.
+// CommonJS downleveling turns dynamic imports into `require`, which cannot load this ESM-only package.
 // eslint-disable-next-line @typescript-eslint/no-implied-eval
 const nativeImport = new Function('specifier', 'return import(specifier)') as (specifier: string) => Promise<XhdWalletModule>
 
@@ -20,11 +19,7 @@ async function loadXhdWallet(): Promise<XhdWalletModule> {
 }
 
 /**
- * Derives the Algorand account behind a 24-word Pera Universal Wallet passphrase (BIP-39 HD, ARC-52).
- *
- * The passphrase is scanned across both ARC-52 derivation modes and the first 50 account indexes until the derived
- * address matches `expectedAddress`; the matching key signs with its raw Ed25519 key material (the xHD scalar is not
- * representable as an Algo25 mnemonic).
+ * Derives a Pera Universal Wallet account (BIP-39 HD, ARC-52); the xHD key signs raw Ed25519, not Algo25.
  *
  * @param mnemonic - the 24-word BIP-39 passphrase
  * @param expectedAddress - the address the passphrase must derive to
@@ -54,9 +49,7 @@ export async function peraUniversalWalletAccount(
 }
 
 /**
- * Resolves the deployer account for every deployer. On LocalNet this auto-creates and funds a KMD wallet called
- * `DEPLOYER`; elsewhere it reads `DEPLOYER_MNEMONIC` - a 25-word Algo25 phrase, or a 24-word Pera Universal Wallet
- * passphrase together with `DEPLOYER_ADDRESS` (registering a raw signer for the derived account).
+ * Resolves the deployer: a funded `DEPLOYER` wallet on LocalNet, else `DEPLOYER_MNEMONIC` (+ `DEPLOYER_ADDRESS` for a Pera phrase).
  *
  * @param algorand - client whose account manager receives the derived signer
  * @returns the deployer address

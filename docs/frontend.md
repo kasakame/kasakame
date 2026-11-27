@@ -44,6 +44,7 @@ projects/frontend/src/
 │   ├── campaign.ts           # re-exports the SDK read model (deleted-campaign recovery included)
 │   ├── claimtree.ts          # re-exports the SDK proof builder (tree math + indexer replay)
 │   ├── metadata.ts           # campaign metadata blob type
+│   ├── log.ts                # development-only structured logger + logError
 │   ├── transaction.ts        # wallet disconnect helper + re-export of the SDK write path
 │   └── format.ts             # microAlgo / deadline formatting
 ├── components/               # generic UI (ConnectWallet, Account, ErrorBoundary)
@@ -321,7 +322,7 @@ target) once settled:
 
 | Action | Transactions | Estimated network fee |
 | --- | --- | --- |
-| create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.005 ALGO fees + ≈ 0.59 ALGO locked |
+| create + register | 1 app create + 1 deposit payment + 1 app call | ≈ 0.003 ALGO fees + ≈ 0.59 ALGO locked |
 | `pledge()` | 1 payment + 2 app calls + tree-shape OpUp takes | ≈ 0.004-0.010 ALGO |
 | `refund()` / `cancelPledge()` | 1 app call + 1 inner app call + 1 inner payment + tree-shape OpUp takes | ≈ 0.004-0.018 ALGO |
 | `refund()` via the vault (post-settle) | 1 app call + 1 inner payment + tree-shape OpUp takes | ≈ 0.003-0.016 ALGO |
@@ -331,14 +332,17 @@ target) once settled:
 The pledge/refund ranges depend on the campaign's tree size; the SDK charges the exact take count. See
 [`limits.md`](limits.md#current-transaction-fees) for the formula and the supported cap.
 
+Every confirmed detail action (pledge, cancel, refund, claim) shows the confirmed round and a Lora transaction link from the SDK
+`WriteConfirmation`. `createCampaign` returns the same payload; the create form navigates to the new campaign.
+
 The create row's 0.59 ALGO is **locked**, not spent: 571,000 µA campaign app MBR + 18,900 µA registration deposit, returned by
-`[unregister, delete]`. The fee-only cost of a create is ~0.005 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
+`[unregister, delete]`. The fee-only cost of a create is ~0.003 ALGO. The vault box MBR (32,100 µA) is paid by the vault on first
 pledge. See [`limits.md`](limits.md) for the current sizes, page counts, and minimum fees.
 
 ### Creator capital disclosure
 
 Creating a campaign locks **~0.59 ALGO**: the campaign app MBR (~0.571 ALGO) plus the registration deposit (~0.0189 ALGO). It is
-**not a fee**; it is returned when the campaign is deleted. The create flow also spends **~0.005 ALGO** in network fees. Show this
+**not a fee**; it is returned when the campaign is deleted. The create flow also spends **~0.003 ALGO** in network fees. Show this
 before the create approval, in plain ALGO (not µA), with the storage/deposit breakdown in a tooltip or learn-more. On the creator's
 campaign actions, repeat it next to the **Delete** button and in the delete confirmation: deleting returns the ~0.59 ALGO locked for
 this campaign, and backers can still refund from the vault until the window closes.
@@ -348,8 +352,8 @@ this campaign, and backers can still refund from the vault until the window clos
 - **Indexer lag.** After a write (create/pledge/claim/refund), the indexer may lag a
   round or two; the helpers wait on the confirmation round where available.
 - **Clock drift.** Deadline and outcome decisions use chain time (`fetchChainTimestamp`), never the client clock; the create form clamps the duration to 180 days, matching the contract.
-- **Bytes vs. characters.** `title`/`metadataUri` are capped at 128 **bytes**;
-  keep the `TextEncoder` check.
+- **Bytes vs. characters.** `title`/`metadataUri` are capped at 123 and 117
+  **bytes**; keep the `TextEncoder` check.
 - **Pledge > wallet balance.** Validate against the connected account's ALGO balance
   before opening the wallet.
 - **Approval race.** The user signs a pledge/cancel, but the deadline passes before
@@ -386,6 +390,18 @@ this campaign, and backers can still refund from the vault until the window clos
   group carries it twice.
 - **Spent leaves drop out of the live set.** After a claim, the detail view's
   "Your pledge" reflects the live total naturally - the spent leaves are gone.
+
+## Logging
+
+`src/lib/log.ts` builds a development-only `SdkLogger` and passes it to `configureSdk`; production builds keep the SDK silent. `VITE_LOG_LEVEL` (`debug` by default in development) sets the minimum level. `logError` writes through the same logger with a `[kasakame:<action>]` prefix and the caught error, so browser diagnostics never leave the page and carry no wallet material.
+
+### Errors
+
+`src/lib/errors.ts` keeps wallet rejection and dead-session detection on the vendor messages, and maps chain failures through the SDK's `SdkError` type/code. Common codes get short copy: closed campaign, goal reached, deadline or refund-window state, creator-only actions, full tree, registry mismatch, unregistered campaign, stale proof, not found, and network failure. Unknown failures fall back to an action-specific message. The raw chain message goes only to the development logger through `logError`, never to the visible status line.
+
+### Profile and settings loads
+
+Only a missing profile (404) is cached as empty. Other profile or settings load failures show an error with a Retry button and leave the form values untouched. Saves send only the fields the user changed, so a failed load followed by a save cannot blank stored data; a save with no changes is a no-op.
 
 ## Wallet integration
 

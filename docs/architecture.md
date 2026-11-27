@@ -92,7 +92,7 @@ campaign's `unregister` is a no-op (still shaped with the delete next), so the s
 landed.
 
 The frontend chains steps 1 through 3 into a single user action (see [`frontend.md`](frontend.md)). The current create cost is
-**589,900 µA (~0.59 ALGO) locked** (571,000 µA campaign app MBR + 18,900 µA registration deposit) plus ~5,000 µA in transaction
+**589,900 µA (~0.59 ALGO) locked** (571,000 µA campaign app MBR + 18,900 µA registration deposit) plus ~3,000 µA in transaction
 fees; the app MBR and deposit are returned by the atomic `[unregister, delete]` group. The vault box MBR (32,100 µA) is paid by
 the vault on first pledge, not by the creator. See [`limits.md`](limits.md).
 
@@ -115,7 +115,7 @@ Both settlement paths finalize in O(1) time and cost. Refunds stay available for
 
 ## Optional catalog
 
-The Registry plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Registry plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, public profiles with the email kept private to the owner, settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). `GET /profiles?address=` returns the public profile only; the email is read and written only through the authenticated owner routes (`GET /profiles/me`, `PUT /profiles`). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 

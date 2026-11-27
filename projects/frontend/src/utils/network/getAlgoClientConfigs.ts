@@ -1,8 +1,7 @@
 import type { AlgoViteClientConfig, AlgoViteKMDConfig } from '../../interfaces/network'
 
 /**
- * App environment merged from both sources, read live at call time (module scope would freeze test stubs).
- * import.meta.env only exists under Vite (tsx leaves it empty); process.env covers node scripts.
+ * App environment merged from both sources, read live at call time: module scope would freeze test stubs, `import.meta.env` only exists under Vite, and `process.env` covers node scripts.
  *
  * @returns The merged environment.
  */

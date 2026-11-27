@@ -40,26 +40,7 @@ import {
 } from '@kasakame/constants/source'
 
 /**
- * ClaimsVault - the permanent, pooled refund escrow for kasakame campaigns (claim-tree design, see
- * docs/claim-tree-protocol.md).
- *
- * The vault separates **backers' pledged ALGO** from campaign apps: pledges are paid to the vault and recorded per
- * campaign with `credit()`, and the vault alone pays out cancellations, refunds, and successful claims. There is no
- * Claim ASA and no per-backer on-chain state anywhere - a backer's receipt is their pledge leaf in the campaign's
- * frontier-Merkle tree, and refunds null the leaf in place (see the campaign contract).
- *
- * The vault holds all campaigns' funds in one pooled account. Cross-campaign isolation is enforced by per-campaign
- * balance guards: every method that pays out asserts `amount ≤ paidIn − paidOut` for that campaign's box, so a bug (or
- * a malicious campaign program, which cannot exist - campaigns are hash-verified at Registry registration and
- * non-updatable) in one campaign can never drain another's funds.
- *
- * Trust model: `payBack`, `payClaim`, `settle`, and `notifyDelete` are reachable only as inner app calls from the
- * campaign's own app account (`Txn.sender == app.address` - unforgeable, and app addresses are distinct per app id).
- * `create`, `credit`, `refund`, `settleOpen`, `finalize`, and `releaseClaimed` are top-level-only user actions
- * (`Global.callerApplicationId == 0`), so every inflow, refund, and cleanup is a block transaction the SDK can replay.
- * `credit` is permissionless, but it must be the final transaction in a group whose previous transaction is the
- * matching `Campaign.pledge`, so every inflow has a backer leaf. `settleOpen`, `refund`, and `finalize` verify every
- * effect against the vault's own boxes and the caller's group.
+ * ClaimsVault - the permanent pooled refund escrow for kasakame campaigns; per-campaign balance guards keep funds isolated (see docs/claim-tree-protocol.md).
  */
 
 // Vault box statuses (1 byte in the packed box): 1 = Open, 2 = Failed, 3 = Claimed.
@@ -72,16 +53,13 @@ const LEAF_DOMAIN = Bytes.fromHex(LEAF_DOMAIN_HEX)
 
 // Packed vault box layout: paidIn ‖ paidOut ‖ root ‖ n ‖ status ‖ settledAt, with the offsets in @kasakame/constants.
 
-// ARC-4 method selector for the Registry's `isRegistered(uint64)bool` readonly method (the Registry is unchanged by the
-// claim-tree rewrite, so this selector is unchanged - verified on-chain via an inner call before a campaign's first box
-// is created, so an unregistered campaign can never park the vault's minimum balance).
+// ARC-4 selector for Registry.isRegistered(uint64)bool; checked before a campaign's first box so an unregistered campaign cannot park the vault's MBR.
 const REGISTRY_IS_REGISTERED_SELECTOR = Bytes.fromHex('716a3d0e')
 
 // The ARC-4 bool return of the Registry's `isRegistered`: the return-value prefix (0x151f7c75) followed by 0x80 (true).
 const REGISTRY_REGISTERED_TRUE = Bytes.fromHex('151f7c7580')
 
-// ARC-4 selector for Campaign.pledge(pay,byte[])void. The credit must be the transaction immediately after it, so every
-// vault inflow is tied to a backer leaf (kept in sync by the integration tests).
+// ARC-4 selector for Campaign.pledge(pay,byte[])void; the credit immediately follows it, so every vault inflow is tied to a backer leaf.
 const CAMPAIGN_PLEDGE_SELECTOR = Bytes.fromHex('a4030bd2')
 
 export class ClaimsVault extends Contract {
@@ -100,10 +78,7 @@ export class ClaimsVault extends Contract {
   campaignBox = BoxMap<uint64, bytes>({ keyPrefix: 'c' })
 
   /**
-   * Deploy the vault.
-   *
-   * The platform funds the vault's application account after creation (the account base plus headroom: each campaign's
-   * first `credit` parks a 32,100 µA box on the vault, recovered by `notifyDelete`/`finalize`).
+   * Deploy the vault; the platform funds its account afterwards, since each campaign's first `credit` parks a box on it.
    *
    * @param registry The Registry app (stored in the `registry` key).
    * @param target Where `finalize()` sweeps failed campaigns' residuals after the refund window.
@@ -127,19 +102,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Record one pledge payment into a campaign's box.
-   *
-   * Permissionless top-level call, always grouped as `[Payment, Campaign.pledge, Vault.credit]`: the payment is
-   * immediately before the pledge, and the pledge is immediately before this call (the group's final transaction).
-   * The pledge must be a NoOp call (a ClearState call would bypass the pledge method). The vault checks the pledge shape
-   * itself, so a credit without a pledge is rejected: every inflow belongs to a backer leaf and counts toward the
-   * campaign's goal. The payment is **independently verified**: it is the transaction immediately before the pledge
-   * (`groupIndex - 2`), from the caller to the vault for `amount`, with no close/rekey. On first touch the campaign must
-   * be Registry-registered, so an unregistered campaign can never open a box.
-   *
-   * `credit` must be the final transaction in the group. A payment can only appear once in one group, so this makes
-   * each credit consume a distinct payment: without it a group could reuse one payment for several credits and inflate
-   * `paidIn` past what the vault actually received.
+   * Record one pledge payment into a campaign's box: the NoOp group must be [Payment, Campaign.pledge, Vault.credit], tying every inflow to a backer leaf and one payment to one credit.
    *
    * @param app The campaign application.
    * @param amount The pledged amount, in microAlgos.
@@ -150,8 +113,7 @@ export class ClaimsVault extends Contract {
     assert(amount > Uint64(0), 'pledge must be greater than zero')
     assert(Txn.groupIndex === Global.groupSize - Uint64(1), 'credit must be the final transaction in the group')
 
-    // The credit is the second half of the pledge: the immediately preceding transaction must be the campaign's
-    // `pledge` for this campaign and caller. This keeps every vault inflow tied to a backer leaf.
+    // The credit is the second half of the pledge: the preceding transaction must be the campaign's `pledge`, keeping every inflow tied to a leaf.
     assert(Txn.groupIndex > Uint64(1), 'credit must follow pledge')
     const pledgeIndex: uint64 = Txn.groupIndex - Uint64(1)
     assert(gtxn.Transaction(pledgeIndex).type === TransactionType.ApplicationCall, 'credit must follow pledge')
@@ -167,9 +129,7 @@ export class ClaimsVault extends Contract {
       assert(existing.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
     }
 
-    // Independent payment verification: the pledge requires the payment immediately before it, so the committed payment
-    // is exactly `groupIndex - 2`. Check it directly instead of scanning the group: stricter, cheaper, and it rejects
-    // payments that close the sender's account or rekey it.
+    // Independent payment verification: the pledge requires the payment immediately before it, so the committed payment is exactly `groupIndex - 2`.
     const paymentIndex: uint64 = Txn.groupIndex - Uint64(2)
     assert(gtxn.Transaction(paymentIndex).type === TransactionType.Payment, 'matching payment not found in group')
     const payment = gtxn.PaymentTxn(paymentIndex)
@@ -198,13 +158,11 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Verify a first-touch campaign against the Registry via an inner call (its log carries the readonly
-   * answer), so an unregistered campaign can never park the vault's minimum balance.
+   * Verify a first-touch campaign against the Registry via an inner call, so an unregistered campaign can never park the vault's minimum balance.
    *
    * @param app The campaign application.
    */
-  /* v8 ignore next - the offline ledger executes the inner call but cannot emulate its log; the registration gate is
-   * covered by the LocalNet integration tests (`test/04-bad-paths.test.ts`, CON-107). */
+  /* v8 ignore next - the offline ledger cannot emulate the inner call's log; covered on LocalNet (test/04-bad-paths, CON-107). */
   private checkRegistration(app: Application): void {
     const registrationCheck = itxn
       .applicationCall({
@@ -228,9 +186,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Pay a backer (a cancellation or a campaign-driven refund), driven by the campaign app.
-   *
-   * Only the campaign's own app account may call. The per-campaign balance guard caps the payout at verified inflows.
+   * Pay a backer for a cancellation or campaign-driven refund; only the campaign's own app account may call, and the balance guard caps the payout at verified inflows.
    *
    * @param app The campaign application.
    * @param backer The backer to pay.
@@ -266,10 +222,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Pay the campaign's creator on a successful claim, driven by the campaign app.
-   *
-   * The payout is **derived, not trusted**: `paidIn − paidOut` equals the live pledge total (cancels were balanced), so
-   * no caller-supplied figure is involved. The box flips to Claimed, rejecting all later refunds.
+   * Pay the campaign's creator on a successful claim: the payout is derived as `paidIn − paidOut`, never caller-supplied, and the box flips to Claimed.
    *
    * @param app The campaign application.
    */
@@ -303,12 +256,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Record a failed campaign's settlement, driven by the campaign app during `delete()`.
-   *
-   * Writes the campaign's final root/N into the box (backers' proofs verify against it after the campaign is gone) and
-   * flips an Open box to Failed; already-Failed is a no-op, and a missing box is a no-op too (a pristine campaign with
-   * no box - including one with a stray no-pledge inflow - deletes cleanly, and the stray case becomes finalizable).
-   * After this, campaign-driven `payBack` is rejected and all refunds flow through `refund()`.
+   * Record a failed campaign's settlement: store the final root/N (proofs verify against it after deletion) and flip Open to Failed, so later refunds flow through `refund()`.
    *
    * @param app The campaign application.
    * @param root The campaign's final tree root.
@@ -341,9 +289,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Settle a failed campaign permissionlessly (the "creator vanished" case), reading the still-existing campaign app.
-   *
-   * After this, campaign-driven `payBack` is rejected (box not Open) and all refunds flow through `refund()`.
+   * Settle a failed campaign permissionlessly (the "creator vanished" case) while its app still exists; refunds then flow through `refund()`.
    *
    * @param app The failed campaign application.
    */
@@ -354,8 +300,7 @@ export class ClaimsVault extends Contract {
     assert(box.slice(VAULT_BOX_STATUS_OFFSET, VAULT_BOX_SETTLED_AT_OFFSET) === BOX_OPEN, 'campaign is not open')
 
     // The campaign app still exists here, so its global state is readable (this is never attempted after deletion).
-    /* v8 ignore start - every created campaign writes all seven globals, so the missing-key branches are defensive only;
-     * the guards below (vault/root/claimed/deadline/goal) run offline and the whole path runs on LocalNet. */
+    /* v8 ignore start - every created campaign writes all seven globals, so these missing-key branches are defensive only; the guards run offline and the whole path on LocalNet. */
     const statusState = op.AppGlobal.getExUint64(app, Bytes('status'))
     const raisedState = op.AppGlobal.getExUint64(app, Bytes('raised'))
     const goalState = op.AppGlobal.getExUint64(app, Bytes('goal'))
@@ -388,11 +333,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Refund one pledge of a settled-failed campaign, directly - works after the campaign app has been deleted.
-   *
-   * Permissionless: the leaf is rebuilt from the caller + proof (never trusted) and verified against the box's stored
-   * root; a second refund of the same position - or a proof built against any older root - reconstructs a non-stored
-   * root and is rejected. Runs entirely from vault-local state. Only within the refund window.
+   * Refund one pledge of a settled-failed campaign directly, after deletion too: the proof is rebuilt from caller + proof, a replay reconstructs a different root, and only the refund window applies.
    *
    * @param app The settled-failed campaign application.
    * @param k Leaf position to null.
@@ -415,8 +356,7 @@ export class ClaimsVault extends Contract {
     assert(Global.latestTimestamp <= settledAt + this.refundWindow.value, 'refund window closed')
     assert(k < n, 'unknown position')
 
-    // Reserve the whole refund from the caller-supplied blob length before pathLen/popcount can exhaust the 700-op
-    // base budget. The blob length is validated below, and an underfunded group fails atomically.
+    // Reserve the whole refund from the blob length before pathLen/popcount can exhaust the 700-op base budget; the length is validated below.
     ensureBudget(op.shr(path.length, Uint64(5)) * Uint64(SPEND_ELEMENT_COST) + Uint64(SPEND_BASE_COST), OpUpFeeSource.GroupCredit)
 
     // Derive the expected path shape from (n, k) and reject a mis-sized blob.
@@ -457,11 +397,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Release a claimed campaign's box, driven by the campaign app during `delete()`.
-   *
-   * Requires the box Claimed with inflows fully paid out - O(1), and the vault parks nothing for successful campaigns.
-   * A no-op when the box was already released permissionlessly (see `releaseClaimed`), so the campaign's `delete()`
-   * still succeeds afterwards.
+   * Release a claimed campaign's box O(1); requires it fully paid out, and a no-op when `releaseClaimed` already freed it.
    *
    * @param app The campaign application.
    */
@@ -475,11 +411,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Release a claimed campaign's box permissionlessly, recovering its minimum balance to the vault.
-   *
-   * Safe because a claimed box is fully paid out (`paidIn == paidOut`): no campaign or backer funds remain. This closes
-   * the case where a creator claims and then never deletes their campaign, which would otherwise park the box's 32,100 µA
-   * on the vault forever.
+   * Release a claimed campaign's box permissionlessly, so a creator who claims and never deletes cannot park the box MBR on the vault forever.
    *
    * @param app The claimed campaign application.
    */
@@ -510,12 +442,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Sweep a settled-failed campaign's residual to the sweep target and release its box, once the refund window closes
-   * or the box is fully paid out (nothing left to refund).
-   *
-   * Permissionless, O(1). Unclaimed refunds after a generous window fund the sweep target (disclosed at pledge time);
-   * backer-controlled refunds need no platform action before the window closes. A fully paid-out box (all leaves
-   * cancelled/refunded) can be released immediately, recovering its MBR without waiting for the window.
+   * Sweep a settled-failed campaign's residual to the sweep target and release its box once the refund window closes or the box is fully paid out.
    *
    * @param app The settled-failed campaign application.
    */
@@ -544,8 +471,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * The caller of the campaign-driven methods must be the campaign app's own account (matched by app address -
-   * unforgeable, and app addresses are distinct per app id), and its box must exist.
+   * The campaign-driven methods' caller must be the campaign app's own account (unforgeable, distinct per app id), and its box must exist.
    *
    * @param app The campaign application.
    */
@@ -602,8 +528,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Test the lowest bit (the PuyaTs arithmetic operators cover `+ - *` and comparisons only - shifts and bitwise
-   * operators fall back to JS `number` semantics, so this helper uses `op.shr`/`op.shl` instead of `& 1`).
+   * Test the lowest bit with `op.shr`/`op.shl`: PuyaTs arithmetic covers `+ - *` and comparisons, while bitwise operators fall back to JS `number` semantics.
    *
    * @param n The value to test.
    * @returns True when `n` is odd.
@@ -634,8 +559,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Within-peak path length for position k at size N: the first level whose sibling block extends past N.
-   * Returns at the first missing level, so the cost is O(r), not O(64).
+   * Within-peak path length for position k at size N - the first level whose sibling block extends past N (cost O(r), not O(64)).
    *
    * @param n Tree size (positions ever appended).
    * @param k Leaf position.
@@ -660,8 +584,7 @@ export class ClaimsVault extends Contract {
   }
 
   /**
-   * Recombine a leaf value along its path into the root: within-peak siblings by direction bit, then
-   * H(top ‖ acc), then lower peaks descending.
+   * Recombine a leaf value along its path into the root: within-peak siblings by direction bit, then H(top ‖ acc), then lower peaks descending.
    *
    * @param start The leaf value (genuine leaf to verify, Z to null).
    * @param k Leaf position.

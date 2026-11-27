@@ -2,7 +2,9 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
-    "rootDir": "src"
+    "rootDir": "src",
+    "declarationMap": false,
+    "inlineSources": true
   },
   "exclude": ["src/**/*.spec.ts", "src/**/*.vectors.ts", "test/**", "scripts/**"]
 }

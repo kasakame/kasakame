@@ -50,7 +50,7 @@ campaign's first pledge; with an empty `VITE_REGISTRY_APP_ID`, creation skips
 registration, pledges are rejected, and the campaign cannot be deleted until the
 id is set (see [Frontend](docs/frontend.md)).
 
-The backend is an optional user service (wallet-signature auth plus profiles/settings storage; pinning and catalog are planned) and runs as a separate service:
+The backend is an optional user service (wallet-signature auth, profiles/settings storage, and image/metadata pinning; a campaign catalog is planned) and runs as a separate service (see [its README](projects/backend/README.md)):
 
 ```bash
 cd ../backend
@@ -72,6 +72,7 @@ npm run dev             # API on http://127.0.0.1:3001
 | [`docs/cli.md`](docs/cli.md) | Escape-hatch CLI: install, signers, commands, networks, self-hosting |
 | [`docs/sdk.md`](docs/sdk.md) | SDK package design and migration order |
 | [`docs/testing.md`](docs/testing.md) | Contract, CLI, and frontend test strategy |
+| [`docs/work-tracking.md`](docs/work-tracking.md) | Issue creation, PR linking, work-tracking automation, and verification |
 | [`docs/ci.md`](docs/ci.md) | GitHub Actions workflows and checks |
 | [`docs/conventions.md`](docs/conventions.md) | Lint, format, and TypeScript rules |
 | [`docs/design.md`](docs/design.md) | Product decisions and open questions |

@@ -17,11 +17,7 @@ import {
 } from './utils'
 
 /**
- * 00 - deployment and wiring.
- *
- * Proves the ownerless Registry and ClaimsVault deploy with the immutable campaign/vault hashes and vault configuration,
- * that the vault binds permissionlessly and only once, and that register/unregister still round-trip after binding.
- * `beforeAll` deploys the stack; the guard tests deploy their own isolated stacks.
+ * 00 - deployment and wiring: immutable hashes, one-time vault bind, and register/unregister round-trips.
  */
 describe('00 deployment and wiring', () => {
   const fixture = algorandFixture()

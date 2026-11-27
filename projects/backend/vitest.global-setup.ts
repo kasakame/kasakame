@@ -36,7 +36,7 @@ export async function setup(): Promise<void> {
   }
   const testUrl = withDatabase(appUrl, 'kasakame_test')
   process.env.DATABASE_URL = testUrl
-  process.env.SESSION_SECRET ??= 'test-secret'
+  process.env.SESSION_SECRET ??= 'test-secret-0123456789abcdef0123456789'
   const { runner } = await import('node-pg-migrate')
   await runner({
     databaseUrl: testUrl,
