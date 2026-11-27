@@ -73,11 +73,16 @@ describe('profiles', () => {
       payload: { display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar', email: 'kyogre@example.com' },
     })
     expect(put.statusCode).toBe(200)
-    expect(put.json()).toMatchObject({ address, display_name: 'Kyogre Fan', bio: 'Collector' })
+    expect(put.json()).toMatchObject({ address, display_name: 'Kyogre Fan', bio: 'Collector', email: 'kyogre@example.com' })
 
     const get = await app.inject({ method: 'GET', url: `/profiles?address=${address}` })
     expect(get.statusCode).toBe(200)
-    expect(get.json()).toMatchObject({ address, display_name: 'Kyogre Fan' })
+    expect(get.json()).toEqual({ address, display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar' })
+    expect(get.json()).not.toHaveProperty('email')
+
+    const own = await app.inject({ method: 'GET', url: '/profiles/me', headers: { authorization: `Bearer ${auth}` } })
+    expect(own.statusCode).toBe(200)
+    expect(own.json()).toMatchObject({ address, email: 'kyogre@example.com' })
   })
 
   it('partially updates and clears fields', async () => {
@@ -118,9 +123,24 @@ describe('profiles', () => {
 
     const put = await app.inject({ method: 'PUT', url: '/profiles', payload: { display_name: 'Ghost' } })
     const settings = await app.inject({ method: 'PUT', url: '/settings', payload: { theme: 'dark' } })
+    const own = await app.inject({ method: 'GET', url: '/profiles/me' })
 
     expect(put.statusCode).toBe(401)
     expect(settings.statusCode).toBe(401)
+    expect(own.statusCode).toBe(401)
+  })
+
+  it('returns 404 for a missing owner profile', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/profiles/me',
+      headers: { authorization: `Bearer ${await token(app, address, sk)}` },
+    })
+
+    expect(response.statusCode).toBe(404)
   })
 })
 

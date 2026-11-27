@@ -218,7 +218,7 @@ local mode fails with instructions if the artifacts are absent.
 
 ## How the frontend and CLI jobs resolve the SDK
 
-The committed frontend and CLI dependency is `"@kasakame/sdk": "^0.1.0"` (see
+The committed frontend and CLI dependency is `"@kasakame/sdk": "^0.2.0"` (see
 [`sdk.md`](sdk.md)). On a frontend-only, CLI-only, or workspace-only change those
 lanes install it from the registry with `npm ci`, so routine work exercises
 exactly what users install.
