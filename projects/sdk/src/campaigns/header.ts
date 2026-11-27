@@ -1,6 +1,6 @@
 import { VAULT_BOX_STATUS_FAILED_HEX, VAULT_BOX_STATUS_OPEN_HEX } from '@kasakame/constants'
 import type algosdk from 'algosdk'
-import { getSdkConfig } from '../chain.js'
+import { getSdkConfig } from '../runtime/config.js'
 import { fetchVaultBox } from '../transactions/vault.js'
 import { campaignStatusFromRaw, decodeCreateArgs, decodeGlobalState } from './decode.js'
 import type { CampaignHeader } from './view.js'

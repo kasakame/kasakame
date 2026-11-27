@@ -1,6 +1,6 @@
 import { clearTreeCache } from '../claim-tree/index.js'
 import { CONTRACT_ERROR_MESSAGES } from '../generated/contract-errors.js'
-import { sdkLogger } from '../log.js'
+import { sdkLogger } from '../runtime/log.js'
 import type { WriteConfirmation } from './confirmation.js'
 
 /** Stable category of an SDK failure, driving retries and user-facing recovery. */

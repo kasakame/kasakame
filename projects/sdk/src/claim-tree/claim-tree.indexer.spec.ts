@@ -1,7 +1,7 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { encodeAddress, getApplicationAddress, hexToBytes } from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureSdk } from '../chain.js'
+import { configureSdk } from '../runtime/config.js'
 import { clearTreeCache, fetchMyLeaves, fetchPledges, fetchSpends, loadTree, u64be } from './index.js'
 
 const indexerMock = vi.hoisted(() => ({

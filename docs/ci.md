@@ -330,7 +330,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   the producer was skipped (`workspace`-only changes), regenerates the clients
   from the pinned release. Then format, lint, type-check, and `npm run test:coverage`.
   It does not download `contracts-artifacts` directly. It also regenerates
-  `src/claim-tree/claim-tree.vectors.ts` from the Python oracle, formats it, and fails with
+  `test/utils/claim-tree-vectors.ts` from the Python oracle, formats it, and fails with
   `git diff --exit-code` when the committed vectors are stale.
 - **`check-frontend`** - runs when `run_check_frontend` is true (contracts, SDK,
   frontend, or workspace). Installs the published SDK with `npm ci`, or the

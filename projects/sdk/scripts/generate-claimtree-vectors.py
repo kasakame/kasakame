@@ -2,7 +2,7 @@
 """Generate deterministic claim-tree test vectors for the SDK's pure tree math.
 
 Drives docs/claim-tree-protocol-reference.py through a fixed pledge/null scenario and emits
-`src/claim-tree/claim-tree.vectors.ts` (overwritten in place). Backers/amounts/txids are derived from
+`test/utils/claim-tree-vectors.ts` (overwritten in place). Backers/amounts/txids are derived from
 fixed seeds - no randomness - so regeneration is byte-identical.
 
 Usage (from projects/sdk):  python3 scripts/generate-claimtree-vectors.py
@@ -21,7 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent
 REF_PATH = ROOT / "docs" / "claim-tree-protocol-reference.py"
-OUT_PATH = HERE.parent / "src" / "claim-tree" / "claim-tree.vectors.ts"
+OUT_PATH = HERE.parent / "test" / "utils" / "claim-tree-vectors.ts"
 
 _spec = importlib.util.spec_from_file_location("claim_tree_ref", REF_PATH)
 assert _spec is not None and _spec.loader is not None

@@ -57,8 +57,9 @@
     "@kasakame/constants": "^0.2.0"
   },
   "scripts": {
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prebuild": "node scripts/codegen.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "codegen": "node scripts/codegen.ts",
     "check-types": "tsc --noEmit",
     "test": "vitest run --exclude 'test/**'",

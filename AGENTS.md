@@ -37,7 +37,9 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   so consumers can install the package without a build step. See
   [`projects/constants/README.md`](projects/constants/README.md).
 - `projects/sdk/` - `@kasakame/sdk`: claim-tree math, campaign reads, and
-  transaction assembly (the chain layer the frontend consumes); see
+  transaction assembly (the chain layer the frontend consumes). `src/runtime/`
+  holds config, clock, indexer waiters, and logging; domain folders keep code
+  next to its specs; `test/` holds the LocalNet suite; see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
 - `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
   (refund/withdraw/claim/delete and vault cleanup by app ID; wallet or mnemonic

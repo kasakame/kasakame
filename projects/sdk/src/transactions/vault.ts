@@ -9,8 +9,8 @@ import {
   VAULT_BOX_STATUS_OFFSET,
 } from '@kasakame/constants'
 import { getApplicationAddress } from 'algosdk'
-import { getSdkConfig } from '../chain.js'
 import { ClaimsVaultClient } from '../generated/ClaimsVaultClient.js'
+import { getSdkConfig } from '../runtime/config.js'
 
 /** Vault box settlement state for refund routing and the window banner. */
 export interface VaultBoxView {
