@@ -74,7 +74,7 @@ The barrel file `src/index.ts` exports everything below. Generated clients live 
 The domain modules are folders, one concern per file. `src/index.ts` re-exports the same public names, so imports from `@kasakame/sdk` are unchanged.
 
 - `src/runtime/` - `config.ts` (the SDK session), `clock.ts` (chain timestamp), `indexer.ts` (indexer waiters), `log.ts` (structured logger).
-- `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `selectors.ts` (replayed ARC-4 selectors), `index.ts` (barrel). The committed differential vectors live in `test/utils/claim-tree-vectors.ts`.
+- `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `selectors.ts` (replayed ARC-4 selectors), `claim-tree.vectors.ts` (committed differential vectors), `index.ts` (barrel).
 - `src/campaigns/` - `decode.ts` (global state, box names, create args), `view.ts` (status and view model), `header.ts` (live and deleted headers), `read.ts` (indexer reads, enumeration, list cache), `index.ts` (barrel).
 - `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (typed failures, contract assert codes, stale-proof and routing retries), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
 
