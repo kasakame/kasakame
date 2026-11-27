@@ -1,7 +1,7 @@
 import { useNetwork, useWallet } from '@txnlab/use-wallet-react'
 import { useEffect, useState } from 'react'
 import { adaptSignData, adaptSignTransaction } from '../../lib/backend'
-import { fetchProfile, saveProfile } from '../../lib/profiles'
+import { fetchMyProfile, saveProfile } from '../../lib/profiles'
 import { ellipseAddress } from '../../utils/ellipseAddress'
 import { orEmpty } from '../../utils/orEmpty'
 
@@ -20,6 +20,14 @@ const Profile = ({ onBack }: ProfileProps) => {
   const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [baseline, setBaseline] = useState<{ display_name: string; bio: string; avatar_cid: string; email: string }>({
+    display_name: '',
+    bio: '',
+    avatar_cid: '',
+    email: '',
+  })
 
   useEffect(() => {
     if (!activeAddress) {
@@ -27,16 +35,34 @@ const Profile = ({ onBack }: ProfileProps) => {
       return
     }
     setLoading(true)
+    setLoadError(null)
     let cancelled = false
-    // fetchProfile resolves null on every failure path, so no catch is needed.
-    void fetchProfile(activeAddress)
+
+    void fetchMyProfile({
+      address: activeAddress,
+      chainId: activeNetworkConfig.caipChainId,
+      sign: adaptSignData(signData),
+      signTxn: adaptSignTransaction(signTransactions),
+    })
       .then((p) => {
-        if (!cancelled && p) {
-          setDisplayName(orEmpty(p.display_name))
-          setBio(orEmpty(p.bio))
-          setAvatarCid(orEmpty(p.avatar_cid))
-          setEmail(orEmpty(p.email))
+        if (!cancelled) {
+          const loaded = {
+            display_name: orEmpty(p?.display_name ?? null),
+            bio: orEmpty(p?.bio ?? null),
+            avatar_cid: orEmpty(p?.avatar_cid ?? null),
+            email: orEmpty(p?.email ?? null),
+          }
+          setBaseline(loaded)
+          if (p) {
+            setDisplayName(loaded.display_name)
+            setBio(loaded.bio)
+            setAvatarCid(loaded.avatar_cid)
+            setEmail(loaded.email)
+          }
         }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('Could not load your profile. Please try again.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -44,7 +70,7 @@ const Profile = ({ onBack }: ProfileProps) => {
     return () => {
       cancelled = true
     }
-  }, [activeAddress])
+  }, [activeAddress, activeNetworkConfig.caipChainId, signData, signTransactions, reloadKey])
 
   const handleSave = async () => {
     // Defensive: the form only renders while connected, so this is unreachable in the UI.
@@ -57,20 +83,33 @@ const Profile = ({ onBack }: ProfileProps) => {
     setError(null)
     setSuccess(null)
     try {
+      const changes: { displayName?: string; bio?: string; avatarCid?: string; email?: string } = {}
+      if (displayName !== baseline.display_name) changes.displayName = displayName
+      if (bio !== baseline.bio) changes.bio = bio
+      if (avatarCid !== baseline.avatar_cid) changes.avatarCid = avatarCid
+      if (email !== baseline.email) changes.email = email
+      if (Object.keys(changes).length === 0) {
+        setSuccess('No changes.')
+        return
+      }
       const updated = await saveProfile({
         address: activeAddress,
         chainId: activeNetworkConfig.caipChainId,
         sign: adaptSignData(signData),
         signTxn: adaptSignTransaction(signTransactions),
-        displayName,
-        bio,
-        avatarCid,
-        email,
+        ...changes,
       })
-      setDisplayName(orEmpty(updated.display_name))
-      setBio(orEmpty(updated.bio))
-      setAvatarCid(orEmpty(updated.avatar_cid))
-      setEmail(orEmpty(updated.email))
+      const saved = {
+        display_name: orEmpty(updated.display_name),
+        bio: orEmpty(updated.bio),
+        avatar_cid: orEmpty(updated.avatar_cid),
+        email: orEmpty(updated.email),
+      }
+      setBaseline(saved)
+      setDisplayName(saved.display_name)
+      setBio(saved.bio)
+      setAvatarCid(saved.avatar_cid)
+      setEmail(saved.email)
       setSuccess('Profile saved.')
     } catch (error) {
       setError((error as Error).message)
@@ -177,6 +216,20 @@ const Profile = ({ onBack }: ProfileProps) => {
           />
         </div>
 
+        {loadError && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              className="cursor-pointer rounded-md border border-danger px-3 py-1 text-xs text-danger hover:bg-danger/10"
+              onClick={() => {
+                setReloadKey((key) => key + 1)
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {error && <div className="text-sm text-danger">{error}</div>}
         {success && <div className="text-sm text-teal-dark">{success}</div>}
 

@@ -9,6 +9,9 @@ export interface Profile {
   email: string | null
 }
 
+/** A public creator profile; the email stays private to the owner. */
+export type PublicProfile = Omit<Profile, 'email'>
+
 /** Notification and display settings; the backend serves defaults when no row exists. */
 export interface Settings {
   address: string
@@ -34,7 +37,21 @@ function textField(body: Record<string, unknown>, field: string, max: number): s
 }
 
 /**
- * Fetch a profile by address.
+ * Fetch a public profile by address; the email is never selected.
+ *
+ * @param address Wallet address.
+ * @returns The public profile, or null when never set.
+ */
+export async function getPublicProfile(address: string): Promise<PublicProfile | null> {
+  const { rows } = await pool().query<PublicProfile>('SELECT address, display_name, avatar_cid, bio FROM profiles WHERE address = $1', [
+    address,
+  ])
+  const [profile] = rows
+  return profile ?? null
+}
+
+/**
+ * Fetch a full profile by address for its owner.
  *
  * @param address Wallet address.
  * @returns The profile, or null when never set.
