@@ -11,9 +11,19 @@ import {
   VAULT_BOX_STATUS_OPEN_HEX,
   ZERO_ROOT_HEX,
 } from '@kasakame/constants'
-import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { advanceTime } from '@kasakame/utils/testing'
 import { expect, test } from 'vitest'
-import { campaignBox, campaignBoxExists, campaignState, claimCampaign, deleteCampaign, deployCampaign, deployStack } from './utils'
+import {
+  actorSnapshot,
+  campaignBox,
+  campaignBoxExists,
+  campaignState,
+  claimCampaign,
+  deleteCampaign,
+  deployCampaign,
+  deployStack,
+  expectActorDeltas,
+} from './utils'
 import { FastTree, hex, pathShape, runPledges } from './utils/fast-pledge'
 
 /**
@@ -38,8 +48,8 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   const campaign = await deployCampaign(stack, creatorAddr, { goal: GOAL, deadlineOffset: DEADLINE })
   const tree = new FastTree()
 
-  const backerBefore = await accountInfo(stack.algorand, backerAddr)
-  const vaultBefore = await accountInfo(stack.algorand, stack.vault.address)
+  const backerBefore = await actorSnapshot(stack.algorand, [backerAddr])
+  const vaultBefore = await actorSnapshot(stack.algorand, [stack.vault.address])
 
   const run = await runPledges(stack, campaign.appClient, campaign.appId, backerAddr, tree, Number(MAX_TREE_SIZE))
 
@@ -52,7 +62,9 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
   })
   const box = await campaignBox(stack.vault.client, campaign.appId)
   expect(box).toMatchObject({ paidIn: run.principal, paidOut: 0n, root: ZERO_ROOT_HEX, n: 0n, status: BOX_OPEN })
-  expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
+  expectActorDeltas(backerBefore, await actorSnapshot(stack.algorand, [backerAddr]), {
+    [backerAddr]: { balance: -run.principal - run.fees },
+  })
 
   // The cap is full but the goal was reached, so the early escape must not settle a campaign that can still succeed.
   await expect(
@@ -69,11 +81,11 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
 
   // The creator claims the full raised principal; the vault pays paidIn - paidOut.
   console.log('deadline passed: claiming')
-  const creatorBeforeClaim = await accountInfo(stack.algorand, creatorAddr)
+  const creatorBeforeClaim = await actorSnapshot(stack.algorand, [creatorAddr])
   await claimCampaign(stack, campaign.appClient, campaign.appId, creatorAddr)
-  expect((await accountInfo(stack.algorand, creatorAddr)).balance).toEqual(
-    creatorBeforeClaim.balance + run.principal - CLAIM_FEE_MICRO_ALGOS,
-  )
+  expectActorDeltas(creatorBeforeClaim, await actorSnapshot(stack.algorand, [creatorAddr]), {
+    [creatorAddr]: { balance: run.principal - CLAIM_FEE_MICRO_ALGOS },
+  })
   expect(await campaignBox(stack.vault.client, campaign.appId)).toMatchObject({
     paidIn: run.principal,
     paidOut: run.principal,
@@ -81,14 +93,18 @@ test('CON-241 cap-scale successful campaign claims and deletes', { tags: ['scale
     n: 0n,
     status: BOX_CLAIMED,
   })
-  const vaultAfterClaim = await accountInfo(stack.algorand, stack.vault.address)
-  expect(vaultAfterClaim.balance).toEqual(vaultBefore.balance)
-  expect(vaultAfterClaim.minBalance).toEqual(vaultBefore.minBalance + VAULT_BOX_MBR_MICRO_ALGOS)
+  expectActorDeltas(vaultBefore, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+    [stack.vault.address]: { balance: 0n, minBalance: VAULT_BOX_MBR_MICRO_ALGOS },
+  })
 
   // Cleanup releases the vault box and returns the campaign MBR and registration deposit.
   console.log('deleting campaign')
   await deleteCampaign(stack, campaign.appId, creatorAddr, { vaultBoxRelease: true })
   expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-  expect(await accountInfo(stack.algorand, stack.vault.address)).toEqual(vaultBefore)
-  expect((await accountInfo(stack.algorand, backerAddr)).balance).toEqual(backerBefore.balance - run.principal - run.fees)
+  expectActorDeltas(vaultBefore, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+    [stack.vault.address]: { balance: 0n, minBalance: 0n },
+  })
+  expectActorDeltas(backerBefore, await actorSnapshot(stack.algorand, [backerAddr]), {
+    [backerAddr]: { balance: -run.principal - run.fees },
+  })
 })

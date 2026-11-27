@@ -1,6 +1,7 @@
 import { parseCliOptions, type CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
 import { runCampaigns, runClaim, runDelete, runPledges, runRefund, runWithdraw } from './commands.js'
+import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
 
@@ -27,6 +28,8 @@ Options:
   --pledge <position>                  Withdraw or refund one pledge (0-based)
   --all                                Withdraw or refund every live pledge
   --dry-run                            Print planned transactions without signing
+  --log-level <debug|info|warn|error>  Print SDK diagnostics at this level and above to stderr
+  --verbose                            Shorthand for --log-level debug
   --help, -h                           Show this help
 `
 
@@ -42,8 +45,9 @@ export async function run(argv: string[]): Promise<number> {
     return 0
   }
 
+  let options: CliOptions | undefined
   try {
-    const options = parseCliOptions(argv)
+    options = parseCliOptions(argv)
     switch (options.command) {
       case 'login':
         return await runLogin()
@@ -71,7 +75,11 @@ export async function run(argv: string[]): Promise<number> {
         return await runDelete(options)
     }
   } catch (error) {
-    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+    const message = cliErrorMessage(error, options?.command, options?.appId)
+    console.error(`Error: ${message}`)
+    if (options?.logLevel === 'debug' && error instanceof Error && message !== error.message) {
+      console.error(`[detail] ${error.message}`)
+    }
     return 1
   }
 }

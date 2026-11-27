@@ -38,6 +38,38 @@ export async function minBalanceOf(algorand: AlgorandClient, address: string): P
   return (await accountInfo(algorand, address)).minBalance
 }
 
+/** An app's programs, global state, and update counter, comparable across calls. */
+export interface AppSnapshot {
+  approval: string
+  clear: string
+  version: string
+  global: { key: string; bytes: string; uint: string }[]
+}
+
+/**
+ * Snapshot an app's programs and global state.
+ *
+ * @param algorand The LocalNet client.
+ * @param appId The app to snapshot.
+ * @returns The comparable program/state snapshot.
+ */
+export async function appSnapshot(algorand: AlgorandClient, appId: bigint): Promise<AppSnapshot> {
+  const { params } = await algorand.client.algod.getApplicationByID(appId).do()
+  if (params === undefined) throw new Error(`app ${appId.toString()} has no params`)
+  return {
+    approval: Buffer.from(params.approvalProgram).toString('base64'),
+    clear: Buffer.from(params.clearStateProgram).toString('base64'),
+    version: (params.version ?? 0).toString(),
+    global: (params.globalState ?? [])
+      .map(({ key, value }) => ({
+        key: Buffer.from(key).toString('base64'),
+        bytes: Buffer.from(value.bytes).toString('base64'),
+        uint: value.uint.toString(),
+      }))
+      .sort((left, right) => left.key.localeCompare(right.key)),
+  }
+}
+
 /**
  * Advance the dev-mode chain clock by producing one self-payment, then reset the offset.
  *

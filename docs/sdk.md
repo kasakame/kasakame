@@ -2,7 +2,7 @@
 
 The SDK is the chain layer of kasakame, published as `@kasakame/sdk`. It holds the claim-tree math, campaign reads, and transaction assembly that the frontend and the escape-hatch CLI share. You build transaction groups in the SDK and the wallet signs them; the SDK never holds keys or funds.
 
-Status: version `0.2.0`, published as a public npm package. The frontend and CLI consume `"@kasakame/sdk": "^0.2.0"` from the registry; a packed local copy is installed only to test unreleased SDK changes. See [`cli.md`](cli.md) for the escape-hatch CLI.
+Status: version `0.1.0`, published as a public npm package. The frontend and CLI consume `"@kasakame/sdk": "^0.1.0"` from the registry; a packed local copy is installed only to test unreleased SDK changes. See [`cli.md`](cli.md) for the escape-hatch CLI.
 
 ## Why the SDK exists
 
@@ -12,7 +12,7 @@ Before the SDK, the frontend's `lib/` folder held the chain logic: claim-tree ma
 
 - Location `projects/sdk/`. The AlgoKit workspace discovers `projects/*` entries through their `.algokit.toml`, so the SDK ships a minimal one to take part in `algokit project run` and `bootstrap`.
 - One package. Split only when a consumer needs a subset; today nobody does.
-- Version `0.2.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
+- Version `0.1.0`, public package (`publishConfig.access: "public"`). Reserve the `@kasakame` npm org early (free, prevents squatting).
 - Node.js >= 24, ESM. Entry point is `./dist/index.js` with types in `./dist/index.d.ts`; `files` publishes only `dist/` plus the package metadata and README.
 
 Peer dependencies: `@algorandfoundation/algokit-utils` (`AlgorandClient` and the generated clients' runtime) and `@kasakame/constants`. Direct dependencies: `@noble/hashes` (SHA-512/256, the same function as the AVM opcode) and `algosdk` (indexer and algod access). The SDK receives the consumer's `AlgorandClient`, so `algokit-utils` is a peer; one copy keeps the class and type instances consistent.
@@ -75,7 +75,7 @@ The three modules are folders, one concern per file. `src/index.ts` re-exports t
 
 - `src/claim-tree/` - `tree.ts` (leaves, append, root, frontier, node rows), `proof.ts` (path shape, auth paths, path and frontier blobs, base32), `fees.ts` (tree cap and OpUp iterations), `indexer.ts` (pledge and spend replay, cache), `selectors.ts` (replayed ARC-4 selectors), `claim-tree.vectors.ts` (committed differential vectors), `index.ts` (barrel).
 - `src/campaigns/` - `decode.ts` (global state, box names, create args), `view.ts` (status and view model), `header.ts` (live and deleted headers), `read.ts` (indexer reads, enumeration, list cache), `index.ts` (barrel).
-- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (stale-proof detection and retry), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
+- `src/transactions/` - `clients.ts` (session-bound generated clients), `fees.ts` (minimum fee and spend headroom), `vault.ts` (vault box and config reads, window math, address), `errors.ts` (typed failures, contract assert codes, stale-proof and routing retries), `campaign.ts` (create, register, and deployment check), `pledge.ts` (pledge and cancel), `settle.ts` (refund, claim, delete), `index.ts` (barrel).
 
 ### Specs version
 
@@ -88,7 +88,8 @@ import { SPECS_VERSION } from '@kasakame/sdk'
 ```
 
 It records the contracts package version the generated clients were built
-against.
+against. The same run emits `src/generated/contract-errors.ts`, the assert-message
+list the error classifier uses.
 
 ### Chain plumbing (`chain.ts`)
 
@@ -99,14 +100,37 @@ interface SdkConfig {
   vaultAppId: bigint
 }
 
-function configureSdk(config: SdkConfig): void
+interface SdkLogger {
+  debug(event: string, context?: Record<string, unknown>): void
+  info(event: string, context?: Record<string, unknown>): void
+  warn(event: string, context?: Record<string, unknown>): void
+  error(event: string, context?: Record<string, unknown>): void
+}
+
+type SdkLogLevel = 'debug' | 'info' | 'warn' | 'error'
+
+function configureSdk(config: SdkConfig, logger?: SdkLogger): void
+function createLevelLogger(minLevel: SdkLogLevel, sink: SdkLogger): SdkLogger
 function getSdkConfig(): SdkConfig
 function fetchChainTimestamp(): Promise<bigint>
 function waitForIndexerRound(round: bigint, timeoutMs?: number, pollMs?: number): Promise<void>
 function waitForIndexerCatchUp(timeoutMs?: number, pollMs?: number): Promise<void>
 ```
 
-`configureSdk` stores the session. `getSdkConfig` throws until you call it. `fetchChainTimestamp` reads the latest block header; use this, not `Date.now()`, for deadline and status decisions. The two waiters poll the indexer until it catches up to a round or to algod's tip.
+`configureSdk` stores the session and installs an optional structured logger, defaulting to a no-op. The SDK never calls `console.*` and never configures AlgoKit's global logger. `createLevelLogger` wraps a sink and drops events below the chosen level, so each host exposes its own switch while the SDK always emits every event. `getSdkConfig` throws until you call `configureSdk`. `fetchChainTimestamp` reads the latest block header; use this, not `Date.now()`, for deadline and status decisions. The two waiters poll the indexer until it catches up to a round or to algod's tip.
+
+| Event | Level | Context |
+| --- | --- | --- |
+| `refund.route` | `debug` | `appId`, `route` |
+| `stale-proof.retry` | `debug` | `operation`, `appId` |
+| `refund.reroute` | `debug` | `appId`, `type`, optional `code` |
+| `register.already-registered` | `debug` | `appId` |
+| `write.confirmed` | `info` | `operation`, `appId`, `txIds`, optional `confirmedRound`, `position`, `amount` |
+| `indexer.timeout` | `warn` | `round`, `timeoutMs` |
+| `indexer.wait-failed` | `warn` | `message` |
+| `operation.failed` | `warn` for `validation`, `routing`, `not-found`, `chain-state`, `stale-proof`; `error` for `registry-mismatch`, `network`, `unknown` | optional `operation`, `appId`, `code`, `txId`; `type` |
+
+Logs never include mnemonics, private keys, or signing material; addresses, app ids, tx ids, types, and codes are safe. The CLI uses `--log-level` (or `--verbose` for `debug`), the frontend reads `VITE_LOG_LEVEL` in development, and the SDK LocalNet fixture uses `KASAKAME_TEST_LOG`.
 
 ### Claim-tree math and replay (`claim-tree/`)
 
@@ -257,16 +281,26 @@ interface VaultBoxView {
   settledAt: bigint
 }
 
+interface WriteConfirmation {
+  txIds: string[]
+  confirmedRound?: bigint
+  appId?: bigint
+  position?: number
+  amount?: bigint
+}
+
 function isStaleProofError(error: unknown): boolean
+function classifyChainError(error: unknown): SdkError
 function vaultAddress(): string
 function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undefined>
 function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }>
 function refundWindowEndsAt(settledAt: bigint, window: bigint): bigint
-interface CreateCampaignResult {
+interface CreateCampaignResult extends WriteConfirmation {
   appId: bigint
   appAddress: string
   registered: boolean
   registerError?: string
+  registerTxIds?: string[]
 }
 
 function createCampaign(
@@ -276,22 +310,22 @@ function createCampaign(
   goalMicroAlgos: bigint,
   deadlineSeconds: bigint,
 ): Promise<CreateCampaignResult>
-function registerCampaign(appId: bigint, session: WalletSession): Promise<void>
+function registerCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
 function verifyDeployment(): Promise<void>
-function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<void>
+function pledge(appId: bigint, session: WalletSession, amountMicroAlgos: bigint): Promise<WriteConfirmation>
 function pledgeGroup(
   appId: bigint,
   session: WalletSession,
   amountMicroAlgos: bigint,
 ): Promise<TransactionWithSigner[]>
-function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
-function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<void>
+function cancelPledge(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation>
+function refund(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<WriteConfirmation>
 function refundGroup(appId: bigint, session: WalletSession, leaf: BackerLeaf): Promise<TransactionWithSigner[]>
-function claim(appId: bigint, session: WalletSession): Promise<void>
-function deleteCampaign(appId: bigint, session: WalletSession): Promise<void>
-function settleOpen(appId: bigint, session: WalletSession): Promise<void>
-function releaseClaimed(appId: bigint, session: WalletSession): Promise<void>
-function finalize(appId: bigint, session: WalletSession): Promise<void>
+function claim(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function deleteCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function settleOpen(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function releaseClaimed(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
+function finalize(appId: bigint, session: WalletSession): Promise<WriteConfirmation>
 ```
 
 The Registry fixes the Campaign program hash at `create`, so an SDK built from another contracts bundle would create a campaign that `register` rejects. `verifyDeployment` compares the hash embedded in the generated Campaign spec (`sha256(itob(approval.length) ‖ approval ‖ clear)`) with the Registry's `campaignProgramHash`; `createCampaign` runs it before building `create`, and callers can also run it at startup. A mismatch throws before any transaction, naming the Registry hash and the contracts version (`SPECS_VERSION`); a Registry read failure throws too, and no Registry configured is a no-op.
@@ -301,6 +335,41 @@ Creation sends `create`, then registers with the Registry in a second group beca
 `fetchVaultBox` returns `undefined` only when the box is missing. Network, auth, and server errors propagate, so a failed read cannot misroute a refund or underfund `finalize`.
 
 `pledgeGroup` and `refundGroup` return the built, unsigned transactions with the session signer attached and no group id, so an external signer can add them to a fresh composer; they never submit. `pledge` and `refund` are the build-and-send wrappers, including the indexer waits and stale-proof retry.
+
+The wait after a confirmed write is best-effort: if the indexer or algod read is briefly unavailable, the SDK returns the confirmed result instead of reporting the write as failed, and the next read retries. Waits before a write still fail loudly, because a fresh tree cannot be built without the indexer.
+
+Every write helper resolves with a `WriteConfirmation`: the base32 `txIds`, the `confirmedRound` when the node returned it, and the operation-specific fields (`appId`, `position`, `amount`). `createCampaign` also returns `registerTxIds`. The frontend uses the round and first tx id for the success message and Lora link; the CLI prints both.
+
+### Errors
+
+Write helpers reject with `SdkError`, which preserves the original message and adds stable facts:
+
+```ts
+class SdkError extends Error {
+  type: SdkErrorType
+  code?: string
+  operation?: SdkOperation
+  appId?: bigint
+  txId?: string
+  cause?: unknown
+  details?: unknown
+}
+```
+
+`classifyChainError` classifies at the send boundary. It reads `LogicError.led.msg` from generated-client sends, or finds the contract assert inside a generic simulate error, so helpers never match prose. The types are:
+
+| Kind | Meaning |
+| --- | --- |
+| `validation` | Input or configuration rejected before submission (bounds, spec missing). |
+| `registry-mismatch` | The Registry expects another Campaign program hash. |
+| `stale-proof` | A concurrent write moved the Merkle root; the SDK rebuilds proofs and retries once. |
+| `routing` | The campaign path stopped being valid (for example `campaign is not open`); refunds re-read the vault box and re-route once. |
+| `chain-state` | Another contract assert rejected the write. |
+| `not-found` | The application no longer exists; refunds treat it like routing. |
+| `network` | The node or indexer was unreachable. |
+| `unknown` | Anything the classifier does not recognize. |
+
+`code` comes from one map in `errors.ts`. `scripts/codegen.ts` reads every ARC-56 `sourceInfo` map into `CONTRACT_ERROR_MESSAGES`, and each assert gets either an explicit code for a failure the SDK acts on (`stale-proof`, `routing` via `campaign-not-open`, `campaign-already-registered`, plus display codes such as `creator-self-pledge`, `pledging-closed`, `deadline-not-passed`, `refund-window-open`, and `campaign-max-size`) or a slug of its message, so a new contract assert is never unclassified. Only the classified `type`/`code` drives retries: stale proofs retry inside `submitWithFreshProof`, routing/not-found refunds re-route, and `registerCampaign` treats `campaign-already-registered` as success. `isStaleProofError` remains as a compatibility wrapper.
 
 The SDK preflights the contract's title, metadata URI, goal, deadline, and pledge bounds before building a group, so CLI and third-party callers fail before a wallet approval. The contract remains the source of truth.
 
@@ -323,8 +392,8 @@ The SDK preflights the contract's title, metadata URI, goal, deadline, and pledg
 
 Mirror the frontend: ESLint and Prettier config copies, strictest tsconfig trio, Vitest with the 100 percent line, branch, and function gate, specs colocated (`*.spec.ts`) in each module folder; `chain` and the public barrel keep their specs at the `src/` root. Commit scope `sdk`.
 
-LocalNet integration lives in `test/00-open-campaign.integration.test.ts` through
-`test/04-large-tree.integration.test.ts`, with shared fixtures under `test/utils/`.
+LocalNet integration lives in `test/00-open-campaign.test.ts` through
+`test/10-bad-path-smoke.test.ts`, with shared fixtures under `test/utils/`.
 `npm run test:integration` runs the numbered files in path order against a live
 LocalNet; the suite is excluded from `npm test` and coverage. Each file deploys
 its own Registry + ClaimsVault from the generated clients' ARC-56 bytecode and
@@ -335,9 +404,9 @@ local artifacts after `SDK_SPECS=local npm run codegen`.
 
 ## Release info
 
-- Version `0.2.0`, following the contracts' breaking changes while they churn.
-- Public npm package, published as `0.2.0`. The frontend and CLI consume
-  `"@kasakame/sdk": "^0.2.0"` from the registry.
+- Version `0.1.0`, following the contracts' breaking changes while they churn.
+- Public npm package, published as `0.1.0`. The frontend and CLI consume
+  `"@kasakame/sdk": "^0.1.0"` from the registry.
 - Release `@kasakame/contracts` and `@kasakame/constants` first: the SDK builds
   from the released contracts package and declares constants as a peer
   dependency.

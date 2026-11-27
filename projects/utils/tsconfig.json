@@ -23,8 +23,9 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "lib": ["ESNext"],
     "types": ["node"]
   },
-  "include": ["program-hash.ts", "testing", "release", "smoke", "scripts"]
+  "include": ["program-hash.ts", "testing", "release", "smoke", "scripts", "work-tracking"]
 }

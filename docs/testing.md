@@ -76,7 +76,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Contract size budget | `test/08-size-budget.spec.ts` (`CON-300`..`CON-302`) | `npm run test:size` | Compile contracts (after `npm run build`) | same as above |
 | Contract LocalNet | `test/00`-`07` | `npm run test:integration` | `integration-test-contracts` | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
-| SDK LocalNet | `test/0*.integration.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
+| SDK LocalNet | `test/*.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
 | CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
@@ -108,7 +108,7 @@ npm run test:integration:logs
 The SDK has the same script. For one file, prefix the Vitest command:
 
 ```bash
-KASAKAME_TEST_LOG=debug npx vitest run test/00-open-campaign.integration.test.ts
+KASAKAME_TEST_LOG=debug npx vitest run test/00-open-campaign.test.ts
 ```
 
 For any other test command, set the variable directly:
@@ -118,9 +118,11 @@ KASAKAME_TEST_LOG=debug npm test
 ```
 
 An invalid value fails before the tests start. The switch controls AlgoKit's
-logger; explicit `console.log` calls need their own removal. The cap-scale
-progress lines in `fast-pledge.ts` remain, because that workflow runs for hours
-and needs a heartbeat. Assertion failures print expected and received values
+logger and the SDK's structured logger; the SDK LocalNet fixture passes a
+level-filtered logger to `configureSdk`. Explicit `console.log` calls need their
+own removal. The cap-scale progress lines in `fast-pledge.ts` remain, because
+that workflow runs for hours and needs a heartbeat. Assertion failures print
+expected and received values
 independently. The randomized sequence engine includes the scale, seed, step,
 and actions in its failure messages.
 
@@ -229,10 +231,14 @@ published:
 - `@kasakame/utils` - `programHash`/`specProgramHash` for the deploy code and
   tests.
 - `@kasakame/utils/testing` - `deployPlatform` (Registry + ClaimsVault from
-  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `advanceTime`,
+  ARC-56 specs), `accountInfo`/`balanceOf`/`minBalanceOf`, `assertBalance` and
+  `assertAccountDelta` (balance and minimum-balance deltas as `after - before`),
+  `assertRejectedUnchanged` (a failing call plus before/after state equality),
+  `appSnapshot` (programs, global state, and update counter), `advanceTime`,
   `selectorOf`, the byte helpers (`addrHex`, `appIdBytes`, `base32ToBytes`,
-  `concatHex`), and Node-`assert` checks. It does not import a test runner, so
-  each consumer keeps Vitest.
+  `concatHex`), the vault/registration box references, `decodeCampaignBox`, and
+  Node-`assert` checks. It does not import a test runner, so each consumer keeps
+  Vitest.
 
 Protocol values live in the public `projects/constants` package:
 
@@ -245,6 +251,15 @@ Protocol values live in the public `projects/constants` package:
 Contract-only helpers live in `projects/contracts/test/utils/` and are imported
 through its `index.ts`:
 
+- `assertions.ts` - `expectRejected` and `expectSendRejected` send a failing call
+  and assert the app params, optional account balances, and optional campaign
+  box are unchanged; `rejectionState` builds that snapshot.
+- `ledger.ts` - `actorSnapshot` reads several balances and minimum balances at
+  once, and `expectActorDeltas` asserts per-actor `after - before` deltas.
+- `bad-paths.ts` - the bad-path campaign fixture plus explicit group builders:
+  `buildPledgeGroup`, `buildCreditGroup`, `buildRegisterGroup`,
+  `buildRawDeleteGroup`, `buildUnregisterDeleteGroup`, `attemptCampaignSpend`,
+  `refundFromVault`, and `settleOpen`.
 - `deployStack` deploys and funds the Registry, deploys and binds the vault, and
   optionally configures the campaign hash. `deployCampaign`, `registerCampaign`,
   and `deleteCampaign` assert the create/register/cleanup fees and MBRs.
@@ -255,8 +270,8 @@ through its `index.ts`:
   `docs/claim-tree-protocol-reference.py`, with one state file per campaign.
   `pledgeExtraFee`, `spendExtraFee`, and `spendFee` mirror the contract/SDK take
   formulas.
-- `campaignBox`, `campaignBoxExists`, `vaultBoxRef`, and `registrationBoxRef`
-  read the vault's per-campaign state.
+- `campaignBox` and `campaignBoxExists` read the vault's per-campaign state;
+  `campaignBox` decodes the raw box with the shared `decodeCampaignBox`.
 
 The cap suites use `test/utils/fast-pledge.ts` instead of the per-pledge
 oracle/ledger helpers: it keeps the tree in memory and sends the same
@@ -270,6 +285,13 @@ use it.
 offline, so a contract or SDK formula change fails without LocalNet.
 
 ## Test file naming (important)
+
+- `*.spec.ts` / `*.spec.tsx` - offline/unit tests. Colocated with the source they
+  test; the contract-wide formula and size pins stay in `test/`.
+- `test/NN-*.test.ts` - LocalNet integration tests, numbered so the path-order
+  sequencer runs them deterministically.
+- `test/utils/` - shared fixtures and helpers; no test suffix.
+- No 1:1 source/test rule; behavior and coverage decide.
 
 The transformer only processes files whose name ends in `.algo.ts`, `.algo.spec.ts`
 or `.algo.test.ts`. The contract (`contract.algo.ts`) is transformed; **the test file
@@ -298,6 +320,10 @@ MBR in `test/utils/contract-sizes.ts`. The checks live in
 - Integration tests live in `test/*.test.ts` (files `00`-`07`) -
   **plain `.test.ts`** files, so the puya
   transformer skips them (no AVM emulation; they talk to real algod).
+- `vitest.config.mts` sets `hookTimeout: 120_000`: the first `deployStack` can
+  exceed Vitest's 10s hook default on a cold or loaded LocalNet, which would skip
+  the file. The frontend create test uses a 20s per-test timeout for the same
+  reason.
 - Uses `algorandFixture()` to fund throwaway accounts from the LocalNet dispenser.
 - Loads the ARC-56 specs at runtime via `fs.readFileSync` with the generic
   `AppFactory` - avoids statically importing the gitignored `*Client.ts`,
@@ -352,7 +378,7 @@ MBR in `test/utils/contract-sizes.ts`. The checks live in
 ## Integration test inventory
 
 The contract package's LocalNet integration tests (run with
-`npm run test:integration` in `projects/contracts`; 88 tests across `00`-`07`; the
+`npm run test:integration` in `projects/contracts`; 92 tests across `00`-`07`; the
 two cap-scale suites in `99-*` run separately in `heavy-tests`).
 Each file deploys its own fixture chain to a live algod.
 The LocalNet integration files run **sequentially** (`--no-file-parallelism`):
@@ -362,7 +388,7 @@ pledge, flaking with `pledging is closed`. Sequential files keep each suite's
 chain-relative deadlines (`+1 day` at deploy) valid. The cap suites each own a
 runner and a LocalNet instance, so they run in parallel jobs.
 Offline specs live next to each contract and the deploy code, plus the helper
-pins in `test/`: **231 tests**, including the formula/selector tests in
+pins in `test/`: **232 tests**, including the formula/selector tests in
 `test/formulas.spec.ts`, all green with 100% line/branch/function
 coverage of the contracts.
 
@@ -411,7 +437,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-005` | bindVault is permissionless | always | A stranger can bind the first correct vault |
 | `CON-006` | register and unregister round-trip after binding | always | `register` creates the box, `[unregister, delete]` removes it and returns the deposit |
 
-#### `test/01-single-campaign.test.ts` (6 tests)
+#### `test/01-single-campaign.test.ts` (7 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -421,6 +447,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-013` | delete the cancelled campaign | chain | App deleted, campaign box retained for `finalize`, `isRegistered` false (unregister round trip) |
 | `CON-014` | delete a pristine campaign, registered and unregistered | always | Both cleanup paths: registered returns the deposit; unregistered `unregister` is a no-op; app gone |
 | `CON-015` | single-test happy path: create, pledge, cancel, delete | always | One standalone end-to-end lifecycle with ledger assertions |
+| `CON-016` | a minimum pledge is accepted and cancelled | always | 100,000 µA pledge records one leaf, the vault box, and the exact payback |
 
 #### `test/02-funding.test.ts` (15 tests)
 
@@ -456,7 +483,7 @@ earlier tests in the same file, which stop on first failure).
 | `CON-061` | refunding one campaign leaves the other untouched | always | Per-campaign accounting isolation |
 | `CON-062` | seeded pledge/cancel/refund/finalize sequence | always | One normal-lane seed through the shared sequence engine (N ≤ 100) |
 
-#### `test/04-bad-paths.test.ts` (35 tests)
+#### `test/04-bad-paths.test.ts` (38 tests)
 
 | ID | Test | Class | Verifies |
 | --- | --- | --- | --- |
@@ -472,6 +499,9 @@ earlier tests in the same file, which stop on first failure).
 | `CON-130` | final-day cancel that would drop the goal is rejected | always | Goal-protection guard at the final-day boundary |
 | `CON-131` | final-day cancel that keeps the goal is allowed | always | Cancel leaving `raised >= goal` is unaffected |
 | `CON-132` | goal-dropping cancel before the final day is allowed | always | The guard only applies inside the final 24 hours |
+| `CON-133` | a stranger cannot spend a victim's proof | always | The path check binds the spend to the leaf owner; the victim's own cancel still succeeds |
+| `CON-134` | a proof from one campaign cannot be replayed on another | always | The root check rejects a foreign path; the second campaign's own proof still spends |
+| `CON-135` | a valid proof with a changed amount or position is rejected | always | The leaf hash binds amount and position; the unmodified proof still spends |
 | `CON-109` | refund before the deadline is rejected | always | Campaign refund after the deadline |
 | `CON-110` | refund after the goal was reached is rejected | always | Failed-only refund guard |
 | `CON-111` | only the creator can claim | always | Claim authorization |
@@ -577,24 +607,34 @@ write helpers against a live chain.
 
 | File | Tests | Tags | What it proves |
 | --- | --- | --- | --- |
-| `test/00-open-campaign.integration.test.ts` | `SDK-001` | `smoke`, `happy`, `always` | create → pledge → cancel → delete; the `[pay, campaign.pledge, vault.credit]` group and the backer withdrawal |
-| `test/01-successful-campaign.integration.test.ts` | `SDK-010` | `happy`, `always` | successful campaign → claim → delete; creator payout and `[unregister, delete]` |
-| `test/02-failed-campaign.integration.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
-| `test/03-mid-size-tree.integration.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
-| `test/04-large-tree.integration.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
-| `test/05-permissionless-cleanup.integration.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
-| `test/06-create-recovery.integration.test.ts` | `SDK-060`/`SDK-061` | `happy`, `bad`, `always` | unbound Registry returns `registered: false`, binding then retrying `registerCampaign` (including an idempotent retry), cleanup returning the deposit and app MBR, and a mismatched program hash failing before app creation |
-| `test/07-read-path.integration.test.ts` | `SDK-070` | `happy`, `always` | `listCampaigns`, `getCampaign`, `enumerateCampaigns`, `fetchMyPledge`, `fetchVaultConfig`, and the cache across live, deleted, and finalized campaigns |
-| `test/08-group-builders.integration.test.ts` | `SDK-080` | `happy`, `always` | `pledgeGroup` and both `refundGroup` routes built, inspected, and submitted through a fresh composer |
-| `test/09-multi-backer.integration.test.ts` | `SDK-090` | `happy`, `always` | interleaved leaves across three backers, per-backer positions and totals, cancels, campaign refunds, delete, and the remaining vault refunds |
-| `test/10-bad-path-smoke.integration.test.ts` | `SDK-100`..`SDK-102` | `bad`, `always` | creator `pledge`, post-deadline `cancelPledge`, and pre-deadline `refund` rejections leave the tree and vault box unchanged |
+| `test/00-open-campaign.test.ts` | `SDK-001` | `smoke`, `happy`, `always` | create → pledge → cancel → delete; the `[pay, campaign.pledge, vault.credit]` group and the backer withdrawal |
+| `test/01-successful-campaign.test.ts` | `SDK-010` | `happy`, `always` | successful campaign → claim → delete; creator payout and `[unregister, delete]` |
+| `test/02-failed-campaign.test.ts` | `SDK-020` | `happy`, `always` | failed campaign → refund before delete → delete → refund after delete |
+| `test/03-mid-size-tree.test.ts` | `SDK-030` | `scale`, `always` | N=47 multi-take proof path through the SDK fee sizing |
+| `test/04-large-tree.test.ts` | `SDK-040` | `scale`, `always` | N=255 deep path (14 elements), the heaviest shape the contract ladder exercises |
+| `test/05-permissionless-cleanup.test.ts` | `SDK-050` | `happy`, `always` | stranger `settleOpen`, the vault refund route, a residual `finalize` sweep, and `releaseClaimed` before the creator's delete |
+| `test/06-create-recovery.test.ts` | `SDK-060`/`SDK-061` | `happy`, `bad`, `always` | unbound Registry returns `registered: false`, binding then retrying `registerCampaign` (including an idempotent retry), cleanup returning the deposit and app MBR, and a mismatched program hash failing before app creation |
+| `test/07-read-path.test.ts` | `SDK-070` | `happy`, `always` | `listCampaigns`, `getCampaign`, `enumerateCampaigns`, `fetchMyPledge`, `fetchVaultConfig`, and the cache across live, deleted, and finalized campaigns |
+| `test/08-group-builders.test.ts` | `SDK-080` | `happy`, `always` | `pledgeGroup` and both `refundGroup` routes built, inspected, and submitted through a fresh composer |
+| `test/09-multi-backer.test.ts` | `SDK-090` | `happy`, `always` | interleaved leaves across three backers, per-backer positions and totals, cancels, campaign refunds, delete, and the remaining vault refunds |
+| `test/10-bad-path-smoke.test.ts` | `SDK-100`..`SDK-102` | `bad`, `always` | creator `pledge`, post-deadline `cancelPledge`, and pre-deadline `refund` rejections leave the tree and vault box unchanged |
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The
-fixtures live in `test/utils/`: `fixture.ts` (platform deploy, `configureSdk`,
-sessions), `campaign.ts` (headers and leaves), and `scale.ts` (tree sizes and
-timeouts). The tests import the shared balance, minimum-balance, account-info,
-and time helpers directly from `@kasakame/utils/testing`.
+fixtures live in `test/utils/`:
+
+- `fixture.ts` - platform deploy, `configureSdk`, and sessions.
+- `campaign.ts` - `createTestCampaign`, `advancePastDeadline`, `headerOf`,
+  `leafAt`, `expectLeaves`, `expectVaultBox`, and `campaignSnapshot` for
+  rejected-call comparisons.
+- `fees.ts` - `pledgeFee`, `campaignSpendFee`, and `vaultSpendFee` mirror the SDK
+  fee sizing.
+- `group.ts` - `submitGroup` sends a pre-built group and refreshes the indexer
+  caches.
+- `scale.ts` - tree sizes and timeouts.
+
+The tests import the shared balance, minimum-balance, account-info, account-delta,
+rejected-call, and time helpers directly from `@kasakame/utils/testing`.
 
 CI runs the suite in the `integration-test-sdk` job, using the `sdk-generated`
 artifact from `build-sdk` so it tests the same clients as `check-sdk`. The suite

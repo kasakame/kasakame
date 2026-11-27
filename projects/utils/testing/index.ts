@@ -1,4 +1,5 @@
 export * from './assertions.js'
+export * from './boxes.js'
 export * from './bytes.js'
 export * from './localnet.js'
 export * from './logging.js'

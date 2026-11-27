@@ -18,7 +18,11 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
-    "check:comments": "node scripts/check-comments.ts"
+    "check:comments": "node scripts/check-comments.ts",
+    "create:issue": "node work-tracking/create-issue.ts",
+    "check:issue": "node work-tracking/check-issue.ts",
+    "show:tracking": "node work-tracking/show-work-tracking.ts",
+    "epic:automation": "node work-tracking/epic-automation.ts"
   },
   "engines": {
     "node": ">=24.0.0",

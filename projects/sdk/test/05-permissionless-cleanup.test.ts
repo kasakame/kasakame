@@ -1,12 +1,13 @@
+import { microAlgos } from '@algorandfoundation/algokit-utils'
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { MICRO_ALGOS_PER_ALGO, MIN_REFUND_WINDOW_SECONDS, VAULT_BOX_MBR_MICRO_ALGOS } from '@kasakame/constants'
-import { accountInfo, advanceTime } from '@kasakame/utils/testing'
+import { accountInfo, advanceTime, assertAccountDelta, assertRejectedUnchanged } from '@kasakame/utils/testing'
+import algosdk from 'algosdk'
 import { beforeAll, describe, expect, test } from 'vitest'
+import type { WalletSession } from '../src/index.js'
 import {
   claim,
-  createCampaign,
   deleteCampaign,
-  fetchChainTimestamp,
   fetchMyLeaves,
   fetchVaultBox,
   fetchVaultConfig,
@@ -14,11 +15,20 @@ import {
   isRegistered,
   pledge,
   refund,
-  refundOpUpIterations,
   releaseClaimed,
   settleOpen,
 } from '../src/index.js'
-import { leafAt, session, setupSdkStack, type SdkStack } from './utils/index.js'
+import {
+  advancePastDeadline,
+  createTestCampaign,
+  expectLeaves,
+  expectVaultBox,
+  leafAt,
+  session,
+  setupSdkStack,
+  vaultSpendFee,
+  type SdkStack,
+} from './utils/index.js'
 
 describe('SDK permissionless cleanup (localnet)', () => {
   const fixture = algorandFixture()
@@ -28,50 +38,61 @@ describe('SDK permissionless cleanup (localnet)', () => {
     stack = await setupSdkStack(fixture)
   })
 
+  async function unregisteredSession(): Promise<WalletSession> {
+    const account = algosdk.generateAccount()
+    await stack.algorand.send.payment({
+      sender: fixture.context.testAccount.addr,
+      receiver: account.addr,
+      amount: microAlgos(1n * MICRO_ALGOS_PER_ALGO),
+      suppressLog: true,
+    })
+    return { address: account.addr.toString(), signer: algosdk.makeBasicAccountTransactionSigner(account) }
+  }
+
   test('SDK-050 settleOpen → vault refund → residual finalize → releaseClaimed', { tags: ['happy', 'always'] }, async () => {
     const creator = await session(fixture, 50n)
     const backer = await session(fixture, 50n)
-    const stranger = await session(fixture, 50n)
-    const deadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId } = await createCampaign(creator, 'SDK cleanup', 'ipfs://sdk-cleanup', 10n * MICRO_ALGOS_PER_ALGO, deadline)
+    // Not registered with the Algorand client: each helper must install the supplied signer.
+    const stranger = await unregisteredSession()
+    const { appId } = await createTestCampaign(creator, 10n * MICRO_ALGOS_PER_ALGO)
     const refundedAmount = 2n * MICRO_ALGOS_PER_ALGO
     const residualAmount = MICRO_ALGOS_PER_ALGO
     await pledge(appId, backer, refundedAmount)
     await pledge(appId, backer, residualAmount)
     const vaultBeforeSettle = await accountInfo(stack.algorand, stack.vaultAddress)
-    await advanceTime(fixture, 90_001)
+    await advancePastDeadline(fixture)
 
     // settleOpen: vault outer only, so the stranger pays one minimum fee and the box MBR stays parked.
     const strangerBeforeSettle = await accountInfo(stack.algorand, stranger.address)
     await settleOpen(appId, stranger)
     const strangerAfterSettle = await accountInfo(stack.algorand, stranger.address)
-    expect(strangerBeforeSettle.balance - strangerAfterSettle.balance).toEqual(stack.minFee)
-    expect(strangerAfterSettle.minBalance).toEqual(strangerBeforeSettle.minBalance)
+    assertAccountDelta('stranger', strangerBeforeSettle, strangerAfterSettle, { balance: -stack.minFee, minBalance: 0n })
     const settled = await fetchVaultBox(appId)
-    expect(settled?.status).toEqual(2)
-    expect(settled?.paidIn).toEqual(refundedAmount + residualAmount)
-    expect(settled?.paidOut).toEqual(0n)
-    expect((await accountInfo(stack.algorand, stack.vaultAddress)).minBalance).toEqual(vaultBeforeSettle.minBalance)
+    expectVaultBox(settled, { status: 2, paidIn: refundedAmount + residualAmount, paidOut: 0n })
+    const vaultAfterSettle = await accountInfo(stack.algorand, stack.vaultAddress)
+    assertAccountDelta('vault', vaultBeforeSettle, vaultAfterSettle, { minBalance: 0n })
 
     // Post-settle refund: vault outer + one payout inner + the OpUp takes for this shape.
     const leaf = leafAt(await fetchMyLeaves(appId, backer.address), 0)
-    const refundTakes = refundOpUpIterations(2n, 0n)
     const backerBeforeRefund = await accountInfo(stack.algorand, backer.address)
     await refund(appId, backer, leaf)
     const backerAfterRefund = await accountInfo(stack.algorand, backer.address)
-    expect(backerAfterRefund.balance - backerBeforeRefund.balance).toEqual(leaf.amount - (2n + BigInt(refundTakes)) * stack.minFee)
-    expect(backerAfterRefund.minBalance).toEqual(backerBeforeRefund.minBalance)
-    expect((await fetchMyLeaves(appId, backer.address)).map(({ position, amount }) => ({ position, amount }))).toEqual([
-      { position: 1, amount: residualAmount },
-    ])
+    assertAccountDelta('backer', backerBeforeRefund, backerAfterRefund, {
+      balance: leaf.amount - vaultSpendFee(stack.minFee, 2n, 0n),
+      minBalance: 0n,
+    })
+    expectLeaves(await fetchMyLeaves(appId, backer.address), [{ position: 1, amount: residualAmount }])
     const afterRefund = await fetchVaultBox(appId)
-    expect(afterRefund?.paidIn).toEqual(refundedAmount + residualAmount)
-    expect(afterRefund?.paidOut).toEqual(refundedAmount)
+    expectVaultBox(afterRefund, { paidIn: refundedAmount + residualAmount, paidOut: refundedAmount })
 
-    const strangerBeforeReject = await accountInfo(stack.algorand, stranger.address)
-    await expect(finalize(appId, stranger)).rejects.toThrow(/refund window still open/)
-    expect(await accountInfo(stack.algorand, stranger.address)).toEqual(strangerBeforeReject)
-    expect(await fetchVaultBox(appId)).toBeDefined()
+    await assertRejectedUnchanged(
+      () => finalize(appId, stranger),
+      async () => ({
+        stranger: await accountInfo(stack.algorand, stranger.address),
+        box: await fetchVaultBox(appId),
+      }),
+      /refund window still open/,
+    )
 
     // Residual finalize after the window: outer fee plus the one sweep inner; the vault box MBR returns.
     const { window, sweepTarget } = await fetchVaultConfig()
@@ -84,35 +105,29 @@ describe('SDK permissionless cleanup (localnet)', () => {
     const sweeperAfter = await accountInfo(stack.algorand, sweepTarget)
     const vaultAfterFinalize = await accountInfo(stack.algorand, stack.vaultAddress)
     const strangerAfterFinalize = await accountInfo(stack.algorand, stranger.address)
-    expect(sweeperAfter.balance - sweeperBefore.balance).toEqual(residualAmount)
-    expect(sweeperAfter.minBalance).toEqual(sweeperBefore.minBalance)
-    expect(strangerBeforeFinalize.balance - strangerAfterFinalize.balance).toEqual(2n * stack.minFee)
-    expect(vaultBeforeFinalize.minBalance - vaultAfterFinalize.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
+    assertAccountDelta('sweeper', sweeperBefore, sweeperAfter, { balance: residualAmount, minBalance: 0n })
+    assertAccountDelta('stranger', strangerBeforeFinalize, strangerAfterFinalize, { balance: -2n * stack.minFee })
+    assertAccountDelta('vault', vaultBeforeFinalize, vaultAfterFinalize, { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS })
     expect(await fetchVaultBox(appId)).toBeUndefined()
 
     // releaseClaimed: a stranger frees a fully paid-out Claimed box; the creator can still delete afterwards.
-    const successDeadline = (await fetchChainTimestamp()) + 90_000n
-    const { appId: successId } = await createCampaign(
-      creator,
-      'SDK cleanup claimed',
-      'ipfs://sdk-cleanup-claimed',
-      MICRO_ALGOS_PER_ALGO,
-      successDeadline,
-    )
+    const { appId: successId } = await createTestCampaign(creator, MICRO_ALGOS_PER_ALGO)
     await pledge(successId, backer, MICRO_ALGOS_PER_ALGO)
-    await advanceTime(fixture, 90_001)
+    await advancePastDeadline(fixture)
     await claim(successId, creator)
-    const claimed = await fetchVaultBox(successId)
-    expect(claimed?.status).toEqual(3)
-    expect(claimed?.paidIn).toEqual(claimed?.paidOut)
+    expectVaultBox(await fetchVaultBox(successId), {
+      status: 3,
+      paidIn: MICRO_ALGOS_PER_ALGO,
+      paidOut: MICRO_ALGOS_PER_ALGO,
+    })
 
     const vaultBeforeRelease = await accountInfo(stack.algorand, stack.vaultAddress)
     const strangerBeforeRelease = await accountInfo(stack.algorand, stranger.address)
     await releaseClaimed(successId, stranger)
     const vaultAfterRelease = await accountInfo(stack.algorand, stack.vaultAddress)
     const strangerAfterRelease = await accountInfo(stack.algorand, stranger.address)
-    expect(strangerBeforeRelease.balance - strangerAfterRelease.balance).toEqual(stack.minFee)
-    expect(vaultBeforeRelease.minBalance - vaultAfterRelease.minBalance).toEqual(VAULT_BOX_MBR_MICRO_ALGOS)
+    assertAccountDelta('stranger', strangerBeforeRelease, strangerAfterRelease, { balance: -stack.minFee })
+    assertAccountDelta('vault', vaultBeforeRelease, vaultAfterRelease, { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS })
     expect(await fetchVaultBox(successId)).toBeUndefined()
 
     await deleteCampaign(successId, creator)

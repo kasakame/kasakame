@@ -31,6 +31,8 @@ export interface BackerLeaf {
 // Session memo for indexer reads, cleared wholesale by `clearTreeCache` around proof-carrying submissions; one invalidation rule keeps the cost to one re-download per mutation.
 const appCallCache = new Map<bigint, Promise<algosdk.indexerModels.Transaction[]>>()
 const blockCache = new Map<bigint, Promise<{ transactions?: algosdk.indexerModels.Transaction[] }>>()
+// Keep concurrent block reads small enough that a large replay does not trip the indexer rate limit.
+const BLOCK_LOOKUP_CHUNK = 16
 
 /**
  * Drop memoized indexer reads; the SDK's write helpers call it around proof-carrying submissions, plain reads reuse the cache.
@@ -112,13 +114,19 @@ export async function fetchPledges(campaignId: bigint, vaultAddress: string): Pr
   }
   const pledges: PledgeEvent[] = []
   const rounds = [...byRound.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))
-  const withBlocks = await Promise.all(
-    rounds.map(async ([round, roundCalls]) => ({
-      round,
-      roundCalls,
-      block: await cached(blockCache, round, () => indexer.lookupBlock(round).do()),
-    })),
-  )
+  const withBlocks: { round: bigint; roundCalls: typeof calls; block: { transactions?: algosdk.indexerModels.Transaction[] } }[] = []
+  for (let index = 0; index < rounds.length; index += BLOCK_LOOKUP_CHUNK) {
+    const chunk = rounds.slice(index, index + BLOCK_LOOKUP_CHUNK)
+    withBlocks.push(
+      ...(await Promise.all(
+        chunk.map(async ([round, roundCalls]) => ({
+          round,
+          roundCalls,
+          block: await cached(blockCache, round, () => indexer.lookupBlock(round).do()),
+        })),
+      )),
+    )
+  }
   for (const { round, roundCalls, block } of withBlocks) {
     const txns = block.transactions ?? []
     const positionOf = new Map<string, number>()

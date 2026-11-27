@@ -43,8 +43,8 @@ jobs:
       run_check_frontend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.frontend == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_cli: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_check_backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' || steps.filter.outputs.workspace == 'true' }}
-      run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' }}
-      run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' }}
+      run_check_utils: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.utils == 'true' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.workspace == 'true' }}
+      run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
       run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
@@ -608,6 +608,22 @@ jobs:
       - name: Type-check
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: npm run check-types
+        working-directory: projects/utils
+      - name: Check work-tracking script
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/create-issue.ts --help
+        working-directory: projects/utils
+      - name: Check issue script
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/check-issue.ts --help
+        working-directory: projects/utils
+      - name: Check work-tracking helper
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/show-work-tracking.ts --help
+        working-directory: projects/utils
+      - name: Check epic automation script
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node work-tracking/epic-automation.ts --help
         working-directory: projects/utils
 
   # Deploy and exercise the compiled TEAL on a live LocalNet with the same-run artifacts, after contract verification even if it failed.
