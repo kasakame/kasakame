@@ -7,9 +7,9 @@ import {
   type CampaignStatus,
 } from '@kasakame/sdk'
 import { isValidAddress } from 'algosdk'
-import type { CliOptions } from '../args.js'
-import { mnemonicSession } from '../mnemonic.js'
-import { whoami } from '../walletconnect.js'
+import type { CliOptions } from '../../app/options.js'
+import { mnemonicSession } from '../../auth/mnemonic/index.js'
+import { whoami } from '../../auth/wallet/index.js'
 
 export interface CampaignEntry {
   header: CampaignHeader

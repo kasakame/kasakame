@@ -1,8 +1,8 @@
 import { claim, fetchChainTimestamp, getCampaignStatus } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { openCliSession } from '../session.js'
-import { announceSubmit, printConfirmation } from './format.js'
-import { campaignHeader, requireAppId } from './lookup.js'
+import type { CliOptions } from '../app/options.js'
+import { withSession } from '../auth/open-session.js'
+import { announceSubmit, printConfirmation } from './shared/format.js'
+import { campaignHeader, requireAppId } from './shared/lookup.js'
 
 /**
  * Claim a successful campaign for its creator; a wallet that did not create it is rejected before anything is submitted.
@@ -24,23 +24,20 @@ export async function runClaim(options: CliOptions): Promise<number> {
     throw new Error(`Campaign ${appId.toString()} was already claimed`)
   }
 
-  const session = await openCliSession(options)
-  try {
-    if (header.creator !== session.wallet.address) {
+  return withSession(options, async (wallet) => {
+    if (header.creator !== wallet.address) {
       throw new Error(`Campaign ${appId.toString()} was created by ${header.creator}; only the creator can claim`)
     }
     if (options.dryRun) {
-      console.log(`Would claim campaign ${appId.toString()} as ${session.wallet.address}.`)
+      console.log(`Would claim campaign ${appId.toString()} as ${wallet.address}.`)
       console.log('Dry run: nothing submitted.')
       return 0
     }
 
     announceSubmit(options, `claim campaign ${appId.toString()}`)
-    const confirmation = await claim(appId, session.wallet)
-    console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
+    const confirmation = await claim(appId, wallet)
+    console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${wallet.address}.`)
     printConfirmation(confirmation, options.network)
     return 0
-  } finally {
-    await session.close()
-  }
+  })
 }

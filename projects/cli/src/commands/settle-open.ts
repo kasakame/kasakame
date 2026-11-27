@@ -1,7 +1,7 @@
 import { fetchChainTimestamp, fetchVaultBox, getCampaignStatus, settleOpen } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { campaignHeader, requireAppId } from './lookup.js'
-import { runVaultWrite, VAULT_BOX_STATUS_FAILED, VAULT_BOX_STATUS_OPEN } from './vault.js'
+import type { CliOptions } from '../app/options.js'
+import { campaignHeader, requireAppId } from './shared/lookup.js'
+import { runVaultWrite, VAULT_BOX_STATUS_FAILED, VAULT_BOX_STATUS_OPEN } from './shared/vault.js'
 
 /**
  * Settle a failed campaign permissionlessly when its creator is gone, so backers refund through the vault; the campaign app must still exist.

@@ -1,8 +1,8 @@
 import { fetchMyLeaves } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { cliErrorMessage } from '../errors.js'
-import { describeStatus, formatAlgo, formatDeadline, pledgeAction, printTable, progress } from './format.js'
-import { listCampaignEntries, readAddress, type CampaignEntry } from './lookup.js'
+import { cliErrorMessage } from '../app/error-messages.js'
+import type { CliOptions } from '../app/options.js'
+import { describeStatus, formatAlgo, formatDeadline, pledgeAction, printTable, progress } from './shared/format.js'
+import { listCampaignEntries, readAddress, type CampaignEntry } from './shared/lookup.js'
 
 /**
  * List the address's live pledges and the action each campaign allows now.

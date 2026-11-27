@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mnemonicSession, resolveMnemonic } from './mnemonic.js'
+import { mnemonicSession, resolveMnemonic } from './index.js'
 
 const ACCOUNT = generateAccount()
 const WORDS = secretKeyToMnemonic(ACCOUNT.sk)

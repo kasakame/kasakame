@@ -1,7 +1,7 @@
 import { fetchMyLeaves, type BackerLeaf, type WalletSession, type WriteConfirmation } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { cliErrorMessage } from '../errors.js'
-import { openCliSession } from '../session.js'
+import { cliErrorMessage } from '../../app/error-messages.js'
+import type { CliOptions } from '../../app/options.js'
+import { withSession } from '../../auth/open-session.js'
 import { announceSubmit, formatAlgo, pledges, printConfirmation, progress } from './format.js'
 
 export interface SpendLabel {
@@ -24,9 +24,8 @@ export async function spendLeaves(
   label: SpendLabel,
   spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<WriteConfirmation>,
 ): Promise<number> {
-  const session = await openCliSession(options)
-  try {
-    const leaves = await fetchMyLeaves(appId, session.wallet.address)
+  return withSession(options, async (wallet) => {
+    const leaves = await fetchMyLeaves(appId, wallet.address)
     if (leaves.length === 0) {
       console.log(`No live pledges to ${label.verb} from campaign ${appId.toString()}.`)
       return 0
@@ -53,7 +52,7 @@ export async function spendLeaves(
     for (const leaf of selected) {
       try {
         announceSubmit(options, `${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO)`)
-        const confirmation = await spend(session.wallet, leaf)
+        const confirmation = await spend(wallet, leaf)
         console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
         printConfirmation(confirmation, options.network)
       } catch (error) {
@@ -72,9 +71,7 @@ export async function spendLeaves(
     }
     console.log(`${label.done} ${pledges(selected.length)}.`)
     return 0
-  } finally {
-    await session.close()
-  }
+  })
 }
 
 function selectLeaves(leaves: BackerLeaf[], options: CliOptions, appId: bigint): BackerLeaf[] {

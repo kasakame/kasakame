@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseCliOptions } from './args.js'
+import { parseCliOptions } from './parse.js'
 
 describe('parseCliOptions', () => {
   it('defaults transaction commands to testnet with the deployed app ids', () => {

@@ -359,6 +359,19 @@ The CLI keeps a small scope; these are the known limits.
 
 ## Development
 
+Source layout:
+
+- `src/app/` - the CLI shell: `run`, `parse`, `options`, `usage`, `network`, and
+  error messages.
+- `src/auth/` - the signer selector (`open-session`), `mnemonic/` (Algo25 and
+  Pera), and `wallet/` (the WalletConnect transport).
+- `src/commands/` - one module per command plus `shared/` formatting, lookup,
+  leaf selection, and vault writes.
+- `test/` - the LocalNet integration lane (#118).
+
+Unit specs stay colocated. `src/commands/test-fixtures.ts` holds plain test
+fixtures and is excluded from the build.
+
 Build and test the CLI from `projects/cli`.
 
 ```bash

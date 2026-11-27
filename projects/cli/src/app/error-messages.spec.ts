@@ -1,7 +1,7 @@
 import { SdkError } from '@kasakame/sdk'
 import { describe, expect, it } from 'vitest'
-import type { CommandName } from './args.js'
-import { cliErrorMessage } from './errors.js'
+import { cliErrorMessage } from './error-messages.js'
+import type { CommandName } from './options.js'
 
 describe('cliErrorMessage', () => {
   it('maps known SDK codes', () => {

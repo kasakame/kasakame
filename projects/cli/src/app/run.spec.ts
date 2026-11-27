@@ -1,12 +1,8 @@
 import { SdkError } from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { run } from './cli.js'
+import { run } from './run.js'
 
-const loginMock = vi.hoisted(() => vi.fn())
-const whoamiMock = vi.hoisted(() => vi.fn())
-const logoutMock = vi.hoisted(() => vi.fn())
-const mnemonicSessionMock = vi.hoisted(() => vi.fn())
-const configureCliChainMock = vi.hoisted(() => vi.fn())
+const configureNetworkMock = vi.hoisted(() => vi.fn())
 const runRefundMock = vi.hoisted(() => vi.fn())
 const runWithdrawMock = vi.hoisted(() => vi.fn())
 const runClaimMock = vi.hoisted(() => vi.fn())
@@ -16,15 +12,12 @@ const runCampaignsMock = vi.hoisted(() => vi.fn())
 const runSettleOpenMock = vi.hoisted(() => vi.fn())
 const runFinalizeMock = vi.hoisted(() => vi.fn())
 const runReleaseClaimedMock = vi.hoisted(() => vi.fn())
+const runLoginMock = vi.hoisted(() => vi.fn())
+const runWhoamiMock = vi.hoisted(() => vi.fn())
+const runLogoutMock = vi.hoisted(() => vi.fn())
 
-vi.mock('./walletconnect.js', () => ({
-  login: loginMock,
-  whoami: whoamiMock,
-  logout: logoutMock,
-}))
-vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
-vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
-vi.mock('./commands/index.js', () => ({
+vi.mock('./network.js', () => ({ configureNetwork: configureNetworkMock }))
+vi.mock('../commands/index.js', () => ({
   runRefund: runRefundMock,
   runWithdraw: runWithdrawMock,
   runClaim: runClaimMock,
@@ -34,13 +27,10 @@ vi.mock('./commands/index.js', () => ({
   runSettleOpen: runSettleOpenMock,
   runFinalize: runFinalizeMock,
   runReleaseClaimed: runReleaseClaimedMock,
+  runLogin: runLoginMock,
+  runWhoami: runWhoamiMock,
+  runLogout: runLogoutMock,
 }))
-
-const SESSION = {
-  address: 'ADDRESS',
-  walletName: 'Pera Wallet',
-}
-const MNEMONIC_WALLET = { address: 'MNEMONIC_ADDRESS', signer: vi.fn() }
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -68,71 +58,42 @@ describe('run', () => {
     expect(console.log).toHaveBeenCalledWith(expect.stringContaining('Usage: kasakame'))
   })
 
-  it('logs in a new wallet session', async () => {
-    loginMock.mockResolvedValue({ session: SESSION, reused: false })
-
-    expect(await run(['login'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith('Connected Pera Wallet as ADDRESS.')
+  it('lists the vault cleanup commands in the usage', async () => {
+    expect(await run(['--help'])).toBe(0)
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('settle-open <appId>'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('finalize <appId>'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('release-claimed <appId>'))
   })
 
-  it('reports an already logged-in session', async () => {
-    loginMock.mockResolvedValue({ session: SESSION, reused: true })
+  it('dispatches login without configuring the chain', async () => {
+    runLoginMock.mockResolvedValue(0)
 
     expect(await run(['login'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith('Already logged in as ADDRESS (Pera Wallet).')
+    expect(runLoginMock).toHaveBeenCalled()
+    expect(configureNetworkMock).not.toHaveBeenCalled()
   })
 
-  it('shows the current wallet session', async () => {
-    whoamiMock.mockResolvedValue(SESSION)
+  it('dispatches whoami without configuring the chain', async () => {
+    runWhoamiMock.mockResolvedValue(0)
 
     expect(await run(['whoami'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith('Wallet: Pera Wallet')
-    expect(console.log).toHaveBeenCalledWith('Address: ADDRESS')
+    expect(runWhoamiMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'whoami' }))
+    expect(configureNetworkMock).not.toHaveBeenCalled()
   })
 
-  it('shows the mnemonic address', async () => {
-    mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
-
-    expect(await run(['whoami', '--signer', 'mnemonic', '--mnemonic-file', '/tmp/mnemonic'])).toBe(0)
-    expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic', undefined, undefined)
-    expect(console.log).toHaveBeenCalledWith('Signer: mnemonic')
-    expect(console.log).toHaveBeenCalledWith('Address: MNEMONIC_ADDRESS')
-    expect(console.log).toHaveBeenCalledWith('Network: testnet')
-  })
-
-  it('passes --address to a mnemonic whoami', async () => {
-    mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
-
-    expect(await run(['whoami', '--signer', 'mnemonic', '--address', 'ADDRESS'])).toBe(0)
-    expect(mnemonicSessionMock).toHaveBeenCalledWith(undefined, undefined, 'ADDRESS')
-  })
-
-  it('fails when there is no session', async () => {
-    whoamiMock.mockResolvedValue(undefined)
-
-    expect(await run(['whoami'])).toBe(1)
-    expect(console.error).toHaveBeenCalledWith('No active wallet session. Run `kasakame login` first.')
-  })
-
-  it('disconnects the session', async () => {
-    logoutMock.mockResolvedValue(true)
+  it('dispatches logout without configuring the chain', async () => {
+    runLogoutMock.mockResolvedValue(0)
 
     expect(await run(['logout'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith('Disconnected.')
-  })
-
-  it('reports a logout with no session', async () => {
-    logoutMock.mockResolvedValue(false)
-
-    expect(await run(['logout'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith('No active wallet session.')
+    expect(runLogoutMock).toHaveBeenCalled()
+    expect(configureNetworkMock).not.toHaveBeenCalled()
   })
 
   it('configures the chain and runs refund', async () => {
     runRefundMock.mockResolvedValue(0)
 
     expect(await run(['refund', '123'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(
+    expect(configureNetworkMock).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'refund',
         appId: 123n,
@@ -153,7 +114,7 @@ describe('run', () => {
     runWithdrawMock.mockResolvedValue(0)
 
     expect(await run(['withdraw', '123'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'withdraw', appId: 123n }))
+    expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'withdraw', appId: 123n }))
     expect(runWithdrawMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
   })
 
@@ -161,7 +122,7 @@ describe('run', () => {
     runClaimMock.mockResolvedValue(0)
 
     expect(await run(['claim', '5', '--network', 'localnet', '--vault', '7', '--signer', 'mnemonic', '--dry-run'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(
+    expect(configureNetworkMock).toHaveBeenCalledWith(
       expect.objectContaining({
         command: 'claim',
         appId: 5n,
@@ -178,7 +139,7 @@ describe('run', () => {
     runDeleteMock.mockResolvedValue(0)
 
     expect(await run(['delete', '123'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'delete', appId: 123n }))
+    expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'delete', appId: 123n }))
     expect(runDeleteMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
   })
 
@@ -190,22 +151,15 @@ describe('run', () => {
     runner.mockResolvedValue(0)
 
     expect(await run([command, '123'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command, appId: 123n }))
+    expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command, appId: 123n }))
     expect(runner).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
-  })
-
-  it('lists the vault cleanup commands in the usage', async () => {
-    expect(await run(['--help'])).toBe(0)
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('settle-open <appId>'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('finalize <appId>'))
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('release-claimed <appId>'))
   })
 
   it('configures the chain and lists pledges', async () => {
     runPledgesMock.mockResolvedValue(0)
 
     expect(await run(['pledges'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'pledges' }))
+    expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'pledges' }))
     expect(runPledgesMock).toHaveBeenCalled()
   })
 
@@ -213,31 +167,25 @@ describe('run', () => {
     runCampaignsMock.mockResolvedValue(0)
 
     expect(await run(['campaigns', '--address', 'ADDRESS'])).toBe(0)
-    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'campaigns' }))
+    expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'campaigns' }))
     expect(runCampaignsMock).toHaveBeenCalledWith(expect.objectContaining({ address: 'ADDRESS' }))
   })
 
   it('reports invalid arguments', async () => {
     expect(await run(['refund'])).toBe(1)
     expect(console.error).toHaveBeenCalledWith('Error: refund requires exactly one app id')
-    expect(configureCliChainMock).not.toHaveBeenCalled()
-  })
-
-  it('rejects mnemonic login', async () => {
-    expect(await run(['login', '--signer', 'mnemonic'])).toBe(1)
-    expect(console.error).toHaveBeenCalledWith('Error: login only supports --signer wallet')
-    expect(loginMock).not.toHaveBeenCalled()
+    expect(configureNetworkMock).not.toHaveBeenCalled()
   })
 
   it('prints an Error message', async () => {
-    loginMock.mockRejectedValue(new Error('relay down'))
+    runLoginMock.mockRejectedValue(new Error('relay down'))
 
     expect(await run(['login'])).toBe(1)
     expect(console.error).toHaveBeenCalledWith('Error: relay down')
   })
 
   it('prints a non-Error rejection', async () => {
-    loginMock.mockRejectedValue('relay down')
+    runLoginMock.mockRejectedValue('relay down')
 
     expect(await run(['login'])).toBe(1)
     expect(console.error).toHaveBeenCalledWith('Error: Could not connect the wallet. Please try again.')

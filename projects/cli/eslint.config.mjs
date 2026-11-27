@@ -31,17 +31,6 @@ export default defineConfig(
       '@typescript-eslint/no-non-null-assertion': 'error',
     },
   },
-  // Plain .mjs scripts have no type information; the unsafe-* rules don't apply.
-  {
-    files: ['scripts/**/*.mjs'],
-    rules: {
-      '@typescript-eslint/no-unsafe-argument': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
-    },
-  },
   // JSDoc rules, scoped to exported/public declarations so internal helpers stay exempt.
   {
     files: ['**/*.{js,mjs,cjs,ts}'],

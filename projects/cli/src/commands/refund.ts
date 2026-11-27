@@ -1,7 +1,7 @@
 import { refund } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { spendLeaves } from './leaves.js'
-import { campaignStatus, requireAppId } from './lookup.js'
+import type { CliOptions } from '../app/options.js'
+import { spendLeaves } from './shared/leaves.js'
+import { campaignStatus, requireAppId } from './shared/lookup.js'
 
 /**
  * Refund every live pledge from a failed campaign, one wallet approval per pledge; every failed refund is reported and the rest still run.

@@ -1,6 +1,6 @@
 import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
 import type { CampaignHeader, CampaignStatus, WriteConfirmation } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
+import type { CliOptions } from '../../app/options.js'
 
 /**
  * Status label for a campaign table row.

@@ -1,7 +1,7 @@
 import { fetchVaultBox, releaseClaimed } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { requireAppId } from './lookup.js'
-import { runVaultWrite, VAULT_BOX_STATUS_CLAIMED } from './vault.js'
+import type { CliOptions } from '../app/options.js'
+import { requireAppId } from './shared/lookup.js'
+import { runVaultWrite, VAULT_BOX_STATUS_CLAIMED } from './shared/vault.js'
 
 /**
  * Release a claimed campaign's vault box permissionlessly, recovering its minimum balance to the vault; a missing box is a no-op.

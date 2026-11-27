@@ -4,5 +4,5 @@
     "noEmit": false,
     "rootDir": "src"
   },
-  "exclude": ["src/**/*.spec.ts"]
+  "exclude": ["src/**/*.spec.ts", "src/commands/test-fixtures.ts"]
 }

@@ -1,7 +1,7 @@
 import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CliOptions } from './args.js'
-import { configureCliChain } from './chain.js'
+import { configureNetwork } from './network.js'
+import type { CliOptions } from './options.js'
 
 const algorandMocks = vi.hoisted(() => {
   const testnet = { network: 'testnet' }
@@ -53,16 +53,16 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('configureCliChain', () => {
+describe('configureNetwork', () => {
   it('keeps the SDK logger at warnings', () => {
-    configureCliChain(options())
+    configureNetwork(options())
 
     expect(configureConfigMock).toHaveBeenCalledWith({ logger: warningLogger })
   })
 
   it('writes all diagnostics at debug', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    configureCliChain(options({ logLevel: 'debug' }))
+    configureNetwork(options({ logLevel: 'debug' }))
 
     const logger = configureSdkMock.mock.calls[0]?.[1] as Sdk.SdkLogger
     logger.debug('refund.route', { appId: '9', route: 'vault' })
@@ -78,7 +78,7 @@ describe('configureCliChain', () => {
 
   it('filters diagnostics at the CLI boundary', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
-    configureCliChain(options({ logLevel: 'warn' }))
+    configureNetwork(options({ logLevel: 'warn' }))
 
     const logger = configureSdkMock.mock.calls[0]?.[1] as Sdk.SdkLogger
     logger.debug('refund.route', { appId: '9', route: 'vault' })
@@ -91,7 +91,7 @@ describe('configureCliChain', () => {
   })
 
   it('configures TestNet with explicit app ids', () => {
-    configureCliChain(options({ vaultAppId: 2n, registryAppId: 3n }))
+    configureNetwork(options({ vaultAppId: 2n, registryAppId: 3n }))
 
     expect(algorandMocks.testNet).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
@@ -102,7 +102,7 @@ describe('configureCliChain', () => {
   })
 
   it('configures LocalNet and defaults the registry to zero', () => {
-    configureCliChain(options({ network: 'localnet', signer: 'mnemonic', vaultAppId: 7n }))
+    configureNetwork(options({ network: 'localnet', signer: 'mnemonic', vaultAppId: 7n }))
 
     expect(algorandMocks.defaultLocalNet).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
@@ -116,7 +116,7 @@ describe('configureCliChain', () => {
     vi.stubEnv('ALGOD_SERVER', 'http://algod')
     vi.stubEnv('INDEXER_SERVER', 'http://indexer')
 
-    configureCliChain(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n, registryAppId: 0n }))
+    configureNetwork(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n, registryAppId: 0n }))
 
     expect(algorandMocks.fromEnvironment).toHaveBeenCalled()
     expect(configureSdkMock).toHaveBeenCalledWith({
@@ -131,7 +131,7 @@ describe('configureCliChain', () => {
     vi.stubEnv('INDEXER_SERVER', '')
 
     expect(() => {
-      configureCliChain(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n }))
+      configureNetwork(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n }))
     }).toThrow('Custom network requires ALGOD_SERVER and INDEXER_SERVER')
     expect(algorandMocks.fromEnvironment).not.toHaveBeenCalled()
     expect(configureSdkMock).not.toHaveBeenCalled()
@@ -142,12 +142,12 @@ describe('configureCliChain', () => {
     vi.stubEnv('INDEXER_SERVER', '')
 
     expect(() => {
-      configureCliChain(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n }))
+      configureNetwork(options({ network: 'custom', signer: 'mnemonic', vaultAppId: 7n }))
     }).toThrow('Custom network requires ALGOD_SERVER and INDEXER_SERVER')
   })
 
   it('passes zero for missing app ids', () => {
-    configureCliChain(options())
+    configureNetwork(options())
 
     expect(configureSdkMock).toHaveBeenCalledWith({
       algorand: algorandMocks.testnet,
