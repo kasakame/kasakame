@@ -115,7 +115,7 @@ Both settlement paths finalize in O(1) time and cost. Refunds stay available for
 
 ## Optional catalog
 
-The Registry plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, profiles/settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
+The Registry plus the indexer already cover discovery (which campaigns exist) and the outcome record (what happened). The backend (`projects/backend`, Fastify + Postgres) implements wallet-signature auth, public profiles with the email kept private to the owner, settings CRUD, and authenticated image and metadata uploads pinned to IPFS (`POST /uploads`, `POST /uploads/metadata`); the per-campaign catalog row with its chain watcher and the creator updates feed are planned (see the [Catalog](https://github.com/kasakame/kasakame/issues/56) and [Creator updates](https://github.com/kasakame/kasakame/issues/58) epics). `GET /profiles?address=` returns the public profile only; the email is read and written only through the authenticated owner routes (`GET /profiles/me`, `PUT /profiles`). It never holds keys, funds, or outcome decisions. Without it the dApp still runs.
 
 ## Tech stack
 

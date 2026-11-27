@@ -399,6 +399,10 @@ this campaign, and backers can still refund from the vault until the window clos
 
 `src/lib/errors.ts` keeps wallet rejection and dead-session detection on the vendor messages, and maps chain failures through the SDK's `SdkError` type/code. Common codes get short copy: closed campaign, goal reached, deadline or refund-window state, creator-only actions, full tree, registry mismatch, unregistered campaign, stale proof, not found, and network failure. Unknown failures fall back to an action-specific message. The raw chain message goes only to the development logger through `logError`, never to the visible status line.
 
+### Profile and settings loads
+
+Only a missing profile (404) is cached as empty. Other profile or settings load failures show an error with a Retry button and leave the form values untouched. Saves send only the fields the user changed, so a failed load followed by a save cannot blank stored data; a save with no changes is a no-op.
+
 ## Wallet integration
 
 `App.tsx` builds a `WalletManager`
