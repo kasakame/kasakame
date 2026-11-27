@@ -83,6 +83,31 @@ describe('claim-tree vectors (differential vs the Python oracle)', () => {
     expect(pathShape(3n, 2n)).toEqual({ r: 0, c: 0, hasTop: true })
     expect(pathShape(4n, 0n)).toEqual({ r: 2, c: 0, hasTop: false })
   })
+
+  it('appends 2,000 leaves within the documented bound', () => {
+    const backer = encodeAddress(new Uint8Array(32).fill(9))
+    const started = performance.now()
+    let state = emptyTree()
+    for (let index = 0; index < 2_000; index++) {
+      state = appendLeaf(state, { backer, amount: BigInt(index + 1), txidHex: '11'.repeat(32) })
+    }
+    const elapsed = performance.now() - started
+
+    expect(state.leaves).toHaveLength(2_000)
+    expect(state.frontier).toEqual(treeFrontier(state))
+    expect(hex(treeRoot(state))).toEqual(hex(foldPeaks(treeFrontier(state))))
+    // The old replay rebuilt the frontier per append and took tens of seconds; 5s leaves CI headroom.
+    expect(elapsed).toBeLessThan(5_000)
+  })
+
+  it('rebuilds the frontier for a state that does not carry one', () => {
+    const backer = encodeAddress(new Uint8Array(32).fill(10))
+    const first = appendLeaf(emptyTree(), { backer, amount: 1n, txidHex: '11'.repeat(32) })
+    const legacy = { leaves: first.leaves, raised: first.raised }
+    const grown = appendLeaf(legacy, { backer, amount: 2n, txidHex: '22'.repeat(32) })
+
+    expect(grown.frontier).toEqual(treeFrontier(grown))
+  })
 })
 
 describe('fee sizing', () => {

@@ -12,6 +12,8 @@ declare module 'fastify' {
 }
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000
+const MIN_SECRET_BYTES = 32
+const PLACEHOLDER_SECRETS = new Set(['change-me', 'changeme', 'replace-me', 'secret', 'test-secret', 'your-secret-here'])
 const TOKEN_TTL = '7d'
 const TOKEN_ISSUER = 'kasakame'
 
@@ -91,7 +93,20 @@ function sessionSecret(): Uint8Array {
   if (!secret) {
     throw new Error('SESSION_SECRET is not set (see .env.template)')
   }
+  if (PLACEHOLDER_SECRETS.has(secret.trim().toLowerCase())) {
+    throw new Error('SESSION_SECRET is a placeholder (generate one with: openssl rand -hex 32)')
+  }
+  if (Buffer.byteLength(secret, 'utf8') < MIN_SECRET_BYTES) {
+    throw new Error('SESSION_SECRET must be at least 32 bytes (generate one with: openssl rand -hex 32)')
+  }
   return new TextEncoder().encode(secret)
+}
+
+/**
+ * Fail fast on a missing, placeholder, or short session secret.
+ */
+export function assertSessionSecret(): void {
+  sessionSecret()
 }
 
 /**
@@ -105,8 +120,32 @@ export async function createChallenge(address: string): Promise<Challenge> {
   crypto.getRandomValues(nonceBytes)
   const nonce = Buffer.from(nonceBytes).toString('hex')
   const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS)
-  await pool().query('INSERT INTO auth_nonces (nonce, address, expires_at) VALUES ($1, $2, $3)', [nonce, address, expiresAt.toISOString()])
+  await pool().query('DELETE FROM auth_nonces WHERE expires_at <= now()')
+  await pool().query(
+    `INSERT INTO auth_nonces (nonce, address, expires_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (address) WHERE used_at IS NULL
+     DO UPDATE SET nonce = EXCLUDED.nonce, expires_at = EXCLUDED.expires_at, created_at = now()`,
+    [nonce, address, expiresAt.toISOString()],
+  )
   return { nonce, expiresAt: expiresAt.toISOString() }
+}
+
+/**
+ * Claim a live nonce exactly once; a concurrent request finds no row and fails.
+ *
+ * @param nonce Challenge nonce.
+ * @param address Claimed address.
+ * @returns Nothing when this call consumed the nonce.
+ */
+async function consumeNonce(nonce: string, address: string): Promise<void> {
+  const claimed = await pool().query(
+    'UPDATE auth_nonces SET used_at = now() WHERE nonce = $1 AND address = $2 AND used_at IS NULL AND expires_at > now() RETURNING nonce',
+    [nonce, address],
+  )
+  if (claimed.rowCount !== 1) {
+    throw new Error('invalid or expired challenge')
+  }
 }
 
 /**
@@ -194,13 +233,6 @@ export async function verifyChallenge(address: string, data: string, authenticat
   if (domain !== appDomain() || uri !== appUri() || account_address !== address || type !== 'ed25519' || version !== '1') {
     throw new Error('SIWA request is not bound to this deployment')
   }
-  const found = await pool().query<{ address: string }>(
-    'SELECT address FROM auth_nonces WHERE nonce = $1 AND address = $2 AND used_at IS NULL AND expires_at > now()',
-    [nonce, address],
-  )
-  if (found.rows[0] === undefined) {
-    throw new Error('invalid or expired challenge')
-  }
   // ARC-60 binds the domain via the authenticator data's leading hash; trailing fields are allowed, so only the prefix is compared.
   const authenticatorBytes = base64ToBytes(authenticatorData)
   const domainHash = sha256(new TextEncoder().encode(appDomain()))
@@ -218,7 +250,7 @@ export async function verifyChallenge(address: string, data: string, authenticat
   if (!valid) {
     throw new Error('invalid signature')
   }
-  await pool().query('UPDATE auth_nonces SET used_at = now() WHERE nonce = $1', [nonce])
+  await consumeNonce(nonce, address)
   return issueSessionToken(address)
 }
 
@@ -249,7 +281,7 @@ export async function verifyTransactionChallenge(address: string, signedTxn: str
   if (!valid) {
     throw new Error('invalid signature')
   }
-  await pool().query('UPDATE auth_nonces SET used_at = now() WHERE nonce = $1', [nonce])
+  await consumeNonce(nonce, address)
   return issueSessionToken(address)
 }
 

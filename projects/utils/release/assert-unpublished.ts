@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process'
+import { spawnSync } from 'node:child_process'
 import process from 'node:process'
 
 const [packageName, version] = process.argv.slice(2)
@@ -7,10 +7,20 @@ if (!packageName || !version) {
   process.exit(2)
 }
 
-try {
-  execFileSync('npm', ['view', `${packageName}@${version}`, 'version'], { stdio: 'ignore' })
+const result = spawnSync('npm', ['view', `${packageName}@${version}`, 'version'], { encoding: 'utf8' })
+if (result.error !== undefined || result.status === null) {
+  console.error(`could not query npm for ${packageName}@${version}: ${result.error?.message ?? 'no exit status'}`)
+  process.exit(1)
+}
+if (result.status === 0) {
   console.error(`${packageName}@${version} is already published`)
   process.exit(1)
-} catch {
-  console.log(`${packageName}@${version} is free`)
 }
+// Only a missing version (E404) means free; network, auth, and registry errors must stop the release.
+const output = `${result.stdout}${result.stderr}`
+if (!/E404|404 Not Found/.test(output)) {
+  console.error(`could not verify ${packageName}@${version} is unpublished:`)
+  console.error(output.trim())
+  process.exit(1)
+}
+console.log(`${packageName}@${version} is free`)

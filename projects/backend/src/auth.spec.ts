@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import nacl from 'tweetnacl'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildApp } from './app.js'
-import { base64ToBytes, createChallenge } from './auth.js'
+import { assertSessionSecret, base64ToBytes, createChallenge } from './auth.js'
 import { pool } from './db.js'
 
 function keypair(): { address: string; sk: Uint8Array } {
@@ -170,6 +170,134 @@ describe('wallet-signature auth', () => {
     expect(second.statusCode).toBe(400)
   })
 
+  it('consumes a challenge once under concurrent replay', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const challenge = await createChallenge(address)
+    const data = siwaData(challenge.nonce, address)
+    const { authenticatorData, signature } = arc60Sign(data, sk)
+    const payload = { address, data, authenticatorData, signature }
+
+    const verified = await Promise.all([
+      app.inject({ method: 'POST', url: '/auth/verify', payload }),
+      app.inject({ method: 'POST', url: '/auth/verify', payload }),
+    ])
+
+    expect(verified.map((response) => response.statusCode).sort()).toEqual([200, 400])
+  })
+
+  it('rejects an unknown challenge nonce', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const data = siwaData('00'.repeat(16), address)
+    const { authenticatorData, signature } = arc60Sign(data, sk)
+
+    const verified = await app.inject({
+      method: 'POST',
+      url: '/auth/verify',
+      payload: { address, data, authenticatorData, signature },
+    })
+
+    expect(verified.statusCode).toBe(400)
+  })
+
+  it('rejects an expired challenge', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const challenge = await createChallenge(address)
+    await pool().query("UPDATE auth_nonces SET expires_at = now() - interval '1 second' WHERE nonce = $1", [challenge.nonce])
+    const data = siwaData(challenge.nonce, address)
+    const { authenticatorData, signature } = arc60Sign(data, sk)
+
+    const verified = await app.inject({
+      method: 'POST',
+      url: '/auth/verify',
+      payload: { address, data, authenticatorData, signature },
+    })
+
+    expect(verified.statusCode).toBe(400)
+  })
+
+  it('replaces the previous live challenge for an address', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const first = await createChallenge(address)
+    const second = await createChallenge(address)
+    const live = await pool().query<{ nonce: string }>('SELECT nonce FROM auth_nonces WHERE address = $1 AND used_at IS NULL', [address])
+    expect(live.rows.map((row) => row.nonce)).toEqual([second.nonce])
+
+    const firstData = siwaData(first.nonce, address)
+    const firstSigned = arc60Sign(firstData, sk)
+    const rejected = await app.inject({
+      method: 'POST',
+      url: '/auth/verify',
+      payload: { address, data: firstData, ...firstSigned },
+    })
+    expect(rejected.statusCode).toBe(400)
+
+    const secondData = siwaData(second.nonce, address)
+    const secondSigned = arc60Sign(secondData, sk)
+    const accepted = await app.inject({
+      method: 'POST',
+      url: '/auth/verify',
+      payload: { address, data: secondData, ...secondSigned },
+    })
+    expect(accepted.statusCode).toBe(200)
+  })
+
+  it('purges expired nonces when issuing a challenge', async () => {
+    const { address } = keypair()
+    await pool().query("INSERT INTO auth_nonces (nonce, address, expires_at) VALUES ('expired-nonce', $1, now() - interval '1 minute')", [
+      address,
+    ])
+
+    await createChallenge(address)
+
+    const expired = await pool().query('SELECT 1 FROM auth_nonces WHERE nonce = $1', ['expired-nonce'])
+    expect(expired.rowCount).toBe(0)
+  })
+
+  it('rate-limits challenge creation', async () => {
+    const app = buildApp()
+    const { address } = keypair()
+
+    for (let index = 0; index < 30; index++) {
+      const allowed = await app.inject({ method: 'POST', url: '/auth/challenge', payload: { address } })
+      expect(allowed.statusCode).toBe(200)
+    }
+
+    const blocked = await app.inject({ method: 'POST', url: '/auth/challenge', payload: { address } })
+    expect(blocked.statusCode).toBe(429)
+  })
+
+  it('resets the challenge limit after the window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const app = buildApp()
+      const { address } = keypair()
+      for (let index = 0; index < 30; index++) {
+        await app.inject({ method: 'POST', url: '/auth/challenge', payload: { address } })
+      }
+      expect((await app.inject({ method: 'POST', url: '/auth/challenge', payload: { address } })).statusCode).toBe(429)
+
+      vi.setSystemTime(Date.now() + 30_000)
+      const otherClient = await app.inject({
+        method: 'POST',
+        url: '/auth/challenge',
+        payload: { address },
+        remoteAddress: '203.0.113.2',
+      })
+      expect(otherClient.statusCode).toBe(200)
+
+      vi.setSystemTime(Date.now() + 31_000)
+
+      const allowed = await app.inject({ method: 'POST', url: '/auth/challenge', payload: { address } })
+      expect(allowed.statusCode).toBe(200)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('rejects missing and invalid tokens on protected routes', async () => {
     const app = buildApp()
 
@@ -240,6 +368,21 @@ describe('wallet-signature auth', () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it('rejects placeholder and short session secrets', () => {
+    vi.stubEnv('SESSION_SECRET', 'change-me')
+    expect(() => {
+      assertSessionSecret()
+    }).toThrow(/placeholder/)
+    vi.stubEnv('SESSION_SECRET', 'x'.repeat(31))
+    expect(() => {
+      assertSessionSecret()
+    }).toThrow(/32 bytes/)
+    vi.stubEnv('SESSION_SECRET', 'x'.repeat(32))
+    expect(() => {
+      assertSessionSecret()
+    }).not.toThrow()
   })
 
   it('answers the health probe', async () => {
@@ -382,6 +525,33 @@ describe('transaction-signature auth', () => {
     expect(first.statusCode).toBe(200)
     const second = await app.inject({ method: 'POST', url: '/auth/verify-txn', payload: { address, signedTxn } })
     expect(second.statusCode).toBe(400)
+  })
+
+  it('consumes a signed payment once under concurrent replay', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const nonce = (await createChallenge(address)).nonce
+    const signedTxn = loginPaymentBlob(nonce, address, sk)
+    const payload = { address, signedTxn }
+
+    const verified = await Promise.all([
+      app.inject({ method: 'POST', url: '/auth/verify-txn', payload }),
+      app.inject({ method: 'POST', url: '/auth/verify-txn', payload }),
+    ])
+
+    expect(verified.map((response) => response.statusCode).sort()).toEqual([200, 400])
+  })
+
+  it('rejects an expired signed payment challenge', async () => {
+    const app = buildApp()
+    const { address, sk } = keypair()
+    const nonce = (await createChallenge(address)).nonce
+    await pool().query("UPDATE auth_nonces SET expires_at = now() - interval '1 second' WHERE nonce = $1", [nonce])
+    const signedTxn = loginPaymentBlob(nonce, address, sk)
+
+    const verified = await app.inject({ method: 'POST', url: '/auth/verify-txn', payload: { address, signedTxn } })
+
+    expect(verified.statusCode).toBe(400)
   })
 
   it('rejects a payment from another key', async () => {

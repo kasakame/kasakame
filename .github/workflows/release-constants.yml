@@ -24,6 +24,7 @@ concurrency:
 jobs:
   prep:
     name: Prepare and verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -78,18 +79,39 @@ jobs:
         run: npm pack --dry-run
         working-directory: projects/constants
 
+      - name: Pack the npm package
+        run: |
+          tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
+          test -f "$RUNNER_TEMP/$tarball"
+          echo "packed $tarball"
+        working-directory: projects/constants
+
+      - name: Verify the npm tarball
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/verify-tarball.ts "$tarball" projects/constants \
+            dist/ src/index.ts \
+            --forbid test/ --forbid scripts/
+
       - name: Dry-run the publish
-        run: node projects/utils/release/publish.ts projects/constants --tag "${{ steps.version.outputs.tag }}" --dry-run
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/publish.ts projects/constants --tag "${{ steps.version.outputs.tag }}" --tarball "$tarball" --ignore-scripts --dry-run
 
       # A clean consumer must import the compiled values from the tarball.
       - name: Smoke-test the packed package
-        run: node projects/utils/release/pack-smoke.ts projects/constants projects/utils/smoke/constants.ts
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/pack-smoke.ts projects/constants projects/utils/smoke/constants.ts --tarball "$tarball"
 
-      - name: Upload the tested dist
+      - name: Upload the tested tarball
         uses: actions/upload-artifact@v7
         with:
-          name: constants-dist
-          path: projects/constants/dist
+          name: constants-tarball
+          path: ${{ runner.temp }}/*.tgz
           if-no-files-found: error
           retention-days: 7
 
@@ -111,19 +133,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Download the tested dist
+      - name: Download the tested tarball
         uses: actions/download-artifact@v8
         with:
-          name: constants-dist
-          path: projects/constants/dist
-
-      - name: Verify package files
-        run: |
-          test -f README.md
-          test -f LICENSE
-          test -f dist/index.js
-          test -f dist/index.d.ts
-        working-directory: projects/constants
+          name: constants-tarball
+          path: ${{ runner.temp }}
 
       - name: Verify the checked-out version
         env:
@@ -140,8 +154,10 @@ jobs:
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
-          echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          node projects/utils/release/publish.ts projects/constants --tag "$TAG"
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          echo "publishing @kasakame/constants@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using OIDC"
+          node projects/utils/release/publish.ts projects/constants --tag "$TAG" --tarball "$tarball" --ignore-scripts
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}

@@ -12,11 +12,10 @@
 
 ## Checklist
 
-- [ ] Work tracking: linked issue has its type, parent epic, component, and priority set; epic status updated (see project README)
 - [ ] Tests added or updated, and passing
 - [ ] Docs updated if behavior, commands, or limits changed
 - [ ] No secrets or generated artifacts committed
 
-## Related issues
+## Related issue
 
-<!-- List the issue, e.g. #123. The `gh issue develop` branch links the PR, so no `Closes`/`Fixes` keyword. -->
+<!-- Link the issue, e.g. #123. Use a gh issue develop branch or write Closes #123; both close the issue on merge. -->

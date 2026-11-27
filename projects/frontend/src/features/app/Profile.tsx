@@ -37,6 +37,7 @@ const Profile = ({ onBack }: ProfileProps) => {
     setLoading(true)
     setLoadError(null)
     let cancelled = false
+
     void fetchMyProfile({
       address: activeAddress,
       chainId: activeNetworkConfig.caipChainId,

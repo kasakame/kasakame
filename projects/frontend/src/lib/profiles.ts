@@ -70,7 +70,7 @@ function textField(value: unknown): string | null {
  * Fetch a creator profile, cached per address (missing profiles cache as null). Null without a backend.
  *
  * @param address Wallet address.
- * @returns The profile, or null when unset or unreachable.
+ * @returns The profile, or null when unset or without a backend. Rejects when the load fails.
  */
 export async function fetchProfile(address: string): Promise<UserProfile | null> {
   const base = backendUrl()
@@ -108,7 +108,7 @@ export async function fetchProfile(address: string): Promise<UserProfile | null>
  * @param input.chainId CAIP-2 chain id for the SIWA request, if the network config provides one.
  * @param input.sign Wallet message signer (receives the base64 SIWA payload), returning raw signature bytes.
  * @param input.signTxn Transaction signer for wallets without message signing (universal sign-in fallback).
- * @returns The owner profile, or null when unset or unreachable.
+ * @returns The owner profile, or null when unset or without a backend. Rejects when the load fails.
  */
 export async function fetchMyProfile({
   address,
@@ -164,7 +164,7 @@ export async function fetchMyProfile({
  * @param input.chainId CAIP-2 chain id for the SIWA request, if the network config provides one.
  * @param input.sign Wallet message signer (receives the base64 SIWA payload), returning raw signature bytes.
  * @param input.signTxn Transaction signer for wallets without message signing (universal sign-in fallback).
- * @returns The settings, or null when unreachable.
+ * @returns The settings, or null without a backend. Rejects when the load fails.
  */
 export async function fetchSettings({
   address,

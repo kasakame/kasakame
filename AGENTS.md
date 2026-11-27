@@ -50,7 +50,8 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   (escape-hatch CLI: signers, commands, networks, self-hosting),
   [`sdk.md`](docs/sdk.md) (SDK package design and migration order),
   [`testing.md`](docs/testing.md),
-  [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
+  [`work-tracking.md`](docs/work-tracking.md) (hierarchy, issue fields, and
+  views), [`ci.md`](docs/ci.md), [`conventions.md`](docs/conventions.md)
   (lint/format/tsconfig rules), [`design.md`](docs/design.md) (product plan)
 - `.github/ISSUE_TEMPLATE/` - issue forms for Task, Bug, Feature, Epic, and Component
 - [`README.md`](README.md) - project overview, quick start, and docs map
@@ -130,11 +131,11 @@ Or from the repo root: `algokit project run lint` / `algokit project run format`
 
 - Read [`README.md`](README.md) and the relevant file under [`docs/`](docs/) **before**
   changing behavior.
-- **Issue first, then branch, then PR.** Create the issue before the branch, then
-  create the branch with `gh issue develop <N> --name type/N-slug --checkout`, then
-  open the PR from it. The linked branch attaches the PR to the issue and closes
-  it on merge, so no `Closes`/`Fixes` keyword is needed. Never push to `main`. Do
-  not create worktrees or merge a PR without explicit approval.
+- **Issue first, then branch, then PR.** Create the issue before the branch. Create
+  the branch with `gh issue develop <N> --name type/N-slug --checkout`; the linked
+  branch closes the issue on merge. If the branch is not linked, add `Closes #N`
+  to the PR body. Never push to `main`. Do not create worktrees or merge a PR
+  without explicit approval.
 - The contract is the source of truth; the indexer is only a read model.
 - **Preserve the six protocol requirements.** Any change must keep the A–F scorecard in
   [`claim-tree-protocol.md`](docs/claim-tree-protocol.md) §18 satisfied; update the scorecard in the
@@ -418,9 +419,10 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
   - Example: `feat(contracts): add pledge escrow contract`.
 - **Pull requests** use the template in [`.github/pull_request_template.md`](.github/pull_request_template.md):
   - The title is the change name in Conventional Commit form.
-  - List the issue in the **Related issues** section, for example `#N`. The
+  - List the issue in the **Related issue** section, for example `#N`. A
     `gh issue develop` branch links the PR and closes the issue on merge; do not
-    add a `Closes`/`Fixes` keyword. Close it after merge only if it is still open.
+    add a `Closes`/`Fixes` keyword in that case. Close it after merge only if it
+    is still open.
   - One issue per PR; squash merge. Do not merge a PR without explicit approval.
   - The `main` ruleset requires a PR and the `Gate` check; never push to `main`
     directly.
@@ -428,16 +430,40 @@ size/page/MBR/fee deltas, and update [`docs/limits.md`](docs/limits.md) (see
 ## Work tracking
 
 Work is tracked in the [KasaKame project](https://github.com/orgs/kasakame/projects/1).
-The project README is the source of truth for the hierarchy (Component ->
-Epic -> Ticket), the epic lifecycle, the issue-vs-direct-edit rule, priority and
-status definitions, the views, and the commands.
+The project README is the source of truth for the hierarchy, field definitions,
+views, and read recipes. Read it with:
 
-- Every ticket belongs to an epic; if no existing epic fits, create one under
-  the component. A ticket never sits under another ticket.
+```bash
+gh project view 1 --owner kasakame --format json --jq .readme
+```
+
+The creation workflow, automation, verification, and maintenance commands live
+in [`docs/work-tracking.md`](docs/work-tracking.md).
+
+Create every ticket and epic with the script:
+
+```bash
+node projects/utils/work-tracking/create-issue.ts --type Task --parent 52 --priority P2 --effort Medium --title "..." --body-file /tmp/body.md
+```
+
+The script validates the parent, derives `Component`, sets `Priority` and
+`Effort`, adds the issue to the project, and verifies it. Do not create issues
+with raw `gh issue create`.
+
+- Every ticket belongs to an epic; every epic belongs to a component. A ticket
+  never sits under another ticket.
+- Stable project and field IDs live in `projects/utils/work-tracking/config.json`;
+  run `node projects/utils/work-tracking/show-work-tracking.ts` to validate the
+  config and list the current epics.
+- The `work-tracking` workflow runs `check-issue` to fill a missing `Component`
+  and flag missing `Priority` or `Effort` with `needs-triage`, and
+  `epic-automation` to keep the parent epic `Status` in sync. The epic job needs
+  the `PROJECT_TOKEN` secret; see [`docs/work-tracking.md`](docs/work-tracking.md).
 - Create issues only for changes that need a PR. Project metadata edits are done
-  directly; if one changes the workflow, update the project README.
-- Before opening a PR, set the linked issue's type, parent epic, component, and
-  priority, and sync the epic status. The PR template repeats this check.
+  directly.
+- Before opening a PR, confirm the linked issue has a type, parent, matching
+  `Component`, `Priority`, and `Effort`, and sync the epic status. The PR
+  template repeats this check.
 - Use the Epic and Component forms for those issue types; do not create them as
   Task and retype.
 - Milestones: use the current release milestone from the project; do not create

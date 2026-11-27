@@ -1,7 +1,11 @@
 name: Epic
-description: A workstream inside one component. Set the parent component and project fields after creating.
+description: A workstream inside one component.
 type: Epic
 body:
+  - type: markdown
+    attributes:
+      value: |
+        After creating, set the parent to a component from the **Sub-issue** menu, then set **Component**, **Priority**, and **Effort** in the sidebar. The `check-issue` job fills a missing Component and flags missing Priority or Effort with `needs-triage`.
   - type: textarea
     id: description
     attributes:
