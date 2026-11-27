@@ -10,7 +10,7 @@ import {
   runReleaseClaimed,
   runSettleOpen,
   runWithdraw,
-} from './commands.js'
+} from './commands/index.js'
 import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'

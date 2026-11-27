@@ -24,7 +24,7 @@ vi.mock('./walletconnect.js', () => ({
 }))
 vi.mock('./mnemonic.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 vi.mock('./chain.js', () => ({ configureCliChain: configureCliChainMock }))
-vi.mock('./commands.js', () => ({
+vi.mock('./commands/index.js', () => ({
   runRefund: runRefundMock,
   runWithdraw: runWithdrawMock,
   runClaim: runClaimMock,
