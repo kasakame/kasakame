@@ -5,9 +5,7 @@ import type { CampaignHeader, CampaignViewModel } from '../../lib/campaign'
 import { clearCachedCampaigns, setCachedCampaigns } from '../../lib/campaign'
 import CampaignList from './CampaignList'
 
-// Capture the resolver so we can control when the promise settles, letting us
-// unmount the component before the async result arrives (covers the
-// `cancelled` guard branches in the effect's cleanup path).
+// Capture the resolver so the promise settles on demand, letting a test unmount before the async result arrives (covers the `cancelled` guard).
 let resolveList: ((value: { campaigns: CampaignViewModel[]; nowSeconds: bigint }) => void) | undefined
 let rejectList: ((reason: unknown) => void) | undefined
 
@@ -202,8 +200,7 @@ describe('CampaignList', () => {
       }),
     )
     const { unmount } = render(<CampaignList onSelectCampaign={() => {}} />)
-    // Let the effect reach listCampaigns so the component observes the
-    // rejection - an unobserved rejection fails the run as unhandled.
+    // Let the effect reach listCampaigns so the component observes the rejection: an unobserved one fails the run as unhandled.
     await new Promise((r) => setTimeout(r, 0))
     unmount()
 

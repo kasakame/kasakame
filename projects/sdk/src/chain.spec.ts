@@ -1,6 +1,14 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureSdk, fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUp, waitForIndexerRound } from './chain.js'
+import {
+  configureSdk,
+  fetchChainTimestamp,
+  getSdkConfig,
+  waitForIndexerCatchUp,
+  waitForIndexerCatchUpBestEffort,
+  waitForIndexerRound,
+} from './chain.js'
+import { sdkLogger, setSdkLogger } from './log.js'
 
 const algodStatus = vi.fn()
 const algodBlock = vi.fn()
@@ -11,7 +19,7 @@ function fakeAlgorand(): AlgorandClient {
     client: {
       algod: {
         status: () => ({ do: algodStatus }),
-        block: (round: bigint) => ({ do: () => algodBlock(round) }),
+        block: (round: bigint) => ({ headerOnly: (headerOnly: boolean) => ({ do: () => algodBlock(round, headerOnly) }) }),
       },
       indexer: { makeHealthCheck: () => ({ do: healthCheck }) },
     },
@@ -32,6 +40,15 @@ describe('configureSdk', () => {
     expect(getSdkConfig().registryAppId).toEqual(1001n)
     expect(getSdkConfig().vaultAppId).toEqual(2002n)
   })
+
+  it('installs the structured logger and resets it when omitted', () => {
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n }, logger)
+    expect(sdkLogger()).toBe(logger)
+
+    configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
+    expect(sdkLogger()).not.toBe(logger)
+  })
 })
 
 describe('chain plumbing', () => {
@@ -51,13 +68,32 @@ describe('chain plumbing', () => {
     algodStatus.mockResolvedValue({ lastRound: 42n })
     algodBlock.mockResolvedValue({ block: { header: { timestamp: 123n } } })
     expect(await fetchChainTimestamp()).toEqual(123n)
-    expect(algodBlock).toHaveBeenCalledWith(42n)
+    expect(algodBlock).toHaveBeenCalledWith(42n, true)
   })
 
   it('waits for the indexer to reach the chain tip', async () => {
     algodStatus.mockResolvedValue({ lastRound: 5n })
     healthCheck.mockResolvedValue({ round: 10n })
     await expect(waitForIndexerCatchUp(10_000, 250)).resolves.toBeUndefined()
+  })
+
+  it('swallows a post-write catch-up failure', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+    algodStatus.mockRejectedValueOnce(new Error('algod unreachable'))
+
+    await expect(waitForIndexerCatchUpBestEffort()).resolves.toBeUndefined()
+    expect(algodStatus).toHaveBeenCalledOnce()
+    expect(warn).toHaveBeenCalledWith('indexer.wait-failed', { message: 'algod unreachable' })
+  })
+
+  it('stringifies a non-Error post-write catch-up failure', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+    algodStatus.mockRejectedValueOnce('offline')
+
+    await expect(waitForIndexerCatchUpBestEffort()).resolves.toBeUndefined()
+    expect(warn).toHaveBeenCalledWith('indexer.wait-failed', { message: 'offline' })
   })
 })
 
@@ -71,6 +107,7 @@ describe('waitForIndexerRound', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.restoreAllMocks()
+    setSdkLogger(undefined)
   })
 
   it('resolves immediately when the indexer is already past the round', async () => {
@@ -98,6 +135,8 @@ describe('waitForIndexerRound', () => {
   })
 
   it('gives up after the timeout', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
     healthCheck.mockResolvedValue({ round: 1n })
 
     let resolved = false
@@ -109,6 +148,7 @@ describe('waitForIndexerRound', () => {
     await promise
 
     expect(resolved).toBe(true)
+    expect(warn).toHaveBeenCalledWith('indexer.timeout', { round: '8', timeoutMs: 1_000 })
   })
 
   it('keeps polling when the health check is temporarily unreachable', async () => {

@@ -39,9 +39,7 @@ export default defineConfig(
     },
     rules: {
       ...react.configs.recommended.rules,
-      // Classic React 18 hooks rules. The newer react-hooks "compiler" rules
-      // (immutability, purity, set-state-in-render, ...) are skipped because
-      // this project does not use the React Compiler.
+      // Classic React 18 hooks rules; the newer "compiler" rules are skipped because this project does not use the React Compiler.
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       // PropTypes are redundant when components are fully typed with TypeScript.
@@ -53,8 +51,7 @@ export default defineConfig(
       '@typescript-eslint/no-non-null-assertion': 'error',
     },
   },
-  // JSDoc rules, scoped to exported/public declarations so we don't have to
-  // document every internal helper.
+  // JSDoc rules, scoped to exported/public declarations so internal helpers need no doc block.
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     plugins: { jsdoc },
@@ -62,31 +59,22 @@ export default defineConfig(
       ...jsdoc.configs['flat/recommended-typescript-error'].rules,
       'jsdoc/require-jsdoc': ['error', { publicOnly: true }],
       'jsdoc/require-returns': ['error', { publicOnly: true }],
-      // Match prettier-plugin-jsdoc, which puts one blank line between the
-      // description and the first tag.
+      // Match prettier-plugin-jsdoc: one blank line between the description and the first tag.
       'jsdoc/tag-lines': ['error', 'never', { startLines: 1 }],
     },
   },
-  // Import rules: duplicates and named-default safety. Ordering is handled by
-  // `prettier-plugin-organize-imports` so the two tools never disagree.
+  // Import rules: duplicates and named-default safety; ordering is handled by `prettier-plugin-organize-imports`.
   {
     files: ['**/*.{js,mjs,cjs,ts,tsx}'],
     plugins: { import: importPlugin },
     rules: {
-      // Resolution-based rules (no-unresolved, named, namespace, default,
-      // export) are skipped: `tsc --noEmit` already validates module
-      // resolution, and the default `eslint-import-resolver-node` cannot
-      // read `exports`-only packages (e.g. vite, typescript-eslint).
+      // Resolution rules are skipped: `tsc --noEmit` validates module resolution, and the default resolver cannot read `exports`-only packages.
       'import/no-duplicates': 'error',
       'import/no-named-as-default': 'error',
       'import/no-named-as-default-member': 'error',
     },
   },
-  // Tailwind classes (tsx only - no other file kind carries class names).
-  // Prettier deliberately does NOT sort classes (its plugin conflicts with
-  // organize-imports/jsdoc), so ordering lives here alongside correctness.
-  // Custom theme colors (bg-card, text-muted, ...) resolve through the v4
-  // stylesheet below - without it they would read as typos.
+  // Tailwind classes (tsx only). Prettier does not sort them, so ordering lives here; custom theme colors need the v4 stylesheet below to resolve.
   {
     files: ['**/*.tsx'],
     plugins: { tailwindcss },
@@ -115,8 +103,7 @@ export default defineConfig(
       },
     },
     rules: {
-      // Vitest mocks return `any`; relaxing these here keeps test files from
-      // fighting the type-checker over mock factories.
+      // Vitest mocks return `any`; relaxing these keeps test files from fighting the type-checker over mock factories.
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-return': 'off',
       '@typescript-eslint/no-unsafe-member-access': 'off',

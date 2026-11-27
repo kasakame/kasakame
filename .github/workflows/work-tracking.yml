@@ -1,0 +1,57 @@
+name: work-tracking
+
+on:
+  issues:
+    types: [opened, reopened, closed, typed, untyped, field_added, field_removed]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue number to run against
+        required: true
+        type: number
+
+# Field updates emit one event per field; keep only the latest run for the issue.
+concurrency:
+  group: work-tracking-${{ github.event.issue.number || inputs.issue_number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-issue:
+    name: Check issue metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Check metadata
+        run: node projects/utils/work-tracking/check-issue.ts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
+
+  epic-automation:
+    name: Update epic status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The project token needs Organization Projects read and write.
+      - name: Update parent epic
+        run: node projects/utils/work-tracking/epic-automation.ts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+          ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}

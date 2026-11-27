@@ -9,8 +9,7 @@ export interface AuthPath {
 }
 
 /**
- * The expected path shape for `(n, k)`: first level whose sibling block extends past N, lower-peak count, higher fold.
- * Mirrors the contract's derivation (used for arg-size estimates).
+ * The expected path shape for `(n, k)`, mirroring the contract's derivation (used for arg-size estimates): within-peak length r, lower-peak count c, and whether a higher fold exists.
  *
  * @param n Tree size (positions ever appended).
  * @param k Leaf position.

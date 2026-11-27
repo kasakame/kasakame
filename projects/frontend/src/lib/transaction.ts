@@ -1,14 +1,11 @@
 /**
- * Frontend wallet helper. The write path (call assembly, retry, vault helpers, `WalletSession`) lives in
- * `@kasakame/sdk`, re-exported here for existing importers.
+ * Frontend wallet helper: the write path (call assembly, retry, vault helpers, `WalletSession`) lives in `@kasakame/sdk`, re-exported here for existing importers.
  */
 
 export * from '@kasakame/sdk'
 
 /**
- * Best-effort disconnect to clear a dead wallet session, so reconnecting is one click instead of two. Never throws:
- * a dead bridge may fail to disconnect too. Callers must fire-and-forget (`void disconnectQuietly(...)`) - awaiting
- * a hanging disconnect would stall the UI indefinitely.
+ * Best-effort disconnect to clear a dead wallet session so reconnecting is one click; it never throws, so callers fire-and-forget with void disconnectQuietly(...).
  *
  * @param activeWallet The active wallet from useWallet, if any.
  */

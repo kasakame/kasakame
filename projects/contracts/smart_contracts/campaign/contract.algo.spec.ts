@@ -25,13 +25,7 @@ import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Campaign } from './contract.algo'
 
 /**
- * Behavioral tests for the Campaign contract (claim-tree design), run against the offline AVM emulation.
- *
- * Every tree operation runs differentially: expected roots come from the Python reference oracle
- * (`../../test/utils/oracle.py`), driven with the mock payments' real `txnId`s. The vault inner calls
- * (`payBack`/`payClaim`/`settle`/`notifyDelete`)
- * target the stub vault app and succeed as no-ops offline - their real routing and effects run on LocalNet in
- * `test/02-funding.test.ts` and `test/04-bad-paths.test.ts`.
+ * Behavioral tests for the Campaign contract (claim-tree design) against the offline AVM emulation and the Python oracle; vault inner calls run on LocalNet.
  */
 
 const GOAL = 10_000_000
@@ -999,9 +993,7 @@ describe('Campaign', () => {
       contract.refund(0, amount, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
     })
 
-    // The offline emulator does not enforce the 700-op base budget, so the refund executes without OpUps. The SDK's
-    // zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487 ops, so the
-    // contract actually requests 14. 14 + the campaign payBack + vault payment = 16.
+    // The offline emulator does not enforce the 700-op base budget; the SDK's zero-headroom bound funds 15 takes, so the contract requests 14 (plus payBack and payment = 16).
     const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
     // The Puya transformer makes `/` integer division in this spec; count the takes with a loop.
     let funded = 0

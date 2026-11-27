@@ -24,12 +24,7 @@ import { Campaign } from '../campaign/contract.algo'
 import { ClaimsVault } from './contract.algo'
 
 /**
- * Behavioral tests for the ClaimsVault (claim-tree design), run against the offline AVM emulation.
- *
- * The Registry registration inner call inside first-touch `credit` can't be emulated offline (no inner-call logs) - it
- * is covered on LocalNet in `test/04-bad-paths.test.ts` (CON-107). Everything else runs here, including full
- * differential pledge/refund flows: expected roots come from the Python reference oracle
- * (`../../test/utils/oracle.py`), driven with the mock payments' real `txnId`s.
+ * Behavioral tests for the ClaimsVault (claim-tree design) against the offline AVM emulation; the Registry registration inner call runs on LocalNet (`test/04-bad-paths`, CON-107).
  */
 
 const CAMPAIGN_APP_ID = 42
@@ -268,8 +263,7 @@ describe('ClaimsVault', () => {
     })
 
     test('rejects a first touch the offline ledger cannot register (covered on LocalNet)', () => {
-      // A valid pledge precedes this call; the Registry inner call's log cannot be emulated offline, so the registration
-      // gate fails here. The real gate runs on LocalNet.
+      // A valid pledge precedes this call, but the Registry inner call's log cannot be emulated offline; the real gate runs on LocalNet.
       const vault = createVault()
       const caller = ctx.defaultSender
       const app = campaignApp()
@@ -1176,8 +1170,7 @@ describe('ClaimsVault', () => {
       const app = campaignApp()
       ctx.ledger.patchGlobalData({ latestTimestamp: 200 })
 
-      // k=2: r=0 with a higher peak (exercises hasTop); k=1: r=1, c=1; k=0: r=1, c=1. Paths are rebuilt from the
-      // oracle after every null, exactly as a client would after on-chain state advances.
+      // k=2: r=0 with a higher peak (hasTop); k=1 and k=0: r=1, c=1; paths are rebuilt from the oracle after every null.
       for (const k of [2, 1, 0]) {
         const txid = txids[k] === undefined ? '' : txids[k]
         const backer = backers[k] === undefined ? ctx.defaultSender : backers[k]
@@ -1238,8 +1231,7 @@ describe('ClaimsVault', () => {
         vault.refund(campaignApp(), 0, AMOUNT, Bytes(Buffer.from(txid, 'hex')), Bytes(blob))
       })
 
-      // The SDK's zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487
-      // ops, so the vault actually requests 14 + its payment inner = 15, within the 16-inner limit.
+      // The SDK's zero-headroom bound funds 15 takes; the N=1,023 LocalNet rung proves the prelude leaves at least 487 ops, so the vault requests 14 + its payment inner = 15.
       const required = 250 * (bulk.path.siblings.length + bulk.path.lower.length) + 700
       // The Puya transformer makes `/` integer division in this spec; count the takes with a loop.
       let funded = 0

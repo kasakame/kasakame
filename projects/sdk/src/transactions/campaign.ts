@@ -1,23 +1,53 @@
 import { microAlgos } from '@algorandfoundation/algokit-utils'
-import { APP_ID_BYTES, REGISTER_DEPOSIT_MICRO_ALGOS, REGISTRY_BOX_PREFIX } from '@kasakame/constants'
-import { getSdkConfig, waitForIndexerCatchUp } from '../chain.js'
-import { CampaignFactory } from '../generated/CampaignClient.js'
+import {
+  APP_ID_BYTES,
+  MAX_CAMPAIGN_DURATION_SECONDS,
+  MAX_GOAL_MICRO_ALGOS,
+  MAX_METADATA_URI_BYTES,
+  MAX_TITLE_BYTES,
+  MIN_CAMPAIGN_DURATION_SECONDS,
+  MIN_GOAL_MICRO_ALGOS,
+  REGISTER_DEPOSIT_MICRO_ALGOS,
+  REGISTRY_BOX_PREFIX,
+} from '@kasakame/constants'
+import { sha256 } from '@noble/hashes/sha2.js'
+import { base64ToBytes, bytesToHex } from 'algosdk'
+import { fetchChainTimestamp, getSdkConfig, waitForIndexerCatchUpBestEffort } from '../chain.js'
+import { u64be } from '../claim-tree/tree.js'
+import { APP_SPEC, CampaignFactory } from '../generated/CampaignClient.js'
+import { RegistryClient } from '../generated/RegistryClient.js'
+import { SPECS_VERSION } from '../generated/specs-version.js'
+import { sdkLogger } from '../log.js'
 import type { WalletSession } from './clients.js'
 import { registryClientFor } from './clients.js'
+import type { WriteConfirmation } from './confirmation.js'
+import { writeConfirmation } from './confirmation.js'
+import {
+  classifyChainError,
+  classifySubmission,
+  isAlreadyRegisteredError,
+  logSdkFailure,
+  logWriteConfirmed,
+  SdkError,
+  submitWithClassification,
+  throwSdkError,
+  validationError,
+} from './errors.js'
 
 /** Result of `createCampaign`: the campaign exists, and `registered` is false when the Registry step failed. */
-export interface CreateCampaignResult {
+export interface CreateCampaignResult extends WriteConfirmation {
   appId: bigint
   appAddress: string
   /** True when registration landed, or when no Registry is configured. */
   registered: boolean
   /** The Registry failure message when `registered` is false. */
   registerError?: string
+  /** Base32 transaction ids for the registration group, when it landed. */
+  registerTxIds?: string[]
 }
 
 /**
- * The Registry's registration box for a campaign (prefix 'r' + 8-byte big-endian app id) - the inner `isRegistered`
- * check needs it.
+ * The Registry's registration box for a campaign (prefix 'r' + 8-byte big-endian app id), needed by the inner `isRegistered` check.
  *
  * @param appId The campaign application id.
  * @returns Box references for the Registry app.
@@ -33,16 +63,19 @@ export function registrationBox(appId: bigint): { appId: bigint; name: Uint8Arra
 }
 
 /**
- * Send the Registry registration group for a campaign. The caller must be the campaign creator; the group is the
- * registration app call and its refundable deposit payment.
+ * Send the Registry registration group for a campaign - the registration app call plus its refundable deposit payment; the caller must be the campaign creator.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
+ * @returns The confirmed registration group result.
  */
-async function sendRegister(appId: bigint, session: WalletSession): Promise<void> {
+async function sendRegister(
+  appId: bigint,
+  session: WalletSession,
+): Promise<{ txIds: string[]; confirmation?: { confirmedRound?: bigint } }> {
   const { algorand } = getSdkConfig()
   const registryClient = registryClientFor(session)
-  await registryClient.send.register({
+  return registryClient.send.register({
     args: {
       app: appId,
       payment: await algorand.createTransaction.payment({
@@ -56,28 +89,88 @@ async function sendRegister(appId: bigint, session: WalletSession): Promise<void
 }
 
 /**
- * Register an existing campaign with the Registry after a failed create-time registration. Safe to retry: a campaign
- * that is already registered is treated as success. A no-op when no Registry is configured.
+ * Register an existing campaign with the Registry after a failed create-time registration; safe to retry, and a no-op when no Registry is configured.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the creator's signer and address.
+ * @returns The confirmed registration, or empty txIds when it was already registered or no Registry is configured.
  */
-export async function registerCampaign(appId: bigint, session: WalletSession): Promise<void> {
-  if (getSdkConfig().registryAppId === 0n) return
+export async function registerCampaign(appId: bigint, session: WalletSession): Promise<WriteConfirmation> {
+  if (getSdkConfig().registryAppId === 0n) return { txIds: [] }
+  let confirmation: WriteConfirmation
   try {
-    await sendRegister(appId, session)
+    confirmation = writeConfirmation(await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId))
   } catch (error) {
-    // A retry can race a registration that landed but whose confirmation was lost; the Registry message is stable.
-    if (!(error instanceof Error) || !/campaign already registered/i.test(error.message)) throw error
+    const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
+    // A retry can race a registration that landed but whose confirmation was lost.
+    if (!isAlreadyRegisteredError(classified)) throwSdkError(classified)
+    sdkLogger().debug('register.already-registered', { appId: appId.toString() })
+    confirmation = { txIds: [] }
   }
-  await waitForIndexerCatchUp()
+  await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('registerCampaign', appId, confirmation)
+  return confirmation
 }
 
 /**
- * Deploy a new campaign: create, then register with the Registry. Nothing is funded - the v2 escrow never holds funds.
- * Registration is a separate step because it references the app id from the creation round. When it fails, the
- * campaign still exists and the result carries its id with `registered: false`; `registerCampaign` retries without
- * recreating it.
+ * Hash the Campaign bytecode embedded in the generated spec: `sha256(itob(approval.length) ‖ approval ‖ clear)`.
+ *
+ * @returns The 32-byte program hash the Registry verifies at `register`.
+ */
+function campaignProgramHash(): Uint8Array {
+  const byteCode = APP_SPEC.byteCode
+  if (byteCode === undefined) {
+    throwSdkError(new SdkError('validation', 'Campaign spec has no byteCode; run codegen first', { operation: 'verifyDeployment' }))
+  }
+  const approval = base64ToBytes(byteCode.approval)
+  const clear = base64ToBytes(byteCode.clear)
+  const preimage = new Uint8Array(8 + approval.length + clear.length)
+  preimage.set(u64be(BigInt(approval.length)), 0)
+  preimage.set(approval, 8)
+  preimage.set(clear, 8 + approval.length)
+  return sha256(preimage)
+}
+
+/**
+ * Verify that the configured Registry expects this SDK's Campaign program hash; a mismatch would create a campaign that `register` rejects. No-op when no Registry is configured.
+ *
+ * @throws {Error} When the Registry expects another bundle, or its hash cannot be read.
+ */
+export async function verifyDeployment(): Promise<void> {
+  const { algorand, registryAppId } = getSdkConfig()
+  if (registryAppId === 0n) return
+  let registryHash: Uint8Array | undefined
+  try {
+    const registry = new RegistryClient({ algorand, appId: registryAppId })
+    registryHash = (await registry.state.global.campaignProgramHash()).asByteArray()
+  } catch (error) {
+    const classified = classifyChainError(error, { operation: 'verifyDeployment', appId: registryAppId })
+    const message = `could not read the Registry campaign program hash: ${classified.message}`
+    throwSdkError(
+      new SdkError(classified.type, message, {
+        operation: 'verifyDeployment',
+        appId: registryAppId,
+        ...(classified.code === undefined ? {} : { code: classified.code }),
+        cause: error,
+        details: error,
+      }),
+    )
+  }
+  const expectedHash = campaignProgramHash()
+  if (registryHash === undefined || bytesToHex(registryHash) !== bytesToHex(expectedHash)) {
+    const registryHex = registryHash === undefined ? 'missing' : bytesToHex(registryHash)
+    throwSdkError(
+      new SdkError(
+        'registry-mismatch',
+        `the Registry expects Campaign program hash ${registryHex}, but this SDK ships contracts ${SPECS_VERSION} (${bytesToHex(expectedHash)})`,
+        { operation: 'verifyDeployment', appId: registryAppId },
+      ),
+    )
+  }
+}
+
+/**
+ * Deploy a new campaign: create, then register with the Registry; nothing is funded. When registration fails the campaign still exists with `registered: false`, and `registerCampaign` retries it.
  *
  * @param session Wallet session holding the signer and address.
  * @param title Short campaign title (stored on-chain).
@@ -94,41 +187,81 @@ export async function createCampaign(
   deadlineSeconds: bigint,
 ): Promise<CreateCampaignResult> {
   const { algorand, registryAppId, vaultAppId } = getSdkConfig()
+  const titleBytes = new TextEncoder().encode(title)
+  if (titleBytes.length === 0) validationError('title is required', 'createCampaign')
+  if (titleBytes.length > MAX_TITLE_BYTES) {
+    validationError(`title must be at most ${String(MAX_TITLE_BYTES)} bytes`, 'createCampaign')
+  }
+  const metadataUriBytes = new TextEncoder().encode(metadataUri)
+  if (metadataUriBytes.length > MAX_METADATA_URI_BYTES) {
+    validationError(`metadata URI must be at most ${String(MAX_METADATA_URI_BYTES)} bytes`, 'createCampaign')
+  }
+  if (goalMicroAlgos < MIN_GOAL_MICRO_ALGOS || goalMicroAlgos > MAX_GOAL_MICRO_ALGOS) {
+    validationError(`goal must be between ${String(MIN_GOAL_MICRO_ALGOS)} and ${String(MAX_GOAL_MICRO_ALGOS)} microAlgos`, 'createCampaign')
+  }
+  const now = await fetchChainTimestamp()
+  const earliestDeadline = now + BigInt(MIN_CAMPAIGN_DURATION_SECONDS)
+  const latestDeadline = now + BigInt(MAX_CAMPAIGN_DURATION_SECONDS)
+  if (deadlineSeconds < earliestDeadline || deadlineSeconds > latestDeadline) {
+    validationError(
+      `deadline must be between ${String(earliestDeadline)} and ${String(latestDeadline)} (chain time ${String(now)})`,
+      'createCampaign',
+    )
+  }
+  await verifyDeployment()
   const campaignFactory = new CampaignFactory({
     algorand,
     defaultSender: session.address,
     defaultSigner: session.signer,
   })
 
-  const sendResult = await campaignFactory.send.create.create({
-    args: {
-      vault: vaultAppId,
-      title: new TextEncoder().encode(title),
-      metadataUri: new TextEncoder().encode(metadataUri),
-      goal: goalMicroAlgos,
-      deadline: deadlineSeconds,
-    },
-    appReferences: [vaultAppId],
-  })
+  const sendResult = await submitWithClassification('createCampaign', () =>
+    campaignFactory.send.create.create({
+      args: {
+        vault: vaultAppId,
+        title: titleBytes,
+        metadataUri: metadataUriBytes,
+        goal: goalMicroAlgos,
+        deadline: deadlineSeconds,
+      },
+      appReferences: [vaultAppId],
+    }),
+  )
 
   const appId = sendResult.result.appId
   const appAddress = sendResult.result.appAddress.toString()
+  const confirmation = writeConfirmation(sendResult.result)
 
-  // Register with the Registry (when configured) so the browse page treats the campaign as official. First-touch
-  // credit verifies registration on-chain, so an unregistered campaign can never take pledges.
+  // Register with the Registry (when configured) so the browse page treats the campaign as official; first-touch credit verifies registration on-chain.
   let registered = true
   let registerError: string | undefined
+  let registerTxIds: string[] | undefined
   if (registryAppId > 0n) {
     try {
-      await sendRegister(appId, session)
+      const registerResult = await classifySubmission('registerCampaign', () => sendRegister(appId, session), appId)
+      registerTxIds = registerResult.txIds
     } catch (error) {
-      registered = false
-      registerError = error instanceof Error ? error.message : String(error)
+      const classified = classifyChainError(error, { operation: 'registerCampaign', appId })
+      if (isAlreadyRegisteredError(classified)) {
+        sdkLogger().debug('register.already-registered', { appId: appId.toString() })
+      } else {
+        logSdkFailure(classified)
+        registered = false
+        registerError = classified.message
+      }
     }
   }
 
-  // The generated create result doesn't expose the confirmation round, so wait for the indexer to catch up to algod's current tip.
-  await waitForIndexerCatchUp()
+  // Best-effort: both writes are confirmed; the next read retries if the indexer is briefly behind.
+  await waitForIndexerCatchUpBestEffort()
+  logWriteConfirmed('createCampaign', appId, confirmation)
 
-  return { appId, appAddress, registered, ...(registerError === undefined ? {} : { registerError }) }
+  return {
+    ...confirmation,
+    appId,
+    appAddress,
+    registered,
+    ...(registerError === undefined ? {} : { registerError }),
+    ...(registerTxIds === undefined ? {} : { registerTxIds }),
+  }
 }

@@ -9,10 +9,7 @@ import { getAlgodConfigFromViteEnvironment, getKmdConfigFromViteEnvironment } fr
 let cachedManager: WalletManager | undefined
 
 /**
- * The shared wallet manager, created once on first use. It must not be constructed during render: every render
- * would create a fresh manager, resetting wallet state and its sessions. Reading the config here (rather than at
- * module scope) keeps missing-env failures inside the render tree, where the ErrorBoundary explains them - and
- * keeps this module side-effect-free to import.
+ * The shared wallet manager, created once on first use; constructing it during render would reset wallet state, and reading config here keeps missing-env failures in the render tree.
  *
  * @returns The shared WalletManager instance.
  */
@@ -37,8 +34,7 @@ export function getWalletManager(): WalletManager {
         defly(),
         pera(),
         exodus(),
-        // If you are interested in WalletConnect v2 provider
-        // refer to https://github.com/TxnLab/use-wallet for detailed integration instructions
+        // If you are interested in the WalletConnect v2 provider, see https://github.com/TxnLab/use-wallet for integration instructions
       ]
     }
     const algodConfig = getAlgodConfigFromViteEnvironment()

@@ -10,8 +10,7 @@ export default defineConfig({
   // Mirror vite.config.ts: keep one copy of the SDK's shared runtime deps.
   resolve: {
     dedupe: ['algosdk', '@algorandfoundation/algokit-utils', '@noble/hashes'],
-    // Mirror vite.config.ts: pin the polyfill shim the plugin injects into the
-    // SDK's dist/ modules, which cannot resolve it from outside this package.
+    // Mirror vite.config.ts: pin the polyfill shim the plugin injects into the SDK's dist/ modules, which cannot resolve it.
     alias: {
       'vite-plugin-node-polyfills/shims/buffer': require.resolve('vite-plugin-node-polyfills/shims/buffer'),
     },
@@ -47,9 +46,7 @@ export default defineConfig({
     },
     coverage: {
       provider: 'v8',
-      // Coverage gates components and utils at 100%. App shell/entry files (App, Home, main) and the
-      // generated contract clients are excluded. Genuinely unreachable defensive branches carry
-      // `/* v8 ignore next */` with a reason instead of theater tests.
+      // Coverage gates components and utils at 100%; App shell/entry files and generated contract clients are excluded, and unreachable branches carry a v8 ignore reason.
       include: ['src/components/**/*.{ts,tsx}', 'src/features/**/*.{ts,tsx}', 'src/lib/**/*.{ts,tsx}', 'src/utils/**/*.{ts,tsx}'],
       exclude: ['src/**/*.spec.ts', 'src/**/*.spec.tsx', 'src/**/*.test.ts', 'src/**/*.test.tsx'],
       reporter: ['text', 'json-summary'],

@@ -15,14 +15,13 @@ import {
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
 import { specProgramHash } from '@kasakame/utils'
-import { accountInfo, deployPlatform, type PlatformStack } from '@kasakame/utils/testing'
+import { accountInfo, deployPlatform, vaultBoxRef, type PlatformStack } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { ABIMethod, OnApplicationComplete } from 'algosdk'
 import fs from 'node:fs'
 import path from 'node:path'
 import { expect } from 'vitest'
 import { CAMPAIGN_MBR, DEFAULT_GOAL, REGISTRY_MBR, VAULT_MBR } from './campaign'
-import { vaultBoxRef } from './state'
 
 /** The three ARC-56 specs the integration suites deploy. */
 export interface ContractSpecs {
@@ -76,9 +75,7 @@ export interface DeployStackOptions {
 }
 
 /**
- * Deploy a Registry, fund it, deploy + bind the official vault, and assert the deployment ledger.
- *
- * Starts a fresh fixture scope, so each call is isolated from earlier tests.
+ * Deploy a Registry, fund it, deploy + bind the vault, and assert the ledger in a fresh fixture scope.
  *
  * @param fixture The Algorand fixture.
  * @param options Deployment options.
@@ -193,7 +190,7 @@ export async function deployCampaign(
 ): Promise<{ appClient: AppClient; appId: bigint }> {
   const creatorBefore = await accountInfo(stack.algorand, creatorAddr)
   const status = await stack.algorand.client.algod.status().do()
-  const block = await stack.algorand.client.algod.block(status.lastRound).do()
+  const block = await stack.algorand.client.algod.block(status.lastRound).headerOnly(true).do()
   const deadline = block.block.header.timestamp + BigInt(options.deadlineOffset ?? SECONDS_PER_DAY)
   const vaultId = options.vaultId ?? stack.vault.appId
   const registry = new AppFactory({ appSpec: stack.specs.campaign, algorand: stack.algorand, defaultSender: creatorAddr })
