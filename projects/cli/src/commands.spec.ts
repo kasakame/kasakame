@@ -11,7 +11,7 @@ import {
   runReleaseClaimed,
   runSettleOpen,
   runWithdraw,
-} from './commands.js'
+} from './commands/index.js'
 
 const sdkMocks = vi.hoisted(() => ({
   enumerateCampaigns: vi.fn(),
