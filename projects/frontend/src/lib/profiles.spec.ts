@@ -87,7 +87,7 @@ describe('fetchProfile', () => {
     })
   })
 
-  it('treats malformed profiles as missing', async () => {
+  it('rejects malformed profiles without caching', async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
     const fetchMock = vi.fn().mockResolvedValueOnce(okJson({})).mockResolvedValueOnce(okJson('oops'))
     vi.stubGlobal('fetch', fetchMock)
@@ -99,7 +99,7 @@ describe('fetchProfile', () => {
       avatar_cid: null,
     })
     clearProfileCache()
-    await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
+    await expect(fetchProfile('ADDRESS')).rejects.toThrow('Could not load the profile')
   })
 
   it('returns null without a backend or address', async () => {
@@ -113,14 +113,34 @@ describe('fetchProfile', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it('returns null on HTTP errors and network failures', async () => {
+  it('does not cache failed loads and retries on the next call', async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
-    const fetchMock = vi.fn().mockResolvedValueOnce(notOkJson(404)).mockRejectedValueOnce(new Error('offline'))
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(notOkJson(500))
+      .mockResolvedValueOnce(okJson({ display_name: 'Kyogre Fan' }))
+      .mockRejectedValueOnce(new Error('offline'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchProfile('ADDRESS')).rejects.toThrow('Could not load the profile')
+    await expect(fetchProfile('ADDRESS')).resolves.toEqual({
+      address: 'ADDRESS',
+      display_name: 'Kyogre Fan',
+      bio: null,
+      avatar_cid: null,
+    })
+    clearProfileCache()
+    await expect(fetchProfile('ADDRESS')).rejects.toThrow('Could not load the profile')
+  })
+
+  it('caches a missing profile', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi.fn().mockResolvedValue(notOkJson(404))
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
-    clearProfileCache()
     await expect(fetchProfile('ADDRESS')).resolves.toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -152,24 +172,142 @@ describe('fetchMyProfile', () => {
     expect(calls[2]?.[1]).toMatchObject({ headers: { authorization: 'Bearer session' } })
   })
 
-  it('returns null for a missing, malformed, or unreachable profile', async () => {
+  it('returns null for a missing profile', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(okJson({ nonce: 'a' }))
+        .mockResolvedValueOnce(okJson({ token: 'session' }))
+        .mockResolvedValueOnce(notOkJson(404)),
+    )
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+  })
+
+  it('rejects malformed and unreachable loads', async () => {
     vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(okJson({ nonce: 'a' }))
-      .mockResolvedValueOnce(okJson({ token: 'session' }))
-      .mockResolvedValueOnce(notOkJson(404))
       .mockResolvedValueOnce(okJson({ nonce: 'b' }))
       .mockResolvedValueOnce(okJson({ token: 'session' }))
       .mockResolvedValueOnce(okJson('oops'))
       .mockRejectedValueOnce(new Error('offline'))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
     clearSession()
-    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+    fetchMock
+      .mockResolvedValueOnce(okJson({ nonce: 'c' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockRejectedValueOnce(new Error('offline'))
     clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+    fetchMock
+      .mockResolvedValueOnce(okJson({ nonce: 'd' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(notOkJson(500))
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+  })
+
+  it('returns null without a backend or address', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', '')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
     await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    await expect(fetchMyProfile({ address: '', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('fetchMyProfile', () => {
+  afterEach(() => {
+    clearSession()
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('signs in and reads the private email', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ nonce: 'abc123' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(okJson({ display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar', email: 'kyogre@example.com' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toEqual({
+      address: 'ADDRESS',
+      display_name: 'Kyogre Fan',
+      bio: 'Collector',
+      avatar_cid: 'QmAvatar',
+      email: 'kyogre@example.com',
+    })
+    const calls = fetchMock.mock.calls as unknown[][]
+    expect(calls[2]?.[0]).toBe('http://backend/profiles/me')
+    expect(calls[2]?.[1]).toMatchObject({ headers: { authorization: 'Bearer session' } })
+  })
+
+  it('returns null for a missing profile', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce(okJson({ nonce: 'a' }))
+        .mockResolvedValueOnce(okJson({ token: 'session' }))
+        .mockResolvedValueOnce(notOkJson(404)),
+    )
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+  })
+
+  it('rejects malformed and unreachable loads', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ nonce: 'b' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(okJson('oops'))
+      .mockRejectedValueOnce(new Error('offline'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+    fetchMock
+      .mockResolvedValueOnce(okJson({ nonce: 'c' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockRejectedValueOnce(new Error('offline'))
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
+    fetchMock
+      .mockResolvedValueOnce(okJson({ nonce: 'd' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(notOkJson(500))
+    clearSession()
+    await expect(fetchMyProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load the profile',
+    )
   })
 
   it('returns null without a backend or address', async () => {
@@ -241,6 +379,26 @@ describe('saveProfile', () => {
     const calls = fetchMock.mock.calls as unknown[][]
     const saveInit = calls[2]?.[1] as { body?: unknown } | undefined
     expect(saveInit?.body).toEqual(JSON.stringify({ display_name: null, bio: null, avatar_cid: null, email: null }))
+  })
+
+  it('sends only the provided fields', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(okJson({ nonce: 'abc123' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockResolvedValueOnce(okJson({ display_name: 'New Name', bio: 'Kept', avatar_cid: 'QmKept', email: 'kept@example.com' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await saveProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign(), displayName: 'New Name' })
+
+    const calls = fetchMock.mock.calls as unknown[][]
+    const saveInit = calls[2]?.[1] as { body?: unknown } | undefined
+    expect(saveInit?.body).toEqual(JSON.stringify({ display_name: 'New Name' }))
+  })
+
+  it('throws when a save has no fields', async () => {
+    await expect(saveProfile({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow('Nothing to update.')
   })
 
   it('throws when the backend is not configured', async () => {
@@ -356,7 +514,9 @@ describe('fetchSettings', () => {
       .mockResolvedValueOnce(okJson('oops'))
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load settings',
+    )
     clearSettingsCache()
     clearSession()
     fetchMock
@@ -364,7 +524,27 @@ describe('fetchSettings', () => {
       .mockResolvedValueOnce(okJson({ token: 'session' }))
       .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) })
 
-    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).resolves.toBeNull()
+    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load settings',
+    )
+  })
+
+  it('rejects network failures without caching', async () => {
+    vi.stubEnv('VITE_BACKEND_URL', 'http://backend')
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('offline'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load settings',
+    )
+    fetchMock
+      .mockResolvedValueOnce(okJson({ nonce: 'abc123' }))
+      .mockResolvedValueOnce(okJson({ token: 'session' }))
+      .mockRejectedValueOnce(new Error('offline'))
+
+    await expect(fetchSettings({ address: 'ADDRESS', chainId: 'algorand:testnet', sign: testSign() })).rejects.toThrow(
+      'Could not load settings',
+    )
   })
 })
 

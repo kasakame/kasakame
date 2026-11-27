@@ -17,6 +17,13 @@ const Settings = ({ onBack }: SettingsProps) => {
   const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadKey, setReloadKey] = useState(0)
+  const [baseline, setBaseline] = useState<{ notify_funded: boolean; notify_failed: boolean; theme: string }>({
+    notify_funded: true,
+    notify_failed: true,
+    theme: 'system',
+  })
 
   useEffect(() => {
     if (!activeAddress) {
@@ -24,8 +31,8 @@ const Settings = ({ onBack }: SettingsProps) => {
       return
     }
     setLoading(true)
+    setLoadError(null)
     let cancelled = false
-    // fetchSettings resolves null on every failure path, so no catch is needed.
     void fetchSettings({
       address: activeAddress,
       chainId: activeNetworkConfig.caipChainId,
@@ -37,7 +44,11 @@ const Settings = ({ onBack }: SettingsProps) => {
           setNotifyFunded(s.notify_funded)
           setNotifyFailed(s.notify_failed)
           setTheme(s.theme as 'light' | 'dark' | 'system')
+          setBaseline({ notify_funded: s.notify_funded, notify_failed: s.notify_failed, theme: s.theme })
         }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('Could not load settings. Please try again.')
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -45,7 +56,7 @@ const Settings = ({ onBack }: SettingsProps) => {
     return () => {
       cancelled = true
     }
-  }, [activeAddress, activeNetworkConfig.caipChainId, signData, signTransactions])
+  }, [activeAddress, activeNetworkConfig.caipChainId, signData, signTransactions, reloadKey])
 
   const handleSave = async () => {
     // Defensive: the form only renders while connected, so this is unreachable in the UI.
@@ -58,18 +69,25 @@ const Settings = ({ onBack }: SettingsProps) => {
     setError(null)
     setSuccess(null)
     try {
+      const changes: { notifyFunded?: boolean; notifyFailed?: boolean; theme?: string } = {}
+      if (notifyFunded !== baseline.notify_funded) changes.notifyFunded = notifyFunded
+      if (notifyFailed !== baseline.notify_failed) changes.notifyFailed = notifyFailed
+      if (theme !== baseline.theme) changes.theme = theme
+      if (Object.keys(changes).length === 0) {
+        setSuccess('No changes.')
+        return
+      }
       const updated = await saveSettings({
         address: activeAddress,
         chainId: activeNetworkConfig.caipChainId,
         sign: adaptSignData(signData),
         signTxn: adaptSignTransaction(signTransactions),
-        notifyFunded,
-        notifyFailed,
-        theme,
+        ...changes,
       })
       setNotifyFunded(updated.notify_funded)
       setNotifyFailed(updated.notify_failed)
       setTheme(updated.theme as 'light' | 'dark' | 'system')
+      setBaseline({ notify_funded: updated.notify_funded, notify_failed: updated.notify_failed, theme: updated.theme })
       setSuccess('Settings saved.')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save settings.')
@@ -177,6 +195,20 @@ const Settings = ({ onBack }: SettingsProps) => {
           </div>
         </fieldset>
 
+        {loadError && (
+          <div className="flex items-center justify-between gap-3 rounded-md border border-danger/40 bg-danger/10 p-3 text-sm text-danger">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              className="cursor-pointer rounded-md border border-danger px-3 py-1 text-xs text-danger hover:bg-danger/10"
+              onClick={() => {
+                setReloadKey((key) => key + 1)
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {error && <div className="text-sm text-danger">{error}</div>}
         {success && <div className="text-sm text-teal-dark">{success}</div>}
 
