@@ -14,6 +14,13 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
 - `scripts/check-comments.ts` - the repo-wide one-line, 200-character comment
   rule; run `npm run check:comments` or `node scripts/check-comments.ts --report`
   for the baseline table.
+- `work-tracking/` - the work-tracking subsystem: the issue creation and
+  check-issue scripts, the project, field, and component config, the validator,
+  and the epic automation. Run
+  `node projects/utils/work-tracking/create-issue.ts --help`,
+  `node projects/utils/work-tracking/check-issue.ts --help`,
+  `node projects/utils/work-tracking/show-work-tracking.ts --help`, or
+  `node projects/utils/work-tracking/epic-automation.ts --help`.
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.

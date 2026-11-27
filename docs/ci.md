@@ -4,7 +4,8 @@ This page describes the GitHub Actions setup: a consolidated
 [`build-and-test`](../.github/workflows/build-and-test.yml) workflow with one
 verification job per project plus repo-wide workflow, shell, Markdown, and
 comment lint,
-the separate scheduled/manual
+the [`work-tracking`](../.github/workflows/work-tracking.yml) workflow, the
+separate scheduled/manual
 [`heavy-tests`](../.github/workflows/heavy-tests.yml) workflow, and the manual
 [`release-contracts`](../.github/workflows/release-contracts.yml),
 [`release-constants`](../.github/workflows/release-constants.yml),
@@ -62,7 +63,9 @@ reasoning behind the splits.
   workflow files run `repo-lint`; `comment-lint` runs on every change. Docs
   images, licenses, and inert root files run no project lane.
   `.prettierrc.json` is part of `workspace`, so formatting-config changes are
-  not a special filter.
+  not a special filter; `workspace` still runs `check-utils` and
+  `check-constants` so a rule change cannot leave their formatting drift
+  untested.
 - **The trigger policy is centralized.** `changes` publishes derived `run_*`
   outputs (`run_repo_lint`, `run_compile_contracts`, `run_check_contracts`,
   `run_build_sdk`, `run_check_sdk`, `run_check_frontend`, `run_check_cli`,
@@ -166,11 +169,12 @@ flowchart TD
 | `check-frontend` | contracts, SDK, `constants`, frontend, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-cli` | contracts, SDK, `constants`, CLI, or `workspace` changed | ✅ | - | - | `sdk-dist` when SDK/contracts changed; published package otherwise |
 | `check-backend` | backend or `workspace` changed | ✅ | - | ✅ (Postgres service) | - |
-| `check-utils` | `utils` or `constants` changed | ✅ | - | - | - |
-| `check-constants` | `constants` changed | ✅ | - | - | - |
+| `check-utils` | `utils`, `constants`, or `workspace` changed | ✅ | - | - | - |
+| `check-constants` | `constants` or `workspace` changed | ✅ | - | - | - |
 | `integration-test-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
+| `work-tracking` (own workflow) | issue events or manual | ✅ | - | - | - |
 | `gate` | always | ✅ (runner only) | - | - | - |
 | `release-contracts` (own workflow) | manual | ✅ | ✅ | - | - |
 | `release-constants` (own workflow) | manual | ✅ | - | - | - |
@@ -214,7 +218,7 @@ local mode fails with instructions if the artifacts are absent.
 
 ## How the frontend and CLI jobs resolve the SDK
 
-The committed frontend and CLI dependency is `"@kasakame/sdk": "^0.1.0"` (see
+The committed frontend and CLI dependency is `"@kasakame/sdk": "^0.2.0"` (see
 [`sdk.md`](sdk.md)). On a frontend-only, CLI-only, or workspace-only change those
 lanes install it from the registry with `npm ci`, so routine work exercises
 exactly what users install.
@@ -262,8 +266,9 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
   `utils_core` is the surface consumers import: `package.json` (exports, `files`,
   and dependencies), `program-hash.ts` (the `.` entry), and `testing/**` (the
   `./testing` entry). `check-utils` runs the private helper package's format,
-  lint, and type-check; `check-constants` rebuilds the public constants package
-  and fails when the committed `dist` drifts. Changes to `utils_core` or
+  lint, type-check, and the work-tracking scripts' `--help` smoke checks;
+  `check-constants` rebuilds the public constants package and fails when the
+  committed `dist` drifts. Changes to `utils_core` or
   `constants` re-run the contract and SDK checks that consume them; `release/`
   and `smoke/` changes run only `check-utils`.
 - `ci` - `.github/**` (workflows and release scripts).
@@ -288,8 +293,8 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_frontend` - `contracts || sdk || constants || frontend || workspace`.
 - `run_check_cli` - `contracts || sdk || constants || cli || workspace`.
 - `run_check_backend` - `backend || workspace`.
-- `run_check_utils` - `utils || constants`.
-- `run_check_constants` - `constants`.
+- `run_check_utils` - `utils || constants || workspace`.
+- `run_check_constants` - `constants || workspace`.
 - `run_contracts_integration` - `contracts || utils_core || constants`.
 - `run_sdk_integration` - `sdk || contracts || utils_core || constants`.
 
@@ -342,9 +347,9 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   workspace): starts a Postgres service, runs format, lint, and type-check, then
   migrations and `npm run test:coverage`. It is independent of
   contracts/SDK/frontend/CLI.
-- **`check-utils`** - runs when `run_check_utils` is true (`utils` changed):
-  installs the private package, then format, lint, and type-check. It produces
-  no artifact and publishes nothing.
+- **`check-utils`** - runs when `run_check_utils` is true (`utils`, `constants`,
+  or workspace): installs the private package, then format, lint, and
+  type-check. It produces no artifact and publishes nothing.
 - **`integration-test-contracts`** - runs when
   `run_contracts_integration` is true and waits for
   `compile-contracts` (the artifact) and `check-contracts` (verification). It
@@ -355,7 +360,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 - **`integration-test-sdk`** - runs when `run_sdk_integration` is true and
   `build-sdk` succeeded. It installs the SDK dependencies, downloads
   `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
-  `00`-`04`). It is independent of the contract LocalNet lane.
+  `00`-`10`). It is independent of the contract LocalNet lane.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -369,6 +374,37 @@ because there is no artifact to share after a failure.
 
 `npm run format` runs Prettier in `--check` mode, so style drift fails the build
 without modifying files.
+
+## Workflow: work-tracking (separate file)
+
+Implemented at `.github/workflows/work-tracking.yml`. The workflow has two jobs:
+`check-issue` keeps issue metadata aligned with the hierarchy, and
+`epic-automation` keeps the parent epic `Status` in sync with its children. It
+runs when an issue is opened, reopened, closed, retyped, or has a field added or
+removed.
+
+`check-issue` runs `projects/utils/work-tracking/check-issue.ts` with the
+workflow token. It fills `Component` from the parent chain and adds the
+`needs-triage` label when the type, parent, `Component`, `Priority`, or `Effort`
+is missing. It removes the label when the metadata is complete, and skips closed
+issues and `Component` issues.
+
+`epic-automation` runs `projects/utils/work-tracking/epic-automation.ts`. It
+sets the parent epic to `In Progress` or `Done` and reopens a completed epic
+while it still has open children. Project mutations use the `PROJECT_TOKEN`
+secret, a fine-grained PAT with Organization Projects read and write plus Issues
+read; `GITHUB_TOKEN` cannot access Projects. The job uses `GITHUB_TOKEN` to
+reopen the epic. The project's built-in `Auto-close issue` workflow closes the
+epic when the job sets `Done`, and `Item closed` sets `Status` to `Done` when an
+issue closes; keep both enabled.
+
+A field update emits one event per field, so the concurrency group keeps only
+the latest run for the issue; earlier runs show as cancelled and the final run
+reconciles. Run the workflow manually for one issue with:
+
+```bash
+gh workflow run work-tracking.yml -f issue_number=<number>
+```
 
 ## Workflow: heavy-tests (separate file)
 
@@ -399,12 +435,19 @@ needs roughly 5 hours; the timeout is the 360-minute GitHub-hosted maximum. The
 suites stream an initial line, a heartbeat with the pledge rate and ETA every
 5,000 positions (~2.5 minutes at the measured rate), and phase lines for the
 deadline, refunds, delete, and claim/finalize. A job that cannot finish
-inside the limit fails without affecting the other outcome. The SDK and CLI
-LocalNet suites stay with #158 and #118.
+inside the limit fails without affecting the other outcome. The SDK LocalNet
+suite runs in the PR graph and the SDK release; the CLI LocalNet smoke test
+stays with #118.
 
 The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
 workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
-workflow, together with files `00`-`04`.
+workflow, together with the `00`-`04` contract files.
+
+All four release workflows share the same shape: every `prep` job is gated on
+`refs/heads/main`, `assert-unpublished.ts` stops on anything other than an npm
+`E404`, and the tarball packed in prep is the artifact the smoke and publish
+jobs install and `npm publish --tarball ... --ignore-scripts` ships. A failed
+smoke, publish, or version check therefore cannot burn a GitHub tag.
 
 ## Workflow: release-contracts (separate file)
 
@@ -427,8 +470,12 @@ pre-release status only affects the "Latest" label, not downloads by tag.
 The npm tarball is the tested artifact passed from the prep job to the smoke and
 publish jobs, so `npm publish` publishes exactly the checked bytes. The smoke
 job installs the tarball in a clean consumer and reads an ARC-56 spec. The
-publish job uses npm OIDC trusted publishing with `--provenance`. `dry_run`
-defaults to true and skips both the GitHub release and the npm publish.
+publish job uses npm OIDC trusted publishing with `--provenance`. The GitHub
+release and `contracts-v<version>` tag are created in a final job after prep,
+smoke, and publish succeed; prep runs with `contents: read`, so a failed check
+or publish cannot consume the tag. Every release prep runs only on
+`refs/heads/main`. `dry_run` defaults to true and skips both the GitHub release
+and the npm publish.
 
 The SDK installs `@kasakame/contracts` at the version in
 `projects/contracts/package.json` and regenerates its clients from
@@ -460,13 +507,15 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 
 - `prep` installs the package, validates the input version against
   `package.json` and that it is unpublished, builds `dist`, verifies the
-  committed `dist` is unchanged, formats, lints, type-checks, inspects the
-  packed tarball, dry-runs the publish, and installs the tarball in a clean
-  consumer to import the compiled values. It uploads the tested `dist/`.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`, then polls the registry for the version for up to 10 minutes.
+  committed `dist` is unchanged, formats, lints, type-checks, packs and
+  verifies the npm tarball, dry-runs the publish from that tarball, and installs
+  it in a clean consumer to import the compiled values. It uploads the tested
+  tarball.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`, then polls the registry for the
+  version for up to 10 minutes.
 
 Configure the trusted publisher for `@kasakame/constants` on npmjs.com
 (package Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
@@ -494,26 +543,26 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
   input version against `package.json` and that it is unpublished, installs the
   released `@kasakame/contracts` at the version in
   `projects/contracts/package.json`, regenerates clients, compiles TypeScript,
-  lints, format-checks, type-checks, runs coverage, inspects the packed
-  tarball, and dry-runs the publish. Each command is its own step. It uploads
-  the tested `dist/` and the generated clients.
+  lints, format-checks, type-checks, runs coverage, packs and verifies the npm
+  tarball, and dry-runs the publish from that tarball. Each command is its own
+  step. It uploads the tested tarball and the generated clients.
 - `integration` starts LocalNet, downloads the prep-generated clients and the
   tested `dist/`, checks the dist imports, and runs `npm run test:integration`.
   It gates the publish.
-- `smoke` runs `projects/utils/smoke/sdk.ts`: it packs the tested `dist/`,
-  installs the tarball into a clean consumer (npm pulls the
+- `smoke` runs `projects/utils/smoke/sdk.ts`: it installs the prep tarball
+  into a clean consumer (npm pulls the
   `@kasakame/constants` and `@algorandfoundation/algokit-utils` peer
   dependencies from the registry), checks the version and
   `LICENSE`, imports the public API, verifies `SPECS_VERSION` against the
   contracts package version, and checks that every `dist/*.js.map` embeds its
   TypeScript source with no `.d.ts.map` published. It gates the publish.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`. It then polls the registry for the version, allowing 10
-  minutes: npm stages a new package and the first publish took about 2.5
-  minutes to become visible. A dry run stops before the publish and registry
-  check.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`. It then polls the registry for the
+  version, allowing 10 minutes: npm stages a new package and the first publish
+  took about 2.5 minutes to become visible. A dry run stops before the publish
+  and registry check.
 
 Configure the trusted publisher for `@kasakame/sdk` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
@@ -530,8 +579,8 @@ interactive actions (npmjs.com login, `npm trust`, and `npm stage approve`).
 The package's Publishing access is set to "Require two-factor authentication
 and disallow tokens" so only the trusted publisher can publish.
 
-The frontend is built by its own release/deploy workflow against the published
-version; it is not part of the SDK release.
+The frontend is built and deployed outside this repository's workflows against
+the published SDK; it has no release workflow of its own.
 
 Then dispatch the workflow from `main` with `dry_run=false`.
 
@@ -551,19 +600,19 @@ Prerelease versions publish under the `next` dist-tag, finals under `latest`.
 - `prep` is Node/npm only and installs the **published** SDK with `npm ci` -
   never the `file:../sdk` copy, because a released CLI must ship against a
   released SDK. It validates the input version against `package.json` and that
-  it is unpublished, lints, formats, type-checks, runs coverage, builds,
-  inspects the packed tarball, and dry-runs the publish. Each command is its own
-  step. It uploads the tested `dist/`.
-- `smoke` runs `projects/utils/smoke/cli.ts`: it packs the tested `dist/`,
-  installs the tarball into a clean consumer (npm pulls the
-  `@kasakame/constants` peer dependency from the registry), checks the version and
-  `LICENSE`, and runs `kasakame --help`. It gates the publish.
-- `publish` downloads the tested `dist/`, verifies the package files and
-  version, and, when `dry_run=false`, publishes with the `next`/`latest`
-  dist-tag through npm OIDC trusted publishing (`id-token: write`) with
-  `--provenance`. It then polls the registry for the version for up to 10
-  minutes, like the SDK release. A dry run stops before the publish and
-  registry check.
+  it is unpublished, lints, formats, type-checks, runs coverage, builds, packs
+  and verifies the npm tarball, and dry-runs the publish from that tarball.
+  Each command is its own step. It uploads the tested tarball.
+- `smoke` runs `projects/utils/smoke/cli.ts`: it installs the prep tarball
+  into a clean consumer (npm pulls the `@kasakame/constants` peer dependency
+  from the registry), checks the version and `LICENSE`, and runs
+  `kasakame --help`. It gates the publish.
+- `publish` downloads the tested tarball, verifies the version, and, when
+  `dry_run=false`, publishes it with `--tarball ... --ignore-scripts` using the
+  `next`/`latest` dist-tag through npm OIDC trusted publishing
+  (`id-token: write`) with `--provenance`. It then polls the registry for the
+  version for up to 10 minutes, like the SDK release. A dry run stops before the
+  publish and registry check.
 
 Configure the trusted publisher for `@kasakame/cli` on npmjs.com (package
 Settings → Trusted Publisher) with GitHub owner `kasakame`, repository
@@ -631,10 +680,9 @@ the four artifact folders. Package-specific packaging stays in the package:
 - Publishing goes through `projects/utils/release/publish.ts` (provenance,
   public access, dist-tag, optional tarball) and
   `projects/utils/release/verify-published.ts` (40 attempts, 15 seconds apart).
-- The SDK and CLI still need their first publish. Use a temporary `NPM_TOKEN`
-  for that batch, keep it until both are published, then revoke it. Configure
-  each trusted publisher when its next release is within 2 days; an unused
-  configuration expires.
+- The SDK and CLI `0.1.0` publishes are done. Configure each package's trusted
+  publisher before its next release; no temporary `NPM_TOKEN` is needed, and an
+  unused trusted-publisher configuration expires after 2 days.
 - Release in order: contracts (GitHub release and npm package) → constants →
   SDK → frontend/CLI. A frontend-only change tests and deploys against the
   published SDK.
