@@ -1,12 +1,16 @@
 import type { SignTxn } from './backend'
 import { backendUrl, ensureSession } from './backend'
 
-/** A creator profile as served by the backend. */
+/** A public creator profile as served by the backend; the email stays private. */
 export interface UserProfile {
   address: string
   display_name: string | null
   bio: string | null
   avatar_cid: string | null
+}
+
+/** The owner's full profile, including the private email. */
+export interface MyProfile extends UserProfile {
   email: string | null
 }
 
@@ -84,7 +88,6 @@ export async function fetchProfile(address: string): Promise<UserProfile | null>
           display_name: textField(json.display_name),
           bio: textField(json.bio),
           avatar_cid: textField(json.avatar_cid),
-          email: textField(json.email),
         }
       }
     }
@@ -93,6 +96,55 @@ export async function fetchProfile(address: string): Promise<UserProfile | null>
   }
   cache.set(address, profile)
   return profile
+}
+
+/**
+ * Fetch the owner's full profile, including the private email, signing in first.
+ *
+ * @param input Fetch inputs.
+ * @param input.address Backend address.
+ * @param input.chainId CAIP-2 chain id for the SIWA request, if the network config provides one.
+ * @param input.sign Wallet message signer (receives the base64 SIWA payload), returning raw signature bytes.
+ * @param input.signTxn Transaction signer for wallets without message signing (universal sign-in fallback).
+ * @returns The owner profile, or null when unset or unreachable.
+ */
+export async function fetchMyProfile({
+  address,
+  chainId,
+  sign,
+  signTxn,
+}: {
+  address: string
+  chainId: string | undefined
+  sign: (payload: string) => Promise<{ signature: Uint8Array; authenticatorData: Uint8Array }>
+  signTxn?: SignTxn | undefined
+}): Promise<MyProfile | null> {
+  const base = backendUrl()
+  if (base === '' || address === '') return null
+  try {
+    const token = await ensureSession({
+      baseUrl: base,
+      address,
+      chainId,
+      sign,
+      signTxn,
+      statement: 'Sign in to kasakame to manage your profile.',
+      action: 'profile fetch',
+    })
+    const response = await fetch(`${base}/profiles/me`, { headers: { authorization: `Bearer ${token}` } })
+    if (!response.ok) return null
+    const json: unknown = await response.json()
+    if (!isRecord(json)) return null
+    return {
+      address,
+      display_name: textField(json.display_name),
+      bio: textField(json.bio),
+      avatar_cid: textField(json.avatar_cid),
+      email: textField(json.email),
+    }
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -175,7 +227,7 @@ export async function saveProfile({
   bio,
   avatarCid,
   email,
-}: ProfileInput): Promise<UserProfile> {
+}: ProfileInput): Promise<MyProfile> {
   const base = backendUrl()
   if (base === '') throw new Error('Profiles need the backend configured (VITE_BACKEND_URL).')
   const token = await ensureSession({
@@ -206,14 +258,19 @@ export async function saveProfile({
   if (response.status !== 200) throw new Error('Saving failed. Try again.')
   const json: unknown = await response.json()
   if (!isRecord(json)) throw new Error('Saving failed. Try again.')
-  const profile: UserProfile = {
+  const profile: MyProfile = {
     address,
     display_name: textField(json.display_name),
     bio: textField(json.bio),
     avatar_cid: textField(json.avatar_cid),
     email: textField(json.email),
   }
-  cache.set(address, profile)
+  cache.set(address, {
+    address,
+    display_name: profile.display_name,
+    bio: profile.bio,
+    avatar_cid: profile.avatar_cid,
+  })
   return profile
 }
 

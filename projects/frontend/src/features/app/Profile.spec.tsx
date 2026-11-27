@@ -47,11 +47,16 @@ describe('Profile', () => {
   it('loads the saved profile into the form', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: () => Promise.resolve({ display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar', email: 'kyogre@example.com' }),
-      }),
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ nonce: 'abc123' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ token: 'session' }) })
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({ display_name: 'Kyogre Fan', bio: 'Collector', avatar_cid: 'QmAvatar', email: 'kyogre@example.com' }),
+        }),
     )
     render(<Profile onBack={() => {}} />)
 
@@ -62,7 +67,14 @@ describe('Profile', () => {
   })
 
   it('shows an empty form when no profile exists', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 404, json: () => Promise.resolve({}) }))
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ nonce: 'abc123' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ token: 'session' }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) }),
+    )
     render(<Profile onBack={() => {}} />)
 
     await waitFor(() => {
@@ -81,7 +93,14 @@ describe('Profile', () => {
   })
 
   it('shows empty fields for missing profile data', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({ bio: 'Collector' }) }))
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ nonce: 'abc123' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ token: 'session' }) })
+        .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ bio: 'Collector' }) }),
+    )
     render(<Profile onBack={() => {}} />)
 
     expect(await screen.findByDisplayValue('Collector')).toBeInTheDocument()
@@ -93,9 +112,9 @@ describe('Profile', () => {
       'fetch',
       vi
         .fn()
-        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ nonce: 'abc123' }) })
         .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ token: 'session' }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -122,9 +141,9 @@ describe('Profile', () => {
       'fetch',
       vi
         .fn()
-        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ nonce: 'abc123' }) })
         .mockResolvedValueOnce({ ok: true, status: 200, json: () => Promise.resolve({ token: 'session' }) })
+        .mockResolvedValueOnce({ ok: false, status: 404, json: () => Promise.resolve({}) })
         .mockResolvedValueOnce({ ok: false, status: 400, json: () => Promise.resolve({}) }),
     )
     const user = userEvent.setup()
