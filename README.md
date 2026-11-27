@@ -23,7 +23,7 @@ Pledged funds lock in the contract, not with the creator. Campaign state (pledge
 | ClaimsVault (one, platform-owned) | Holds all pledged ALGO pooled; pays cancels, refunds, and claims |
 | Registry (one, ownerless) | Registers campaigns against the Campaign hash fixed at creation |
 | Frontend | Reads state from the indexer; builds transaction groups for the wallet |
-| CLI (escape hatch) | Refunds, withdrawals, claims, and deletes by app ID; wallet or mnemonic signer |
+| CLI (escape hatch) | Refunds, withdrawals, claims, deletes, and vault cleanup by app ID; wallet or mnemonic signer |
 
 A pledge is one atomic group: payment to the vault, campaign leaf append, vault inflow record. A refund rebuilds the leaf from address, amount, and payment ID, verifies it against the stored root, nulls it in place, and pays the backer. See [`docs/architecture.md`](docs/architecture.md) and [`docs/campaign.md`](docs/campaign.md).
 

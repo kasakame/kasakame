@@ -1,7 +1,17 @@
 import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from './args.js'
-import { runCampaigns, runClaim, runDelete, runPledges, runRefund, runWithdraw } from './commands.js'
+import {
+  runCampaigns,
+  runClaim,
+  runDelete,
+  runFinalize,
+  runPledges,
+  runRefund,
+  runReleaseClaimed,
+  runSettleOpen,
+  runWithdraw,
+} from './commands.js'
 
 const sdkMocks = vi.hoisted(() => ({
   enumerateCampaigns: vi.fn(),
@@ -9,10 +19,15 @@ const sdkMocks = vi.hoisted(() => ({
   fetchChainTimestamp: vi.fn(),
   getCampaignStatus: vi.fn(),
   fetchMyLeaves: vi.fn(),
+  fetchVaultBox: vi.fn(),
+  fetchVaultConfig: vi.fn(),
   cancelPledge: vi.fn(),
   claim: vi.fn(),
   deleteCampaign: vi.fn(),
   refund: vi.fn(),
+  settleOpen: vi.fn(),
+  releaseClaimed: vi.fn(),
+  finalize: vi.fn(),
 }))
 const closeMock = vi.hoisted(() => vi.fn(async () => {}))
 const openCliSessionMock = vi.hoisted(() => vi.fn())
@@ -21,7 +36,12 @@ const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@kasakame/sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof Sdk>()
-  return { ...sdkMocks, SdkError: actual.SdkError, classifyChainError: actual.classifyChainError }
+  return {
+    ...sdkMocks,
+    SdkError: actual.SdkError,
+    classifyChainError: actual.classifyChainError,
+    refundWindowEndsAt: actual.refundWindowEndsAt,
+  }
 })
 vi.mock('./session.js', () => ({ openCliSession: openCliSessionMock }))
 vi.mock('./walletconnect.js', () => ({ whoami: whoamiMock }))
@@ -56,6 +76,14 @@ function leaf(position: number, amount: bigint) {
   return { position, amount, txidHex: 'aa' }
 }
 
+const VAULT_OPEN = 1
+const VAULT_FAILED = 2
+const VAULT_CLAIMED = 3
+
+function vaultBox(status: number, overrides: Partial<Sdk.VaultBoxView> = {}): Sdk.VaultBoxView {
+  return { paidIn: 2_000_000n, paidOut: 0n, status, settledAt: 1_000n, ...overrides }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -64,10 +92,15 @@ beforeEach(() => {
   sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
   sdkMocks.getCampaignStatus.mockReturnValue('failed')
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n), leaf(1, 1n)])
+  sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_OPEN))
+  sdkMocks.fetchVaultConfig.mockResolvedValue({ window: 100n, sweepTarget: 'SWEEP' })
   sdkMocks.cancelPledge.mockResolvedValue({ txIds: ['CANCELTX'], confirmedRound: 99n })
   sdkMocks.claim.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
   sdkMocks.deleteCampaign.mockResolvedValue({ txIds: ['DELETETX'], confirmedRound: 99n })
   sdkMocks.refund.mockResolvedValue({ txIds: ['REFUNDTX'], confirmedRound: 99n })
+  sdkMocks.settleOpen.mockResolvedValue({ txIds: ['SETTLETX'], confirmedRound: 99n })
+  sdkMocks.releaseClaimed.mockResolvedValue({ txIds: ['RELEASETX'], confirmedRound: 99n })
+  sdkMocks.finalize.mockResolvedValue({ txIds: ['FINALIZETX'], confirmedRound: 99n })
   mnemonicSessionMock.mockResolvedValue(WALLET)
   openCliSessionMock.mockResolvedValue({ wallet: WALLET, close: closeMock })
 })
@@ -755,5 +788,219 @@ describe('runCampaigns', () => {
     sdkMocks.fetchCampaignHeader.mockRejectedValue(new Error('indexer down'))
 
     await expect(runCampaigns(campaignOptions())).rejects.toThrow('Could not read campaigns from the indexer: indexer down')
+  })
+})
+
+describe('runSettleOpen', () => {
+  function settleOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'settle-open', ...overrides })
+  }
+
+  it('settles an open campaign and closes the session', async () => {
+    expect(await runSettleOpen(settleOptions())).toBe(0)
+
+    expect(sdkMocks.settleOpen).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.error).toHaveBeenCalledWith('Submitting: settle open campaign 1…')
+    expect(console.log).toHaveBeenCalledWith('Settled campaign 1 as failed; backers can now refund through the vault.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('prints the plan in a dry run without submitting', async () => {
+    expect(await runSettleOpen(settleOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.settleOpen).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would settle campaign 1 as failed.')
+    expect(console.log).toHaveBeenCalledWith('Dry run: nothing submitted.')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('rejects a deleted campaign before opening the wallet', async () => {
+    sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, deleted: true })
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow(
+      'Campaign 1 was already deleted; deleting a failed campaign settles its vault box',
+    )
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a successful campaign before opening the wallet', async () => {
+    sdkMocks.getCampaignStatus.mockReturnValue('successful')
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow('Campaign 1 reached its goal; there is nothing to settle')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a campaign without a vault box', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(undefined)
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow('Campaign 1 has no vault box; there is nothing to settle')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a box that is already settled', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED))
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow('Campaign 1 is already settled; backers can refund it')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a box that is not open', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_CLAIMED))
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow('Campaign 1 was not failed; there is nothing to settle')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('closes the session when the settlement fails', async () => {
+    sdkMocks.settleOpen.mockRejectedValue(new Error('rejected'))
+
+    await expect(runSettleOpen(settleOptions())).rejects.toThrow('rejected')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runSettleOpen({ command: 'settle-open', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'settle-open requires exactly one app id',
+    )
+  })
+})
+
+describe('runReleaseClaimed', () => {
+  function releaseOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'release-claimed', ...overrides })
+  }
+
+  it('releases a claimed campaign box and closes the session', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_CLAIMED, { paidOut: 2_000_000n }))
+
+    expect(await runReleaseClaimed(releaseOptions())).toBe(0)
+
+    expect(sdkMocks.releaseClaimed).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.error).toHaveBeenCalledWith('Submitting: release the vault box for claimed campaign 1…')
+    expect(console.log).toHaveBeenCalledWith("Released the vault box for campaign 1; its minimum balance is back in the vault's account.")
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('prints the plan in a dry run without submitting', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_CLAIMED))
+
+    expect(await runReleaseClaimed(releaseOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.releaseClaimed).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Would release the vault box for claimed campaign 1.')
+    expect(console.log).toHaveBeenCalledWith('Dry run: nothing submitted.')
+  })
+
+  it('reports a missing box without opening the wallet', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(undefined)
+
+    expect(await runReleaseClaimed(releaseOptions())).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Campaign 1 has no vault box; there is nothing to release.')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a box that is not claimed before opening the wallet', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_OPEN))
+
+    await expect(runReleaseClaimed(releaseOptions())).rejects.toThrow(
+      "Campaign 1 is not claimed; only a claimed campaign's vault box can be released",
+    )
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('closes the session when the release fails', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_CLAIMED))
+    sdkMocks.releaseClaimed.mockRejectedValue(new Error('rejected'))
+
+    await expect(runReleaseClaimed(releaseOptions())).rejects.toThrow('rejected')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runReleaseClaimed({ command: 'release-claimed', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'release-claimed requires exactly one app id',
+    )
+  })
+})
+
+describe('runFinalize', () => {
+  function finalizeOptions(overrides: Partial<CliOptions> = {}): CliOptions {
+    return options({ command: 'finalize', ...overrides })
+  }
+
+  it('sweeps the residual after the refund window and closes the session', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 1_000_000n }))
+
+    expect(await runFinalize(finalizeOptions())).toBe(0)
+
+    expect(sdkMocks.finalize).toHaveBeenCalledWith(1n, WALLET)
+    expect(console.error).toHaveBeenCalledWith('Submitting: finalize campaign 1…')
+    expect(console.log).toHaveBeenCalledWith("Swept 1 ALGO to the vault's sweep target and released the vault box for campaign 1.")
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('finalizes a fully paid-out box without reading the refund window', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 2_000_000n }))
+
+    expect(await runFinalize(finalizeOptions())).toBe(0)
+
+    expect(sdkMocks.fetchVaultConfig).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith('Released the vault box for campaign 1; there was nothing left to sweep.')
+  })
+
+  it('prints the plan in a dry run without submitting', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 1_000_000n }))
+
+    expect(await runFinalize(finalizeOptions({ dryRun: true }))).toBe(0)
+
+    expect(sdkMocks.finalize).not.toHaveBeenCalled()
+    expect(console.log).toHaveBeenCalledWith("Would finalize campaign 1 and sweep 1 ALGO to the vault's sweep target.")
+    expect(console.log).toHaveBeenCalledWith('Dry run: nothing submitted.')
+  })
+
+  it('prints the release plan for a fully paid-out box in a dry run', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 2_000_000n }))
+
+    expect(await runFinalize(finalizeOptions({ dryRun: true }))).toBe(0)
+
+    expect(console.log).toHaveBeenCalledWith('Would finalize campaign 1 and release its vault box.')
+  })
+
+  it('rejects while the refund window is still open', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 1_000_000n, settledAt: 1_950n }))
+
+    await expect(runFinalize(finalizeOptions())).rejects.toThrow(
+      'The refund window for campaign 1 is open until 1970-01-01 00:34 UTC; backers can still refund',
+    )
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a campaign without a vault box', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(undefined)
+
+    await expect(runFinalize(finalizeOptions())).rejects.toThrow('Campaign 1 has no vault box; it was already finalized or never funded')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a box that is not failed', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_CLAIMED))
+
+    await expect(runFinalize(finalizeOptions())).rejects.toThrow('Campaign 1 is not settled as failed; there is nothing to finalize')
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('closes the session when finalization fails', async () => {
+    sdkMocks.fetchVaultBox.mockResolvedValue(vaultBox(VAULT_FAILED, { paidOut: 1_000_000n }))
+    sdkMocks.finalize.mockRejectedValue(new Error('rejected'))
+
+    await expect(runFinalize(finalizeOptions())).rejects.toThrow('rejected')
+    expect(closeMock).toHaveBeenCalled()
+  })
+
+  it('requires an app id', async () => {
+    await expect(runFinalize({ command: 'finalize', network: 'testnet', signer: 'mnemonic', dryRun: false })).rejects.toThrow(
+      'finalize requires exactly one app id',
+    )
   })
 })

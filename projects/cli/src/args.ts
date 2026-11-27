@@ -1,7 +1,19 @@
 import type { SdkLogLevel } from '@kasakame/sdk'
 import { parseArgs } from 'node:util'
 
-export type CommandName = 'login' | 'whoami' | 'logout' | 'pledges' | 'campaigns' | 'refund' | 'withdraw' | 'claim' | 'delete'
+export type CommandName =
+  | 'login'
+  | 'whoami'
+  | 'logout'
+  | 'pledges'
+  | 'campaigns'
+  | 'refund'
+  | 'withdraw'
+  | 'claim'
+  | 'delete'
+  | 'settle-open'
+  | 'finalize'
+  | 'release-claimed'
 export type NetworkName = 'testnet' | 'localnet' | 'custom'
 export type SignerName = 'wallet' | 'mnemonic'
 
@@ -86,7 +98,7 @@ export function parseCliOptions(argv: string[]): CliOptions {
 
   const dryRun = values['dry-run'] ?? false
   if (dryRun && !transaction) {
-    throw new Error('--dry-run is only valid with refund, withdraw, claim, or delete')
+    throw new Error('--dry-run is only valid with a write command')
   }
 
   let appId: bigint | undefined
@@ -140,12 +152,25 @@ function isCommand(value: string | undefined): value is CommandName {
     value === 'refund' ||
     value === 'withdraw' ||
     value === 'claim' ||
-    value === 'delete'
+    value === 'delete' ||
+    value === 'settle-open' ||
+    value === 'finalize' ||
+    value === 'release-claimed'
   )
 }
 
-function isTransactionCommand(command: CommandName): command is 'refund' | 'withdraw' | 'claim' | 'delete' {
-  return command === 'refund' || command === 'withdraw' || command === 'claim' || command === 'delete'
+function isTransactionCommand(
+  command: CommandName,
+): command is 'refund' | 'withdraw' | 'claim' | 'delete' | 'settle-open' | 'finalize' | 'release-claimed' {
+  return (
+    command === 'refund' ||
+    command === 'withdraw' ||
+    command === 'claim' ||
+    command === 'delete' ||
+    command === 'settle-open' ||
+    command === 'finalize' ||
+    command === 'release-claimed'
+  )
 }
 
 function isReadCommand(command: CommandName): command is 'pledges' | 'campaigns' {

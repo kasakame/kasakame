@@ -13,6 +13,9 @@ const runClaimMock = vi.hoisted(() => vi.fn())
 const runDeleteMock = vi.hoisted(() => vi.fn())
 const runPledgesMock = vi.hoisted(() => vi.fn())
 const runCampaignsMock = vi.hoisted(() => vi.fn())
+const runSettleOpenMock = vi.hoisted(() => vi.fn())
+const runFinalizeMock = vi.hoisted(() => vi.fn())
+const runReleaseClaimedMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./walletconnect.js', () => ({
   login: loginMock,
@@ -28,6 +31,9 @@ vi.mock('./commands.js', () => ({
   runDelete: runDeleteMock,
   runPledges: runPledgesMock,
   runCampaigns: runCampaignsMock,
+  runSettleOpen: runSettleOpenMock,
+  runFinalize: runFinalizeMock,
+  runReleaseClaimed: runReleaseClaimedMock,
 }))
 
 const SESSION = {
@@ -174,6 +180,25 @@ describe('run', () => {
     expect(await run(['delete', '123'])).toBe(0)
     expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'delete', appId: 123n }))
     expect(runDeleteMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+  })
+
+  it.each([
+    ['settle-open', runSettleOpenMock],
+    ['finalize', runFinalizeMock],
+    ['release-claimed', runReleaseClaimedMock],
+  ] as const)('configures the chain and runs %s', async (command, runner) => {
+    runner.mockResolvedValue(0)
+
+    expect(await run([command, '123'])).toBe(0)
+    expect(configureCliChainMock).toHaveBeenCalledWith(expect.objectContaining({ command, appId: 123n }))
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+  })
+
+  it('lists the vault cleanup commands in the usage', async () => {
+    expect(await run(['--help'])).toBe(0)
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('settle-open <appId>'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('finalize <appId>'))
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('release-claimed <appId>'))
   })
 
   it('configures the chain and lists pledges', async () => {

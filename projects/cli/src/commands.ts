@@ -1,4 +1,9 @@
-import { MICRO_ALGOS_PER_ALGO } from '@kasakame/constants'
+import {
+  MICRO_ALGOS_PER_ALGO,
+  VAULT_BOX_STATUS_CLAIMED_HEX,
+  VAULT_BOX_STATUS_FAILED_HEX,
+  VAULT_BOX_STATUS_OPEN_HEX,
+} from '@kasakame/constants'
 import {
   cancelPledge,
   claim,
@@ -7,8 +12,14 @@ import {
   fetchCampaignHeader,
   fetchChainTimestamp,
   fetchMyLeaves,
+  fetchVaultBox,
+  fetchVaultConfig,
+  finalize,
   getCampaignStatus,
   refund,
+  refundWindowEndsAt,
+  releaseClaimed,
+  settleOpen,
   type BackerLeaf,
   type CampaignHeader,
   type CampaignStatus,
@@ -21,6 +32,10 @@ import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { openCliSession } from './session.js'
 import { whoami } from './walletconnect.js'
+
+const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
+const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
+const VAULT_BOX_STATUS_CLAIMED = Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16)
 
 /**
  * Refund every live pledge from a failed campaign, one wallet approval per pledge; every failed refund is reported and the rest still run.
@@ -140,6 +155,132 @@ export async function runDelete(options: CliOptions): Promise<number> {
       console.log('Backers keep refunding from the vault until the refund window closes.')
     }
     console.log("The campaign's schema MBR and any Registry registration deposit are back in your account.")
+    return 0
+  } finally {
+    await session.close()
+  }
+}
+
+/**
+ * Settle a failed campaign permissionlessly when its creator is gone, so backers refund through the vault; the campaign app must still exist.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runSettleOpen(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'settle-open')
+  const header = await campaignHeader(appId, options.network)
+  if (header.deleted) {
+    throw new Error(`Campaign ${appId.toString()} was already deleted; deleting a failed campaign settles its vault box`)
+  }
+  if (getCampaignStatus(header, await fetchChainTimestamp()) === 'successful') {
+    throw new Error(`Campaign ${appId.toString()} reached its goal; there is nothing to settle`)
+  }
+  const box = await fetchVaultBox(appId)
+  if (box === undefined) {
+    throw new Error(`Campaign ${appId.toString()} has no vault box; there is nothing to settle`)
+  }
+  if (box.status === VAULT_BOX_STATUS_FAILED) {
+    throw new Error(`Campaign ${appId.toString()} is already settled; backers can refund it`)
+  }
+  if (box.status !== VAULT_BOX_STATUS_OPEN) {
+    throw new Error(`Campaign ${appId.toString()} was not failed; there is nothing to settle`)
+  }
+
+  return runVaultWrite(options, {
+    announce: `settle open campaign ${appId.toString()}`,
+    plan: `Would settle campaign ${appId.toString()} as failed.`,
+    submit: (wallet) => settleOpen(appId, wallet),
+    report: `Settled campaign ${appId.toString()} as failed; backers can now refund through the vault.`,
+  })
+}
+
+/**
+ * Release a claimed campaign's vault box permissionlessly, recovering its minimum balance to the vault; a missing box is a no-op.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runReleaseClaimed(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'release-claimed')
+  const box = await fetchVaultBox(appId)
+  if (box === undefined) {
+    console.log(`Campaign ${appId.toString()} has no vault box; there is nothing to release.`)
+    return 0
+  }
+  if (box.status !== VAULT_BOX_STATUS_CLAIMED) {
+    throw new Error(`Campaign ${appId.toString()} is not claimed; only a claimed campaign's vault box can be released`)
+  }
+
+  return runVaultWrite(options, {
+    announce: `release the vault box for claimed campaign ${appId.toString()}`,
+    plan: `Would release the vault box for claimed campaign ${appId.toString()}.`,
+    submit: (wallet) => releaseClaimed(appId, wallet),
+    report: `Released the vault box for campaign ${appId.toString()}; its minimum balance is back in the vault's account.`,
+  })
+}
+
+/**
+ * Finalize a settled-failed campaign permissionlessly: sweep the residual to the vault's sweep target and release the box once the refund window closes or the box is fully paid out.
+ *
+ * @param options Parsed CLI options.
+ * @returns Process exit code.
+ */
+export async function runFinalize(options: CliOptions): Promise<number> {
+  const appId = requireAppId(options, 'finalize')
+  const box = await fetchVaultBox(appId)
+  if (box === undefined) {
+    throw new Error(`Campaign ${appId.toString()} has no vault box; it was already finalized or never funded`)
+  }
+  if (box.status !== VAULT_BOX_STATUS_FAILED) {
+    throw new Error(`Campaign ${appId.toString()} is not settled as failed; there is nothing to finalize`)
+  }
+
+  const residual = box.paidIn - box.paidOut
+  if (residual > 0n) {
+    const window = await fetchVaultConfig()
+    const refundWindowEnd = refundWindowEndsAt(box.settledAt, window.window)
+    if ((await fetchChainTimestamp()) < refundWindowEnd) {
+      throw new Error(
+        `The refund window for campaign ${appId.toString()} is open until ${formatDeadline(refundWindowEnd)}; backers can still refund`,
+      )
+    }
+  }
+
+  return runVaultWrite(options, {
+    announce: `finalize campaign ${appId.toString()}`,
+    plan:
+      residual > 0n
+        ? `Would finalize campaign ${appId.toString()} and sweep ${formatAlgo(residual)} ALGO to the vault's sweep target.`
+        : `Would finalize campaign ${appId.toString()} and release its vault box.`,
+    submit: (wallet) => finalize(appId, wallet),
+    report:
+      residual > 0n
+        ? `Swept ${formatAlgo(residual)} ALGO to the vault's sweep target and released the vault box for campaign ${appId.toString()}.`
+        : `Released the vault box for campaign ${appId.toString()}; there was nothing left to sweep.`,
+  })
+}
+
+interface VaultWrite {
+  announce: string
+  plan: string
+  submit: (wallet: WalletSession) => Promise<WriteConfirmation>
+  report: string
+}
+
+async function runVaultWrite(options: CliOptions, write: VaultWrite): Promise<number> {
+  const session = await openCliSession(options)
+  try {
+    if (options.dryRun) {
+      console.log(write.plan)
+      console.log('Dry run: nothing submitted.')
+      return 0
+    }
+
+    announceSubmit(options, write.announce)
+    const confirmation = await write.submit(session.wallet)
+    console.log(write.report)
+    printConfirmation(confirmation, options.network)
     return 0
   } finally {
     await session.close()

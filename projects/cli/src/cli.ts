@@ -1,6 +1,16 @@
 import { parseCliOptions, type CliOptions } from './args.js'
 import { configureCliChain } from './chain.js'
-import { runCampaigns, runClaim, runDelete, runPledges, runRefund, runWithdraw } from './commands.js'
+import {
+  runCampaigns,
+  runClaim,
+  runDelete,
+  runFinalize,
+  runPledges,
+  runRefund,
+  runReleaseClaimed,
+  runSettleOpen,
+  runWithdraw,
+} from './commands.js'
 import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { login, logout, whoami } from './walletconnect.js'
@@ -17,6 +27,11 @@ Commands:
   withdraw <appId> Backer: withdraw your pledges while a campaign is open
   claim <appId>    Creator: claim a successful campaign's funds
   delete <appId>   Creator: delete your campaign and reclaim its deposit
+
+Vault cleanup (permissionless):
+  settle-open <appId>      Settle a failed campaign whose creator is gone
+  finalize <appId>         Sweep a failed campaign's residual and release its box
+  release-claimed <appId>  Release a claimed campaign's vault box
 
 Options:
   --network <testnet|localnet|custom>  Network (default: testnet)
@@ -73,6 +88,15 @@ export async function run(argv: string[]): Promise<number> {
       case 'delete':
         configureCliChain(options)
         return await runDelete(options)
+      case 'settle-open':
+        configureCliChain(options)
+        return await runSettleOpen(options)
+      case 'finalize':
+        configureCliChain(options)
+        return await runFinalize(options)
+      case 'release-claimed':
+        configureCliChain(options)
+        return await runReleaseClaimed(options)
     }
   } catch (error) {
     const message = cliErrorMessage(error, options?.command, options?.appId)

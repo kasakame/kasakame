@@ -211,7 +211,19 @@ describe('parseCliOptions', () => {
   })
 
   it('rejects dry-run outside transaction commands', () => {
-    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with refund, withdraw, claim, or delete')
+    expect(() => parseCliOptions(['login', '--dry-run'])).toThrow('--dry-run is only valid with a write command')
+  })
+
+  it('accepts the vault cleanup commands with an app id', () => {
+    expect(parseCliOptions(['settle-open', '7', '--network', 'localnet', '--vault', '9', '--signer', 'mnemonic'])).toMatchObject({
+      command: 'settle-open',
+      appId: 7n,
+      vaultAppId: 9n,
+      signer: 'mnemonic',
+      dryRun: false,
+    })
+    expect(parseCliOptions(['finalize', '8', '--dry-run'])).toMatchObject({ command: 'finalize', appId: 8n, dryRun: true })
+    expect(parseCliOptions(['release-claimed', '9'])).toMatchObject({ command: 'release-claimed', appId: 9n })
   })
 
   it('requires exactly one app id for transaction commands', () => {
