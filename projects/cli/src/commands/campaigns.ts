@@ -1,7 +1,7 @@
-import type { CliOptions } from '../args.js'
-import { cliErrorMessage } from '../errors.js'
-import { campaignAction, describeStatus, formatAlgo, formatDeadline, printTable, progress } from './format.js'
-import { listCampaignEntries, readAddress } from './lookup.js'
+import { cliErrorMessage } from '../app/error-messages.js'
+import type { CliOptions } from '../app/options.js'
+import { campaignAction, describeStatus, formatAlgo, formatDeadline, printTable, progress } from './shared/format.js'
+import { listCampaignEntries, readAddress } from './shared/lookup.js'
 
 /**
  * List the campaigns the address created and the action each one allows now.

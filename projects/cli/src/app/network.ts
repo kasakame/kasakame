@@ -2,7 +2,7 @@ import { AlgorandClient, Config } from '@algorandfoundation/algokit-utils'
 import { warningConsoleLogger } from '@algorandfoundation/algokit-utils/types/logging'
 import type { SdkLogger } from '@kasakame/sdk'
 import { configureSdk, createLevelLogger } from '@kasakame/sdk'
-import type { CliOptions } from './args.js'
+import type { CliOptions } from './options.js'
 
 const verboseLogger: SdkLogger = {
   debug: (event, context) => {
@@ -28,7 +28,7 @@ function write(level: string, event: string, context: Readonly<Record<string, un
  *
  * @param options Parsed CLI options.
  */
-export function configureCliChain(options: CliOptions): void {
+export function configureNetwork(options: CliOptions): void {
   // The SDK and generated clients log transaction IDs and app calls at debug level.
   Config.configure({ logger: warningConsoleLogger })
 

@@ -10,7 +10,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultSessionStoragePath, describeSession, login, logout, openWalletConnection, whoami } from './walletconnect.js'
+import { describeSession } from './client.js'
+import { login, logout, openWalletConnection, whoami } from './index.js'
+import { defaultSessionStoragePath } from './storage.js'
 
 const walletConnectCtor = vi.hoisted(() => vi.fn())
 const qrGenerate = vi.hoisted(() => vi.fn())

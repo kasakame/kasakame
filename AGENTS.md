@@ -40,8 +40,10 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   transaction assembly (the chain layer the frontend consumes); see
   [`docs/sdk.md`](docs/sdk.md) for the migration order
 - `projects/cli/` - `@kasakame/cli`: standalone escape-hatch CLI
-  (refund/withdraw/claim/delete by app ID; wallet or mnemonic signing); see
-  [`docs/cli.md`](docs/cli.md)
+  (refund/withdraw/claim/delete and vault cleanup by app ID; wallet or mnemonic
+  signing). `src/app/` is the CLI shell, `src/auth/` holds the signer selector,
+  mnemonic, and WalletConnect, `src/commands/` holds one module per command, and
+  `test/` holds the LocalNet lane (#118); see [`docs/cli.md`](docs/cli.md)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage, pinning and catalog)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),

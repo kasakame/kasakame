@@ -1,36 +1,6 @@
 import type { SdkLogLevel } from '@kasakame/sdk'
 import { parseArgs } from 'node:util'
-
-export type CommandName =
-  | 'login'
-  | 'whoami'
-  | 'logout'
-  | 'pledges'
-  | 'campaigns'
-  | 'refund'
-  | 'withdraw'
-  | 'claim'
-  | 'delete'
-  | 'settle-open'
-  | 'finalize'
-  | 'release-claimed'
-export type NetworkName = 'testnet' | 'localnet' | 'custom'
-export type SignerName = 'wallet' | 'mnemonic'
-
-export interface CliOptions {
-  command: CommandName
-  appId?: bigint
-  address?: string
-  pledge?: number
-  all?: boolean
-  network: NetworkName
-  signer: SignerName
-  vaultAppId?: bigint
-  registryAppId?: bigint
-  mnemonicFile?: string
-  dryRun: boolean
-  logLevel?: SdkLogLevel
-}
+import type { CliOptions, CommandName, NetworkName, SignerName } from './options.js'
 
 const TESTNET_VAULT_APP_ID = 774437570n
 const TESTNET_REGISTRY_APP_ID = 774437557n

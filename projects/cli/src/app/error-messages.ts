@@ -1,5 +1,5 @@
 import { classifyChainError, SdkError } from '@kasakame/sdk'
-import type { CommandName } from './args.js'
+import type { CommandName } from './options.js'
 
 const CODE_MESSAGES: Readonly<Record<string, string>> = {
   'campaign-not-open': 'The campaign is no longer open.',

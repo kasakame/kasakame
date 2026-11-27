@@ -1,8 +1,8 @@
 import { fetchChainTimestamp, fetchVaultBox, fetchVaultConfig, finalize, refundWindowEndsAt } from '@kasakame/sdk'
-import type { CliOptions } from '../args.js'
-import { formatAlgo, formatDeadline } from './format.js'
-import { requireAppId } from './lookup.js'
-import { runVaultWrite, VAULT_BOX_STATUS_FAILED } from './vault.js'
+import type { CliOptions } from '../app/options.js'
+import { formatAlgo, formatDeadline } from './shared/format.js'
+import { requireAppId } from './shared/lookup.js'
+import { runVaultWrite, VAULT_BOX_STATUS_FAILED } from './shared/vault.js'
 
 /**
  * Finalize a settled-failed campaign permissionlessly: sweep the residual to the vault's sweep target and release the box once the refund window closes or the box is fully paid out.
