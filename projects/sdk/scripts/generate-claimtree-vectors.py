@@ -2,7 +2,7 @@
 """Generate deterministic claim-tree test vectors for the SDK's pure tree math.
 
 Drives docs/claim-tree-protocol-reference.py through a fixed pledge/null scenario and emits
-`src/claim-tree.vectors.ts` (overwritten in place). Backers/amounts/txids are derived from
+`src/claim-tree/claim-tree.vectors.ts` (overwritten in place). Backers/amounts/txids are derived from
 fixed seeds - no randomness - so regeneration is byte-identical.
 
 Usage (from projects/sdk):  python3 scripts/generate-claimtree-vectors.py
@@ -21,7 +21,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent.parent
 REF_PATH = ROOT / "docs" / "claim-tree-protocol-reference.py"
-OUT_PATH = HERE.parent / "src" / "claim-tree.vectors.ts"
+OUT_PATH = HERE.parent / "src" / "claim-tree" / "claim-tree.vectors.ts"
 
 _spec = importlib.util.spec_from_file_location("claim_tree_ref", REF_PATH)
 assert _spec is not None and _spec.loader is not None
@@ -89,7 +89,11 @@ def main() -> None:
                     "backerAddress": address(backer),
                     "amount": str(amount),
                     "txid": tx.hex(),
-                    "expect": {"n": len(leaves), "root": root.hex(), "raised": str(raised)},
+                    "expect": {
+                        "n": len(leaves),
+                        "root": root.hex(),
+                        "raised": str(raised),
+                    },
                     "frontier": frontier,
                 }
             )
@@ -109,7 +113,11 @@ def main() -> None:
                         "top": top.hex() if top is not None else None,
                         "lower": [v.hex() for v in lower],
                     },
-                    "expect": {"n": len(leaves), "root": root.hex(), "raised": str(raised)},
+                    "expect": {
+                        "n": len(leaves),
+                        "root": root.hex(),
+                        "raised": str(raised),
+                    },
                 }
             )
     payload = {
@@ -122,13 +130,7 @@ def main() -> None:
     }
     header = (
         "/**\n"
-        " * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with:\n"
-        " * `python3 scripts/generate-claimtree-vectors.py` (from projects/sdk).\n"
-        " *\n"
-        " * Each step drives docs/claim-tree-protocol-reference.py through a fixed pledge/null scenario. `backerAddress`\n"
-        " * is the Algorand address of `backerPubkey` (checksum-validated by the spec); amounts/raised are decimal strings\n"
-        " * so they survive JSON without precision loss. `frontier` is the pre-append frontier the pledge call takes;\n"
-        " * `path` is the pre-null path the refund call takes.\n"
+        " * Committed claim-tree test vectors - DO NOT EDIT. Regenerate with python3 scripts/generate-claimtree-vectors.py.\n"
         " */\n"
         "export interface ClaimTreeVectorExpect {\n"
         "  n: number\n"

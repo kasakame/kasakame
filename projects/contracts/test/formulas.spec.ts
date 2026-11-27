@@ -13,10 +13,7 @@ import { selectorOf } from '@kasakame/utils/testing'
 import { describe, expect, it } from 'vitest'
 import { SELECTORS, pledgeExtraFee, spendExtraFee, spendFee } from './utils/campaign'
 
-/**
- * Pins the shared helper formulas and selectors. The spend fee assumes no prelude budget survives, which overfunds
- * the OpUp takes at worst by one fee and never underfunds a group.
- */
+/** Pins the shared helper formulas and selectors; the spend fee assumes no prelude budget, so it never underfunds. */
 describe('contract LocalNet helpers', () => {
   it('computes pledge OpUp takes from the frontier width', () => {
     expect(FEE_MICRO_ALGOS).toEqual(1_000n)
@@ -35,8 +32,7 @@ describe('contract LocalNet helpers', () => {
     expect(spendFee(smallPath, 2)).toEqual(5_000n)
     expect(spendFee(smallPath, 1)).toEqual(4_000n)
 
-    // The 2^19 - 1 cap, leaf 0: r = c = 18. The zero-headroom fee funds 15 takes; the group pays for them even
-    // though the contract requests 14, so 2 payouts + 15 = 17 fees on the campaign path.
+    // The 2^19 - 1 cap, leaf 0: r = c = 18; the zero-headroom fee funds 15 takes, so 2 payouts + 15 = 17 fees.
     const capPath = { siblings: Array<string>(18).fill('00'), top: null, lower: Array<string>(18).fill('00') }
     expect(spendExtraFee(capPath, 2)).toEqual(17_000n)
     expect(spendExtraFee(capPath, 1)).toEqual(16_000n)

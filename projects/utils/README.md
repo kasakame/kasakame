@@ -4,12 +4,23 @@ Private, repo-only helpers shared by the kasakame projects. Never published.
 
 - `@kasakame/utils` - program-hash helpers for the deploy code and tests.
 - `@kasakame/utils/testing` - LocalNet platform deploy, account/ledger reads,
-  time travel, byte/selector helpers, and Node-`assert` checks. Test-only; it
-  imports `algokit-utils` and `algosdk`, but no test runner, so consumers keep
-  Vitest or any other runner.
+  time travel, byte/selector helpers, Node-`assert` checks, and the AlgoKit
+  test logging switch (`KASAKAME_TEST_LOG`). Test-only; it imports
+  `algokit-utils` and `algosdk`, but no test runner, so consumers keep Vitest or
+  any other runner.
 - `release/` and `smoke/` - the release workflow scripts and the per-package
   smoke entries, run with Node 24 type stripping. They stay out of the packed
-  package (`files: ["src"]`).
+  package (`files` lists only `program-hash.ts` and `testing/`).
+- `scripts/check-comments.ts` - the repo-wide one-line, 200-character comment
+  rule; run `npm run check:comments` or `node scripts/check-comments.ts --report`
+  for the baseline table.
+- `work-tracking/` - the work-tracking subsystem: the issue creation and
+  check-issue scripts, the project, field, and component config, the validator,
+  and the epic automation. Run
+  `node projects/utils/work-tracking/create-issue.ts --help`,
+  `node projects/utils/work-tracking/check-issue.ts --help`,
+  `node projects/utils/work-tracking/show-work-tracking.ts --help`, or
+  `node projects/utils/work-tracking/epic-automation.ts --help`.
 
 Contract-only helpers (campaign flows, the claim-tree oracle, scale knobs) stay
 in `projects/contracts/test/utils`.

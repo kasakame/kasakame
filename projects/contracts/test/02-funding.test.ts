@@ -9,11 +9,12 @@ import {
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
-import { advanceTime, balanceOf, concatHex, minBalanceOf } from '@kasakame/utils/testing'
+import { advanceTime, concatHex, vaultBoxRef } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
+  actorSnapshot,
   campaignBox,
   campaignBoxExists,
   campaignState,
@@ -21,11 +22,12 @@ import {
   deleteCampaign,
   deployCampaign,
   deployStack,
+  expectActorDeltas,
+  expectSendRejected,
   pledge,
   spendCampaign,
   spendExtraFee,
   spendVault,
-  vaultBoxRef,
   type ContractStack,
 } from './utils'
 
@@ -35,10 +37,7 @@ interface CampaignFixture {
 }
 
 /**
- * 02 - funding outcomes.
- *
- * Failed campaign: refund before and after delete, reject early finalize, sweep the residual after the window.
- * Successful campaign: claim and delete. The standalone tests repeat each workflow so they can run alone.
+ * 02 - funding outcomes: failed refunds and sweep, successful claim and delete; standalone tests can run alone.
  */
 describe('02 funding outcomes', () => {
   const fixture = algorandFixture()
@@ -131,8 +130,7 @@ describe('02 funding outcomes', () => {
         }),
       ).rejects.toThrow(/refund window still open/)
 
-      const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
-      const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+      const before = await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address])
       await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
       await stack.vault.client.send.call({
         method: 'finalize(uint64)void',
@@ -142,8 +140,10 @@ describe('02 funding outcomes', () => {
         suppressLog: true,
       })
 
-      expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(sweeperBefore + 2n * MICRO_ALGOS_PER_ALGO)
-      expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
+      expectActorDeltas(before, await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address]), {
+        [stack.sweeperAddress]: { balance: 2n * MICRO_ALGOS_PER_ALGO },
+        [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+      })
       expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
     })
   })
@@ -185,13 +185,14 @@ describe('02 funding outcomes', () => {
     })
 
     test('CON-032 advance and claim', async () => {
-      const creatorBefore = await balanceOf(stack.algorand, creator.addr.toString())
+      const creatorAddr = creator.addr.toString()
+      const before = await actorSnapshot(stack.algorand, [creatorAddr])
       await advanceTime(fixture, SECONDS_PER_DAY)
-      await claimCampaign(stack, campaign.appClient, campaign.appId, creator.addr.toString())
+      await claimCampaign(stack, campaign.appClient, campaign.appId, creatorAddr)
 
-      expect(await balanceOf(stack.algorand, creator.addr.toString())).toEqual(
-        creatorBefore + 3n * MICRO_ALGOS_PER_ALGO - CLAIM_FEE_MICRO_ALGOS,
-      )
+      expectActorDeltas(before, await actorSnapshot(stack.algorand, [creatorAddr]), {
+        [creatorAddr]: { balance: 3n * MICRO_ALGOS_PER_ALGO - CLAIM_FEE_MICRO_ALGOS },
+      })
       const box = await campaignBox(stack.vault.client, campaign.appId)
       expect(box.status).toEqual(3)
       expect(box.paidOut).toEqual(box.paidIn)
@@ -263,7 +264,7 @@ describe('02 funding outcomes', () => {
     const txid = await pledge(stack, campaign.appClient, campaign.appId, backer.addr.toString(), 2n * MICRO_ALGOS_PER_ALGO, oracle)
     await advanceTime(fixture, SECONDS_PER_DAY)
 
-    const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+    const vaultBeforeSettle = await actorSnapshot(stack.algorand, [stack.vault.address])
     await stack.vault.client.send.call({
       method: 'settleOpen(uint64)void',
       args: [campaign.appId],
@@ -272,26 +273,31 @@ describe('02 funding outcomes', () => {
       suppressLog: true,
     })
     expect((await campaignBox(stack.vault.client, campaign.appId)).status).toEqual(2)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore)
+    expectActorDeltas(vaultBeforeSettle, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+      [stack.vault.address]: { minBalance: 0n },
+    })
 
     await spendVault(stack, campaign.appId, backer.addr.toString(), 0, 2n * MICRO_ALGOS_PER_ALGO, txid, oracle)
 
     const dup = oracle.path(0)
     const blob = concatHex([...dup.siblings, ...(dup.top === null ? [] : [dup.top]), ...dup.lower])
-    const backerBefore = await balanceOf(stack.algorand, backer.addr.toString())
-    await expect(
-      stack.vault.client.send.call({
-        method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
-        args: [campaign.appId, 0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
-        sender: backer.addr,
-        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-        extraFee: microAlgos(3n * FEE_MICRO_ALGOS),
-        suppressLog: true,
-      }),
-    ).rejects.toThrow(/proof does not match root/)
-    expect(await balanceOf(stack.algorand, backer.addr.toString())).toEqual(backerBefore)
+    await expectSendRejected(
+      stack,
+      stack.vault.appId,
+      () =>
+        stack.vault.client.send.call({
+          method: 'refund(uint64,uint64,uint64,byte[],byte[])void',
+          args: [campaign.appId, 0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
+          sender: backer.addr,
+          boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+          extraFee: microAlgos(3n * FEE_MICRO_ALGOS),
+          suppressLog: true,
+        }),
+      /proof does not match root/,
+      { accounts: [backer.addr.toString(), stack.vault.address], campaignBox: campaign.appId },
+    )
 
-    const vaultMin = await minBalanceOf(stack.algorand, stack.vault.address)
+    const vaultBeforeFinalize = await actorSnapshot(stack.algorand, [stack.vault.address])
     await stack.vault.client.send.call({
       method: 'finalize(uint64)void',
       args: [campaign.appId],
@@ -299,7 +305,9 @@ describe('02 funding outcomes', () => {
       suppressLog: true,
     })
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR_MICRO_ALGOS)
+    expectActorDeltas(vaultBeforeFinalize, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+      [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+    })
   })
 
   test('CON-043 settleOpen makes the campaign refund path reject', { tags: ['bad', 'always'] }, async () => {
@@ -320,19 +328,22 @@ describe('02 funding outcomes', () => {
 
     const path = oracle.path(0)
     const blob = concatHex([...path.siblings, ...(path.top === null ? [] : [path.top]), ...path.lower])
-    const backerBefore = await balanceOf(stack.algorand, backer.addr.toString())
-    await expect(
-      campaign.appClient.send.call({
-        method: 'refund(uint64,uint64,byte[],byte[])void',
-        args: [0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
-        sender: backer.addr,
-        appReferences: [stack.vault.appId],
-        boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
-        extraFee: microAlgos(spendExtraFee(path, 2)),
-        suppressLog: true,
-      }),
-    ).rejects.toThrow(/campaign is not open/)
-    expect(await balanceOf(stack.algorand, backer.addr.toString())).toEqual(backerBefore)
+    await expectSendRejected(
+      stack,
+      campaign.appId,
+      () =>
+        campaign.appClient.send.call({
+          method: 'refund(uint64,uint64,byte[],byte[])void',
+          args: [0n, 2n * MICRO_ALGOS_PER_ALGO, Buffer.from(txid, 'hex'), blob],
+          sender: backer.addr,
+          appReferences: [stack.vault.appId],
+          boxReferences: [vaultBoxRef(stack.vault.appId, campaign.appId)],
+          extraFee: microAlgos(spendExtraFee(path, 2)),
+          suppressLog: true,
+        }),
+      /campaign is not open/,
+      { accounts: [backer.addr.toString()], campaignBox: campaign.appId },
+    )
   })
 
   test('CON-044 releaseClaimed recovers a claimed box permissionlessly', { tags: ['happy', 'always'] }, async () => {
@@ -348,8 +359,7 @@ describe('02 funding outcomes', () => {
     expect(box.status).toEqual(3)
     expect(box.paidIn).toEqual(box.paidOut)
 
-    const vaultBalance = await balanceOf(stack.algorand, stack.vault.address)
-    const vaultMin = await minBalanceOf(stack.algorand, stack.vault.address)
+    const vaultBeforeRelease = await actorSnapshot(stack.algorand, [stack.vault.address])
     await stack.vault.client.send.call({
       method: 'releaseClaimed(uint64)void',
       args: [campaign.appId],
@@ -358,8 +368,9 @@ describe('02 funding outcomes', () => {
       suppressLog: true,
     })
     expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
-    expect(await balanceOf(stack.algorand, stack.vault.address)).toEqual(vaultBalance)
-    expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMin - VAULT_BOX_MBR_MICRO_ALGOS)
+    expectActorDeltas(vaultBeforeRelease, await actorSnapshot(stack.algorand, [stack.vault.address]), {
+      [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+    })
 
     await deleteCampaign(stack, campaign.appId, creator.addr.toString())
     await expect(stack.algorand.app.getById(campaign.appId)).rejects.toThrow()

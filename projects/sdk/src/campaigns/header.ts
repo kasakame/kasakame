@@ -9,12 +9,7 @@ const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
 const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 /**
- * Build a campaign header from an indexer application: global state for live campaigns, history for deleted ones.
- *
- * For deleted campaigns the creation transaction is decoded from the block at the app's creation round (selector
- * stripped, tuple per the ARC-56 spec) and the live total is recovered from the vault box (`paidIn - paidOut`, or
- * zero when the box has already been released). The raw status for deleted campaigns is best-effort: read from
- * the vault box when it still exists, otherwise `open`.
+ * Build a campaign header from an indexer application: global state for live campaigns, history for deleted ones (creation txn, recovered total, best-effort status).
  *
  * @param application Indexer application, live or deleted.
  * @returns The campaign header.
@@ -78,10 +73,7 @@ export async function headerFromApplication(application: algosdk.indexerModels.A
 }
 
 /**
- * Fetch a campaign's header: the immutable creation metadata plus its live total and raw status.
- *
- * For live campaigns the fields come from global state; for deleted campaigns they are recovered from history
- * (see `headerFromApplication`).
+ * Fetch a campaign's header: the immutable creation metadata plus its live total and raw status (deleted campaigns are recovered from history).
  *
  * @param appId Campaign application id.
  * @returns The campaign header, or undefined when the application is not indexed.

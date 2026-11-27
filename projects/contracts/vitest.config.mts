@@ -5,12 +5,7 @@ import type { TestSpecification } from 'vitest/node'
 import { BaseSequencer } from 'vitest/node'
 
 /**
- * Run test files in deterministic path order.
- *
- * Vitest's default sequencer runs the largest files first, and failed/longer files first when it has a results cache.
- * The LocalNet suites are numbered `00`-`07`, so path order keeps the CI log readable and reproducible. The files
- * are still independent: each deploys its own stack, and `--no-file-parallelism` keeps their chain-global time travel
- * from overlapping.
+ * Run test files in deterministic path order (numbered LocalNet suites, no time-travel overlap).
  */
 class PathOrderSequencer extends BaseSequencer {
   /**
@@ -29,6 +24,8 @@ export default defineConfig({
     sequence: { sequencer: PathOrderSequencer },
     // LocalNet integration tests deploy apps and fast-forward blocks, which occasionally exceeds the default 5s test timeout.
     testTimeout: 120_000,
+    // The first deployStack can exceed Vitest's 10s hook default on a cold LocalNet and would skip the file.
+    hookTimeout: 120_000,
     tags: [
       { name: 'smoke', description: 'Deployment and basic happy-path integration.' },
       { name: 'happy', description: 'Successful user flows.' },
@@ -37,18 +34,13 @@ export default defineConfig({
       { name: 'always', description: 'Independent test; runs alone and after unrelated failures.' },
       { name: 'chain', description: 'Ordered test; shares state with earlier tests in its file.' },
     ],
-    // Coverage measures the contract source only (tests and generated
-    // artifacts are excluded). The offline AVM tests exercise the contract
-    // through the puya transformer, and V8's line/branch coverage over the
-    // transformed code tracks the original `.algo.ts` source.
+    // Coverage measures the contract source only: V8 tracks the puya-transformed code back to `.algo.ts`.
     coverage: {
       provider: 'v8',
       include: ['smart_contracts/**/*.algo.ts'],
       exclude: ['**/*.algo.spec.ts', '**/*.algo.test.ts', 'smart_contracts/artifacts/**'],
       reporter: ['text', 'json-summary'],
-      // Lines/branches/functions are the meaningful metrics. Statements is left
-      // un-thresholded because the `@abimethod` decorator wraps each method
-      // signature in a statement V8 never marks as executed (see docs).
+      // Statements stays un-thresholded: the `@abimethod` decorator wraps each signature in a statement V8 never marks.
       thresholds: {
         lines: 100,
         branches: 100,
@@ -59,9 +51,7 @@ export default defineConfig({
   plugins: [
     typescript({
       tsconfig: './tsconfig.json',
-      // The contract tsconfig targets CommonJS (for ts-node deploys); Vitest/Vite
-      // needs ESM output so the transformer's injected `runtime-helpers` import
-      // resolves against the package's ESM-only "exports" map.
+      // The contract tsconfig emits CommonJS; Vitest needs ESM so runtime-helpers resolves through the exports map.
       compilerOptions: { module: 'esnext', moduleResolution: 'bundler' },
       transformers: {
         before: [puyaTsTransformer],

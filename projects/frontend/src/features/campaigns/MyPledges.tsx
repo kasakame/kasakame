@@ -48,8 +48,7 @@ const MyPledges = ({ onSelectCampaign, onBack }: MyPledgesProps) => {
     setLoading(true)
     setError(null)
 
-    // One history replay per enumerated campaign; results stream in as each replay finishes. Deleted campaigns are
-    // enumerated too: their vault refunds stay open until finalized, so their leaves are still live.
+    // One history replay per enumerated campaign, streamed as each finishes; deleted campaigns count too, their vault refunds stay live until finalized.
     const load = async () => {
       const [ids, now] = await Promise.all([enumerateCampaigns(), fetchChainTimestamp()])
       if (cancelled) return

@@ -112,6 +112,10 @@ describe('CampaignDetail', () => {
     fetchMyLeavesMock.mockResolvedValue([])
     fetchVaultBoxMock.mockResolvedValue(undefined)
     fetchVaultConfigMock.mockResolvedValue(undefined)
+    claimMock.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
+    refundMock.mockResolvedValue({ txIds: ['REFUNDTX'], confirmedRound: 99n })
+    cancelPledgeMock.mockResolvedValue({ txIds: ['CANCELTX'], confirmedRound: 99n })
+    deleteCampaignMock.mockResolvedValue({ txIds: ['DELETETX'], confirmedRound: 99n })
   })
 
   it('shows a loading state initially', () => {
@@ -344,18 +348,20 @@ describe('CampaignDetail', () => {
 
   it('calls claim when the claim button is clicked', async () => {
     getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
-    claimMock.mockResolvedValue(undefined)
+    claimMock.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
     await user.click(await screen.findByText('Claim funds'))
     expect(claimMock).toHaveBeenCalledWith(42n, { address: 'ADDRESS', signer: {} })
+    expect(await screen.findByText(/Confirmed in round 99/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'View transaction' })).toHaveAttribute('href', 'https://lora.algokit.io/localnet/tx/CLAIMTX')
   })
 
   it('calls refund with the leaf when the refund button is clicked', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed', { myPledgeMicroAlgos: 1_000_000n }))
     fetchMyLeavesMock.mockResolvedValue([{ position: 2, amount: 400_000n, txidHex: 'bb' }])
-    refundMock.mockResolvedValue(undefined)
+    refundMock.mockResolvedValue({ txIds: ['REFUNDTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -366,7 +372,7 @@ describe('CampaignDetail', () => {
   it('calls cancelPledge with the leaf when the cancel pledge button is clicked', async () => {
     getCampaignMock.mockResolvedValue(viewModel('open', { myPledgeMicroAlgos: 1_000_000n }))
     fetchMyLeavesMock.mockResolvedValue([{ position: 0, amount: 1_000_000n, txidHex: 'aa' }])
-    cancelPledgeMock.mockResolvedValue(undefined)
+    cancelPledgeMock.mockResolvedValue({ txIds: ['CANCELTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -415,7 +421,7 @@ describe('CampaignDetail', () => {
     getWalletManagerMock.mockReturnValue({
       getWallet: () => ({ resumeSession: () => Promise.reject(new Error('No accounts found!')) }),
     })
-    claimMock.mockResolvedValue(undefined)
+    claimMock.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -450,7 +456,7 @@ describe('CampaignDetail', () => {
     fetchMyLeavesMock.mockResolvedValue([{ position: 3, amount: 1_000_000n, txidHex: 'aa' }])
     fetchVaultBoxMock.mockResolvedValue({ paidIn: 1_000_000n, paidOut: 0n, status: VAULT_BOX_STATUS_FAILED, settledAt: 5_000n })
     fetchVaultConfigMock.mockResolvedValue({ window: 3_600n, sweepTarget: 'SWEEP' })
-    refundMock.mockResolvedValue(undefined)
+    refundMock.mockResolvedValue({ txIds: ['REFUNDTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -485,13 +491,14 @@ describe('CampaignDetail', () => {
 
   it('navigates back after a successful delete', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed', { creator: 'ADDRESS' }))
-    deleteCampaignMock.mockResolvedValue(undefined)
+    deleteCampaignMock.mockResolvedValue({ txIds: ['DELETETX'] })
     const onBack = vi.fn()
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={onBack} />)
 
     await user.click(await screen.findByText('Delete campaign'))
     expect(deleteCampaignMock).toHaveBeenCalled()
+    expect(await screen.findByText(/Confirmed ·/)).toBeInTheDocument()
     expect(onBack).toHaveBeenCalled()
   })
 
@@ -534,7 +541,7 @@ describe('CampaignDetail', () => {
 
   it('calls deleteCampaign when the delete button is clicked', async () => {
     getCampaignMock.mockResolvedValue(viewModel('failed', { creator: 'ADDRESS' }))
-    deleteCampaignMock.mockResolvedValue(undefined)
+    deleteCampaignMock.mockResolvedValue({ txIds: ['DELETETX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -569,7 +576,7 @@ describe('CampaignDetail', () => {
 
   it('keeps old data when the campaign vanishes before refresh', async () => {
     getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
-    claimMock.mockResolvedValue({})
+    claimMock.mockResolvedValue({ txIds: [] })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -581,7 +588,7 @@ describe('CampaignDetail', () => {
 
   it('keeps old data with a message when post-action refresh fails', async () => {
     getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
-    claimMock.mockResolvedValue({})
+    claimMock.mockResolvedValue({ txIds: [] })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 
@@ -594,7 +601,7 @@ describe('CampaignDetail', () => {
 
   it('shows a success message after a successful claim', async () => {
     getCampaignMock.mockResolvedValue(viewModel('successful', { creator: 'ADDRESS' }))
-    claimMock.mockResolvedValue(undefined)
+    claimMock.mockResolvedValue({ txIds: ['CLAIMTX'], confirmedRound: 99n })
     const user = userEvent.setup()
     render(<CampaignDetail appId={42n} onBack={() => {}} />)
 

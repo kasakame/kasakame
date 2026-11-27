@@ -13,18 +13,17 @@ import {
   type CampaignHeader,
   type CampaignStatus,
   type WalletSession,
+  type WriteConfirmation,
 } from '@kasakame/sdk'
 import { isValidAddress } from 'algosdk'
 import type { CliOptions } from './args.js'
+import { cliErrorMessage } from './errors.js'
 import { mnemonicSession } from './mnemonic.js'
 import { openCliSession } from './session.js'
 import { whoami } from './walletconnect.js'
 
 /**
- * Refund every live pledge from a failed campaign, one wallet approval per pledge.
- *
- * Open and successful campaigns are rejected before the wallet is touched. A failed refund is reported and the
- * remaining pledges are still attempted; the command exits non-zero when any refund failed.
+ * Refund every live pledge from a failed campaign, one wallet approval per pledge; every failed refund is reported and the rest still run.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -43,11 +42,7 @@ export async function runRefund(options: CliOptions): Promise<number> {
 }
 
 /**
- * Withdraw every live pledge of an open campaign, one wallet approval per pledge.
- *
- * Campaigns that already failed or succeeded are rejected before the wallet is touched. With several live pledges,
- * `--pledge` picks one and `--all` withdraws every one; a failed withdrawal is reported and the remaining pledges are
- * still attempted.
+ * Withdraw every live pledge of an open campaign, one wallet approval per pledge; `--pledge` picks one and `--all` takes every one.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -66,10 +61,7 @@ export async function runWithdraw(options: CliOptions): Promise<number> {
 }
 
 /**
- * Claim a successful campaign for its creator.
- *
- * Open, failed, and already-claimed campaigns are rejected before the wallet is touched; a connected wallet that
- * did not create the campaign is rejected before anything is submitted.
+ * Claim a successful campaign for its creator; a wallet that did not create it is rejected before anything is submitted.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -100,8 +92,9 @@ export async function runClaim(options: CliOptions): Promise<number> {
     }
 
     announceSubmit(options, `claim campaign ${appId.toString()}`)
-    await claim(appId, session.wallet)
+    const confirmation = await claim(appId, session.wallet)
     console.log(`Claimed campaign ${appId.toString()}; the vault paid its live total to ${session.wallet.address}.`)
+    printConfirmation(confirmation, options.network)
     return 0
   } finally {
     await session.close()
@@ -109,10 +102,7 @@ export async function runClaim(options: CliOptions): Promise<number> {
 }
 
 /**
- * Delete a campaign for its creator.
- *
- * Campaigns that still hold live pledges while open, and funded campaigns that are not claimed yet, are rejected
- * before the wallet is touched. Backers of a failed campaign keep refunding from the vault after the deletion.
+ * Delete a campaign for its creator; backers of a failed campaign keep refunding from the vault after the deletion.
  *
  * @param options Parsed CLI options.
  * @returns Process exit code.
@@ -143,8 +133,9 @@ export async function runDelete(options: CliOptions): Promise<number> {
     }
 
     announceSubmit(options, `delete campaign ${appId.toString()}`)
-    await deleteCampaign(appId, session.wallet)
+    const confirmation = await deleteCampaign(appId, session.wallet)
     console.log(`Deleted campaign ${appId.toString()}.`)
+    printConfirmation(confirmation, options.network)
     if (status === 'failed' && header.raisedMicroAlgos > 0n) {
       console.log('Backers keep refunding from the vault until the refund window closes.')
     }
@@ -158,8 +149,6 @@ export async function runDelete(options: CliOptions): Promise<number> {
 /**
  * List the address's live pledges and the action each campaign allows now.
  *
- * Read-only: no signing session and no relay connection are opened.
- *
  * @param options Parsed CLI options.
  * @returns Process exit code.
  */
@@ -172,7 +161,7 @@ export async function runPledges(options: CliOptions): Promise<number> {
   try {
     result = await pledgeRows(await listCampaignEntries(), address, readOnly)
   } catch (error) {
-    throw new Error(`Could not read pledges from the indexer: ${messageOf(error)}`)
+    throw new Error(`Could not read pledges from the indexer: ${cliErrorMessage(error, 'pledges')}`)
   }
 
   const headers = ['app id', 'title', 'status', 'deadline', 'pledge', 'amount']
@@ -223,8 +212,6 @@ async function pledgeRows(entries: CampaignEntry[], address: string, readOnly: b
 /**
  * List the campaigns the address created and the action each one allows now.
  *
- * Read-only: no signing session and no relay connection are opened.
- *
  * @param options Parsed CLI options.
  * @returns Process exit code.
  */
@@ -252,7 +239,7 @@ export async function runCampaigns(options: CliOptions): Promise<number> {
         return row
       })
   } catch (error) {
-    throw new Error(`Could not read campaigns from the indexer: ${messageOf(error)}`)
+    throw new Error(`Could not read campaigns from the indexer: ${cliErrorMessage(error, 'campaigns')}`)
   }
 
   printTable(
@@ -354,6 +341,24 @@ function announceSubmit(options: CliOptions, phrase: string): void {
   progress(options.signer === 'wallet' ? `Waiting for wallet approval: ${phrase}…` : `Submitting: ${phrase}…`)
 }
 
+/**
+ * Print the round and transaction of a confirmed write.
+ *
+ * @param confirmation The SDK confirmation.
+ * @param network The active CLI network.
+ */
+function printConfirmation(confirmation: WriteConfirmation, network: CliOptions['network']): void {
+  if (confirmation.confirmedRound !== undefined) {
+    console.log(`Confirmed in round ${confirmation.confirmedRound.toString()}.`)
+  }
+  const txId = confirmation.txIds[0]
+  if (txId === undefined) return
+  console.log(`Transaction: ${txId}`)
+  if (network !== 'custom') {
+    console.log(`Explorer: https://lora.algokit.io/${network}/tx/${txId}`)
+  }
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -405,7 +410,7 @@ async function spendLeaves(
   options: CliOptions,
   appId: bigint,
   label: SpendLabel,
-  spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<void>,
+  spend: (wallet: WalletSession, leaf: BackerLeaf) => Promise<WriteConfirmation>,
 ): Promise<number> {
   const session = await openCliSession(options)
   try {
@@ -436,11 +441,16 @@ async function spendLeaves(
     for (const leaf of selected) {
       try {
         announceSubmit(options, `${label.verb} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO)`)
-        await spend(session.wallet, leaf)
+        const confirmation = await spend(session.wallet, leaf)
         console.log(`${label.done} pledge #${String(leaf.position)} (${formatAlgo(leaf.amount)} ALGO).`)
+        printConfirmation(confirmation, options.network)
       } catch (error) {
         failed += 1
-        console.error(`Pledge #${String(leaf.position)} failed: ${messageOf(error)}`)
+        const message = cliErrorMessage(error, options.command, appId)
+        console.error(`Pledge #${String(leaf.position)} failed: ${message}`)
+        if (options.logLevel === 'debug' && error instanceof Error && message !== error.message) {
+          console.error(`[detail] ${error.message}`)
+        }
       }
     }
 

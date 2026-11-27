@@ -5,8 +5,8 @@ withdraws, claims, and deletes by app ID from a terminal, using a wallet app or
 a local mnemonic. It reads public algod and indexer endpoints and talks to no
 kasakame backend, so an exit never depends on our servers.
 
-Status: the package ships through the `release-cli` workflow; the first npm
-publish is pending. From a checkout, build it with the commands in
+Status: the package ships through the `release-cli` workflow; `@kasakame/cli@0.1.0`
+is published on npm. From a checkout, build it with the commands in
 [Development](#development).
 
 ## Install
@@ -176,6 +176,28 @@ use `--signer mnemonic`: Pera and Defly cannot target those chains.
 
 The CLI supports a connected wallet and a local mnemonic. Both produce the same
 signer interface, so every read and transaction command works with either.
+
+After a confirmed write, the command prints the confirmed round, the transaction
+id, and a Lora explorer link on TestNet and LocalNet; custom networks print only
+the transaction id.
+
+### Errors
+
+Command failures use the SDK's typed error kind/code to pick short,
+action-specific copy: closed campaign, goal reached, deadline or refund-window
+state, creator-only actions, full tree, registry mismatch, unregistered campaign,
+stale proof, not found, and network failure. Unknown failures fall back to a
+command-specific message. Raw TEAL traces stay out of default output;
+`--log-level debug` prints the original SDK message as `[detail]`.
+
+### Verbose diagnostics
+
+Pass `--log-level <debug|info|warn|error>` to print SDK diagnostics at that
+level and above to stderr; `--verbose` is shorthand for `--log-level debug`.
+Without either flag, default output stays unchanged. Diagnostics name the refund
+route, stale-proof retries, refund re-routes, already-registered retries, indexer
+wait timeouts, confirmed writes, and final failures, with app ids and error
+types/codes as JSON context.
 
 ### Wallet (default on TestNet)
 

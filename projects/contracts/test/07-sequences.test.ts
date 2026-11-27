@@ -1,7 +1,7 @@
 import { algorandFixture } from '@algorandfoundation/algokit-utils/testing'
 import { beforeAll, describe, test } from 'vitest'
 import { deployStack, type ContractStack } from './utils'
-import { describeScale, scaleConfig } from './utils/scale'
+import { scaleConfig } from './utils/scale'
 import { runSequence } from './utils/sequence'
 
 const scale = scaleConfig('heavy')
@@ -15,7 +15,6 @@ describe('07 seeded sequences', () => {
   })
 
   test('CON-230 seeded pledge/cancel/refund/finalize sequences', { tags: ['scale', 'happy', 'always'] }, async () => {
-    console.log(describeScale(scale))
     for (let i = 0; i < scale.seedCount; i++) {
       await runSequence(fixture, stack, scale, scale.seed + i)
     }

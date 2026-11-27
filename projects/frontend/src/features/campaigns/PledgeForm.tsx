@@ -2,9 +2,11 @@ import { MIN_PLEDGE_MICRO_ALGOS } from '@kasakame/constants'
 import { useWallet } from '@txnlab/use-wallet-react'
 import { useState } from 'react'
 import { classifyError, errorMessage } from '../../lib/errors'
+import { explorerTxUrl } from '../../lib/explorer'
 import { parseAlgoToMicroAlgos } from '../../lib/format'
 import { logError } from '../../lib/log'
 import { ensureLiveSessionFor } from '../../lib/session'
+import type { WriteConfirmation } from '../../lib/transaction'
 import { disconnectQuietly, pledge } from '../../lib/transaction'
 import { getWalletManager } from '../../lib/wallets'
 
@@ -19,8 +21,11 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
   const [amount, setAmount] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<WriteConfirmation | null>(null)
 
   const canSubmit = amount.trim() !== '' && !busy && Boolean(activeAddress && transactionSigner)
+  const txId = confirmation?.txIds[0]
+  const round = confirmation?.confirmedRound
 
   const handleSubmit = async () => {
     // Defensive: the submit button is disabled while disconnected, so this is unreachable in the UI.
@@ -29,6 +34,7 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
 
     setBusy(true)
     setMessage(null)
+    setConfirmation(null)
     try {
       await ensureLiveSessionFor(getWalletManager(), activeWallet)
       const microAlgos = parseAlgoToMicroAlgos(amount)
@@ -36,9 +42,10 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
         setMessage('Minimum pledge is 0.1 ALGO.')
         return
       }
-      await pledge(appId, { address: activeAddress, signer: transactionSigner }, microAlgos)
+      const result = await pledge(appId, { address: activeAddress, signer: transactionSigner }, microAlgos)
       setAmount('')
       setMessage('Pledge sent!')
+      setConfirmation(result)
       onPledged()
     } catch (error) {
       logError('pledge', error)
@@ -51,7 +58,7 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
           setMessage('Wallet session expired. Disconnect and reconnect your wallet, then try again.')
         }
       } else {
-        setMessage(errorMessage(kind, 'pledge'))
+        setMessage(errorMessage(error, 'pledge'))
       }
     } finally {
       setBusy(false)
@@ -84,6 +91,14 @@ const PledgeForm = ({ appId, onPledged }: PledgeFormProps) => {
         Network fee ≈0.004–0.010 ALGO, depending on campaign size. Refunds stay open after failure - no opt-ins needed.
       </p>
       {message && <p className="mt-3 mb-0 text-sm text-muted">{message}</p>}
+      {txId !== undefined && (
+        <p className="mt-3 mb-0 text-sm text-muted">
+          Confirmed{round === undefined ? '' : ` in round ${round.toString()}`} ·{' '}
+          <a className="text-teal underline" href={explorerTxUrl(txId)} target="_blank" rel="noreferrer">
+            View transaction
+          </a>
+        </p>
+      )}
     </div>
   )
 }

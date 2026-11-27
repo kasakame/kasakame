@@ -29,10 +29,7 @@ export function parseRefundWindow(value: string | undefined): bigint {
 }
 
 /**
- * Resolve the vault's `sweepTarget` from the environment.
- *
- * LocalNet defaults to the deployer for convenience. TestNet/MainNet must set `SWEEP_TARGET` explicitly so the residual
- * sweep destination is a deliberate, disclosed treasury choice rather than whoever happened to run the deploy.
+ * Resolve the vault's `sweepTarget`: the deployer on LocalNet, an explicit disclosed treasury elsewhere.
  *
  * @param value The raw `SWEEP_TARGET` environment value, if any.
  * @param deployer The deployer address (the LocalNet default).

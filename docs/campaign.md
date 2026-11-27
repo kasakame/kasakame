@@ -105,6 +105,7 @@ Pledge does not mint assets, write per-backer boxes, or touch global state beyon
 6. **Unconditional settle on delete.** `delete()` settles for every non-`Claimed` campaign, even pristine ones, so any existing box is settled and swept through `finalize` instead of stranding. New credits always follow a pledge, so there are no new pledge-less inflows.
 7. **Creator pays the way.** Nothing funds the campaign app itself. The current campaign program is 2 pages (2,250 B total, 1 extra page), so creation locks the app MBR (571,000 µA) plus the 18,900 µA registration deposit = **589,900 µA (~0.59 ALGO)**, all of it returned O(1) in the atomic `[unregister, delete]` group; the create flow also spends ~3,000 µA in transaction fees. The 1-page target is ~0.49 ALGO (489,900 µA); an extra page adds 100,000 µA. The 32,100 µA box MBR sits on the vault's platform-funded account and returns to the vault pool via `notifyDelete` / `releaseClaimed` / `finalize`. See [`limits.md`](limits.md) for the current size/MBR/fee table and the rule against silently changing this cost.
 8. **No metadata updates.** `title` and `metadataUri` are creation-time fields and there is no `updateMetadata()`, deliberately: a backer's pledge can never be re-described under them. Corrections and progress ship through the off-chain [creator updates feed](https://github.com/kasakame/kasakame/issues/58), and mutability can return later via the off-chain JSON.
+9. **Use the official vault.** `create` accepts any nonzero app id, but every settlement and delete path reads that vault's state and calls its methods. A campaign created against a custom vault that is later deleted cannot `delete`: the vault global read fails and the 571,000 µA campaign app MBR stays locked. The SDK always passes the Registry-bound official ClaimsVault.
 
 ## Multi-backer examples
 
@@ -153,9 +154,9 @@ Measured on LocalNet; each inner transaction costs one current minimum fee via `
 | `[unregister, delete]` | 5,000 µA | unregister + deposit + delete + settle/notify + escrow close |
 | `delete` component (inside `[unregister, delete]`) | 3,000 µA | settle/notify + escrow close; official campaigns always require the unregister pair |
 | `Registry.unregister` alone | 2,000 µA | unregister + inner deposit |
-| `settleOpen` (no inners) | 1,000 µA | permissionless; not exposed in the SDK/CLI yet |
-| `finalize` | 2,000 µA with residual, 1,000 µA without | permissionless; not exposed yet |
-| `releaseClaimed` | 1,000 µA | permissionless; not exposed yet |
+| `settleOpen` (no inners) | 1,000 µA | permissionless; SDK helper, no CLI command |
+| `finalize` | 2,000 µA with residual, 1,000 µA without | permissionless; SDK helper, no CLI command |
+| `releaseClaimed` | 1,000 µA | permissionless; SDK helper, no CLI command |
 
 The pledge and spend extras are derived from the tree (`popcount(N)` for a
 pledge, the `(r, c, top)` path shape for a spend); the fee ranges above cover

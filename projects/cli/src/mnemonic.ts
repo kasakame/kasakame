@@ -37,9 +37,7 @@ export function resolveMnemonic(file: string | undefined, env: NodeJS.ProcessEnv
 }
 
 /**
- * Decode a 25-word Algo25 or 24-word Pera Universal Wallet mnemonic into an SDK wallet session.
- *
- * A 24-word BIP-39 phrase can derive several accounts through ARC-52, so `address` picks the one that signs.
+ * Decode a 25-word Algo25 or 24-word Pera Universal Wallet mnemonic into an SDK wallet session; a 24-word phrase uses `address` to pick the signing account.
  *
  * @param file Optional mnemonic file path.
  * @param env Environment variables to read.
@@ -76,9 +74,7 @@ export async function mnemonicSession(
 }
 
 /**
- * Derive the account behind a 24-word Pera Universal Wallet phrase (BIP-39 HD, ARC-52).
- *
- * Scans both ARC-52 derivation modes and the first accounts until one matches `address`.
+ * Derive the account behind a 24-word Pera Universal Wallet phrase (BIP-39 HD, ARC-52), scanning both modes until one matches `address`.
  *
  * @param words The 24-word BIP-39 phrase.
  * @param address The address the phrase must control.

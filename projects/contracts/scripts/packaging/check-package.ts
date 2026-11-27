@@ -4,10 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 /**
- * Pin the npm package contents and metadata.
- *
- * Runs after `npm run build`; `npm pack --dry-run` triggers the prepack staging
- * step, so this checks the exact tarball the release workflow publishes.
+ * Pin the npm package contents and metadata by checking the exact tarball `npm pack --dry-run` produces after a build.
  */
 
 interface PackageManifest {
