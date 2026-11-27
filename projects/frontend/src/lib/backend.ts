@@ -6,10 +6,7 @@ import { canonify } from 'canonify'
 import { algorand } from './algorand'
 
 /**
- * Backend (catalog) API client: wallet sign-in plus cover-image upload.
- *
- * The backend is optional - the dApp runs without it. Every function here takes its inputs explicitly and throws an
- * `Error` carrying a user-facing message on any failure, so callers only need one catch.
+ * Backend (catalog) API client: optional wallet sign-in and cover-image upload; every failure throws an `Error` with a user-facing message.
  */
 
 /**
@@ -86,8 +83,7 @@ function pinnedCid(json: unknown): string {
 }
 
 /**
- * Adapt the wallet `signData` hook to the raw-bytes signer the upload flows take. Single place defining the ARC-60
- * call shape.
+ * Adapt the wallet `signData` hook to the raw-bytes signer the upload flows take; the single place defining the ARC-60 call shape.
  *
  * @param signData Wallet `signData` hook.
  * @returns Signer taking the base64 SIWA payload.
@@ -123,8 +119,7 @@ export interface SignIn {
 type WalletSignTransactions = ReturnType<typeof useWallet>['signTransactions']
 
 /**
- * Adapt the wallet `signTransactions` hook to the signed-bytes signer the transaction proof takes. Single place
- * defining the call shape: one unsigned transaction in, its signed bytes out. Never broadcasts.
+ * Adapt the wallet `signTransactions` hook to the signed-bytes signer the transaction proof takes; one unsigned transaction in, its signed bytes out, never broadcast.
  *
  * @param signTransactions Wallet `signTransactions` hook.
  * @returns Signer returning the signed transaction bytes.
@@ -187,10 +182,7 @@ export async function signIn({ baseUrl, address, chainId, sign, statement, actio
 }
 
 /**
- * The cached session token, signing in on first use per address. One popup per address per session, shared by
- * every upload. Keyed by address so switching wallets never reuses the previous account's token. Tries ARC-60
- * first (the proven path); wallets without message signing fail that call fast without opening a popup and fall
- * back to the universal transaction proof. Dismissals and real errors rethrow untouched - no second popup.
+ * Cached session token: sign in on first use per address (one popup, keyed by address so switching wallets never reuses a token), ARC-60 first then the transaction proof fallback.
  *
  * @param input Sign-in inputs.
  * @returns The session JWT.
@@ -224,8 +216,7 @@ function isCapabilityError(error: unknown): boolean {
 }
 
 /**
- * UTF-8 bytes owned by this realm (globals like `TextEncoder` can come from another realm, whose instances fail
- * the SDK's `instanceof Uint8Array` checks).
+ * UTF-8 bytes owned by this realm: globals like `TextEncoder` can come from another realm and fail the SDK's `instanceof Uint8Array` checks.
  *
  * @param text Text to encode.
  * @returns The bytes.
@@ -248,9 +239,7 @@ export interface TxnSignIn {
 }
 
 /**
- * Sign in with a zero self-payment: the wallet signs (never broadcasts) a payment carrying the challenge nonce
- * in its note, and the backend verifies the signature against the challenge. Works on every wallet - the
- * fallback for missing `signData`.
+ * Sign in with a zero self-payment: the wallet signs (never broadcasts) a payment carrying the challenge nonce in its note, and the backend verifies the signature.
  *
  * @param input Sign-in inputs.
  * @param input.baseUrl Backend base URL.
@@ -340,8 +329,7 @@ export interface MetadataUpload {
 }
 
 /**
- * Pin a campaign metadata blob through the backend, reusing the cached session. Blank optional fields are omitted
- * from the pinned blob.
+ * Pin a campaign metadata blob through the backend using the cached session; blank optional fields are omitted.
  *
  * @param upload Upload inputs.
  * @param upload.baseUrl Backend base URL.

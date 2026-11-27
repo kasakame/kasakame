@@ -23,10 +23,7 @@ interface CampaignFixture {
 }
 
 /**
- * 01 - one campaign, simple happy path.
- *
- * The chain creates one campaign and reuses it for pledge -> cancel -> delete. The standalone tests create their own
- * campaign so they can run alone with `vitest -t <ID>`.
+ * 01 - one campaign: pledge -> cancel -> delete, plus standalone tests that run alone with `vitest -t <ID>`.
  */
 describe('01 single campaign', () => {
   const fixture = algorandFixture()

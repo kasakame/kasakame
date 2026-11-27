@@ -9,16 +9,18 @@ import {
   SECONDS_PER_DAY,
   VAULT_BOX_MBR_MICRO_ALGOS,
 } from '@kasakame/constants'
-import { advanceTime, balanceOf, minBalanceOf } from '@kasakame/utils/testing'
+import { advanceTime } from '@kasakame/utils/testing'
 import type { Account } from 'algosdk'
 import { afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest'
 import {
   ClaimTreeOracle,
+  actorSnapshot,
   campaignBoxExists,
   campaignState,
   deleteCampaign,
   deployCampaign,
   deployStack,
+  expectActorDeltas,
   pledge,
   spendCampaign,
   spendVault,
@@ -141,10 +143,7 @@ describe('06 tree boundaries', () => {
     { id: 'CON-222', n: 1_024 },
   ] as const
 
-  // Pinned LocalNet measurements: the OpUp takes the contract requests at each boundary. The spend helper funds the
-  // zero-headroom upper bound, so the paid fee can be higher; these counts catch a contract requesting one more take.
-  // CON-221 (N=1,023, k=11, h=18) is also the prelude guard: 7 takes proves at least 487 ops survive the ABI router and
-  // guards, above the ~260 the 2^19-1 cap needs for 14 takes + 2 payouts = 16 inner txns.
+  // Pinned OpUp-take counts per boundary; the helper funds the zero-headroom bound, and CON-221's 7 takes is the prelude guard.
   const LADDER_TAKES: Record<string, number> = {
     'CON-210': 3,
     'CON-211': 2,
@@ -265,8 +264,7 @@ describe('06 tree boundaries', () => {
             { expectedTakes: 4 },
           )
 
-          const sweeperBefore = await balanceOf(stack.algorand, stack.sweeperAddress)
-          const vaultMinBefore = await minBalanceOf(stack.algorand, stack.vault.address)
+          const before = await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address])
           await advanceTime(fixture, MIN_REFUND_WINDOW_SECONDS + 4_000)
           await stack.vault.client.send.call({
             method: 'finalize(uint64)void',
@@ -276,10 +274,10 @@ describe('06 tree boundaries', () => {
             suppressLog: true,
           })
 
-          expect(await balanceOf(stack.algorand, stack.sweeperAddress)).toEqual(
-            sweeperBefore + BigInt(1_024 - refunded) * MICRO_ALGOS_PER_ALGO,
-          )
-          expect(await minBalanceOf(stack.algorand, stack.vault.address)).toEqual(vaultMinBefore - VAULT_BOX_MBR_MICRO_ALGOS)
+          expectActorDeltas(before, await actorSnapshot(stack.algorand, [stack.sweeperAddress, stack.vault.address]), {
+            [stack.sweeperAddress]: { balance: BigInt(1_024 - refunded) * MICRO_ALGOS_PER_ALGO },
+            [stack.vault.address]: { minBalance: -VAULT_BOX_MBR_MICRO_ALGOS },
+          })
           expect(await campaignBoxExists(stack.vault.client, campaign.appId)).toEqual(false)
         }
       })

@@ -71,6 +71,10 @@ A product cumulative-flow cap is deliberately not added: a lifetime cap would
 be cheaper for a funded attacker to reach than the uint64 guard. The residual
 griefing class is the one accepted in #208.
 
+The SDK preflights the same title, metadata URI, goal, deadline, and pledge
+bounds before building a transaction. The contract remains the source of truth;
+the SDK check fails before a wallet approval and fees are spent.
+
 ## Current compiled footprint
 
 Measured from `smart_contracts/artifacts/*/*.arc56.json` (`byteCode.approval` +
@@ -87,7 +91,7 @@ The campaign is **202 bytes over** the 1-page (2,048 B) limit. It is already a
 one page and save 100,000 µA of creator MBR.
 
 `npm run test:size` pins these values in
-`test/utils/size-budget.fixture.ts` and runs in the `compile-contracts` CI
+`test/utils/contract-sizes.ts` and runs in the `compile-contracts` CI
 job after `npm run build`. A byte, page, or schema change must update the snapshot
 and this table together.
 

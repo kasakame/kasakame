@@ -22,7 +22,7 @@ import {
   spendCampaign,
   type ContractStack,
 } from './utils'
-import { describeScale, scaleConfig } from './utils/scale'
+import { scaleConfig } from './utils/scale'
 import { runSequence } from './utils/sequence'
 
 const scale = scaleConfig('normal')
@@ -39,10 +39,7 @@ function at<T>(items: T[], index: number): T {
 }
 
 /**
- * 03 - multiple actors and campaigns.
- *
- * Ten campaigns by ten creators, five backers on one campaign, one backer on several, and a creator backing another
- * campaign. The chain then drains one campaign and verifies the other campaigns and the vault pool are untouched.
+ * 03 - multiple actors and campaigns: ten creators, shared backers, and isolation of the vault pool.
  */
 describe('03 multiple actors and campaigns', () => {
   const fixture = algorandFixture()
@@ -236,7 +233,6 @@ describe('03 multiple actors and campaigns', () => {
   })
 
   test('CON-062 seeded pledge/cancel/refund/finalize sequence', { tags: ['scale', 'happy', 'always'] }, async () => {
-    console.log(describeScale(scale))
     await runSequence(fixture, stack, scale, scale.seed)
   })
 })

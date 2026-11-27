@@ -25,8 +25,7 @@ export interface VaultBoxView {
 export const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 
 /**
- * The vault's campaign box reference (key prefix 'c' + 8-byte big-endian app id) - inner vault calls require it
- * declared on the outer transaction.
+ * The vault's campaign box reference (key prefix 'c' + 8-byte big-endian app id); inner vault calls require it declared on the outer transaction.
  *
  * @param appId The campaign application id.
  * @returns Box references for the vault app.
@@ -62,8 +61,10 @@ export async function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undef
   let raw: Uint8Array
   try {
     raw = (await vaultClient.state.box.campaignBox.value(appId)) as Uint8Array
-  } catch {
-    return undefined
+  } catch (error) {
+    // A missing box is a normal empty read; network, auth, and server errors must propagate.
+    if (error instanceof Error && /box not found/i.test(error.message)) return undefined
+    throw error
   }
   if (raw.length !== VAULT_BOX_BYTES) return undefined
   const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength)
@@ -91,8 +92,7 @@ export async function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget:
 }
 
 /**
- * The refund window's end timestamp: settlement plus the vault's configured window. Refunds stay open until then;
- * afterwards `finalize` can sweep whatever is unclaimed (see docs/claim-tree-protocol.md).
+ * The refund window's end timestamp (settlement plus the configured window); afterwards `finalize` can sweep whatever is unclaimed (see docs/claim-tree-protocol.md).
  *
  * @param settledAt Settlement timestamp (seconds) from the vault box (`VaultBoxView.settledAt`).
  * @param window Refund window (seconds) from `fetchVaultConfig`.

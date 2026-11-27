@@ -21,15 +21,7 @@ function artifactProgramHash(relativePath: string, name: string): Uint8Array {
 }
 
 /**
- * Deploys the platform's `Registry` application - the ownerless campaign registry.
- *
- * The Registry is immutable at deployment: the official Campaign and ClaimsVault program hashes, the expected sweep target,
- * and the expected refund window are fixed in `create`. The ClaimsVault deployer creates the vault, then binds it
- * permissionlessly with `bindVault`. The Registry account is funded with the platform storage reserve so it can hold
- * registration deposits (18,900 µA each, returned by `unregister`).
- *
- * Environment: `SWEEP_TARGET` (required on TestNet/MainNet, defaults to the deployer on LocalNet),
- * `REFUND_WINDOW_SECONDS` (optional, defaults to 730 days, capped at 10 years).
+ * Deploys the platform's `Registry` - the ownerless registry fixed at create (hashes, sweep target, refund window).
  *
  * @returns The deployed Registry's app id - feed it to the ClaimsVault deployer and configure it as
  * `VITE_REGISTRY_APP_ID` in the frontend.
@@ -57,8 +49,7 @@ export async function deploy() {
     sender: deployer.addr,
   })
 
-  // Platform storage reserve: the Registry account base plus headroom for registration deposits. Deposits are paid back
-  // on unregister, so the balance stays roughly constant.
+  // Platform storage reserve: the account base plus headroom for registration deposits, which unregister pays back.
   await algorand.send.payment({
     sender: deployer.addr,
     receiver: appClient.appAddress,

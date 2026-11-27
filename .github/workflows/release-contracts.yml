@@ -1,16 +1,6 @@
 name: release-contracts
 
-# Manual release of the contract artifacts. Builds the contracts from the
-# dispatched commit, attaches the compiled artifacts to a GitHub Release tagged
-# `contracts-v<version>` as one tarball per kind (arc56, arc32, teal, puya), and
-# publishes the matching @kasakame/contracts npm package from the same build.
-# The dispatch version must match projects/contracts/package.json.
-#
-# Releases use npm OIDC trusted publishing.
-#
-# Configure the trusted publisher for @kasakame/contracts as GitHub owner
-# `kasakame`, repository `kasakame`, workflow `release-contracts.yml`, with no
-# environment and "Allow npm publish" enabled.
+# Manual release of the contract artifacts: one tarball per kind (arc56, arc32, teal, puya) on the contracts-v<version> release plus the npm package; version must match package.json (see docs/ci.md).
 on:
   workflow_dispatch:
     inputs:
@@ -39,9 +29,10 @@ concurrency:
 jobs:
   prep:
     name: Prepare and verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
@@ -118,10 +109,7 @@ jobs:
         run: npm run check-types
         working-directory: projects/contracts
 
-      # One tarball per artifact kind, each keeping the per-app directories
-      # (campaign/, claimsvault/, registry/) - consumers download only
-      # the kind they need. These tarballs are the audit bundle; the SDK reads
-      # the npm package.
+      # One tarball per artifact kind, keeping the per-app directories; these tarballs are the audit bundle.
       - name: Bundle the artifacts (one tarball per kind)
         run: |
           cd projects/contracts/smart_contracts/artifacts
@@ -131,8 +119,7 @@ jobs:
             tar -czf "$RUNNER_TEMP/$name.tar.gz" "${files[@]}"
           done
 
-      # The tarball is the tested artifact handed to the smoke and publish jobs,
-      # so the published package is exactly the one verified here.
+      # The tarball is the tested artifact handed to the smoke and publish jobs, so the published package is exactly the one verified here.
       - name: Pack the npm package
         run: |
           tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
@@ -148,41 +135,19 @@ jobs:
             dist/arc56/ dist/arc32/ dist/teal/ dist/puya/ \
             --forbid Client --forbid smart_contracts/ --forbid deploy/ --forbid scripts/ --forbid test/ --forbid .ts
 
-      # Attach the tarballs only; generated clients and contract source stay out.
-      - name: Create the contracts release
-        if: ${{ !inputs.dry_run }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          PRERELEASE: ${{ inputs.prerelease }}
-        run: |
-          prerelease_flag=()
-          if [[ "$PRERELEASE" == "true" ]]; then
-            prerelease_flag=(--prerelease)
-          fi
-          notes="Commit: $GITHUB_SHA
-
-          This release includes:
-
-          - ARC-56 specs
-          - ARC-32 specs
-          - compiled approval/clear TEAL
-          - Puya source maps
-
-          The npm package is @kasakame/contracts@$VERSION.
-          "
-
-          gh release create "contracts-v$VERSION" "$RUNNER_TEMP"/*.tar.gz \
-            --target "$GITHUB_SHA" \
-            --title "contracts-v$VERSION" \
-            --notes "$notes" \
-            "${prerelease_flag[@]}"
-
       - name: Upload the tested tarball
         uses: actions/upload-artifact@v7
         with:
           name: contracts-tarball
           path: ${{ runner.temp }}/*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload the release bundles
+        uses: actions/upload-artifact@v7
+        with:
+          name: contracts-bundles
+          path: ${{ runner.temp }}/*.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -265,3 +230,45 @@ jobs:
           VERSION: ${{ needs.prep.outputs.version }}
         # npm stages a new package ("being processed") before it is visible.
         run: node projects/utils/release/verify-published.ts "@kasakame/contracts" "$VERSION"
+
+  release:
+    name: Create the GitHub release
+    runs-on: ubuntu-latest
+    needs: [prep, smoke, publish]
+    if: ${{ !inputs.dry_run }}
+    permissions:
+      contents: write
+    steps:
+      - name: Download the release bundles
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-bundles
+          path: ${{ runner.temp }}
+
+      - name: Create the contracts release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prep.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          prerelease_flag=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            prerelease_flag=(--prerelease)
+          fi
+          notes="Commit: $GITHUB_SHA
+
+          This release includes:
+
+          - ARC-56 specs
+          - ARC-32 specs
+          - compiled approval/clear TEAL
+          - Puya source maps
+
+          The npm package is @kasakame/contracts@$VERSION.
+          "
+
+          gh release create "contracts-v$VERSION" "$RUNNER_TEMP"/*.tar.gz \
+            --target "$GITHUB_SHA" \
+            --title "contracts-v$VERSION" \
+            --notes "$notes" \
+            "${prerelease_flag[@]}"

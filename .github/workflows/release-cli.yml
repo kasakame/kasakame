@@ -1,19 +1,6 @@
 name: release-cli
 
-# Manual release of @kasakame/cli. The CLI consumes the published SDK, so this
-# workflow never builds or installs a local copy of it: `npm ci` installs
-# exactly what users get. Every gate is its own step so a failure and its timing
-# are visible in the run. The dispatch version must match
-# projects/cli/package.json, and dry_run defaults to true; set it to false only
-# for a real release. Release @kasakame/constants and the SDK first.
-#
-# Releases use npm OIDC trusted publishing (no NPM_TOKEN) and pass
-# --provenance. Configure the trusted publisher for @kasakame/cli as GitHub
-# owner `kasakame`, repository `kasakame`, workflow `release-cli.yml`, with no
-# environment and "Allow npm publish" enabled.
-#
-# A smoke job installs the packed tarball in a clean consumer and runs
-# `kasakame --help` before the publish job runs.
+# Manual release of @kasakame/cli against the published SDK (release constants and SDK first); version must match package.json, and publishing uses npm OIDC trusted publishing (see docs/ci.md).
 on:
   workflow_dispatch:
     inputs:
@@ -37,6 +24,7 @@ concurrency:
 jobs:
   prep:
     name: Prepare and verify
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -52,8 +40,7 @@ jobs:
           cache: npm
           cache-dependency-path: projects/cli/package-lock.json
 
-      # The committed dependency is the published SDK. Do not install
-      # file:../sdk here: a published CLI must ship against a released SDK.
+      # The committed dependency is the published SDK; a published CLI must ship against a released SDK, not `file:../sdk`.
 
       - name: Install CLI dependencies
         run: npm ci
@@ -95,14 +82,32 @@ jobs:
         run: npm pack --dry-run
         working-directory: projects/cli
 
-      - name: Dry-run the publish
-        run: node projects/utils/release/publish.ts projects/cli --tag "${{ steps.version.outputs.tag }}" --dry-run
+      - name: Pack the npm package
+        run: |
+          tarball=$(npm pack --pack-destination "$RUNNER_TEMP" --silent | tail -n 1)
+          test -f "$RUNNER_TEMP/$tarball"
+          echo "packed $tarball"
+        working-directory: projects/cli
 
-      - name: Upload the tested dist
+      - name: Verify the npm tarball
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/verify-tarball.ts "$tarball" projects/cli \
+            dist/ \
+            --forbid src/ --forbid test/ --forbid scripts/
+
+      - name: Dry-run the publish
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/publish.ts projects/cli --tag "${{ steps.version.outputs.tag }}" --tarball "$tarball" --ignore-scripts --dry-run
+
+      - name: Upload the tested tarball
         uses: actions/upload-artifact@v7
         with:
-          name: cli-dist
-          path: projects/cli/dist
+          name: cli-tarball
+          path: ${{ runner.temp }}/*.tgz
           if-no-files-found: error
           retention-days: 7
 
@@ -119,14 +124,17 @@ jobs:
         with:
           node-version: 24
 
-      - name: Download the tested dist
+      - name: Download the tested tarball
         uses: actions/download-artifact@v8
         with:
-          name: cli-dist
-          path: projects/cli/dist
+          name: cli-tarball
+          path: ${{ runner.temp }}
 
       - name: Smoke-test the packed package
-        run: node projects/utils/release/pack-smoke.ts projects/cli projects/utils/smoke/cli.ts
+        run: |
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          node projects/utils/release/pack-smoke.ts projects/cli projects/utils/smoke/cli.ts --tarball "$tarball"
 
   publish:
     name: Publish to npm
@@ -146,18 +154,11 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Download the tested dist
+      - name: Download the tested tarball
         uses: actions/download-artifact@v8
         with:
-          name: cli-dist
-          path: projects/cli/dist
-
-      - name: Verify package files
-        run: |
-          test -f README.md
-          test -f LICENSE
-          test -f dist/index.js
-        working-directory: projects/cli
+          name: cli-tarball
+          path: ${{ runner.temp }}
 
       - name: Verify the checked-out version
         env:
@@ -174,8 +175,10 @@ jobs:
         env:
           TAG: ${{ needs.prep.outputs.tag }}
         run: |
-          echo "publishing @kasakame/cli@${{ needs.prep.outputs.version }} with dist-tag $TAG using OIDC"
-          node projects/utils/release/publish.ts projects/cli --tag "$TAG"
+          tarball=$(find "$RUNNER_TEMP" -maxdepth 1 -name '*.tgz' -print -quit)
+          test -n "$tarball"
+          echo "publishing @kasakame/cli@${{ needs.prep.outputs.version }} from $tarball with dist-tag $TAG using OIDC"
+          node projects/utils/release/publish.ts projects/cli --tag "$TAG" --tarball "$tarball" --ignore-scripts
 
       - name: Skip publish (dry run)
         if: ${{ inputs.dry_run }}

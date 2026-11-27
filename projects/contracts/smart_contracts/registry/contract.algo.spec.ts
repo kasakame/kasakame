@@ -16,10 +16,7 @@ import { ClaimsVault } from '../claimsvault/contract.algo'
 import { Registry } from './contract.algo'
 
 /**
- * Behavioral tests for the ownerless Registry, run against the offline AVM emulation.
- *
- * `create` fixes the campaign/vault hashes and vault configuration; `bindVault` checks the vault's back-pointer,
- * program, sweep target, and refund window; `register`/`unregister` keep the original registration and cleanup behavior.
+ * Behavioral tests for the ownerless Registry against the offline AVM emulation (create, bindVault, register, unregister).
  */
 
 const FAKE_PROGRAM = new Uint8Array([0x6b, 0x61, 0x73, 0x61, 0x6b, 0x61, 0x6d, 0x65]) // "kasakame"

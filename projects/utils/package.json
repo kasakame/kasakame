@@ -5,18 +5,24 @@
   "type": "module",
   "description": "Private shared repo and test helpers for kasakame",
   "exports": {
-    ".": "./src/index.ts",
-    "./testing": "./src/testing/index.ts"
+    ".": "./program-hash.ts",
+    "./testing": "./testing/index.ts"
   },
   "files": [
-    "src"
+    "program-hash.ts",
+    "testing"
   ],
   "scripts": {
     "check-types": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --check .",
-    "format:fix": "prettier --write ."
+    "format:fix": "prettier --write .",
+    "check:comments": "node scripts/check-comments.ts",
+    "create:issue": "node work-tracking/create-issue.ts",
+    "check:issue": "node work-tracking/check-issue.ts",
+    "show:tracking": "node work-tracking/show-work-tracking.ts",
+    "epic:automation": "node work-tracking/epic-automation.ts"
   },
   "engines": {
     "node": ">=24.0.0",

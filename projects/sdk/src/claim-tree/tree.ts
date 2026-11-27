@@ -12,12 +12,14 @@ export interface PledgeRecord {
   txidHex: string
 }
 
-/** Tree working state: live leaves (or `Z` once nulled) in position order, plus the live total. */
+/** Tree working state: live leaves (or `Z` once nulled) in position order, plus the live total and frontier peaks. */
 export interface TreeState {
   /** Leaf values by position (`Z` = 32 zero bytes once nulled); `n = leaves.length`. */
   leaves: Uint8Array[]
   /** Live pledge total, in microAlgos. */
   raised: bigint
+  /** Ascending frontier peaks; older callers may omit it, and append rebuilds it then. */
+  frontier?: Uint8Array[]
 }
 
 /**
@@ -95,7 +97,7 @@ export function leafFor(backer: string, amount: bigint, txidHex: string): Uint8A
  * @returns Tree state with no positions and zero raised.
  */
 export function emptyTree(): TreeState {
-  return { leaves: [], raised: 0n }
+  return { leaves: [], raised: 0n, frontier: [] }
 }
 
 /**
@@ -107,14 +109,19 @@ export function emptyTree(): TreeState {
  */
 export function appendLeaf(state: TreeState, pledge: PledgeRecord): TreeState {
   const leaf = leafFor(pledge.backer, pledge.amount, pledge.txidHex)
-  const peaks = treeFrontier(state)
+  const peaks = state.frontier ?? treeFrontier(state)
   // Merge cascade over the trailing ones of N: the first t peaks fold into the leaf, lowest first.
   let merged = leaf
   const t = trailingOnes(BigInt(state.leaves.length))
   for (const peak of peaks.slice(0, t)) {
     merged = hashPair(peak, merged)
   }
-  return { leaves: [...state.leaves, leaf], raised: state.raised + pledge.amount }
+  // Merged sits at level t, below every remaining higher peak.
+  return {
+    leaves: [...state.leaves, leaf],
+    raised: state.raised + pledge.amount,
+    frontier: [merged, ...peaks.slice(t)],
+  }
 }
 
 /**
@@ -172,7 +179,8 @@ export function nullLeaf(state: TreeState, position: number, amount: bigint): Tr
   if (position < 0 || position >= state.leaves.length) throw new RangeError(`unknown position: ${position.toString()}`)
   const leaves = [...state.leaves]
   leaves[position] = zeroLeaf()
-  return { leaves, raised: state.raised - amount }
+  const next = { leaves, raised: state.raised - amount }
+  return { ...next, frontier: treeFrontier(next) }
 }
 
 /**

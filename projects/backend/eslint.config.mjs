@@ -31,8 +31,7 @@ export default defineConfig(
       '@typescript-eslint/no-non-null-assertion': 'error',
     },
   },
-  // JSDoc rules, scoped to exported/public declarations so we don't have to
-  // document every internal helper.
+  // JSDoc rules, scoped to exported/public declarations so internal helpers stay undocumented.
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
     plugins: { jsdoc },
@@ -40,21 +39,16 @@ export default defineConfig(
       ...jsdoc.configs['flat/recommended-typescript-error'].rules,
       'jsdoc/require-jsdoc': ['error', { publicOnly: true }],
       'jsdoc/require-returns': ['error', { publicOnly: true }],
-      // Match prettier-plugin-jsdoc, which puts one blank line between the
-      // description and the first tag.
+      // Match prettier-plugin-jsdoc: one blank line between description and first tag.
       'jsdoc/tag-lines': ['error', 'never', { startLines: 1 }],
     },
   },
-  // Import rules: duplicates and named-default safety. Ordering is handled by
-  // `prettier-plugin-organize-imports` so the two tools never disagree.
+  // Import rules: duplicates and named-default safety; ordering belongs to prettier-plugin-organize-imports.
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
     plugins: { import: importPlugin },
     rules: {
-      // Resolution-based rules (no-unresolved, named, namespace, default,
-      // export) are skipped: `tsc --noEmit` already validates module
-      // resolution, and the default `eslint-import-resolver-node` cannot
-      // read `exports`-only packages.
+      // Resolution rules skipped: tsc validates modules, and eslint-import-resolver-node cannot read exports-only packages.
       'import/no-duplicates': 'error',
       'import/no-named-as-default': 'error',
       'import/no-named-as-default-member': 'error',
