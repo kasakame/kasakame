@@ -2,7 +2,7 @@ import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { REGISTRY_BOX_PREFIX, VAULT_BOX_STATUS_CLAIMED_HEX } from '@kasakame/constants'
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureSdk } from '../chain.js'
+import { configureSdk } from '../runtime/config.js'
 import {
   clearCachedCampaigns,
   fetchMyPledge,

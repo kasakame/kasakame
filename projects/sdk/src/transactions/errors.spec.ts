@@ -14,7 +14,7 @@ import {
 
 const loggerMock = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-vi.mock('../log.js', () => ({ sdkLogger: () => loggerMock }))
+vi.mock('../runtime/log.js', () => ({ sdkLogger: () => loggerMock }))
 
 beforeEach(() => {
   vi.clearAllMocks()

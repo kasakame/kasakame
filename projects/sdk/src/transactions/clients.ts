@@ -1,9 +1,9 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import type { TransactionSigner, TransactionWithSigner } from 'algosdk'
-import { getSdkConfig } from '../chain.js'
 import { CampaignClient } from '../generated/CampaignClient.js'
 import { ClaimsVaultClient } from '../generated/ClaimsVaultClient.js'
 import { RegistryClient } from '../generated/RegistryClient.js'
+import { getSdkConfig } from '../runtime/config.js'
 
 export interface WalletSession {
   address: string

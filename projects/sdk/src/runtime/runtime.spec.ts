@@ -1,13 +1,8 @@
 import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  configureSdk,
-  fetchChainTimestamp,
-  getSdkConfig,
-  waitForIndexerCatchUp,
-  waitForIndexerCatchUpBestEffort,
-  waitForIndexerRound,
-} from './chain.js'
+import { fetchChainTimestamp } from './clock.js'
+import { configureSdk, getSdkConfig } from './config.js'
+import { waitForIndexerCatchUp, waitForIndexerCatchUpBestEffort, waitForIndexerRound } from './indexer.js'
 import { sdkLogger, setSdkLogger } from './log.js'
 
 const algodStatus = vi.fn()
@@ -29,7 +24,7 @@ function fakeAlgorand(): AlgorandClient {
 describe('configureSdk', () => {
   it('requires configuration before use', async () => {
     vi.resetModules()
-    const fresh = await import('./chain.js')
+    const fresh = await import('./config.js')
     expect(() => fresh.getSdkConfig()).toThrow('SDK not configured')
   })
 

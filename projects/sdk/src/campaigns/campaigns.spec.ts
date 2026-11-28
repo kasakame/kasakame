@@ -22,7 +22,7 @@ const VAULT_BOX_STATUS_OPEN = Number.parseInt(VAULT_BOX_STATUS_OPEN_HEX, 16)
 const VAULT_BOX_STATUS_FAILED = Number.parseInt(VAULT_BOX_STATUS_FAILED_HEX, 16)
 const VAULT_BOX_STATUS_CLAIMED = Number.parseInt(VAULT_BOX_STATUS_CLAIMED_HEX, 16)
 
-vi.mock('../chain.js', () => ({
+vi.mock('../runtime/config.js', () => ({
   getSdkConfig: () => ({
     algorand: {
       client: {

@@ -1,6 +1,6 @@
 import type algosdk from 'algosdk'
 import { bytesToHex, getApplicationAddress } from 'algosdk'
-import { getSdkConfig } from '../chain.js'
+import { getSdkConfig } from '../runtime/config.js'
 import { base32ToBytes } from './proof.js'
 import { SELECTOR_CANCEL, SELECTOR_PLEDGE, SELECTOR_REFUND, SELECTOR_VAULT_REFUND } from './selectors.js'
 import type { PledgeRecord, TreeState } from './tree.js'

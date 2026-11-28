@@ -113,7 +113,7 @@ const appSpecMock: { name: string; byteCode?: { approval: string; clear: string 
 
 const loggerMock = vi.hoisted(() => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }))
 
-vi.mock('../log.js', () => ({ sdkLogger: () => loggerMock }))
+vi.mock('../runtime/log.js', () => ({ sdkLogger: () => loggerMock }))
 
 vi.mock('../generated/CampaignClient.js', () => ({
   APP_SPEC: appSpecMock,
@@ -180,7 +180,7 @@ vi.mock('../generated/RegistryClient.js', () => ({
   },
 }))
 
-vi.mock('../chain.js', () => ({
+vi.mock('../runtime/config.js', () => ({
   getSdkConfig: () => ({
     algorand: {
       createTransaction: { payment: paymentMock },
@@ -197,6 +197,8 @@ vi.mock('../chain.js', () => ({
     registryAppId: registryAppIdMock(),
     vaultAppId: 2002n,
   }),
+}))
+vi.mock('../runtime/indexer.js', () => ({
   waitForIndexerRound: (...args: unknown[]) => waitForIndexerRoundMock(...args),
   waitForIndexerCatchUp: (...args: unknown[]) => waitForIndexerCatchUpMock(...args),
   waitForIndexerCatchUpBestEffort: async (...args: unknown[]) => {
@@ -206,6 +208,8 @@ vi.mock('../chain.js', () => ({
       // The write is confirmed; the next read retries.
     }
   },
+}))
+vi.mock('../runtime/clock.js', () => ({
   fetchChainTimestamp: (...args: unknown[]) => fetchChainTimestampMock(...args),
 }))
 

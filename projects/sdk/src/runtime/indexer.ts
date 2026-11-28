@@ -1,51 +1,5 @@
-import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
-import type { SdkLogger } from './log.js'
-import { sdkLogger, setSdkLogger } from './log.js'
-
-/** The session the SDK operates on: one configured `AlgorandClient` plus the app ids. */
-export interface SdkConfig {
-  /** The algod/indexer client every SDK read and write goes through. */
-  algorand: AlgorandClient
-  /** Registry app id (the campaign registry). */
-  registryAppId: bigint
-  /** ClaimsVault app id (pledge pool + refunds). */
-  vaultAppId: bigint
-}
-
-let session: SdkConfig | undefined
-
-/**
- * Configure the SDK session. Call once at startup: the frontend passes its `AlgorandClient`, the CLI builds one from flags/env.
- *
- * @param config The session configuration.
- * @param logger Optional structured logger; defaults to a no-op.
- */
-export function configureSdk(config: SdkConfig, logger?: SdkLogger): void {
-  session = config
-  setSdkLogger(logger)
-}
-
-/**
- * The configured session.
- *
- * @returns The session configuration.
- */
-export function getSdkConfig(): SdkConfig {
-  if (session === undefined) throw new Error('SDK not configured: call configureSdk() first')
-  return session
-}
-
-/**
- * The chain's current timestamp (latest block header), in seconds; wall-clock time is wrong on time-traveled chains and can drift from consensus.
- *
- * @returns UNIX timestamp in seconds.
- */
-export async function fetchChainTimestamp(): Promise<bigint> {
-  const algod = getSdkConfig().algorand.client.algod
-  const status = await algod.status().do()
-  const block = await algod.block(status.lastRound).headerOnly(true).do()
-  return block.block.header.timestamp
-}
+import { getSdkConfig } from './config.js'
+import { sdkLogger } from './log.js'
 
 /**
  * Poll the indexer until it has indexed at least the given round; reads right after a confirmed write can race it and return stale state.
