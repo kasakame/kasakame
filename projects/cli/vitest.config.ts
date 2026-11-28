@@ -21,8 +21,9 @@ export default defineConfig({
     environment: 'node',
     globals: true,
     passWithNoTests: true,
-    // Spawned CLI runs wait on the indexer and LocalNet block time.
+    // Spawned CLI runs wait on the indexer and LocalNet block time; the suite hooks deploy and seed the platform.
     testTimeout: 120_000,
+    hookTimeout: 120_000,
     // Run test files by path, not by Vitest's default size/duration order.
     sequence: { sequencer: PathOrderSequencer },
     tags: [
