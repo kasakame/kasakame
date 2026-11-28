@@ -29,6 +29,7 @@ export const setSignerMock = mock()
 export const campaignBoxValueMock = mock()
 export const refundWindowMock = mock()
 export const sweepTargetMock = mock()
+export const vaultRegistryMock = mock()
 export const waitForIndexerRoundMock = mock()
 export const waitForIndexerCatchUpMock = mock()
 export const fetchChainTimestampMock = mock()
@@ -37,6 +38,7 @@ export const clearTreeCacheMock = mock()
 export const frontierMock = mock()
 export const pathBlobMock = mock()
 export const registryAppIdMock = mock()
+export const registryClientIdMock = mock()
 export const getSuggestedParamsMock = mock()
 export const campaignProgramHashMock = mock()
 
@@ -84,6 +86,7 @@ export const vaultClientModule = {
     state = {
       box: { campaignBox: { value: (...args: unknown[]) => campaignBoxValueMock(...args) } },
       global: {
+        registry: (...args: unknown[]) => vaultRegistryMock(...args),
         refundWindow: (...args: unknown[]) => refundWindowMock(...args),
         sweepTarget: (...args: unknown[]) => sweepTargetMock(...args),
       },
@@ -94,6 +97,9 @@ export const vaultClientModule = {
 export const registryClientModule = {
   RegistryClient: class {
     appAddress = 'REGISTRYADDRESS'
+    constructor(params?: { appId?: bigint }) {
+      registryClientIdMock(params?.appId)
+    }
     params = {
       unregister: (...args: unknown[]) => paramsUnregisterMock(...args),
     }
@@ -184,6 +190,9 @@ export function resetMocks(): void {
   frontierMock.mockReturnValue(new Uint8Array())
   pathBlobMock.mockReturnValue(new Uint8Array())
   registryAppIdMock.mockReturnValue(1001n)
+  vaultRegistryMock.mockResolvedValue(1001n)
+  refundWindowMock.mockResolvedValue(63_072_000n)
+  sweepTargetMock.mockResolvedValue('SWEEP')
   campaignProgramHashMock.mockReturnValue(programHash(new Uint8Array([0]), new Uint8Array([1])))
   appSpecMock.byteCode = { approval: 'AA==', clear: 'AQ==' }
   getSuggestedParamsMock.mockResolvedValue({ minFee: 1_000n })

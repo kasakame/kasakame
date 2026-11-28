@@ -79,16 +79,18 @@ export async function fetchVaultBox(appId: bigint): Promise<VaultBoxView | undef
 }
 
 /**
- * The vault's configured refund window (seconds), for the refund-window banner.
+ * The vault's configured values: the Registry it belongs to, the refund window (seconds), and the sweep target address.
  *
- * @returns The window in seconds and the sweep target address.
+ * @returns The Registry app id, window, and sweep target.
  */
-export async function fetchVaultConfig(): Promise<{ window: bigint; sweepTarget: string }> {
+export async function fetchVaultConfig(): Promise<{ registryAppId: bigint; window: bigint; sweepTarget: string }> {
   const { algorand, vaultAppId } = getSdkConfig()
   const vaultClient = new ClaimsVaultClient({ algorand, appId: vaultAppId })
+  // The vault stores its Registry from create, so this works even when the SDK session has no Registry configured.
+  const registryAppId = (await vaultClient.state.global.registry()) ?? 0n
   const window = (await vaultClient.state.global.refundWindow()) as bigint
   const sweepTarget = (await vaultClient.state.global.sweepTarget()) as string
-  return { window, sweepTarget }
+  return { registryAppId, window, sweepTarget }
 }
 
 /**

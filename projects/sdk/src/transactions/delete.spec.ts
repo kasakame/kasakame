@@ -43,8 +43,20 @@ describe('deleteCampaign', () => {
     expect(fixtures.composerSendMock).toHaveBeenCalledOnce()
   })
 
-  it('deletes without unregistering when no registry is configured', async () => {
+  it('falls back to the vault Registry when the session has none', async () => {
     fixtures.registryAppIdMock.mockReturnValue(0n)
+    fixtures.vaultRegistryMock.mockResolvedValue(1_001n)
+    await transactions.deleteCampaign(9n, fixtures.session)
+
+    expect(fixtures.registryClientIdMock).toHaveBeenCalledWith(1_001n)
+    expect(fixtures.paramsUnregisterMock).toHaveBeenCalledOnce()
+    expect(fixtures.composerAddMock).toHaveBeenCalledTimes(2)
+    expect(fixtures.composerSendMock).toHaveBeenCalledOnce()
+  })
+
+  it('skips unregister when the vault has no Registry', async () => {
+    fixtures.registryAppIdMock.mockReturnValue(0n)
+    fixtures.vaultRegistryMock.mockResolvedValue(undefined)
     await transactions.deleteCampaign(9n, fixtures.session)
 
     expect(fixtures.composerAddMock).toHaveBeenCalledTimes(1)

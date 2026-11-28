@@ -367,7 +367,7 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
 - **`integration-test-sdk`** - runs when `run_sdk_integration` is true and
   `build-sdk` succeeded. It installs the SDK dependencies, downloads
   `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
-  `00`-`10`). It is independent of the contract LocalNet lane.
+  `00`-`11`). It is independent of the contract LocalNet lane.
 - **`integration-test-cli`** - runs when `run_cli_integration` is true and
   `build-sdk` succeeded (or was skipped). It installs the CLI dependencies,
   downloads `sdk-dist` when `build-sdk` ran and `contracts-artifacts` when the

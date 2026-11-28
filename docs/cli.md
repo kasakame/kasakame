@@ -136,6 +136,7 @@ the campaign is registered in a Registry, the same approval sends the atomic
 `[unregister, delete]` group (the Registry requires the delete immediately after
 unregister; the campaign requires the unregister immediately before). An
 unregistered campaign's unregister is a no-op, so the same command cleans it up.
+When `--registry` is omitted, the command reads the Registry id from the vault.
 
 ### Settle open
 
@@ -326,9 +327,9 @@ custom` requires `ALGOD_SERVER` and `INDEXER_SERVER`.
 
 Pass the Registry and ClaimsVault app IDs of the deployment your campaigns use
 (see [Deployments](architecture.md#deployments)). Without `--registry`, discovery
-lists only campaigns that already have a ClaimsVault box, and `delete` skips
-Registry unregistration. On LocalNet and custom networks, the CLI refuses every
-chain command without `--vault`.
+lists only campaigns that already have a ClaimsVault box. Delete still reads the
+Registry id from the vault, so it unregisters atomically. On LocalNet and custom
+networks, the CLI refuses every chain command without `--vault`.
 
 For a local run, start AlgoKit LocalNet, deploy the contracts, and copy the
 printed IDs:
