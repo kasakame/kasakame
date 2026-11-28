@@ -1,7 +1,7 @@
 import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runPledges } from './pledges.js'
-import { HEADER, VALID_ADDRESS, WALLET, leaf, options } from './test-fixtures.js'
+import { HEADER, VALID_ADDRESS, WALLET, commandContext, leaf } from './test-fixtures.js'
 
 const sdkMocks = vi.hoisted(() => ({
   enumerateCampaigns: vi.fn(),
@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe('runPledges', () => {
   it('lists a live pledge with the withdraw action', async () => {
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.error).toHaveBeenCalledWith('Searching testnet for live pledges by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Live pledges by BACKER on testnet:')
@@ -53,7 +53,7 @@ describe('runPledges', () => {
   it('lists every pledge with the same format', async () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+withdraw --pledge 0$/),
@@ -67,7 +67,7 @@ describe('runPledges', () => {
   it('lists a failed pledge with the refund action', async () => {
     sdkMocks.getCampaignStatus.mockReturnValue('failed')
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+failed\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+refund$/))
   })
@@ -76,7 +76,7 @@ describe('runPledges', () => {
     sdkMocks.getCampaignStatus.mockReturnValue('failed')
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^1\s+Title\s+failed\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+refund --pledge 0$/),
@@ -90,7 +90,7 @@ describe('runPledges', () => {
     sdkMocks.getCampaignStatus.mockReturnValue('successful')
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO\s+-$/))
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO\s+-$/))
@@ -99,7 +99,7 @@ describe('runPledges', () => {
   it('lists a successful pledge with nothing to do', async () => {
     sdkMocks.getCampaignStatus.mockReturnValue('successful')
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+successful\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+-$/))
   })
@@ -107,7 +107,7 @@ describe('runPledges', () => {
   it('keeps a deleted pledge visible with the refund window closed', async () => {
     sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, deleted: true })
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^1\s+Title\s+open, deleted\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+window closed$/),
@@ -118,7 +118,7 @@ describe('runPledges', () => {
     sdkMocks.fetchCampaignHeader.mockResolvedValue({ ...HEADER, deleted: true })
     sdkMocks.getCampaignStatus.mockReturnValue('failed')
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringMatching(/^1\s+Title\s+failed, deleted\s+1970-01-01 00:16 UTC\s+0\s+1\.5 ALGO\s+refund$/),
@@ -128,13 +128,13 @@ describe('runPledges', () => {
   it('reports no live pledges', async () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([])
 
-    expect(await runPledges(options({ command: 'pledges' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('No live pledges by BACKER on testnet.')
   })
 
   it('shows a state-only view for an explicit address', async () => {
-    expect(await runPledges(options({ command: 'pledges', address: VALID_ADDRESS }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges', address: VALID_ADDRESS }))).toBe(0)
 
     expect(mnemonicSessionMock).not.toHaveBeenCalled()
     expect(whoamiMock).not.toHaveBeenCalled()
@@ -148,7 +148,7 @@ describe('runPledges', () => {
   it('hides pledge actions in a read-only view with several pledges', async () => {
     sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 500_000n), leaf(3, 1_000_000n)])
 
-    expect(await runPledges(options({ command: 'pledges', address: VALID_ADDRESS }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges', address: VALID_ADDRESS }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+0\s+0\.5 ALGO$/))
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+1970-01-01 00:16 UTC\s+3\s+1 ALGO$/))
@@ -156,13 +156,13 @@ describe('runPledges', () => {
   })
 
   it('rejects an invalid address', async () => {
-    await expect(runPledges(options({ command: 'pledges', address: 'ADDRESS' }))).rejects.toThrow('Invalid address: ADDRESS')
+    await expect(runPledges(commandContext({ command: 'pledges', address: 'ADDRESS' }))).rejects.toThrow('Invalid address: ADDRESS')
   })
 
   it('reads the address from the stored wallet session', async () => {
     whoamiMock.mockResolvedValue({ address: 'WALLET_ADDRESS' })
 
-    expect(await runPledges(options({ command: 'pledges', signer: 'wallet' }))).toBe(0)
+    expect(await runPledges(commandContext({ command: 'pledges', signer: 'wallet' }))).toBe(0)
 
     expect(mnemonicSessionMock).not.toHaveBeenCalled()
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'WALLET_ADDRESS')
@@ -171,7 +171,7 @@ describe('runPledges', () => {
   it('requires a wallet session or an address', async () => {
     whoamiMock.mockResolvedValue(undefined)
 
-    await expect(runPledges(options({ command: 'pledges', signer: 'wallet' }))).rejects.toThrow(
+    await expect(runPledges(commandContext({ command: 'pledges', signer: 'wallet' }))).rejects.toThrow(
       'No active wallet session. Run `kasakame login` first, or pass --address',
     )
   })
@@ -179,6 +179,15 @@ describe('runPledges', () => {
   it('wraps indexer failures', async () => {
     sdkMocks.enumerateCampaigns.mockRejectedValue(new Error('indexer down'))
 
-    await expect(runPledges(options({ command: 'pledges' }))).rejects.toThrow('Could not read pledges from the indexer: indexer down')
+    await expect(runPledges(commandContext({ command: 'pledges' }))).rejects.toThrow(
+      'Could not read pledges from the indexer: indexer down',
+    )
+  })
+
+  it('does not open the write signer', async () => {
+    const context = commandContext({ command: 'pledges' })
+
+    expect(await runPledges(context)).toBe(0)
+    expect(context.session).not.toHaveBeenCalled()
   })
 })

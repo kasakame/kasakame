@@ -1,15 +1,16 @@
+import type { CommandContext } from '../app/context.js'
 import { cliErrorMessage } from '../app/error-messages.js'
-import type { CliOptions } from '../app/options.js'
 import { campaignAction, describeStatus, formatAlgo, formatDeadline, printTable, progress } from './shared/format.js'
 import { listCampaignEntries, readAddress } from './shared/lookup.js'
 
 /**
  * List the campaigns the address created and the action each one allows now.
  *
- * @param options Parsed CLI options.
+ * @param context Parsed command context.
  * @returns Process exit code.
  */
-export async function runCampaigns(options: CliOptions): Promise<number> {
+export async function runCampaigns(context: CommandContext): Promise<number> {
+  const { options } = context
   const address = await readAddress(options)
   const readOnly = options.address !== undefined
   progress(`Searching ${options.network} for campaigns created by ${address}…`)

@@ -1,4 +1,6 @@
 import type * as Sdk from '@kasakame/sdk'
+import { type Mock, vi } from 'vitest'
+import type { CommandContext } from '../app/context.js'
 import type { CliOptions } from '../app/options.js'
 
 export const WALLET: Sdk.WalletSession = { address: 'BACKER', signer: () => Promise.resolve([]) }
@@ -30,6 +32,37 @@ export function options(overrides: Partial<CliOptions> = {}): CliOptions {
     dryRun: false,
     ...overrides,
   }
+}
+
+/** A command context whose signer is a spy resolving to {@link WALLET}. */
+export interface FakeContext extends CommandContext {
+  session: Mock
+}
+
+/**
+ * Build a fake command context for command specs.
+ *
+ * @param overrides Parsed option overrides.
+ * @param wallet Wallet returned by `session()`.
+ * @returns The fake context.
+ */
+export function commandContext(overrides: Partial<CliOptions> = {}, wallet: Sdk.WalletSession = WALLET): FakeContext {
+  return {
+    options: options(overrides),
+    session: vi.fn(() => Promise.resolve({ wallet, close: () => Promise.resolve() })),
+  }
+}
+
+/**
+ * Build a fake context without an app id, for the argument-validation specs.
+ *
+ * @param overrides Parsed option overrides; `appId` stays absent.
+ * @returns The fake context.
+ */
+export function commandContextWithoutAppId(overrides: Partial<Omit<CliOptions, 'appId'>> = {}): FakeContext {
+  const context = commandContext(overrides)
+  delete context.options.appId
+  return context
 }
 
 /**

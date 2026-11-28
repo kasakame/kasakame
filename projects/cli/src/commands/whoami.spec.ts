@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { options } from './test-fixtures.js'
+import { commandContext } from './test-fixtures.js'
 import { runWhoami } from './whoami.js'
 
 const whoamiMock = vi.hoisted(() => vi.fn())
@@ -28,7 +28,7 @@ describe('runWhoami', () => {
   it('shows the current wallet session', async () => {
     whoamiMock.mockResolvedValue(SESSION)
 
-    expect(await runWhoami(options({ command: 'whoami', signer: 'wallet' }))).toBe(0)
+    expect(await runWhoami(commandContext({ command: 'whoami', signer: 'wallet' }))).toBe(0)
     expect(console.log).toHaveBeenCalledWith('Wallet: Pera Wallet')
     expect(console.log).toHaveBeenCalledWith('Address: ADDRESS')
   })
@@ -36,7 +36,7 @@ describe('runWhoami', () => {
   it('shows the mnemonic address', async () => {
     mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
 
-    expect(await runWhoami(options({ command: 'whoami', mnemonicFile: '/tmp/mnemonic' }))).toBe(0)
+    expect(await runWhoami(commandContext({ command: 'whoami', mnemonicFile: '/tmp/mnemonic' }))).toBe(0)
     expect(mnemonicSessionMock).toHaveBeenCalledWith('/tmp/mnemonic', undefined, undefined)
     expect(console.log).toHaveBeenCalledWith('Signer: mnemonic')
     expect(console.log).toHaveBeenCalledWith('Address: MNEMONIC_ADDRESS')
@@ -46,14 +46,22 @@ describe('runWhoami', () => {
   it('passes --address to a mnemonic whoami', async () => {
     mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
 
-    expect(await runWhoami(options({ command: 'whoami', address: 'ADDRESS' }))).toBe(0)
+    expect(await runWhoami(commandContext({ command: 'whoami', address: 'ADDRESS' }))).toBe(0)
     expect(mnemonicSessionMock).toHaveBeenCalledWith(undefined, undefined, 'ADDRESS')
   })
 
   it('fails when there is no session', async () => {
     whoamiMock.mockResolvedValue(undefined)
 
-    expect(await runWhoami(options({ command: 'whoami', signer: 'wallet' }))).toBe(1)
+    expect(await runWhoami(commandContext({ command: 'whoami', signer: 'wallet' }))).toBe(1)
     expect(console.error).toHaveBeenCalledWith('No active wallet session. Run `kasakame login` first.')
+  })
+
+  it('does not open the write signer', async () => {
+    mnemonicSessionMock.mockResolvedValue(MNEMONIC_WALLET)
+    const context = commandContext({ command: 'whoami' })
+
+    expect(await runWhoami(context)).toBe(0)
+    expect(context.session).not.toHaveBeenCalled()
   })
 })

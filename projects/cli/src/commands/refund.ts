@@ -1,15 +1,16 @@
 import { refund } from '@kasakame/sdk'
-import type { CliOptions } from '../app/options.js'
+import type { CommandContext } from '../app/context.js'
 import { spendLeaves } from './shared/leaves.js'
 import { campaignStatus, requireAppId } from './shared/lookup.js'
 
 /**
  * Refund every live pledge from a failed campaign, one wallet approval per pledge; every failed refund is reported and the rest still run.
  *
- * @param options Parsed CLI options.
+ * @param context Parsed command context.
  * @returns Process exit code.
  */
-export async function runRefund(options: CliOptions): Promise<number> {
+export async function runRefund(context: CommandContext): Promise<number> {
+  const { options } = context
   const appId = requireAppId(options, 'refund')
   const status = await campaignStatus(appId, options.network)
   if (status === 'open') {
@@ -19,5 +20,5 @@ export async function runRefund(options: CliOptions): Promise<number> {
     throw new Error(`Campaign ${appId.toString()} succeeded; there is nothing to refund`)
   }
 
-  return spendLeaves(options, appId, { verb: 'refund', done: 'Refunded' }, (wallet, leaf) => refund(appId, wallet, leaf))
+  return spendLeaves(context, appId, { verb: 'refund', done: 'Refunded' }, (wallet, leaf) => refund(appId, wallet, leaf))
 }
