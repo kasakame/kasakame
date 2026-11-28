@@ -618,6 +618,7 @@ write helpers against a live chain.
 | `test/08-group-builders.test.ts` | `SDK-080` | `happy`, `always` | `pledgeGroup` and both `refundGroup` routes built, inspected, and submitted through a fresh composer |
 | `test/09-multi-backer.test.ts` | `SDK-090` | `happy`, `always` | interleaved leaves across three backers, per-backer positions and totals, cancels, campaign refunds, delete, and the remaining vault refunds |
 | `test/10-bad-path-smoke.test.ts` | `SDK-100`..`SDK-102` | `bad`, `always` | creator `pledge`, post-deadline `cancelPledge`, and pre-deadline `refund` rejections leave the tree and vault box unchanged |
+| `test/11-delete-without-registry.test.ts` | `SDK-110`/`SDK-111` | `happy`, `always` | delete with no configured Registry reads the vault's Registry, for registered and unregistered campaigns |
 
 Each file deploys its own stack, so the files are independent; the path-order
 sequencer and `--no-file-parallelism` keep time travel from overlapping. The

@@ -60,13 +60,14 @@ export function vaultClientFor(session: WalletSession): ClaimsVaultClient {
  * A Registry client bound to the session's sender and signer.
  *
  * @param session Wallet session holding the signer and address.
+ * @param appId Registry app id; defaults to the SDK session's configured Registry.
  * @returns The configured Registry client.
  */
-export function registryClientFor(session: WalletSession): RegistryClient {
+export function registryClientFor(session: WalletSession, appId?: bigint): RegistryClient {
   const { algorand, registryAppId } = getSdkConfig()
   return new RegistryClient({
     algorand,
-    appId: registryAppId,
+    appId: appId ?? registryAppId,
     defaultSender: session.address,
     defaultSigner: session.signer,
   })

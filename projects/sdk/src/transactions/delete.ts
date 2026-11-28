@@ -8,10 +8,10 @@ import type { WriteConfirmation } from './confirmation.js'
 import { writeConfirmation } from './confirmation.js'
 import { logWriteConfirmed, submitWithClassification } from './errors.js'
 import { minimumFee } from './fees.js'
-import { vaultBoxRef } from './vault.js'
+import { fetchVaultConfig, vaultBoxRef } from './vault.js'
 
 /**
- * Delete a settled campaign (creator only): settles the vault on the failed path, closes the escrow, and unregisters from the Registry in one atomic group, unregister first.
+ * Delete a settled campaign (creator only): settle the vault, close the escrow, and unregister first; the vault supplies the Registry id when the session has none.
  *
  * @param appId Campaign application id.
  * @param session Wallet session holding the signer and address.
@@ -24,8 +24,9 @@ export async function deleteCampaign(appId: bigint, session: WalletSession): Pro
   // The manual composer resolves signers by sender address - register the wallet signer for this address first.
   algorand.account.setSigner(session.address, session.signer)
   const composer = algorand.send.newGroup()
-  if (registryAppId > 0n) {
-    const registryClient = registryClientFor(session)
+  const effectiveRegistryId = registryAppId > 0n ? registryAppId : (await fetchVaultConfig()).registryAppId
+  if (effectiveRegistryId > 0n) {
+    const registryClient = registryClientFor(session, effectiveRegistryId)
     composer.addAppCallMethodCall(
       await registryClient.params.unregister({
         args: { app: appId },

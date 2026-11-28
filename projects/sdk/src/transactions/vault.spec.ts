@@ -1,6 +1,13 @@
 import { VAULT_BOX_STATUS_FAILED_HEX } from '@kasakame/constants'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { VAULT_APP_ADDRESS, campaignBoxValueMock, refundWindowMock, resetMocks, sweepTargetMock } from './test-fixtures.js'
+import {
+  VAULT_APP_ADDRESS,
+  campaignBoxValueMock,
+  refundWindowMock,
+  resetMocks,
+  sweepTargetMock,
+  vaultRegistryMock,
+} from './test-fixtures.js'
 import { fetchVaultBox, fetchVaultConfig, refundWindowEndsAt, vaultAddress } from './vault.js'
 
 vi.mock('../generated/ClaimsVaultClient.js', async () => (await import('./test-fixtures.js')).vaultClientModule)
@@ -29,10 +36,16 @@ describe('vault helpers', () => {
     await expect(fetchVaultBox(9n)).resolves.toBeUndefined()
   })
 
-  it('fetchVaultConfig reads window and sweep target', async () => {
+  it('fetchVaultConfig reads the Registry, window, and sweep target', async () => {
     refundWindowMock.mockResolvedValue(63_072_000n)
     sweepTargetMock.mockResolvedValue('SWEEP')
-    await expect(fetchVaultConfig()).resolves.toEqual({ window: 63_072_000n, sweepTarget: 'SWEEP' })
+    vaultRegistryMock.mockResolvedValue(1_001n)
+    await expect(fetchVaultConfig()).resolves.toEqual({ registryAppId: 1_001n, window: 63_072_000n, sweepTarget: 'SWEEP' })
+  })
+
+  it('fetchVaultConfig defaults a missing Registry to zero', async () => {
+    vaultRegistryMock.mockResolvedValue(undefined)
+    await expect(fetchVaultConfig()).resolves.toMatchObject({ registryAppId: 0n })
   })
 
   it('refundWindowEndsAt is settlement plus the configured window', () => {
