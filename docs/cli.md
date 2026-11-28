@@ -6,7 +6,7 @@ using a wallet app or a local mnemonic. It reads public algod and indexer
 endpoints and talks to no kasakame backend, so an exit never depends on our
 servers.
 
-Status: the package ships through the `release-cli` workflow; `@kasakame/cli@0.1.0`
+Status: the package ships through the `release-cli` workflow; `@kasakame/cli@0.2.0`
 is published on npm. From a checkout, build it with the commands in
 [Development](#development).
 
