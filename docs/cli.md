@@ -367,7 +367,9 @@ Source layout:
   Pera), and `wallet/` (the WalletConnect transport).
 - `src/commands/` - one module per command plus `shared/` formatting, lookup,
   leaf selection, and vault writes.
-- `test/` - the LocalNet integration lane (#118).
+- `test/` - the LocalNet integration lane: `00-surface` (binary and parsing),
+  `01-reads`, `02-backer-flows`, `03-creator-flows`, and `04-vault-cleanup`,
+  with fixtures under `test/utils/`.
 
 Unit specs stay colocated. `src/commands/test-fixtures.ts` holds plain test
 fixtures and is excluded from the build.
@@ -383,13 +385,30 @@ npm run lint
 npm run format
 npm run check-types
 npm run test:coverage
+npm run test:integration   # needs AlgoKit LocalNet
 ```
 
 The Vitest suite mocks the SDK and the WalletConnect transport, covers every
 command branch, and enforces 100% coverage on `src`. CI never contacts the
-bridge; see [`ci.md`](ci.md#workflow-build-and-test). The release workflow packs
-the tarball, installs it in a clean consumer, and runs `kasakame --help` before
-publishing; see [`ci.md`](ci.md#workflow-release-cli-separate-file).
+bridge; see [`ci.md`](ci.md#workflow-build-and-test).
+
+`test:integration` builds `dist` and spawns the binary with the mnemonic signer
+against a fresh Registry + ClaimsVault per file. It needs
+`algokit localnet start`. The suite deploys the published contracts package by
+default; set `CLI_SPECS=local` to use `projects/contracts/smart_contracts/artifacts`
+(the CI lane does this when contracts changed). To test unreleased contracts,
+build the local SDK against them and install the packed copy first:
+
+```bash
+cd ../contracts && npm run build
+cd ../sdk && SDK_SPECS=local npm run build
+cd ../cli && npm install --no-save --install-links "file:../sdk"
+CLI_SPECS=local npm run test:integration
+```
+
+The release workflow packs the tarball, installs it in a clean consumer, and
+runs `kasakame --help` before publishing; see
+[`ci.md`](ci.md#workflow-release-cli-separate-file).
 
 `libsodium-wrappers-sumo` is pinned to `0.7.15` directly: `0.7.16` ships an ESM
 build that imports a file it does not publish, and

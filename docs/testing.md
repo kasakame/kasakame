@@ -77,7 +77,7 @@ Run it with `npm run test:coverage`. The thresholds live in
 | Contract LocalNet | `test/00`-`07` | `npm run test:integration` | `integration-test-contracts` | `pull_request` / push to `main` when contracts or utils change, manual |
 | Contract LocalNet, cap | `test/99-cap-*.test.ts` | `npm run test:cap:failed` / `test:cap:claimed` | `heavy-tests` (own workflow) | weekly `schedule` + `workflow_dispatch`, not required for PRs |
 | SDK LocalNet | `test/*.test.ts` | `npm run test:integration` in `projects/sdk` | `integration-test-sdk` | `pull_request` / push to `main` when SDK, contracts, or `constants` change, manual |
-| CLI LocalNet smoke (planned, #118) | `projects/cli` | tracked in #118 | not wired yet | - |
+| CLI LocalNet | `test/*.test.ts` | `npm run test:integration` in `projects/cli` | `integration-test-cli` | `pull_request` / push to `main` when CLI, SDK, contracts, `utils_core`, or `constants` change, manual |
 
 The LocalNet integration lane runs the small-shape suites plus the scale,
 boundary, and randomized-sequence suites. The larger shapes raise N,
@@ -669,6 +669,53 @@ npm run test:integration
 The fixtures deploy the same Registry + ClaimsVault bundle the generated clients
 were built from.
 
+## CLI LocalNet integration
+
+`projects/cli/test/` drives the built binary, not the command functions. Each
+file deploys its own Registry + ClaimsVault, seeds campaigns through the SDK,
+and spawns `node dist/index.js` with `KASAKAME_MNEMONIC` and the deployment ids,
+so it also covers the process boundary: exit codes, stdout/stderr split, and the
+real signer decode.
+
+| File | Tests | Tags | What it proves |
+| --- | --- | --- | --- |
+| `test/00-surface.test.ts` | `CLI-001`..`CLI-005` | `smoke`, `happy`, `bad`, `always` | usage, env and file `whoami`, parse errors before the chain, missing vault or mnemonic |
+| `test/01-reads.test.ts` | `CLI-010`..`CLI-017` | `smoke`, `happy`, `always` | pledge and campaign tables, actions and read-only views, empty states, deleted campaigns, vault-box discovery without `--registry` |
+| `test/02-backer-flows.test.ts` | `CLI-020`..`CLI-027` | `smoke`, `happy`, `bad`, `always` | withdraw selection and dry-runs, wrong-status guards, the final-day goal guard, refund before and after delete, refund guards |
+| `test/03-creator-flows.test.ts` | `CLI-030`..`CLI-035` | `smoke`, `happy`, `bad`, `always` | claim payout and guards, delete of pristine/claimed/failed campaigns, delete guards, withdraw-to-zero then delete |
+| `test/04-vault-cleanup.test.ts` | `CLI-040`..`CLI-047` | `smoke`, `happy`, `bad`, `always` | stranger `settle-open`, residual and zero-residual `finalize`, `release-claimed`, refund-window rejection |
+
+Shared helpers under `test/utils/` deploy the platform with
+`@kasakame/utils/testing`, fund and encode mnemonic accounts, seed campaigns
+through the SDK, spawn the CLI, and compute the SDK's spend fees. Rejections
+compare the header, leaves, box, and balances before and after the command.
+
+The suite deploys the ARC-56 specs from `@kasakame/contracts` by default, which
+match the published SDK. Set `CLI_SPECS=local` to read
+`projects/contracts/smart_contracts/artifacts` instead. The CI job downloads
+`sdk-dist` and, when contracts changed, `contracts-artifacts`, then runs the
+lane with `CLI_SPECS=local` when contracts changed, so the deployed programs and
+generated clients come from the same build.
+
+```bash
+cd projects/cli
+npm run test:integration
+```
+
+To test unreleased contracts, build the local SDK against them and install the
+packed copy before running the lane:
+
+```bash
+cd projects/contracts && npm run build
+cd ../sdk && SDK_SPECS=local npm run build
+cd ../cli && npm install --no-save --install-links "file:../sdk"
+CLI_SPECS=local npm run test:integration
+```
+
+The suite is excluded from `npm test` and coverage; the offline specs remain the
+100% coverage gate. Files run sequentially in path order, and time travel uses
+the same dev-mode offset helper as the SDK suite.
+
 ## API cheat sheet (learned the hard way)
 
 - `const ctx = new TestExecutionContext()`; **create the context once per suite and
@@ -810,10 +857,14 @@ The suite drives the command layer: argument validation, read tables, refund
 and withdraw selection and partial failure, the creator checks for claim and
 delete, dry runs, the wallet session lifecycle and signer handshake, mnemonic
 validation for both 25-word Algo25 and 24-word ARC-52 phrases, and the bridge
-and storage fallbacks. The `check-cli` job in CI runs format, lint, type-check,
-coverage, and the build (see [`ci.md`](ci.md#workflow-build-and-test)); the
-release workflow packs the tarball and runs `kasakame --help` before publishing
-(see [`ci.md`](ci.md#workflow-release-cli-separate-file)).
+and storage fallbacks.
+
+A second suite in `projects/cli/test/` runs the built binary against LocalNet; see
+[CLI LocalNet integration](#cli-localnet-integration). The `check-cli` job runs
+format, lint, type-check, coverage, and the build; `integration-test-cli` runs
+the LocalNet lane (see [`ci.md`](ci.md#workflow-build-and-test)). The release
+workflow packs the tarball and runs `kasakame --help` before publishing (see
+[`ci.md`](ci.md#workflow-release-cli-separate-file)).
 
 Manual TestNet smoke remains in the [manual smoke ticket](https://github.com/kasakame/kasakame/issues/126):
 both signers, refund before and after a delete, and delete on a fresh campaign.

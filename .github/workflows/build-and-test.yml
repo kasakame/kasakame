@@ -47,6 +47,7 @@ jobs:
       run_check_constants: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.constants == 'true' || steps.filter.outputs.workspace == 'true' }}
       run_contracts_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
       run_sdk_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
+      run_cli_integration: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.cli == 'true' || steps.filter.outputs.sdk == 'true' || steps.filter.outputs.contracts == 'true' || steps.filter.outputs.utils_core == 'true' || steps.filter.outputs.constants == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -726,6 +727,74 @@ jobs:
         run: npm run test:integration
         working-directory: projects/sdk
 
+  # CLI LocalNet smoke: the built binary against a fresh Registry + ClaimsVault, using the same packed SDK and contracts the CLI lane checked.
+  integration-test-cli:
+    name: CLI LocalNet integration
+    needs: [changes, compile-contracts, build-sdk]
+    if: always() && !failure() && !cancelled() && needs.changes.outputs.run_cli_integration == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: projects/cli/package-lock.json
+
+      - name: Download contract artifacts
+        if: needs.changes.outputs.run_compile_contracts == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: contracts-artifacts
+          path: projects/contracts/smart_contracts/artifacts
+
+      - name: Download the local SDK
+        if: needs.changes.outputs.run_build_sdk == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: projects/sdk/dist
+
+      - name: Install dependencies
+        id: install
+        env:
+          LOCAL_SDK: ${{ needs.changes.outputs.run_build_sdk }}
+        run: bash ../../.github/scripts/install-local-sdk.sh
+        working-directory: projects/cli
+
+      - name: Set up Python (for AlgoKit CLI)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Cache AlgoKit CLI
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: actions/cache@v6
+        with:
+          path: ~/.local
+          key: algokit-2.10.2-py3.12-${{ runner.os }}
+
+      - name: Install AlgoKit CLI
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: bash .github/scripts/install-algokit.sh
+        shell: bash
+
+      - name: Start LocalNet (algod + indexer)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: algokit localnet start
+
+      - name: Run CLI LocalNet integration tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm run test:integration
+        working-directory: projects/cli
+        env:
+          CLI_SPECS: ${{ needs.changes.outputs.run_compile_contracts == 'true' && 'local' || 'release' }}
+
   # Single required check: skipped jobs don't block merges under strict branch protection, only failures and cancellations do.
   gate:
     name: Gate
@@ -745,6 +814,7 @@ jobs:
       - check-constants
       - integration-test-contracts
       - integration-test-sdk
+      - integration-test-cli
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

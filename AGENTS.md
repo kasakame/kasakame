@@ -45,7 +45,7 @@ workspace: an Algorand TypeScript smart contract plus a React + Vite frontend.
   (refund/withdraw/claim/delete and vault cleanup by app ID; wallet or mnemonic
   signing). `src/app/` is the CLI shell, `src/auth/` holds the signer selector,
   mnemonic, and WalletConnect, `src/commands/` holds one module per command, and
-  `test/` holds the LocalNet lane (#118); see [`docs/cli.md`](docs/cli.md)
+  `test/` holds the built-binary LocalNet lane; see [`docs/cli.md`](docs/cli.md)
 - `projects/backend/` - optional Fastify + Postgres user service (wallet-signature auth, profiles/settings storage, pinning and catalog)
 - [`docs/`](docs/) - technical docs: [`architecture.md`](docs/architecture.md)
   (overview), [`campaign.md`](docs/campaign.md) (contract reference),
@@ -119,6 +119,7 @@ npm run check-types              # tsc --noEmit
 npm run lint                     # ESLint
 npm run format                   # Prettier check
 npm run test:coverage            # Vitest
+npm run test:integration         # builds dist, then the LocalNet lane
 
 cd ../backend                    # optional API; Postgres via docker compose
 npm run db:migrate               # apply migrations
@@ -385,6 +386,8 @@ the product contract. The pinned values and the AVM limits are in
   locally.
 - SDK: offline Vitest with 100% coverage plus the LocalNet send-path suite
   (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#sdk-localnet-integration)).
+- CLI: offline Vitest with 100% coverage plus the built-binary LocalNet suite
+  (`npm run test:integration`; see [`docs/testing.md`](docs/testing.md#cli-localnet-integration)).
 - Frontend: Vitest, with line coverage at 100% on components and utils.
 - Test naming: `*.spec.ts(x)` for offline/unit tests, `test/NN-*.test.ts` for
   LocalNet integration, `test/utils/` for fixtures. There is no 1:1 source/test
