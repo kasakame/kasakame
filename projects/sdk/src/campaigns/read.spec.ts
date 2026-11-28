@@ -3,15 +3,7 @@ import { REGISTRY_BOX_PREFIX, VAULT_BOX_STATUS_CLAIMED_HEX } from '@kasakame/con
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureSdk } from '../runtime/config.js'
-import {
-  clearCachedCampaigns,
-  fetchMyPledge,
-  fetchRegisteredCampaignIds,
-  getCachedCampaigns,
-  getCampaign,
-  isRegistered,
-  listCampaigns,
-} from './index.js'
+import { clearCachedCampaigns, fetchMyPledge, getCachedCampaigns, getCampaign, listCampaigns } from './index.js'
 
 const indexerMock = vi.hoisted(() => ({
   lookupApplications: vi.fn(),
@@ -22,7 +14,6 @@ const indexerMock = vi.hoisted(() => ({
 
 const fetchMyLeavesMock = vi.hoisted(() => vi.fn())
 const fetchVaultBoxMock = vi.hoisted(() => vi.fn())
-const registeredValueMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../claim-tree/index.js', async () => {
   const actual = await vi.importActual('../claim-tree/index.js')
@@ -31,12 +22,6 @@ vi.mock('../claim-tree/index.js', async () => {
 
 vi.mock('../transactions/vault.js', () => ({
   fetchVaultBox: (...args: unknown[]) => fetchVaultBoxMock(...args),
-}))
-
-vi.mock('../generated/RegistryClient.js', () => ({
-  RegistryClient: class {
-    state = { box: { registered: { value: (...args: unknown[]) => registeredValueMock(...args) } } }
-  },
 }))
 
 const ZERO_ADDRESS = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'
@@ -132,7 +117,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   clearCachedCampaigns()
   fetchVaultBoxMock.mockResolvedValue(undefined)
-  registeredValueMock.mockResolvedValue(undefined)
   configureSdk({ algorand: fakeAlgorand(), registryAppId: 1001n, vaultAppId: 2002n })
 })
 
@@ -167,62 +151,6 @@ describe('fetchMyPledge', () => {
   it('returns undefined when the viewer has no live leaves', async () => {
     fetchMyLeavesMock.mockResolvedValue([])
     expect(await fetchMyPledge(42n, 'ADDRESS')).toBeUndefined()
-  })
-})
-
-describe('fetchRegisteredCampaignIds', () => {
-  it('decodes registration box names into app ids', async () => {
-    indexerMock.searchForApplicationBoxes.mockImplementation(() =>
-      boxSearchBuilder(() => [
-        { name: registrationBoxName(7n) },
-        { name: registrationBoxName(1_234_567_890n) },
-        { name: new Uint8Array([REGISTRY_BOX_PREFIX.charCodeAt(0), 1, 2, 3]) }, // malformed: too short
-        { name: new Uint8Array([0x71, 1, 2, 3, 4, 5, 6, 7, 8]) }, // wrong prefix
-      ]),
-    )
-    const ids = await fetchRegisteredCampaignIds(1001n)
-    expect([...ids]).toEqual([7n, 1_234_567_890n])
-  })
-
-  it('follows box search pages', async () => {
-    const pages = [{ boxes: [{ name: registrationBoxName(7n) }], nextToken: 't' }, { boxes: [{ name: registrationBoxName(8n) }] }]
-    indexerMock.searchForApplicationBoxes.mockImplementation(() => ({
-      limit: () => ({
-        nextToken: () => ({
-          do: () => Promise.resolve(pages.shift() ?? { boxes: [] }),
-        }),
-        do: () => Promise.resolve(pages.shift() ?? { boxes: [] }),
-      }),
-    }))
-    expect([...(await fetchRegisteredCampaignIds(1001n))]).toEqual([7n, 8n])
-  })
-})
-
-describe('isRegistered', () => {
-  it('reads the Registry registration box', async () => {
-    registeredValueMock.mockResolvedValue(ZERO_ADDRESS)
-    await expect(isRegistered(42n)).resolves.toBe(true)
-    expect(registeredValueMock).toHaveBeenCalledWith(42n)
-  })
-
-  it('returns false when the registration box is missing', async () => {
-    await expect(isRegistered(42n)).resolves.toBe(false)
-  })
-
-  it('returns false when algod reports the registration box missing', async () => {
-    registeredValueMock.mockRejectedValue(new Error('Network request error. Received status 404 (Not Found): box not found'))
-    await expect(isRegistered(42n)).resolves.toBe(false)
-  })
-
-  it('rethrows other registration read errors', async () => {
-    registeredValueMock.mockRejectedValue(new Error('algod unavailable'))
-    await expect(isRegistered(42n)).rejects.toThrow('algod unavailable')
-  })
-
-  it('returns false without a configured Registry', async () => {
-    configureSdk({ algorand: fakeAlgorand(), registryAppId: 0n, vaultAppId: 2002n })
-    await expect(isRegistered(42n)).resolves.toBe(false)
-    expect(registeredValueMock).not.toHaveBeenCalled()
   })
 })
 
