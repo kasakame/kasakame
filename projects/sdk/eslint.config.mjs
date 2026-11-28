@@ -61,7 +61,7 @@ export default defineConfig(
   },
   // Test files get Vitest globals.
   {
-    files: ['**/*.spec.ts', '**/*.test.ts'],
+    files: ['**/*.spec.ts', '**/*.test.ts', 'src/**/test-fixtures.ts'],
     languageOptions: {
       globals: {
         ...globals.vitest,
