@@ -362,8 +362,7 @@ The CLI keeps a small scope; these are the known limits.
 
 Source layout:
 
-- `src/app/` - the CLI shell: `run`, `parse`, `options`, `usage`, `network`, and
-  error messages.
+- `src/app/` - the CLI shell: `run`, `parse`, `options`, `usage`, `network`, the lazy command `context`, and error messages.
 - `src/auth/` - the signer selector (`open-session`), `mnemonic/` (Algo25 and
   Pera), and `wallet/` (the WalletConnect transport).
 - `src/commands/` - one module per command plus `shared/` formatting, lookup,

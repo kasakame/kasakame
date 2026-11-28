@@ -1,5 +1,5 @@
 import { fetchChainTimestamp, fetchVaultBox, fetchVaultConfig, finalize, refundWindowEndsAt } from '@kasakame/sdk'
-import type { CliOptions } from '../app/options.js'
+import type { CommandContext } from '../app/context.js'
 import { formatAlgo, formatDeadline } from './shared/format.js'
 import { requireAppId } from './shared/lookup.js'
 import { runVaultWrite, VAULT_BOX_STATUS_FAILED } from './shared/vault.js'
@@ -7,10 +7,11 @@ import { runVaultWrite, VAULT_BOX_STATUS_FAILED } from './shared/vault.js'
 /**
  * Finalize a settled-failed campaign permissionlessly: sweep the residual to the vault's sweep target and release the box once the refund window closes or the box is fully paid out.
  *
- * @param options Parsed CLI options.
+ * @param context Parsed command context.
  * @returns Process exit code.
  */
-export async function runFinalize(options: CliOptions): Promise<number> {
+export async function runFinalize(context: CommandContext): Promise<number> {
+  const { options } = context
   const appId = requireAppId(options, 'finalize')
   const box = await fetchVaultBox(appId)
   if (box === undefined) {
@@ -31,7 +32,7 @@ export async function runFinalize(options: CliOptions): Promise<number> {
     }
   }
 
-  return runVaultWrite(options, {
+  return runVaultWrite(context, {
     announce: `finalize campaign ${appId.toString()}`,
     plan:
       residual > 0n

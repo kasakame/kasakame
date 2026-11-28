@@ -1,7 +1,7 @@
 import type * as Sdk from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runCampaigns } from './campaigns.js'
-import { HEADER, VALID_ADDRESS, WALLET, options } from './test-fixtures.js'
+import { HEADER, VALID_ADDRESS, WALLET, commandContext } from './test-fixtures.js'
 
 const sdkMocks = vi.hoisted(() => ({
   enumerateCampaigns: vi.fn(),
@@ -66,7 +66,7 @@ describe('runCampaigns', () => {
     sdkMocks.fetchCampaignHeader.mockImplementation((id: bigint) => headers.get(id))
     sdkMocks.getCampaignStatus.mockImplementation((entry: { id: bigint }) => statuses.get(entry.id))
 
-    expect(await runCampaigns(options({ command: 'campaigns' }))).toBe(0)
+    expect(await runCampaigns(commandContext({ command: 'campaigns' }))).toBe(0)
 
     expect(console.error).toHaveBeenCalledWith('Searching testnet for campaigns created by BACKER…')
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
@@ -89,7 +89,7 @@ describe('runCampaigns', () => {
   it('reports no campaigns for the address', async () => {
     sdkMocks.enumerateCampaigns.mockResolvedValue(new Set())
 
-    expect(await runCampaigns(options({ command: 'campaigns' }))).toBe(0)
+    expect(await runCampaigns(commandContext({ command: 'campaigns' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('No campaigns created by BACKER on testnet.')
   })
@@ -97,7 +97,7 @@ describe('runCampaigns', () => {
   it('hides creator actions in a read-only view', async () => {
     sdkMocks.fetchCampaignHeader.mockResolvedValue(header({ creator: VALID_ADDRESS, raisedMicroAlgos: 0n }))
 
-    expect(await runCampaigns(options({ command: 'campaigns', address: VALID_ADDRESS }))).toBe(0)
+    expect(await runCampaigns(commandContext({ command: 'campaigns', address: VALID_ADDRESS }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith("Read-only view; claim and delete need the creator's wallet.")
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^app id\s+title\s+status\s+raised \/ goal\s+deadline$/))
@@ -113,7 +113,7 @@ describe('runCampaigns', () => {
       throw new Error('no application found for application-id: 3')
     })
 
-    expect(await runCampaigns(options({ command: 'campaigns' }))).toBe(0)
+    expect(await runCampaigns(commandContext({ command: 'campaigns' }))).toBe(0)
 
     expect(console.log).toHaveBeenCalledWith('Campaigns created by BACKER on testnet:')
     expect(console.log).toHaveBeenCalledWith(expect.stringMatching(/^1\s+Title\s+open\s+0 \/ 10 ALGO\s+1970-01-01 00:16 UTC\s+delete$/))
@@ -122,6 +122,15 @@ describe('runCampaigns', () => {
   it('wraps indexer failures', async () => {
     sdkMocks.fetchCampaignHeader.mockRejectedValue(new Error('indexer down'))
 
-    await expect(runCampaigns(options({ command: 'campaigns' }))).rejects.toThrow('Could not read campaigns from the indexer: indexer down')
+    await expect(runCampaigns(commandContext({ command: 'campaigns' }))).rejects.toThrow(
+      'Could not read campaigns from the indexer: indexer down',
+    )
+  })
+
+  it('does not open the write signer', async () => {
+    const context = commandContext({ command: 'campaigns' })
+
+    expect(await runCampaigns(context)).toBe(0)
+    expect(context.session).not.toHaveBeenCalled()
   })
 })

@@ -1,8 +1,10 @@
 import { SdkError } from '@kasakame/sdk'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CommandContext } from './context.js'
 import { run } from './run.js'
 
 const configureNetworkMock = vi.hoisted(() => vi.fn())
+const openCliSessionMock = vi.hoisted(() => vi.fn())
 const runRefundMock = vi.hoisted(() => vi.fn())
 const runWithdrawMock = vi.hoisted(() => vi.fn())
 const runClaimMock = vi.hoisted(() => vi.fn())
@@ -17,6 +19,7 @@ const runWhoamiMock = vi.hoisted(() => vi.fn())
 const runLogoutMock = vi.hoisted(() => vi.fn())
 
 vi.mock('./network.js', () => ({ configureNetwork: configureNetworkMock }))
+vi.mock('../auth/open-session.js', () => ({ openCliSession: openCliSessionMock }))
 vi.mock('../commands/index.js', () => ({
   runRefund: runRefundMock,
   runWithdraw: runWithdrawMock,
@@ -77,7 +80,7 @@ describe('run', () => {
     runWhoamiMock.mockResolvedValue(0)
 
     expect(await run(['whoami'])).toBe(0)
-    expect(runWhoamiMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'whoami' }))
+    expect(runWhoamiMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ command: 'whoami' }) }))
     expect(configureNetworkMock).not.toHaveBeenCalled()
   })
 
@@ -101,7 +104,7 @@ describe('run', () => {
         signer: 'wallet',
       }),
     )
-    expect(runRefundMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+    expect(runRefundMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ appId: 123n }) }))
   })
 
   it('propagates the refund exit code', async () => {
@@ -115,7 +118,7 @@ describe('run', () => {
 
     expect(await run(['withdraw', '123'])).toBe(0)
     expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'withdraw', appId: 123n }))
-    expect(runWithdrawMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+    expect(runWithdrawMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ appId: 123n }) }))
   })
 
   it('accepts localnet mnemonic dry-runs for claim', async () => {
@@ -132,7 +135,7 @@ describe('run', () => {
         dryRun: true,
       }),
     )
-    expect(runClaimMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 5n, dryRun: true }))
+    expect(runClaimMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ appId: 5n, dryRun: true }) }))
   })
 
   it('configures the chain and runs delete', async () => {
@@ -140,7 +143,7 @@ describe('run', () => {
 
     expect(await run(['delete', '123'])).toBe(0)
     expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'delete', appId: 123n }))
-    expect(runDeleteMock).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+    expect(runDeleteMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ appId: 123n }) }))
   })
 
   it.each([
@@ -152,7 +155,7 @@ describe('run', () => {
 
     expect(await run([command, '123'])).toBe(0)
     expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command, appId: 123n }))
-    expect(runner).toHaveBeenCalledWith(expect.objectContaining({ appId: 123n }))
+    expect(runner).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ appId: 123n }) }))
   })
 
   it('configures the chain and lists pledges', async () => {
@@ -168,7 +171,7 @@ describe('run', () => {
 
     expect(await run(['campaigns', '--address', 'ADDRESS'])).toBe(0)
     expect(configureNetworkMock).toHaveBeenCalledWith(expect.objectContaining({ command: 'campaigns' }))
-    expect(runCampaignsMock).toHaveBeenCalledWith(expect.objectContaining({ address: 'ADDRESS' }))
+    expect(runCampaignsMock).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ address: 'ADDRESS' }) }))
   })
 
   it('reports invalid arguments', async () => {
@@ -205,5 +208,37 @@ describe('run', () => {
     expect(await run(['claim', '1', '--log-level', 'debug'])).toBe(1)
     expect(console.error).toHaveBeenCalledWith('Error: Could not reach the chain. Check your connection and try again.')
     expect(console.error).toHaveBeenCalledWith('[detail] fetch failed')
+  })
+
+  it('does not open the signer for a command that never asks', async () => {
+    runPledgesMock.mockResolvedValue(0)
+
+    expect(await run(['pledges'])).toBe(0)
+    expect(openCliSessionMock).not.toHaveBeenCalled()
+  })
+
+  it('closes the signer after a successful command', async () => {
+    const close = vi.fn(() => Promise.resolve())
+    openCliSessionMock.mockResolvedValue({ wallet: { address: 'ADDRESS', signer: vi.fn() }, close })
+    runRefundMock.mockImplementation(async (context: CommandContext) => {
+      await context.session()
+      return 0
+    })
+
+    expect(await run(['refund', '123'])).toBe(0)
+    expect(openCliSessionMock).toHaveBeenCalledOnce()
+    expect(close).toHaveBeenCalledOnce()
+  })
+
+  it('closes the signer after a failed command', async () => {
+    const close = vi.fn(() => Promise.resolve())
+    openCliSessionMock.mockResolvedValue({ wallet: { address: 'ADDRESS', signer: vi.fn() }, close })
+    runRefundMock.mockImplementation(async (context: CommandContext) => {
+      await context.session()
+      throw new Error('rejected')
+    })
+
+    expect(await run(['refund', '123'])).toBe(1)
+    expect(close).toHaveBeenCalledOnce()
   })
 })

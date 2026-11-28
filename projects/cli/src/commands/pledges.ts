@@ -1,16 +1,17 @@
 import { fetchMyLeaves } from '@kasakame/sdk'
+import type { CommandContext } from '../app/context.js'
 import { cliErrorMessage } from '../app/error-messages.js'
-import type { CliOptions } from '../app/options.js'
 import { describeStatus, formatAlgo, formatDeadline, pledgeAction, printTable, progress } from './shared/format.js'
 import { listCampaignEntries, readAddress, type CampaignEntry } from './shared/lookup.js'
 
 /**
  * List the address's live pledges and the action each campaign allows now.
  *
- * @param options Parsed CLI options.
+ * @param context Parsed command context.
  * @returns Process exit code.
  */
-export async function runPledges(options: CliOptions): Promise<number> {
+export async function runPledges(context: CommandContext): Promise<number> {
+  const { options } = context
   const address = await readAddress(options)
   const readOnly = options.address !== undefined
   progress(`Searching ${options.network} for live pledges by ${address}…`)

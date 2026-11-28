@@ -1,15 +1,16 @@
 import { fetchChainTimestamp, fetchVaultBox, getCampaignStatus, settleOpen } from '@kasakame/sdk'
-import type { CliOptions } from '../app/options.js'
+import type { CommandContext } from '../app/context.js'
 import { campaignHeader, requireAppId } from './shared/lookup.js'
 import { runVaultWrite, VAULT_BOX_STATUS_FAILED, VAULT_BOX_STATUS_OPEN } from './shared/vault.js'
 
 /**
  * Settle a failed campaign permissionlessly when its creator is gone, so backers refund through the vault; the campaign app must still exist.
  *
- * @param options Parsed CLI options.
+ * @param context Parsed command context.
  * @returns Process exit code.
  */
-export async function runSettleOpen(options: CliOptions): Promise<number> {
+export async function runSettleOpen(context: CommandContext): Promise<number> {
+  const { options } = context
   const appId = requireAppId(options, 'settle-open')
   const header = await campaignHeader(appId, options.network)
   if (header.deleted) {
@@ -29,7 +30,7 @@ export async function runSettleOpen(options: CliOptions): Promise<number> {
     throw new Error(`Campaign ${appId.toString()} was not failed; there is nothing to settle`)
   }
 
-  return runVaultWrite(options, {
+  return runVaultWrite(context, {
     announce: `settle open campaign ${appId.toString()}`,
     plan: `Would settle campaign ${appId.toString()} as failed.`,
     submit: (wallet) => settleOpen(appId, wallet),

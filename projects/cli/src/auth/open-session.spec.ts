@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CliOptions } from '../app/options.js'
-import { openCliSession, withSession } from './open-session.js'
+import { openCliSession } from './open-session.js'
 
 const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 const openWalletConnectionMock = vi.hoisted(() => vi.fn())
@@ -46,26 +46,6 @@ describe('openCliSession', () => {
     expect(openWalletConnectionMock).toHaveBeenCalled()
     expect(session.wallet).toBe(WALLET)
     await session.close()
-    expect(close).toHaveBeenCalled()
-  })
-})
-
-describe('withSession', () => {
-  it('runs the write and closes the session', async () => {
-    mnemonicSessionMock.mockResolvedValue(WALLET)
-
-    await expect(withSession(options(), (wallet) => Promise.resolve(wallet.address))).resolves.toBe('ADDRESS')
-  })
-
-  it('closes the session when the write fails', async () => {
-    const close = vi.fn(async () => {})
-    openWalletConnectionMock.mockResolvedValue({ info: {}, wallet: WALLET, close })
-
-    await expect(
-      withSession(options({ signer: 'wallet' }), () => {
-        throw new Error('rejected')
-      }),
-    ).rejects.toThrow('rejected')
     expect(close).toHaveBeenCalled()
   })
 })
