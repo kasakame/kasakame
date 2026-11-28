@@ -10,7 +10,7 @@ const sdkMocks = vi.hoisted(() => ({
   getCampaignStatus: vi.fn(),
 }))
 const whoamiMock = vi.hoisted(() => vi.fn())
-const mnemonicAddressMock = vi.hoisted(() => vi.fn())
+const mnemonicSessionMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@kasakame/sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof Sdk>()
@@ -21,7 +21,7 @@ vi.mock('@kasakame/sdk', async (importOriginal) => {
   }
 })
 vi.mock('../auth/wallet/index.js', () => ({ whoami: whoamiMock }))
-vi.mock('../auth/mnemonic/index.js', () => ({ mnemonicAddress: mnemonicAddressMock }))
+vi.mock('../auth/mnemonic/index.js', () => ({ mnemonicSession: mnemonicSessionMock }))
 
 function header(overrides: Record<string, unknown>) {
   return { ...HEADER, ...overrides }
@@ -35,7 +35,7 @@ beforeEach(() => {
   sdkMocks.fetchCampaignHeader.mockResolvedValue(HEADER)
   sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
   sdkMocks.getCampaignStatus.mockReturnValue('open')
-  mnemonicAddressMock.mockResolvedValue(WALLET.address)
+  mnemonicSessionMock.mockResolvedValue(WALLET)
 })
 
 afterEach(() => {

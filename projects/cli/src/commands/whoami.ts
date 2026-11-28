@@ -1,5 +1,6 @@
 import type { CommandContext } from '../app/context.js'
-import { resolveAddress } from './shared/lookup.js'
+import { mnemonicSession } from '../auth/mnemonic/index.js'
+import { whoami } from '../auth/wallet/index.js'
 
 /**
  * Show the active signer's address.
@@ -9,20 +10,21 @@ import { resolveAddress } from './shared/lookup.js'
  */
 export async function runWhoami(context: CommandContext): Promise<number> {
   const { options } = context
-  const resolved = await resolveAddress(options, false)
-  if (resolved === undefined) {
-    console.error('No active wallet session. Run `kasakame login` first.')
-    return 1
-  }
-
   if (options.signer === 'mnemonic') {
+    const wallet = await mnemonicSession(options.mnemonicFile, undefined, options.address)
     console.log('Signer: mnemonic')
-    console.log(`Address: ${resolved.address}`)
+    console.log(`Address: ${wallet.address}`)
     console.log(`Network: ${options.network}`)
     return 0
   }
 
-  console.log(`Wallet: ${resolved.walletName}`)
-  console.log(`Address: ${resolved.address}`)
+  const session = await whoami()
+  if (session === undefined) {
+    console.error('No active wallet session. Run `kasakame login` first.')
+    return 1
+  }
+
+  console.log(`Wallet: ${session.walletName}`)
+  console.log(`Address: ${session.address}`)
   return 0
 }

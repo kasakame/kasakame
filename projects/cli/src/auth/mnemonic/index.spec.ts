@@ -10,7 +10,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mnemonicAddress, mnemonicSession, resolveMnemonic } from './index.js'
+import { mnemonicSession, resolveMnemonic } from './index.js'
 
 const ACCOUNT = generateAccount()
 const WORDS = secretKeyToMnemonic(ACCOUNT.sk)
@@ -62,55 +62,6 @@ describe('resolveMnemonic', () => {
 
   it('rejects an unreadable file', () => {
     expect(() => resolveMnemonic(join(directory, 'missing.mnemonic'), { KASAKAME_MNEMONIC: WORDS })).toThrow('Cannot read mnemonic file')
-  })
-})
-
-describe('mnemonicAddress', () => {
-  it('returns the Algo25 address without building a signer', async () => {
-    expect(await mnemonicAddress(undefined, { KASAKAME_MNEMONIC: WORDS })).toBe(ACCOUNT.addr.toString())
-  })
-
-  it('reads a mnemonic file', async () => {
-    expect(await mnemonicAddress(writeMnemonic('test.mnemonic', WORDS), {})).toBe(ACCOUNT.addr.toString())
-  })
-
-  it('accepts the matching Algo25 address', async () => {
-    expect(await mnemonicAddress(undefined, { KASAKAME_MNEMONIC: WORDS }, ACCOUNT.addr.toString())).toBe(ACCOUNT.addr.toString())
-  })
-
-  it('rejects a mismatched Algo25 address', async () => {
-    await expect(mnemonicAddress(undefined, { KASAKAME_MNEMONIC: WORDS }, OTHER_ACCOUNT.addr.toString())).rejects.toThrow(
-      `The mnemonic does not control ${OTHER_ACCOUNT.addr.toString()}`,
-    )
-  })
-
-  it('propagates a missing mnemonic', async () => {
-    await expect(mnemonicAddress(undefined, {})).rejects.toThrow('Missing mnemonic')
-  })
-
-  it('rejects an unknown phrase length', async () => {
-    const invalid = writeMnemonic('invalid.mnemonic', WORDS.split(' ').slice(0, 12).join(' '))
-    await expect(mnemonicAddress(invalid, {})).rejects.toThrow('Invalid mnemonic')
-  })
-
-  it('requires an address for a 24-word phrase', async () => {
-    await expect(mnemonicAddress(undefined, { KASAKAME_MNEMONIC: UNIVERSAL_WORDS })).rejects.toThrow(
-      'A 24-word Pera Universal Wallet phrase can derive several accounts; pass --address',
-    )
-  })
-
-  it('rejects a malformed address for a 24-word phrase', async () => {
-    await expect(mnemonicAddress(undefined, { KASAKAME_MNEMONIC: UNIVERSAL_WORDS }, 'ADDRESS')).rejects.toThrow('Invalid address: ADDRESS')
-  })
-
-  it('returns the matched Pera address', async () => {
-    expect(await mnemonicAddress(undefined, { KASAKAME_MNEMONIC: UNIVERSAL_WORDS }, UNIVERSAL_ADDRESS)).toBe(UNIVERSAL_ADDRESS)
-  })
-
-  it('rejects a 24-word address the phrase does not control', async () => {
-    await expect(mnemonicAddress(undefined, { KASAKAME_MNEMONIC: UNIVERSAL_WORDS }, OTHER_ACCOUNT.addr.toString())).rejects.toThrow(
-      `No account in the 24-word mnemonic matches ${OTHER_ACCOUNT.addr.toString()}`,
-    )
   })
 })
 
