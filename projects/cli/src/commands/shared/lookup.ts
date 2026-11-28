@@ -8,12 +8,18 @@ import {
 } from '@kasakame/sdk'
 import { isValidAddress } from 'algosdk'
 import type { CliOptions } from '../../app/options.js'
-import { mnemonicSession } from '../../auth/mnemonic/index.js'
+import { mnemonicAddress } from '../../auth/mnemonic/index.js'
 import { whoami } from '../../auth/wallet/index.js'
 
 export interface CampaignEntry {
   header: CampaignHeader
   status: CampaignStatus
+}
+
+/** A resolved read address and its wallet name, empty unless it came from the stored wallet session. */
+export interface ResolvedAddress {
+  address: string
+  walletName: string
 }
 
 function messageOf(error: unknown): string {
@@ -71,26 +77,38 @@ export async function campaignStatus(appId: bigint, network: string): Promise<Ca
 }
 
 /**
+ * Resolve the address a command reads: an explicit `--address` for inspection, the mnemonic's address, or the stored wallet's address.
+ *
+ * @param options Parsed CLI options.
+ * @param inspect When true, return a validated `--address` without touching a signer.
+ * @returns The address and wallet name (empty unless it came from the stored session), or undefined when no wallet session is stored.
+ */
+export async function resolveAddress(options: CliOptions, inspect = true): Promise<ResolvedAddress | undefined> {
+  if (inspect && options.address !== undefined) {
+    if (!isValidAddress(options.address)) {
+      throw new Error(`Invalid address: ${options.address}`)
+    }
+    return { address: options.address, walletName: '' }
+  }
+  if (options.signer === 'mnemonic') {
+    return { address: await mnemonicAddress(options.mnemonicFile, undefined, options.address), walletName: '' }
+  }
+  const session = await whoami()
+  return session === undefined ? undefined : { address: session.address, walletName: session.walletName }
+}
+
+/**
  * Resolve the address a read should inspect.
  *
  * @param options Parsed CLI options.
  * @returns The address to read.
  */
 export async function readAddress(options: CliOptions): Promise<string> {
-  if (options.address !== undefined) {
-    if (!isValidAddress(options.address)) {
-      throw new Error(`Invalid address: ${options.address}`)
-    }
-    return options.address
-  }
-  if (options.signer === 'mnemonic') {
-    return (await mnemonicSession(options.mnemonicFile, undefined, options.address)).address
-  }
-  const session = await whoami()
-  if (session === undefined) {
+  const resolved = await resolveAddress(options)
+  if (resolved === undefined) {
     throw new Error('No active wallet session. Run `kasakame login` first, or pass --address')
   }
-  return session.address
+  return resolved.address
 }
 
 /**
