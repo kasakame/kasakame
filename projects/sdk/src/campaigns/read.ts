@@ -2,6 +2,7 @@ import type algosdk from 'algosdk'
 import { fetchMyLeaves } from '../claim-tree/index.js'
 import { fetchChainTimestamp } from '../runtime/clock.js'
 import { getSdkConfig } from '../runtime/config.js'
+import { sdkLogger } from '../runtime/log.js'
 import { setCachedCampaigns } from './cache.js'
 import { isCampaignApp } from './decode.js'
 import { fetchRegisteredCampaignIds } from './discovery.js'
@@ -23,7 +24,7 @@ export async function fetchMyPledge(appId: bigint, address: string): Promise<big
 }
 
 /**
- * List all campaigns. With a Registry configured, look each registered id up directly; the unfiltered application scan below never finishes on TestNet-scale chains.
+ * List all campaigns. With a Registry, look each registered id up directly and keep readable campaigns when one lookup fails; without one, scan applications (small chains only).
  *
  * @param viewerAddress Connected wallet address, if any.
  * @returns The campaigns with the chain timestamp used to derive them.
@@ -60,8 +61,24 @@ export async function listCampaigns(viewerAddress?: string): Promise<{ campaigns
 
   // Timestamp and registry are independent: fetch together so first paint waits on one round-trip, not two.
   const [now, registered] = await Promise.all([fetchChainTimestamp(), fetchRegisteredCampaignIds(registryId)])
-  const settled = await Promise.all([...registered].map((id) => getCampaign(id, now, viewerAddress)))
-  const campaigns = settled.filter((campaign): campaign is CampaignViewModel => campaign !== undefined && campaign.deleted !== true)
+  // One bad id must not blank the list: log its lookup and keep the readable campaigns.
+  const settled = await Promise.allSettled(
+    [...registered].map(async (id) => {
+      try {
+        return await getCampaign(id, now, viewerAddress)
+      } catch (error) {
+        sdkLogger().warn('campaigns.list.lookup-failed', {
+          appId: id.toString(),
+          message: error instanceof Error ? error.message : String(error),
+        })
+        throw error
+      }
+    }),
+  )
+  const campaigns = settled
+    .filter((result): result is PromiseFulfilledResult<CampaignViewModel | undefined> => result.status === 'fulfilled')
+    .map((result) => result.value)
+    .filter((campaign): campaign is CampaignViewModel => campaign !== undefined && campaign.deleted !== true)
   const result = { campaigns, nowSeconds: now }
   setCachedCampaigns(result)
   return result

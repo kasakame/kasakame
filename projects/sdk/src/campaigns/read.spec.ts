@@ -3,6 +3,7 @@ import { REGISTRY_BOX_PREFIX, VAULT_BOX_STATUS_CLAIMED_HEX } from '@kasakame/con
 import algosdk from 'algosdk'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { configureSdk } from '../runtime/config.js'
+import { setSdkLogger } from '../runtime/log.js'
 import { clearCachedCampaigns, fetchMyPledge, getCachedCampaigns, getCampaign, listCampaigns } from './index.js'
 
 const indexerMock = vi.hoisted(() => ({
@@ -79,6 +80,12 @@ function lookupBuilder(response: unknown, throws = false): unknown {
     includeAll: () => builder,
     do: () => (throws ? Promise.reject(new Error('not found')) : Promise.resolve(response)),
   }
+  return builder
+}
+
+function rejectingBuilder(reason: unknown): unknown {
+  // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- a non-Error rejection exercises the stringified log path
+  const builder = { includeAll: () => builder, do: () => Promise.reject(reason) }
   return builder
 }
 
@@ -177,6 +184,34 @@ describe('listCampaigns', () => {
     indexerMock.lookupApplications.mockImplementation(() => lookupBuilder({ application: deleted }))
 
     expect((await listCampaigns()).campaigns).toEqual([])
+  })
+
+  it('keeps readable campaigns when one registered lookup fails', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+    indexerMock.searchForApplicationBoxes.mockImplementation(() =>
+      boxSearchBuilder(() => [{ name: registrationBoxName(42n) }, { name: registrationBoxName(43n) }]),
+    )
+    indexerMock.lookupApplications.mockImplementation((id: bigint) =>
+      id === 43n ? lookupBuilder({}, true) : lookupBuilder({ application: campaignApp({ id }) }),
+    )
+
+    const { campaigns } = await listCampaigns()
+    expect(campaigns.map((campaign) => campaign.id)).toEqual([42n])
+    expect(warn).toHaveBeenCalledWith('campaigns.list.lookup-failed', { appId: '43', message: 'not found' })
+  })
+
+  it('logs a non-Error lookup failure and skips a missing application', async () => {
+    const warn = vi.fn()
+    setSdkLogger({ debug: vi.fn(), info: vi.fn(), warn, error: vi.fn() })
+    indexerMock.searchForApplicationBoxes.mockImplementation(() =>
+      boxSearchBuilder(() => [{ name: registrationBoxName(44n) }, { name: registrationBoxName(45n) }]),
+    )
+    indexerMock.lookupApplications.mockImplementation((id: bigint) => (id === 45n ? rejectingBuilder('offline') : lookupBuilder({})))
+
+    const { campaigns } = await listCampaigns()
+    expect(campaigns).toEqual([])
+    expect(warn).toHaveBeenCalledWith('campaigns.list.lookup-failed', { appId: '45', message: 'offline' })
   })
 
   it('falls back to the full scan without a registry', async () => {
