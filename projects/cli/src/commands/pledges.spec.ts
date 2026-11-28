@@ -11,7 +11,7 @@ const sdkMocks = vi.hoisted(() => ({
   fetchMyLeaves: vi.fn(),
 }))
 const whoamiMock = vi.hoisted(() => vi.fn())
-const mnemonicSessionMock = vi.hoisted(() => vi.fn())
+const mnemonicAddressMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@kasakame/sdk', async (importOriginal) => {
   const actual = await importOriginal<typeof Sdk>()
@@ -22,7 +22,7 @@ vi.mock('@kasakame/sdk', async (importOriginal) => {
   }
 })
 vi.mock('../auth/wallet/index.js', () => ({ whoami: whoamiMock }))
-vi.mock('../auth/mnemonic/index.js', () => ({ mnemonicSession: mnemonicSessionMock }))
+vi.mock('../auth/mnemonic/index.js', () => ({ mnemonicAddress: mnemonicAddressMock }))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -33,7 +33,7 @@ beforeEach(() => {
   sdkMocks.fetchChainTimestamp.mockResolvedValue(2_000n)
   sdkMocks.getCampaignStatus.mockReturnValue('open')
   sdkMocks.fetchMyLeaves.mockResolvedValue([leaf(0, 1_500_000n)])
-  mnemonicSessionMock.mockResolvedValue(WALLET)
+  mnemonicAddressMock.mockResolvedValue(WALLET.address)
 })
 
 afterEach(() => {
@@ -136,7 +136,7 @@ describe('runPledges', () => {
   it('shows a state-only view for an explicit address', async () => {
     expect(await runPledges(commandContext({ command: 'pledges', address: VALID_ADDRESS }))).toBe(0)
 
-    expect(mnemonicSessionMock).not.toHaveBeenCalled()
+    expect(mnemonicAddressMock).not.toHaveBeenCalled()
     expect(whoamiMock).not.toHaveBeenCalled()
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, VALID_ADDRESS)
     expect(console.log).toHaveBeenCalledWith("Read-only view; withdraw and refund need the pledge owner's wallet.")
@@ -164,7 +164,7 @@ describe('runPledges', () => {
 
     expect(await runPledges(commandContext({ command: 'pledges', signer: 'wallet' }))).toBe(0)
 
-    expect(mnemonicSessionMock).not.toHaveBeenCalled()
+    expect(mnemonicAddressMock).not.toHaveBeenCalled()
     expect(sdkMocks.fetchMyLeaves).toHaveBeenCalledWith(1n, 'WALLET_ADDRESS')
   })
 
