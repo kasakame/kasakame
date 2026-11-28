@@ -388,6 +388,7 @@ The SDK preflights the contract's title, metadata URI, goal, deadline, and pledg
 - **Generated clients are build output; the ARC-56 spec is the interface.** `*Client.ts` stays gitignored; specs are read from the package (or locally) and never committed. The SDK regenerates clients from specs and tags them `// @ts-nocheck` (they do not pass the strict compiler). Clients never travel between packages.
 - **The SDK returns protocol-shaped data; views stay in the frontend.** `CampaignViewModel`, messages, navigation, and disconnect handling stay in the frontend. The stale-proof retry policy moves to the SDK because the CLI needs it; the error-to-message mapping stays in the frontend.
 - **Upload auth stays out.** Backend sign-in flows are backend-coupled, not chain logic.
+- **A deleted campaign without a vault box currently loses its status and total.** Once `notifyDelete`, `releaseClaimed`, or `finalize` releases the box, `headerFromApplication` falls back to `status: 'open'` and `raisedMicroAlgos: 0n`, so a claimed campaign past its deadline derives as `failed`. Both facts stay in history: the delete transaction's inner `notifyDelete` call marks claimed, and the claim transaction's `payClaim` payment equals the raised total. The SDK does not read them yet; the recovery is tracked in #439.
 
 ## Conventions
 
