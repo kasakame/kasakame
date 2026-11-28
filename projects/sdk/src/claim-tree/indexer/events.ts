@@ -1,10 +1,11 @@
 import type algosdk from 'algosdk'
-import { bytesToHex, getApplicationAddress } from 'algosdk'
-import { getSdkConfig } from '../runtime/config.js'
-import { base32ToBytes } from './proof.js'
-import { SELECTOR_CANCEL, SELECTOR_PLEDGE, SELECTOR_REFUND, SELECTOR_VAULT_REFUND } from './selectors.js'
-import type { PledgeRecord, TreeState } from './tree.js'
-import { appendLeaf, emptyTree, nullLeaf, u64beDecode } from './tree.js'
+import { bytesToHex } from 'algosdk'
+import { getSdkConfig } from '../../runtime/config.js'
+import { base32ToBytes } from '../proof.js'
+import { SELECTOR_CANCEL, SELECTOR_PLEDGE, SELECTOR_REFUND, SELECTOR_VAULT_REFUND } from '../selectors.js'
+import type { PledgeRecord } from '../tree.js'
+import { u64beDecode } from '../tree.js'
+import { BLOCK_LOOKUP_CHUNK, appCallCache, blockCache, cached } from './cache.js'
 
 /** A confirmed pledge call with its paired payment, in chain order. */
 export interface PledgeEvent extends PledgeRecord {
@@ -16,49 +17,6 @@ export interface PledgeEvent extends PledgeRecord {
 export interface SpendEvent {
   /** Nulled position. */
   position: number
-}
-
-/** The viewer's live leaf: an unspent pledge position they own, with the payment TxID a proof needs. */
-export interface BackerLeaf {
-  /** Leaf position in the campaign tree. */
-  position: number
-  /** Pledged amount, in microAlgos. */
-  amount: bigint
-  /** Pledge payment transaction ID, hex. */
-  txidHex: string
-}
-
-// Session memo for indexer reads, cleared wholesale by `clearTreeCache` around proof-carrying submissions; one invalidation rule keeps the cost to one re-download per mutation.
-const appCallCache = new Map<bigint, Promise<algosdk.indexerModels.Transaction[]>>()
-const blockCache = new Map<bigint, Promise<{ transactions?: algosdk.indexerModels.Transaction[] }>>()
-// Keep concurrent block reads small enough that a large replay does not trip the indexer rate limit.
-const BLOCK_LOOKUP_CHUNK = 16
-
-/**
- * Drop memoized indexer reads; the SDK's write helpers call it around proof-carrying submissions, plain reads reuse the cache.
- */
-export function clearTreeCache(): void {
-  appCallCache.clear()
-  blockCache.clear()
-}
-
-/**
- * Memoized fetch so duplicate and repeat reads reuse one download; only resolved values stick, so a transient failure retries naturally.
- *
- * @param cache Memo map keyed by id.
- * @param key Cache key.
- * @param load The fetch to memoize.
- * @returns The cached or freshly loaded value.
- */
-function cached<T>(cache: Map<bigint, Promise<T>>, key: bigint, load: () => Promise<T>): Promise<T> {
-  const hit = cache.get(key)
-  if (hit !== undefined) return hit
-  const pending = load()
-  cache.set(key, pending)
-  void pending.catch(() => {
-    cache.delete(key)
-  })
-  return pending
 }
 
 /**
@@ -195,44 +153,4 @@ export async function fetchSpends(campaignId: bigint, vaultId: bigint): Promise<
     spends.push({ position: Number(u64beDecode(rawK)) })
   }
   return spends
-}
-
-/**
- * Load a campaign's full tree state from the indexer: replay pledges in chain order, then null every spent position.
- *
- * @param campaignId Campaign application id.
- * @param vaultId Vault application id.
- * @param vaultAddress Vault app address (the pledge payment receiver).
- * @returns The live tree state.
- */
-export async function loadTree(campaignId: bigint, vaultId: bigint, vaultAddress: string): Promise<TreeState> {
-  const pledges = await fetchPledges(campaignId, vaultAddress)
-  let state = emptyTree()
-  for (const pledge of pledges) {
-    state = appendLeaf(state, { backer: pledge.backer, amount: pledge.amount, txidHex: pledge.txidHex })
-  }
-  const amounts = new Map(pledges.map((p, index) => [index, p.amount] as const))
-  for (const spend of await fetchSpends(campaignId, vaultId)) {
-    const amount = amounts.get(spend.position) ?? 0n
-    state = nullLeaf(state, spend.position, amount)
-  }
-  return state
-}
-
-/**
- * The viewer's live leaves: pledge positions they own whose leaf is not yet nulled, driving per-leaf refund/cancel buttons and the pledge total.
- *
- * @param campaignId Campaign application id.
- * @param address Viewer address.
- * @returns Live leaves owned by the viewer, with positions, amounts, and payment TxIDs for proofs.
- */
-export async function fetchMyLeaves(campaignId: bigint, address: string): Promise<BackerLeaf[]> {
-  const { vaultAppId } = getSdkConfig()
-  const vaultAddress = getApplicationAddress(vaultAppId).toString()
-  const pledges = await fetchPledges(campaignId, vaultAddress)
-  const spent = new Set((await fetchSpends(campaignId, vaultAppId)).map((spend) => spend.position))
-  return pledges
-    .map((pledge, index) => ({ ...pledge, position: index }))
-    .filter((pledge) => pledge.backer === address && !spent.has(pledge.position))
-    .map(({ position, amount, txidHex }) => ({ position, amount, txidHex }))
 }

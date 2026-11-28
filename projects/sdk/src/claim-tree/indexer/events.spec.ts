@@ -1,119 +1,25 @@
-import type { AlgorandClient } from '@algorandfoundation/algokit-utils'
-import { encodeAddress, getApplicationAddress, hexToBytes } from 'algosdk'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { configureSdk } from '../runtime/config.js'
-import { clearTreeCache, fetchMyLeaves, fetchPledges, fetchSpends, loadTree, u64be } from './index.js'
+import { hexToBytes } from 'algosdk'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { fetchPledges, fetchSpends } from '../index.js'
+import {
+  BACKER_A,
+  BACKER_B,
+  CAMPAIGN,
+  SELECTOR,
+  VAULT,
+  VAULT_ID,
+  appCall,
+  blockMock,
+  indexerMock,
+  payment,
+  pledgeCall,
+  searchMock,
+  setupIndexer,
+  spendCall,
+  vaultRefundCall,
+} from './test-fixtures.js'
 
-const indexerMock = vi.hoisted(() => ({
-  searchForTransactions: vi.fn(),
-  lookupBlock: vi.fn(),
-}))
-
-const CAMPAIGN = 42n
-const VAULT_ID = 7n
-const VAULT = getApplicationAddress(VAULT_ID).toString()
-const BACKER_A = encodeAddress(new Uint8Array(32).fill(1))
-const BACKER_B = encodeAddress(new Uint8Array(32).fill(2))
-
-function fakeAlgorand(): AlgorandClient {
-  return { client: { indexer: indexerMock } } as unknown as AlgorandClient
-}
-
-const SELECTOR = {
-  pledge: 'a4030bd2',
-  cancel: '457e292e',
-  refund: '4b1a1d96',
-  claim: 'f1577726',
-  vaultRefund: '0fe03dd2',
-  credit: 'deadbeef',
-} as const
-
-/**
- * Minimal app-call fixture: only the fields the fetcher reads.
- *
- * @param txid Base32 transaction id.
- * @param sender Sender address.
- * @param round Confirmed round.
- * @param args Application args (selector first).
- * @returns The fixture transaction.
- */
-function appCall(txid: string, sender: string, round: bigint, args: Uint8Array[]): unknown {
-  return { id: txid, sender, confirmedRound: round, applicationTransaction: { applicationId: 0n, applicationArgs: args } }
-}
-
-function pledgeCall(txid: string, sender: string, round: bigint): unknown {
-  return appCall(txid, sender, round, [hexToBytes(SELECTOR.pledge), new Uint8Array()])
-}
-
-function spendCall(txid: string, sender: string, round: bigint, selector: string, k: bigint): unknown {
-  return appCall(txid, sender, round, [hexToBytes(selector), u64be(k)])
-}
-
-function vaultRefundCall(txid: string, sender: string, round: bigint, appId: bigint, k: bigint): unknown {
-  return {
-    id: txid,
-    sender,
-    confirmedRound: round,
-    applicationTransaction: { applicationId: VAULT_ID, applicationArgs: [hexToBytes(SELECTOR.vaultRefund), u64be(appId), u64be(k)] },
-  }
-}
-
-/**
- * Minimal payment fixture.
- *
- * @param txid Base32 transaction id.
- * @param sender Sender address.
- * @param receiver Receiver address.
- * @param amount Amount in microAlgos.
- * @returns The fixture transaction.
- */
-function payment(txid: string, sender: string, receiver: string, amount: bigint): unknown {
-  return { id: txid, sender, paymentTransaction: { amount, receiver } }
-}
-
-/**
- * Paginated search mock keyed by application id.
- *
- * @param pagesByApp Result pages per application id.
- * @returns A `searchForTransactions` mock implementation.
- */
-function searchMock(pagesByApp: Map<bigint, unknown[][]>) {
-  return () => {
-    let appId = 0n
-    let token: string | undefined
-    const builder = {
-      applicationID: (id: number | bigint) => {
-        appId = BigInt(id)
-        return builder
-      },
-      limit: () => builder,
-      nextToken: (next: string) => {
-        token = next
-        return builder
-      },
-      do: () => {
-        const pages = pagesByApp.get(appId) ?? [[]]
-        const index = token === undefined ? 0 : Number(token)
-        const transactions = pages[index] ?? []
-        const nextToken = index + 1 < pages.length ? String(index + 1) : undefined
-        return Promise.resolve({ transactions, nextToken, currentRound: 0n })
-      },
-    }
-    return builder
-  }
-}
-
-function blockMock(blocks: Map<bigint, unknown[]>) {
-  return (round: number | bigint) => ({
-    do: () => Promise.resolve({ transactions: blocks.get(BigInt(round)) ?? [] }),
-  })
-}
-
-beforeEach(() => {
-  vi.clearAllMocks()
-  configureSdk({ algorand: fakeAlgorand(), registryAppId: CAMPAIGN, vaultAppId: VAULT_ID })
-  clearTreeCache()
-})
+beforeEach(setupIndexer)
 
 describe('fetchPledges', () => {
   it('pairs each pledge with its group payment across rounds, in chain order', async () => {
@@ -316,51 +222,6 @@ describe('fetchPledges', () => {
   })
 })
 
-describe('tree cache', () => {
-  const payA = payment('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', BACKER_A, VAULT, 3_000_000n)
-  const callA = pledgeCall('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM', BACKER_A, 100n)
-
-  function mockSuccessfulReplay(): void {
-    indexerMock.searchForTransactions.mockImplementation(searchMock(new Map([[CAMPAIGN, [[callA]]]])))
-    indexerMock.lookupBlock.mockImplementation(blockMock(new Map([[100n, [payA, callA]]])))
-  }
-
-  it('reuses downloads across repeat reads', async () => {
-    mockSuccessfulReplay()
-
-    await fetchPledges(CAMPAIGN, VAULT)
-    await fetchPledges(CAMPAIGN, VAULT)
-    expect(indexerMock.searchForTransactions).toHaveBeenCalledTimes(1)
-    expect(indexerMock.lookupBlock).toHaveBeenCalledTimes(1)
-  })
-
-  it('refetches after clearTreeCache', async () => {
-    mockSuccessfulReplay()
-
-    await fetchPledges(CAMPAIGN, VAULT)
-    clearTreeCache()
-    await fetchPledges(CAMPAIGN, VAULT)
-    expect(indexerMock.searchForTransactions).toHaveBeenCalledTimes(2)
-    expect(indexerMock.lookupBlock).toHaveBeenCalledTimes(2)
-  })
-
-  it('does not cache failures', async () => {
-    mockSuccessfulReplay()
-    indexerMock.searchForTransactions.mockImplementationOnce(() => ({
-      applicationID: () => ({
-        limit: () => ({
-          do: () => Promise.reject(new Error('offline')),
-        }),
-      }),
-    }))
-
-    await expect(fetchPledges(CAMPAIGN, VAULT)).rejects.toThrow('offline')
-    const pledges = await fetchPledges(CAMPAIGN, VAULT)
-    expect(pledges).toHaveLength(1)
-    expect(indexerMock.searchForTransactions).toHaveBeenCalledTimes(2)
-  })
-})
-
 describe('fetchSpends', () => {
   it('collects campaign and vault spends for this campaign only', async () => {
     const cancel = spendCall('PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP', BACKER_A, 100n, SELECTOR.cancel, 2n)
@@ -380,73 +241,5 @@ describe('fetchSpends', () => {
     )
 
     expect(await fetchSpends(CAMPAIGN, VAULT_ID)).toEqual([{ position: 2 }, { position: 0 }, { position: 1 }])
-  })
-})
-
-describe('fetchMyLeaves', () => {
-  it('returns only the viewer’s live leaves', async () => {
-    const payA = payment('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', BACKER_A, VAULT, 3_000_000n)
-    const callA = pledgeCall('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM', BACKER_A, 100n)
-    const payB = payment('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', BACKER_B, VAULT, 1_000_000n)
-    const callB = pledgeCall('NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN', BACKER_B, 100n)
-    const cancel = spendCall('PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP', BACKER_A, 101n, SELECTOR.cancel, 0n)
-    indexerMock.searchForTransactions.mockImplementation(
-      searchMock(
-        new Map([
-          [CAMPAIGN, [[callA, callB, cancel]]],
-          [VAULT_ID, [[]]],
-        ]),
-      ),
-    )
-    indexerMock.lookupBlock.mockImplementation(blockMock(new Map([[100n, [payA, callA, payB, callB]]])))
-
-    const leaves = await fetchMyLeaves(CAMPAIGN, BACKER_A)
-    expect(leaves).toEqual([])
-    const leavesB = await fetchMyLeaves(CAMPAIGN, BACKER_B)
-    expect(leavesB.map((leaf) => [leaf.position, leaf.amount])).toEqual([[1, 1_000_000n]])
-  })
-})
-
-describe('loadTree', () => {
-  it('replays pledges in order then nulls spends', async () => {
-    const payA = payment('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', BACKER_A, VAULT, 3_000_000n)
-    const callA = pledgeCall('MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM', BACKER_A, 100n)
-    const payB = payment('BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB', BACKER_B, VAULT, 1_000_000n)
-    const callB = pledgeCall('NNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN', BACKER_B, 101n)
-    const cancel = spendCall('PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP', BACKER_A, 102n, SELECTOR.cancel, 0n)
-    indexerMock.searchForTransactions.mockImplementation(
-      searchMock(
-        new Map([
-          [CAMPAIGN, [[callA], [callB, cancel]]],
-          [VAULT_ID, [[]]],
-        ]),
-      ),
-    )
-    indexerMock.lookupBlock.mockImplementation(
-      blockMock(
-        new Map([
-          [100n, [payA, callA]],
-          [101n, [payB, callB]],
-        ]),
-      ),
-    )
-
-    const tree = await loadTree(CAMPAIGN, VAULT_ID, VAULT)
-    expect(tree.leaves.length).toEqual(2)
-    expect(tree.raised).toEqual(1_000_000n)
-  })
-
-  it('rejects a spend for a position that was never pledged', async () => {
-    const ghost = spendCall('GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGG', BACKER_A, 100n, SELECTOR.cancel, 5n)
-    indexerMock.searchForTransactions.mockImplementation(
-      searchMock(
-        new Map([
-          [CAMPAIGN, [[ghost]]],
-          [VAULT_ID, [[]]],
-        ]),
-      ),
-    )
-
-    await expect(loadTree(CAMPAIGN, VAULT_ID, VAULT)).rejects.toThrow(RangeError)
   })
 })
