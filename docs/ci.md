@@ -18,8 +18,8 @@ reasoning behind the splits.
 - **Build once, share the output.** The compiled contract artifacts (TEAL +
   ARC specs) are gitignored and regenerable. A contracts, `utils_core`, or
   `constants` change triggers `compile-contracts`, which compiles them once and
-  uploads `contracts-artifacts`; `build-sdk` and `integration-test-contracts`
-  download it
+  uploads `contracts-artifacts`; `build-sdk`, `integration-test-contracts`, and
+  `integration-test-cli` download it
   instead of recompiling. When
   the SDK or contracts changed, `build-sdk` runs codegen once, compiles the
   package once, and uploads both `sdk-generated` (the generated clients) and
@@ -45,8 +45,8 @@ reasoning behind the splits.
   job that runs format, lint, type-check, and tests in order; a failed check
   does not stop the remaining checks, so one run reports them all. Contract
   compilation and SDK packaging are separate producer jobs only because other
-  jobs consume their artifacts; `integration-test-contracts` and
-  `integration-test-sdk` add Docker for LocalNet. Keeping those in separate
+  jobs consume their artifacts; `integration-test-contracts`,
+  `integration-test-sdk`, and `integration-test-cli` add Docker for LocalNet. Keeping those in separate
   jobs (not separate workflows) keeps feedback fast and failures attributable
   to the right lane.
 - **Change detection, not matrices.** One `changes` job runs
@@ -118,6 +118,7 @@ flowchart TD
     constants["Check constants<br/>(build/format/lint/types)"]
     integrationcontracts["Contracts LocalNet integration<br/>(contracts, utils_core, or constants)"]
     integrationsdk["SDK LocalNet integration<br/>(SDK, contracts, utils_core, or constants)"]
+    integrationcli["CLI LocalNet integration<br/>(CLI, SDK, contracts, utils_core, or constants)"]
     gate["Gate<br/>(single required check)"]
 
     changes --> repo
@@ -133,14 +134,17 @@ flowchart TD
     changes --> constants
     changes --> integrationcontracts
     changes --> integrationsdk
+    changes --> integrationcli
     changes --> gate
     buildc -->|"contracts artifacts"| buildsdk
     buildc -->|"contracts artifacts"| integrationcontracts
+    buildc -->|"contracts artifacts"| integrationcli
     contracts -->|"verification finished"| integrationcontracts
     buildsdk -->|"sdk-generated"| sdk
     buildsdk -->|"sdk-generated"| integrationsdk
     buildsdk -->|"sdk-dist"| frontend
     buildsdk -->|"sdk-dist"| cli
+    buildsdk -->|"sdk-dist"| integrationcli
     repo --> gate
     buildc --> gate
     contracts --> gate
@@ -153,6 +157,7 @@ flowchart TD
     constants --> gate
     integrationcontracts --> gate
     integrationsdk --> gate
+    integrationcli --> gate
 ```
 
 ## What each job needs
@@ -173,6 +178,7 @@ flowchart TD
 | `check-constants` | `constants` or `workspace` changed | ✅ | - | - | - |
 | `integration-test-contracts` | contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `contracts-artifacts` |
 | `integration-test-sdk` | SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-generated` |
+| `integration-test-cli` | CLI, SDK, contracts, `utils_core`, or `constants` changed | ✅ | ✅ | ✅ (algod + indexer) | `sdk-dist` when built; `contracts-artifacts` when contracts changed |
 | `heavy-tests` (own workflow) | weekly schedule or manual | ✅ | ✅ | ✅ (algod only) | - (builds its own artifacts) |
 | `work-tracking` (own workflow) | issue events or manual | ✅ | - | - | - |
 | `gate` | always | ✅ (runner only) | - | - | - |
@@ -242,13 +248,13 @@ restores the published package. Local contract/SDK work uses the same command
 The `check-frontend` job bundles against the same SDK choice: published for
 frontend-only, CLI-only, or workspace-only changes, the same-run `sdk-dist` for
 SDK/contracts changes. `check-cli` type-checks and builds against that same
-choice. `check-sdk` downloads `sdk-generated` from the producer; when the
-producer is skipped (`workspace`-only changes), it regenerates from the pinned
-release.
+choice, and `integration-test-cli` runs the binary against it. `check-sdk`
+downloads `sdk-generated` from the producer; when the producer is skipped
+(`workspace`-only changes), it regenerates from the pinned release.
 
 ## Workflow: build-and-test
 
-Implemented at `.github/workflows/build-and-test.yml`. Fifteen jobs. `changes`
+Implemented at `.github/workflows/build-and-test.yml`. Sixteen jobs. `changes`
 runs `dorny/paths-filter@v4.0.3`: PRs use the changed-files API (hence
 `pull-requests: read`), and pushes to `main` diff against the previous commit
 on the branch (`github.ref` as the base on pushes). Manual dispatch skips
@@ -297,6 +303,7 @@ from every filter; Markdown files and `.markdownlint-cli2.jsonc` only set
 - `run_check_constants` - `constants || workspace`.
 - `run_contracts_integration` - `contracts || utils_core || constants`.
 - `run_sdk_integration` - `sdk || contracts || utils_core || constants`.
+- `run_cli_integration` - `cli || sdk || contracts || utils_core || constants`.
 
 Every `run_*` output is true on a manual `workflow_dispatch`.
 
@@ -361,6 +368,12 @@ Every `run_*` output is true on a manual `workflow_dispatch`.
   `build-sdk` succeeded. It installs the SDK dependencies, downloads
   `sdk-generated`, starts LocalNet, and runs the SDK send-path suite (files
   `00`-`10`). It is independent of the contract LocalNet lane.
+- **`integration-test-cli`** - runs when `run_cli_integration` is true and
+  `build-sdk` succeeded (or was skipped). It installs the CLI dependencies,
+  downloads `sdk-dist` when `build-sdk` ran and `contracts-artifacts` when the
+  contracts changed, starts LocalNet, and runs the CLI binary suite under
+  `projects/cli/test/`. `CLI_SPECS=local` selects the same-run contract
+  artifacts; otherwise the lane deploys the published contracts package.
 - **`gate`** - depends on all of the above and passes when every job is
   `success` or `skipped`; it fails on `failure`/`cancelled`. Branch protection
   requires only this check, so skipped jobs don't block a merge.
@@ -436,8 +449,8 @@ suites stream an initial line, a heartbeat with the pledge rate and ETA every
 5,000 positions (~2.5 minutes at the measured rate), and phase lines for the
 deadline, refunds, delete, and claim/finalize. A job that cannot finish
 inside the limit fails without affecting the other outcome. The SDK LocalNet
-suite runs in the PR graph and the SDK release; the CLI LocalNet smoke test
-stays with #118.
+suite runs in the PR graph and the SDK release; the CLI LocalNet lane runs in the
+PR graph.
 
 The `05`-`07` scale, boundary, and randomized-sequence suites are **not** in this
 workflow: they run in the `integration-test-contracts` job in the PR `build-and-test`
@@ -739,8 +752,8 @@ The offline contract tests don't need the AlgoKit CLI or Docker because the
 under Node - the contracts verification job is pure Node and consumes nothing
 from `compile-contracts`, never the compiled TEAL. `build-sdk` downloads
 `contracts-artifacts` when `compile-contracts` ran (see above for why); SDK
-verification consumes `sdk-generated`, and the frontend and CLI lanes install
-the published SDK or the packed `sdk-dist` copy.
+verification consumes `sdk-generated`, and the frontend, CLI, and CLI LocalNet
+lanes install the published SDK or the packed `sdk-dist` copy.
 
 ## Caching
 
@@ -753,7 +766,8 @@ and caches:
   lockfiles). This caches the npm cache, so `npm ci` installs from it and is
   usually seconds on cache hits.
 - **AlgoKit (Python)** - installed via `pipx` in the `compile-contracts`,
-  `integration-test-contracts`, and `integration-test-sdk` jobs (and the separate
+  `integration-test-contracts`, `integration-test-sdk`, and
+  `integration-test-cli` jobs (and the separate
   `heavy-tests` workflow). `~/.local`
   is cached by AlgoKit version, Python version, and runner OS, so a cache hit
   skips the install entirely. The install is fast relative to the Docker
@@ -791,14 +805,15 @@ projects, so their lanes run together in one pull request.
 download, so nothing is compiled or built twice:
 
 - **`contracts-artifacts`** - `projects/contracts/smart_contracts/artifacts`
-  (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input) and
-  `integration-test-contracts`. The separate `heavy-tests` workflow builds its own
-  artifacts.
+  (TEAL, ARC-32/56 specs). Consumed by `build-sdk` (codegen input),
+  `integration-test-contracts`, and `integration-test-cli`. The separate
+  `heavy-tests` workflow builds its own artifacts.
 - **`sdk-generated`** - `projects/sdk/src/generated` (generated clients).
   Consumed by SDK verification and the SDK LocalNet integration job;
   verification regenerates them when `build-sdk` was skipped.
 - **`sdk-dist`** - `projects/sdk/dist` (compiled package). Consumed by
-  `check-frontend` and `check-cli`, which install it as `file:../sdk`.
+  `check-frontend`, `check-cli`, and `integration-test-cli`, which install it as
+  `file:../sdk`.
 
 Producer uploads use `overwrite: true`, so re-running a failed job does not
 collide with the previous attempt's artifact. The artifacts and `release-sdk`'s

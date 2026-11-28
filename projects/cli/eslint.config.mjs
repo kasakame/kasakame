@@ -19,7 +19,7 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts'],
+          allowDefaultProject: ['eslint.config.mjs', 'vitest.config.ts', 'vitest.setup.ts'],
         },
         tsconfigRootDir: import.meta.dirname,
       },
@@ -56,7 +56,7 @@ export default defineConfig(
   },
   // Test files get Vitest globals.
   {
-    files: ['**/*.spec.ts'],
+    files: ['**/*.spec.ts', '**/*.test.ts', 'test/**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.vitest,
